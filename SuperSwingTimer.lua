@@ -1,0 +1,392 @@
+﻿local addonName, ns = ...
+
+-- ============================================================
+-- Bootstrap: event frame, SavedVariables init, dispatch
+-- ============================================================
+-- This file wires everything together. Logic lives in:
+--   SuperSwingTimer_Constants.lua  - spell IDs, class config, defaults
+--   SuperSwingTimer_State.lua      - detection engine, timer state
+--   SuperSwingTimer_Weaving.lua    - shaman breakpoint / cast helper
+--   SuperSwingTimer_UI.lua         - bars, visuals, drag, show/hide
+--   SuperSwingTimer_ClassMods.lua  - class-specific overlays
+
+-- ============================================================
+-- Runtime globals
+-- ============================================================
+ns.isMoving        = false
+ns.playerClass     = nil
+ns.classConfig     = nil
+ns.druidFormChangeTime = nil
+
+-- ============================================================
+-- SavedVariables migration
+-- ============================================================
+local function MigrateDB()
+	local legacyAddonDB = rawget(_G, "SwangThangDB")
+	local legacyHunterDB = rawget(_G, "HunterTimerDB")
+
+	-- v2: SuperSwingTimerDB with nested positions
+	-- Migrate from v1: HunterTimerDB = {point, relativePoint, x, y}
+	if not SuperSwingTimerDB then
+		if legacyAddonDB then
+			SuperSwingTimerDB = legacyAddonDB
+			SwangThangDB = nil
+		elseif legacyHunterDB then
+			SuperSwingTimerDB = {
+			version   = 2,
+			showMH    = true,
+			showOH    = true,
+			positions = {
+				mh     = ns.DB_DEFAULTS.positions.mh,
+				oh     = ns.DB_DEFAULTS.positions.oh,
+				ranged = {
+					point        = legacyHunterDB.point        or "CENTER",
+					relativePoint = legacyHunterDB.relativePoint or "CENTER",
+					x            = legacyHunterDB.x            or 0,
+					y            = legacyHunterDB.y            or -100,
+				},
+			},
+			}
+			HunterTimerDB = nil  -- clear legacy SavedVariable
+		end
+	end
+
+	-- Fresh install
+	if not SuperSwingTimerDB then
+		SuperSwingTimerDB = {
+			version   = ns.DB_DEFAULTS.version,
+			showMH    = ns.DB_DEFAULTS.showMH,
+			showOH    = ns.DB_DEFAULTS.showOH,
+			showRanged = ns.DB_DEFAULTS.showRanged,
+			showWeaveAssist = ns.DB_DEFAULTS.showWeaveAssist,
+			barWidth  = ns.DB_DEFAULTS.barWidth,
+			barHeight = ns.DB_DEFAULTS.barHeight,
+			barTexture = ns.DB_DEFAULTS.barTexture,
+			barTextureLayer = ns.DB_DEFAULTS.barTextureLayer,
+			sparkTexture = ns.DB_DEFAULTS.sparkTexture,
+			sparkTextureLayer = ns.DB_DEFAULTS.sparkTextureLayer,
+			weaveSparkTexture = ns.DB_DEFAULTS.weaveSparkTexture,
+			weaveSparkTextureLayer = ns.DB_DEFAULTS.weaveSparkTextureLayer,
+			weaveSparkWidth = ns.DB_DEFAULTS.weaveSparkWidth,
+			weaveSparkHeight = ns.DB_DEFAULTS.weaveSparkHeight,
+			weaveSparkAlpha = ns.DB_DEFAULTS.weaveSparkAlpha,
+			weaveTriangleTopTexture = ns.DB_DEFAULTS.weaveTriangleTopTexture,
+			weaveTriangleBottomTexture = ns.DB_DEFAULTS.weaveTriangleBottomTexture,
+			weaveTriangleTextureLayer = ns.DB_DEFAULTS.weaveTriangleTextureLayer,
+			weaveTriangleSize = ns.DB_DEFAULTS.weaveTriangleSize,
+			weaveTriangleGap = ns.DB_DEFAULTS.weaveTriangleGap,
+			weaveTriangleAlpha = ns.DB_DEFAULTS.weaveTriangleAlpha,
+			weaveMarkerLayer = ns.DB_DEFAULTS.weaveMarkerLayer,
+			sparkWidth = ns.DB_DEFAULTS.sparkWidth,
+			sparkHeight = ns.DB_DEFAULTS.sparkHeight,
+			barBackgroundAlpha = ns.DB_DEFAULTS.barBackgroundAlpha,
+			sparkAlpha = ns.DB_DEFAULTS.sparkAlpha,
+			minimalMode = ns.DB_DEFAULTS.minimalMode,
+			lockBars = ns.DB_DEFAULTS.lockBars,
+			colors    = {},
+			positions = {
+				mh     = { point = ns.DB_DEFAULTS.positions.mh.point,     relativePoint = ns.DB_DEFAULTS.positions.mh.relativePoint,     x = ns.DB_DEFAULTS.positions.mh.x,     y = ns.DB_DEFAULTS.positions.mh.y     },
+				oh     = { point = ns.DB_DEFAULTS.positions.oh.point,     relativePoint = ns.DB_DEFAULTS.positions.oh.relativePoint,     x = ns.DB_DEFAULTS.positions.oh.x,     y = ns.DB_DEFAULTS.positions.oh.y     },
+				ranged = { point = ns.DB_DEFAULTS.positions.ranged.point, relativePoint = ns.DB_DEFAULTS.positions.ranged.relativePoint, x = ns.DB_DEFAULTS.positions.ranged.x, y = ns.DB_DEFAULTS.positions.ranged.y },
+			},
+		}
+		for key, def in pairs(ns.DB_DEFAULTS.colors) do
+			SuperSwingTimerDB.colors[key] = { r = def.r, g = def.g, b = def.b, a = def.a }
+		end
+	end
+
+	-- Fill any missing fields for upgrades
+	SuperSwingTimerDB.version = SuperSwingTimerDB.version or 8
+	SuperSwingTimerDB.showMH  = (SuperSwingTimerDB.showMH  ~= false)
+	SuperSwingTimerDB.showOH  = (SuperSwingTimerDB.showOH  ~= false)
+	SuperSwingTimerDB.showRanged = (SuperSwingTimerDB.showRanged ~= false)
+	SuperSwingTimerDB.showWeaveAssist = (SuperSwingTimerDB.showWeaveAssist ~= false)
+	SuperSwingTimerDB.weaveMarkerLayer = SuperSwingTimerDB.weaveMarkerLayer or ns.DB_DEFAULTS.weaveMarkerLayer
+	SuperSwingTimerDB.positions = SuperSwingTimerDB.positions or {}
+	for slot, def in pairs(ns.DB_DEFAULTS.positions) do
+		if not SuperSwingTimerDB.positions[slot] then
+			SuperSwingTimerDB.positions[slot] = { point = def.point, relativePoint = def.relativePoint, x = def.x, y = def.y }
+		end
+	end
+
+	-- v2 â†’ v3: bar dimensions + colors
+	if (SuperSwingTimerDB.version or 0) < 3 then
+		SuperSwingTimerDB.barWidth  = SuperSwingTimerDB.barWidth  or ns.DB_DEFAULTS.barWidth
+		SuperSwingTimerDB.barHeight = SuperSwingTimerDB.barHeight or ns.DB_DEFAULTS.barHeight
+		SuperSwingTimerDB.colors    = SuperSwingTimerDB.colors    or {}
+		for key, def in pairs(ns.DB_DEFAULTS.colors) do
+			if not SuperSwingTimerDB.colors[key] then
+				SuperSwingTimerDB.colors[key] = { r = def.r, g = def.g, b = def.b, a = def.a }
+			end
+		end
+		SuperSwingTimerDB.version = 3
+	end
+
+	-- v3 â†’ v5: bar texture selection
+	if (SuperSwingTimerDB.version or 0) < 5 then
+		SuperSwingTimerDB.barTexture = SuperSwingTimerDB.barTexture or ns.DB_DEFAULTS.barTexture
+		SuperSwingTimerDB.version = 5
+	end
+
+	-- v5 â†’ v6: spark texture and sizing
+	if (SuperSwingTimerDB.version or 0) < 6 then
+		SuperSwingTimerDB.sparkTexture = SuperSwingTimerDB.sparkTexture or ns.DB_DEFAULTS.sparkTexture
+		SuperSwingTimerDB.weaveMarkerLayer = SuperSwingTimerDB.weaveMarkerLayer or ns.DB_DEFAULTS.weaveMarkerLayer
+		SuperSwingTimerDB.sparkWidth   = SuperSwingTimerDB.sparkWidth   or ns.DB_DEFAULTS.sparkWidth
+		SuperSwingTimerDB.sparkHeight  = SuperSwingTimerDB.sparkHeight  or ns.DB_DEFAULTS.sparkHeight
+		SuperSwingTimerDB.version = 6
+	end
+
+	-- v6 â†’ v7: texture layers, alpha controls, and UI quality-of-life settings
+	if (SuperSwingTimerDB.version or 0) < 7 then
+		SuperSwingTimerDB.barTextureLayer = SuperSwingTimerDB.barTextureLayer or ns.DB_DEFAULTS.barTextureLayer
+		SuperSwingTimerDB.sparkTextureLayer = SuperSwingTimerDB.sparkTextureLayer or ns.DB_DEFAULTS.sparkTextureLayer
+		SuperSwingTimerDB.barBackgroundAlpha = SuperSwingTimerDB.barBackgroundAlpha ~= nil and SuperSwingTimerDB.barBackgroundAlpha or ns.DB_DEFAULTS.barBackgroundAlpha
+		SuperSwingTimerDB.sparkAlpha = SuperSwingTimerDB.sparkAlpha ~= nil and SuperSwingTimerDB.sparkAlpha or ns.DB_DEFAULTS.sparkAlpha
+		SuperSwingTimerDB.minimalMode = SuperSwingTimerDB.minimalMode == true
+		SuperSwingTimerDB.lockBars = SuperSwingTimerDB.lockBars == true
+		SuperSwingTimerDB.version = 7
+	end
+
+	-- v7 â†’ v8: weave spark and dual triangle marker settings
+	if (SuperSwingTimerDB.version or 0) < 8 then
+		SuperSwingTimerDB.weaveSparkTexture = SuperSwingTimerDB.weaveSparkTexture or ns.DB_DEFAULTS.weaveSparkTexture
+		SuperSwingTimerDB.weaveSparkTextureLayer = SuperSwingTimerDB.weaveSparkTextureLayer or ns.DB_DEFAULTS.weaveSparkTextureLayer
+		SuperSwingTimerDB.weaveSparkWidth = SuperSwingTimerDB.weaveSparkWidth or ns.DB_DEFAULTS.weaveSparkWidth
+		SuperSwingTimerDB.weaveSparkHeight = SuperSwingTimerDB.weaveSparkHeight or ns.DB_DEFAULTS.weaveSparkHeight
+		SuperSwingTimerDB.weaveSparkAlpha = SuperSwingTimerDB.weaveSparkAlpha ~= nil and SuperSwingTimerDB.weaveSparkAlpha or ns.DB_DEFAULTS.weaveSparkAlpha
+		SuperSwingTimerDB.weaveTriangleTopTexture = SuperSwingTimerDB.weaveTriangleTopTexture or ns.DB_DEFAULTS.weaveTriangleTopTexture
+		SuperSwingTimerDB.weaveTriangleBottomTexture = SuperSwingTimerDB.weaveTriangleBottomTexture or ns.DB_DEFAULTS.weaveTriangleBottomTexture
+		SuperSwingTimerDB.weaveTriangleTextureLayer = SuperSwingTimerDB.weaveTriangleTextureLayer or ns.DB_DEFAULTS.weaveTriangleTextureLayer
+		SuperSwingTimerDB.weaveTriangleSize = SuperSwingTimerDB.weaveTriangleSize or ns.DB_DEFAULTS.weaveTriangleSize
+		SuperSwingTimerDB.weaveTriangleGap = SuperSwingTimerDB.weaveTriangleGap or ns.DB_DEFAULTS.weaveTriangleGap
+		SuperSwingTimerDB.weaveTriangleAlpha = SuperSwingTimerDB.weaveTriangleAlpha ~= nil and SuperSwingTimerDB.weaveTriangleAlpha or ns.DB_DEFAULTS.weaveTriangleAlpha
+		SuperSwingTimerDB.version = 8
+	end
+end
+
+-- ============================================================
+-- Initialization
+-- ============================================================
+local function OnAddonLoaded()
+	MigrateDB()
+
+	-- Apply DB dimensions to runtime constants
+	ns.BAR_WIDTH  = SuperSwingTimerDB.barWidth  or ns.DB_DEFAULTS.barWidth
+	ns.BAR_HEIGHT = SuperSwingTimerDB.barHeight or ns.DB_DEFAULTS.barHeight
+
+	-- Detect class once
+	local _, class = UnitClass("player")
+	ns.playerClass = class
+	ns.classConfig = ns.CLASS_CONFIG[class] or { ranged = false, melee = false, dualWield = false }
+	if ns.InitWeaving then
+		ns.InitWeaving()
+	end
+
+	-- Class-specific mods first (registers callbacks before bars are created)
+	ns.InitClassMods()
+
+	-- Create bars for this class
+	ns.InitBars()
+
+	-- Apply DB colors after bars + class mods are set up
+	ns.ApplyBarColors()
+
+	-- Create config panel (hidden)
+	ns.InitConfig()
+
+	-- Slash commands
+	SLASH_SUPERSWINGTIMER1 = "/sst"
+	SLASH_SUPERSWINGTIMER2 = "/swang"
+	SLASH_SUPERSWINGTIMER3 = "/swangthang"
+	SlashCmdList["SUPERSWINGTIMER"] = function(msg)
+		msg = strtrim(msg or ""):lower()
+		if msg == "reset" then
+			ns.ResetConfigDefaults()
+			print("|cff00ccffSuper Swing Timer:|r Settings reset to defaults.")
+		elseif msg == "help" then
+			print("|cff00ccffSuper Swing Timer:|r /sst - open config panel")
+			print("|cff00ccffSuper Swing Timer:|r /sst reset - restore default settings")
+		else
+			ns.ToggleConfig()
+		end
+	end
+end
+
+-- ============================================================
+-- Event frame
+-- ============================================================
+local frame = CreateFrame("Frame", "SuperSwingTimerFrame", UIParent)
+
+-- Register events conditionally in ADDON_LOADED once class is known
+local function RegisterEvents()
+	local cfg = ns.classConfig or {}
+
+	-- Core events for all classes
+	frame:RegisterEvent("COMBAT_LOG_EVENT_UNFILTERED")
+	frame:RegisterEvent("ADDON_LOADED")
+
+	if cfg.melee then
+		frame:RegisterEvent("UNIT_ATTACK_SPEED")
+		frame:RegisterEvent("UNIT_AURA")
+		frame:RegisterEvent("PLAYER_REGEN_DISABLED")
+		frame:RegisterEvent("PLAYER_REGEN_ENABLED")
+		frame:RegisterEvent("PLAYER_EQUIPMENT_CHANGED")
+		frame:RegisterEvent("UNIT_INVENTORY_CHANGED")
+		frame:RegisterEvent("UNIT_SPELLCAST_SUCCEEDED")
+	end
+
+	if cfg.melee and ns.playerClass == "SHAMAN" then
+		frame:RegisterEvent("SPELLS_CHANGED")
+		frame:RegisterEvent("UNIT_SPELLCAST_START")
+		frame:RegisterEvent("UNIT_SPELLCAST_STOP")
+		frame:RegisterEvent("UNIT_SPELLCAST_INTERRUPTED")
+		frame:RegisterEvent("UNIT_SPELLCAST_FAILED")
+		frame:RegisterEvent("UNIT_SPELLCAST_DELAYED")
+	end
+
+	if cfg.ranged then
+		frame:RegisterEvent("UNIT_RANGEDDAMAGE")
+		frame:RegisterEvent("UNIT_SPELLCAST_START")
+		frame:RegisterEvent("UNIT_SPELLCAST_CHANNEL_START")
+		frame:RegisterEvent("START_AUTOREPEAT_SPELL")
+		frame:RegisterEvent("STOP_AUTOREPEAT_SPELL")
+		frame:RegisterEvent("PLAYER_STARTED_MOVING")
+		frame:RegisterEvent("PLAYER_STOPPED_MOVING")
+		frame:RegisterEvent("PLAYER_REGEN_DISABLED")
+		frame:RegisterEvent("PLAYER_REGEN_ENABLED")
+	end
+
+	if cfg.melee and ns.playerClass == "WARRIOR" then
+		frame:RegisterEvent("UNIT_SPELLCAST_START")
+		frame:RegisterEvent("UNIT_SPELLCAST_SUCCEEDED")
+	end
+
+	if cfg.melee and ns.playerClass == "DRUID" then
+		frame:RegisterEvent("UPDATE_SHAPESHIFT_FORM")
+	end
+
+	frame:RegisterEvent("PLAYER_ENTERING_WORLD")
+end
+
+local function UpdateFrameOnUpdate(self, elapsed)
+	ns.OnUpdate(elapsed)
+end
+
+function ns.SetUpdateEnabled(enabled)
+	if enabled then
+		frame:SetScript("OnUpdate", UpdateFrameOnUpdate)
+	else
+		frame:SetScript("OnUpdate", nil)
+	end
+end
+
+frame:RegisterEvent("ADDON_LOADED")
+
+frame:SetScript("OnEvent", function(self, event, ...)
+	if event == "ADDON_LOADED" then
+		local name = ...
+		if name == addonName then
+			OnAddonLoaded()
+			RegisterEvents()
+		end
+
+	elseif event == "COMBAT_LOG_EVENT_UNFILTERED" then
+		ns.HandleCLEU()
+
+	elseif event == "UNIT_SPELLCAST_SUCCEEDED" then
+		ns.HandleSpellcastSucceeded(...)
+		if ns.playerClass == "SHAMAN" and ns.HandleWeavingSpellcast then
+			ns.HandleWeavingSpellcast(event, ...)
+		end
+
+	elseif event == "UNIT_SPELLCAST_START" or event == "UNIT_SPELLCAST_CHANNEL_START" then
+		local unit, _, spellId = ...
+		if ns.playerClass == "SHAMAN" and ns.HandleWeavingSpellcast then
+			ns.HandleWeavingSpellcast(event, ...)
+		end
+		if unit == "player" and spellId ~= ns.AUTO_SHOT_ID then
+			ns.ResetTimer("ranged")
+			if ns.rangedBar then ns.rangedBar:SetAlpha(0) end
+		end
+
+	elseif event == "UNIT_SPELLCAST_STOP" or event == "UNIT_SPELLCAST_INTERRUPTED" or event == "UNIT_SPELLCAST_FAILED" or event == "UNIT_SPELLCAST_DELAYED" then
+		if ns.playerClass == "SHAMAN" and ns.HandleWeavingSpellcast then
+			ns.HandleWeavingSpellcast(event, ...)
+		end
+
+	elseif event == "PLAYER_STARTED_MOVING" then
+		ns.isMoving = true
+
+	elseif event == "PLAYER_STOPPED_MOVING" then
+		ns.isMoving = false
+
+	elseif event == "UNIT_ATTACK_SPEED" then
+		ns.SyncMeleeTimerSpeed("mh", nil, true)
+		ns.SyncMeleeTimerSpeed("oh", nil, true)
+
+	elseif event == "UNIT_AURA" then
+		local unit = ...
+		if unit == "player" then
+			ns.SanityCheckTimers()
+		end
+
+	elseif event == "UNIT_RANGEDDAMAGE" then
+		ns.SyncRangedTimerSpeed(nil, true)
+
+	elseif event == "UNIT_INVENTORY_CHANGED" then
+		ns.UpdateOHBar()
+		ns.SanityCheckTimers()
+
+	elseif event == "PLAYER_EQUIPMENT_CHANGED" then
+		ns.UpdateOHBar()
+		ns.SanityCheckTimers(true)
+
+	elseif event == "PLAYER_ENTERING_WORLD" then
+		local isInitialLogin, isReloadingUi = ...
+		ns.OnPlayerEnteringWorld(isInitialLogin, isReloadingUi)
+		if ns.ClearWeavePreview then
+			ns.ClearWeavePreview()
+		end
+
+	elseif event == "SPELLS_CHANGED" then
+		if ns.playerClass == "SHAMAN" and ns.RebuildWeaveSpellCatalog then
+			ns.RebuildWeaveSpellCatalog()
+		end
+
+	elseif event == "START_AUTOREPEAT_SPELL" then
+		-- Hunter starts auto-shooting
+		if ns.rangedBar then ns.rangedBar:SetAlpha(1) end
+
+	elseif event == "STOP_AUTOREPEAT_SPELL" then
+		ns.ResetTimer("ranged")
+		if ns.rangedBar then ns.rangedBar:SetAlpha(0) end
+
+	elseif event == "PLAYER_REGEN_DISABLED" then
+		ns.ShowBars()
+		ns.StartSanityTicker()
+
+	elseif event == "PLAYER_REGEN_ENABLED" then
+		ns.StopSanityTicker()
+		ns.HideBars()
+		ns.ResetTimer("mh")
+		ns.ResetTimer("oh")
+		ns.ResetTimer("ranged")
+		if ns.ClearWeavePreview then
+			ns.ClearWeavePreview()
+		end
+
+	elseif event == "UPDATE_SHAPESHIFT_FORM" then
+		-- Druid form label update handled via classmod callback
+		if ns.OnDruidFormChange then
+			-- Fire with current form; exact aura handled via CLEU
+			local form = GetShapeshiftForm and GetShapeshiftForm() or 0
+			if form == 0 then
+				ns.OnDruidFormChange(0)
+			end
+		end
+	end
+end)
+
+ns.SetUpdateEnabled(ns.HasActiveTimers())
+
