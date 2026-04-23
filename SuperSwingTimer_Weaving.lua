@@ -52,16 +52,11 @@ end
 
 local function GetSpellFamilyColor(spellInfo, safe)
 	local color
-	if not spellInfo then
+	if spellInfo and spellInfo.abbrev and ns.WEAVE_SPELL_FAMILY_COLORS then
+		color = ns.WEAVE_SPELL_FAMILY_COLORS[spellInfo.abbrev]
+	end
+	if not color then
 		color = { r = 0.8, g = 0.8, b = 0.8, a = 1 }
-	elseif spellInfo.abbrev == "LB" then
-		color = { r = 0.45, g = 0.75, b = 1.00, a = 1 }
-	elseif spellInfo.abbrev == "CL" then
-		color = { r = 0.15, g = 0.45, b = 0.95, a = 1 }
-	elseif spellInfo.abbrev == "HW" or spellInfo.abbrev == "LHW" or spellInfo.abbrev == "CH" then
-		color = { r = 0.25, g = 0.95, b = 0.35, a = 1 }
-	else
-		color = { r = 0.70, g = 0.85, b = 1.00, a = 1 }
 	end
 
 	if safe == false then
@@ -96,8 +91,16 @@ function ns.RebuildWeaveSpellCatalog()
 	state.defaultSpellId = nil
 
 	for _, group in ipairs(ns.WEAVE_SPELL_GROUPS or {}) do
-		local info = ResolveSpellInfo(group)
-		if info then
+		local familyEnabled = true
+		if ns.GetWeaveFamilyEnabled then
+			familyEnabled = ns.GetWeaveFamilyEnabled(group.abbrev)
+		end
+
+		local info = nil
+		if familyEnabled then
+			info = ResolveSpellInfo(group)
+		end
+		if familyEnabled and info then
 			state.trackedSpellCatalog[#state.trackedSpellCatalog + 1] = info
 			state.trackedSpellLookup[info.spellId] = info
 			if not state.defaultSpellId then
@@ -202,19 +205,20 @@ local function BuildDisplayInfo(spellInfo)
 	local safeStartIn = nextSwingExpiration - now - latency - effectiveCastTime
 	local clipAmount = math_max(0, (now + latency + castRemaining) - nextSwingExpiration)
 	local safe = safeStartIn > 0 and clipAmount <= 0
+	local spellLabel = spellInfo.spellName or spellInfo.abbrev or "Weave"
 	local text
 
 	if isCasting then
 		if clipAmount > 0 then
-			text = string.format("%s clip %.1fs", spellInfo.abbrev, clipAmount)
+			text = string.format("%s clip %.1fs", spellLabel, clipAmount)
 		else
-			text = string.format("%s safe", spellInfo.abbrev)
+			text = string.format("%s safe", spellLabel)
 		end
 	else
 		if safe then
-			text = string.format("%s start in %.1fs", spellInfo.abbrev, safeStartIn)
+			text = string.format("%s start in %.1fs", spellLabel, safeStartIn)
 		else
-			text = string.format("%s clip %.1fs", spellInfo.abbrev, -safeStartIn)
+			text = string.format("%s clip %.1fs", spellLabel, -safeStartIn)
 		end
 	end
 

@@ -27,10 +27,12 @@ This document captures widget-level patterns that matter for `/sst`.
 
 - Use a small triangle or chevron texture, not a full bar.
 - Tint it by spell family:
-  - Lightning Bolt: lighter blue
-  - Chain Lightning: darker blue
-  - Healing spells: green
-- Place it near the expected swing boundary on the MH bar or in a dedicated overlay zone.
+  - Lightning Bolt: light blue
+  - Chain Lightning: dark blue
+  - Healing Wave: green
+  - Lesser Healing Wave: light green
+  - Chain Heal: yellow
+- Place the marker pair one above and one below the MH bar at the spell-haste-adjusted safe swing boundary.
 - Let the indicator use a configurable draw layer so it can sit above or below the bar fill as needed.
 
 ## Texture browser pattern

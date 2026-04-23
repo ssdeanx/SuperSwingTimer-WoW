@@ -1,5 +1,20 @@
 ﻿# Super Swing Timer Changelog
 
+## 3.1.0 - 2026-04-23
+
+- Added Blizzard Interface Options / AddOns registration so the config panel is available in-game without slash commands.
+- Switched the primary slash aliases to `/sst`, `/super`, and `/superswingtimer`, and removed the `/swangthang` alias.
+- Made the default MH / OH / ranged bar colors follow the player class color until you choose custom swatches.
+- Added an indicator glow mode toggle so weave and spark markers can use either a bright glow or a more opaque blend.
+- Reworked the texture dropdown to show actual texture previews alongside the texture names.
+- Widened and re-labeled the `/sst` UI into clearer bar, weave, and color groups.
+
+## 3.0.1 - 2026-04-23
+
+- Added color-coded weave-family toggles for Lightning Bolt, Chain Lightning, Healing Wave, Lesser Healing Wave, and Chain Heal.
+- Made the weave marker pair smaller and clarified the upper/lower marker labels in `/sst`.
+- Widened the `/sst` panel and added clearer weave-assist descriptions and spacing.
+
 ## 3.0.0 - 2026-04-21
 
 - Rebranded SwangThang to Super Swing Timer.

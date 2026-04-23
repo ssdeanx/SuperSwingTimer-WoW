@@ -15,11 +15,11 @@ Super Swing Timer tracks white-hit swing timers across main hand, off hand, and 
 - Extra attack suppression for Sword Spec and Windfury
 - Druid form reset handling
 - Ret Paladin seal-twist timing overlay
-- Shaman weave assist for Lightning Bolt, Chain Lightning, Healing Wave, Lesser Healing Wave, and Chain Heal breakpoints
-- Customizable bars, textures, spark settings, colors, alpha, visibility, and lock state via /sst
-- Toggle MH / OH / ranged bars and the shaman weave helper from the config panel
-
-- Texture picker: the `/sst` texture selector is an in-addon dropdown showing `[category] label` entries (SharedMedia + Blizzard fallbacks) — no browser popup required.
+- Shaman weave assist for Lightning Bolt, Chain Lightning, Healing Wave, Lesser Healing Wave, and Chain Heal breakpoints, with color-coded family markers you can disable individually
+- Default MH / OH / ranged bar colors now follow your class color until you pick a custom color
+- Customizable bars, textures, glow/opaque indicator mode, spark settings, colors, alpha, visibility, and lock state via `/sst`, `/super`, or `/superswingtimer`
+- Toggle MH / OH / ranged bars plus the shaman weave helper and its family controls from the config panel or Blizzard's Interface Options → AddOns list
+- Texture picker: the in-addon dropdown now shows texture previews plus `[category] label` entries (SharedMedia + Blizzard fallbacks) — no browser popup required.
 
 ## Installation
 
@@ -41,7 +41,7 @@ Bars appear automatically in combat. The ranged bar for Hunters also appears whe
 | Main Hand | Black | MH swing cooldown |
 | Off Hand | Black | OH swing cooldown |
 
-The main command is `/sst`. Legacy aliases `/swang` and `/swangthang` remain available for migration.
+The main commands are `/sst`, `/super`, and `/superswingtimer`. `/swang` remains as a legacy alias.
 
 ## Class support
 
@@ -57,26 +57,29 @@ The main command is `/sst`. Legacy aliases `/swang` and `/swangthang` remain ava
 
 ## Configuration
 
-Type `/sst` to open the config panel.
+Type `/sst`, `/super`, or `/superswingtimer` to open the config panel.
 
 | Command | Action |
 | --- | --- |
 | `/sst` | Open or close the config panel |
+| `/super` | Open or close the config panel |
+| `/superswingtimer` | Open or close the config panel |
 | `/sst reset` | Restore default settings |
 | `/sst help` | Show command help |
 
 ## Config panel options
 
 - Show or hide the main-hand, off-hand, and ranged bars
-- Enable or disable the shaman weave assist text
-- Adjust bar and spark textures, layers, sizes, and alpha
+- Enable or disable the shaman weave assist and individual spell families
+- Adjust bar and spark textures, layers, sizes, alpha, and the tiny upper/lower weave markers that follow spell haste
+- Switch indicator glow between a bright additive style and a more opaque blend
 - Toggle minimal mode and bar locking
-- Change colors for MH, OH, ranged, and seal-twist overlays
+- Change colors for MH, OH, ranged, and seal-twist overlays, or keep MH / OH / ranged on class colors
 
 ## Feedback
 
 Found a bug or want a feature? Open an issue at:
-[GitHub Issues](https://github.com/AcidBomb/SuperSwingTimer/issues)
+[GitHub Issues](https://github.com/ssdeanx/SuperSwingTimer/issues)
 
 ## Changelog
 

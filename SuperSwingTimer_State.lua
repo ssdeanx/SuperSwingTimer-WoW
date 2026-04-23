@@ -10,6 +10,7 @@ local UnitGUID = rawget(_G, "UnitGUID")
 local GetNetStats = rawget(_G, "GetNetStats")
 local GetMeleeHaste = rawget(_G, "GetMeleeHaste") or rawget(_G, "GetHaste")
 ns.cachedLatency = ns.cachedLatency or 0
+local RANGED_START_DEDUPE_WINDOW = 0.25
 
 -- ============================================================
 -- Timer State
@@ -206,6 +207,24 @@ function ns.StartSwing(slot, _, startTime)
 	ns.RefreshUpdateLoop()
 end
 
+function ns.StartRangedSwing(startTime)
+	local t = ns.timers.ranged
+	if not t then
+		return false
+	end
+
+	local now = startTime or GetCurrentTime()
+	if t.state == "swinging" and t.lastSwing and t.lastSwing > 0 then
+		local elapsed = now - t.lastSwing
+		if elapsed >= 0 and elapsed < RANGED_START_DEDUPE_WINDOW then
+			return false
+		end
+	end
+
+	ns.StartSwing("ranged", nil, now)
+	return true
+end
+
 function ns.AdjustSwingTimesAfterPause(now)
 	if not ns.pauseSwingTime then
 		return
@@ -369,9 +388,11 @@ function ns.HandleCLEU()
 		elseif subEvent == "SPELL_CAST_SUCCESS" then
 			local spellId = cleuArg12
 			if spellId == ns.AUTO_SHOT_ID then
-				-- Ranged: start from the same latency-aware clock used by melee.
-				ns.StartSwing("ranged", nil, GetCurrentTime())
-				if ns.OnRangedSwing then ns.OnRangedSwing() end
+				-- Ranged: use the same latency-aware clock as melee, but allow
+				-- spellcast fallback to recover if CLEU arrives late or out of order.
+				if ns.StartRangedSwing(GetCurrentTime()) and ns.OnRangedSwing then
+					ns.OnRangedSwing()
+				end
 			end
 
 		elseif subEvent == "SPELL_EXTRA_ATTACKS" then
@@ -381,8 +402,9 @@ function ns.HandleCLEU()
 		elseif (subEvent == "SPELL_DAMAGE" or subEvent == "SPELL_MISSED") and sourceGUID == playerGUID then
 			local spellId = cleuArg12
 			if ns.RESET_RANGED_SWING_SPELLS and ns.RESET_RANGED_SWING_SPELLS[spellId] then
-				ns.StartSwing("ranged", nil, GetCurrentTime())
-				if ns.OnRangedSwing then ns.OnRangedSwing() end
+				if ns.StartRangedSwing(GetCurrentTime()) and ns.OnRangedSwing then
+					ns.OnRangedSwing()
+				end
 			end
 
 		elseif subEvent == "SPELL_AURA_APPLIED" then
@@ -419,20 +441,27 @@ function ns.HandleSpellcastSucceeded(unit, _, spellId)
 	if ns.PAUSE_SWING_SPELLS and ns.PAUSE_SWING_SPELLS[spellId] and ns.pauseSwingTime then
 		ns.AdjustSwingTimesAfterPause(now)
 	elseif spellId == ns.AUTO_SHOT_ID then
-		-- Auto Shot is handled from CLEU so we do not double-reset here.
+		-- Auto Shot can be started from either CLEU or spellcast success; the
+		-- ranged start helper dedupes the second event when both arrive.
+		if ns.StartRangedSwing(now) and ns.OnRangedSwing then
+			ns.OnRangedSwing()
+		end
 	elseif ns.NMA_LOOKUP[spellId] then
 		ns.StartSwing("mh", nil, now)
 		if ns.OnMeleeSwing then ns.OnMeleeSwing("mh") end
 	elseif ns.RESET_SWING_SPELLS and ns.RESET_SWING_SPELLS[spellId] then
 		ns.StartSwing("mh", nil, now)
 		ns.StartSwing("oh", nil, now)
-		ns.StartSwing("ranged", nil, now)
+		if ns.StartRangedSwing(now) and ns.OnRangedSwing then
+			ns.OnRangedSwing()
+		end
 		if ns.OnMeleeSwing then ns.OnMeleeSwing("mh") end
-		if ns.OnRangedSwing then ns.OnRangedSwing() end
 	elseif ns.casting and not ns.preventSwingReset then
 		ns.StartSwing("mh", nil, now)
 		ns.StartSwing("oh", nil, now)
-		ns.StartSwing("ranged", nil, now)
+		if ns.StartRangedSwing(now) and ns.OnRangedSwing then
+			ns.OnRangedSwing()
+		end
 	end
 
 	ns.casting = false

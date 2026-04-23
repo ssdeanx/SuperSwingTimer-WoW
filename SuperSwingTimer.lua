@@ -65,6 +65,15 @@ local function MigrateDB()
 			showOH    = ns.DB_DEFAULTS.showOH,
 			showRanged = ns.DB_DEFAULTS.showRanged,
 			showWeaveAssist = ns.DB_DEFAULTS.showWeaveAssist,
+			useClassColors = ns.DB_DEFAULTS.useClassColors,
+			indicatorBlendMode = ns.DB_DEFAULTS.indicatorBlendMode,
+			weaveSpellFamilies = {
+				LB  = ns.DB_DEFAULTS.weaveSpellFamilies.LB,
+				CL  = ns.DB_DEFAULTS.weaveSpellFamilies.CL,
+				HW  = ns.DB_DEFAULTS.weaveSpellFamilies.HW,
+				LHW = ns.DB_DEFAULTS.weaveSpellFamilies.LHW,
+				CH  = ns.DB_DEFAULTS.weaveSpellFamilies.CH,
+			},
 			barWidth  = ns.DB_DEFAULTS.barWidth,
 			barHeight = ns.DB_DEFAULTS.barHeight,
 			barTexture = ns.DB_DEFAULTS.barTexture,
@@ -111,6 +120,14 @@ local function MigrateDB()
 	SuperSwingTimerDB.showOH  = (SuperSwingTimerDB.showOH  ~= false)
 	SuperSwingTimerDB.showRanged = (SuperSwingTimerDB.showRanged ~= false)
 	SuperSwingTimerDB.showWeaveAssist = (SuperSwingTimerDB.showWeaveAssist ~= false)
+	SuperSwingTimerDB.useClassColors = (SuperSwingTimerDB.useClassColors ~= false)
+	SuperSwingTimerDB.indicatorBlendMode = SuperSwingTimerDB.indicatorBlendMode or ns.DB_DEFAULTS.indicatorBlendMode
+	SuperSwingTimerDB.weaveSpellFamilies = SuperSwingTimerDB.weaveSpellFamilies or {}
+	for key, def in pairs(ns.DB_DEFAULTS.weaveSpellFamilies) do
+		if SuperSwingTimerDB.weaveSpellFamilies[key] == nil then
+			SuperSwingTimerDB.weaveSpellFamilies[key] = def
+		end
+	end
 	SuperSwingTimerDB.weaveMarkerLayer = SuperSwingTimerDB.weaveMarkerLayer or ns.DB_DEFAULTS.weaveMarkerLayer
 	SuperSwingTimerDB.positions = SuperSwingTimerDB.positions or {}
 	for slot, def in pairs(ns.DB_DEFAULTS.positions) do
@@ -201,6 +218,37 @@ local function MigrateDB()
 		end
 		SuperSwingTimerDB.version = 10
 	end
+
+	-- v10 -> v11: smaller default weave markers and per-family weave toggles
+	if (SuperSwingTimerDB.version or 0) < 11 then
+		local function UpgradeWeaveDefault(currentValue, oldDefault, newDefault)
+			if currentValue == nil or currentValue == oldDefault then
+				return newDefault
+			end
+			return currentValue
+		end
+
+		SuperSwingTimerDB.weaveSparkWidth = UpgradeWeaveDefault(SuperSwingTimerDB.weaveSparkWidth, 14, ns.DB_DEFAULTS.weaveSparkWidth)
+		SuperSwingTimerDB.weaveSparkHeight = UpgradeWeaveDefault(SuperSwingTimerDB.weaveSparkHeight, 30, ns.DB_DEFAULTS.weaveSparkHeight)
+		SuperSwingTimerDB.weaveTriangleSize = UpgradeWeaveDefault(SuperSwingTimerDB.weaveTriangleSize, 14, ns.DB_DEFAULTS.weaveTriangleSize)
+		SuperSwingTimerDB.weaveTriangleGap = UpgradeWeaveDefault(SuperSwingTimerDB.weaveTriangleGap, 2, ns.DB_DEFAULTS.weaveTriangleGap)
+
+		SuperSwingTimerDB.weaveSpellFamilies = SuperSwingTimerDB.weaveSpellFamilies or {}
+		for key, def in pairs(ns.DB_DEFAULTS.weaveSpellFamilies) do
+			if SuperSwingTimerDB.weaveSpellFamilies[key] == nil then
+				SuperSwingTimerDB.weaveSpellFamilies[key] = def
+			end
+		end
+
+		SuperSwingTimerDB.version = 11
+	end
+
+	-- v11 -> v12: add indicator glow mode and class-color default toggle
+	if (SuperSwingTimerDB.version or 0) < 12 then
+		SuperSwingTimerDB.useClassColors = (SuperSwingTimerDB.useClassColors ~= false)
+		SuperSwingTimerDB.indicatorBlendMode = SuperSwingTimerDB.indicatorBlendMode or ns.DB_DEFAULTS.indicatorBlendMode
+		SuperSwingTimerDB.version = 12
+	end
 end
 
 -- ============================================================
@@ -220,6 +268,7 @@ local function OnAddonLoaded()
 	if ns.InitWeaving then
 		ns.InitWeaving()
 	end
+	ns.SeedLegacyBarColorsFromClass()
 
 	-- Class-specific mods first (registers callbacks before bars are created)
 	ns.InitClassMods()
@@ -235,15 +284,16 @@ local function OnAddonLoaded()
 
 	-- Slash commands
 	SLASH_SUPERSWINGTIMER1 = "/sst"
-	SLASH_SUPERSWINGTIMER2 = "/swang"
-	SLASH_SUPERSWINGTIMER3 = "/swangthang"
+	SLASH_SUPERSWINGTIMER2 = "/super"
+	SLASH_SUPERSWINGTIMER3 = "/superswingtimer"
+	SLASH_SUPERSWINGTIMER4 = "/swang"
 	SlashCmdList["SUPERSWINGTIMER"] = function(msg)
 		msg = strtrim(msg or ""):lower()
 		if msg == "reset" then
 			ns.ResetConfigDefaults()
 			print("|cff00ccffSuper Swing Timer:|r Settings reset to defaults.")
 		elseif msg == "help" then
-			print("|cff00ccffSuper Swing Timer:|r /sst - open config panel")
+			print("|cff00ccffSuper Swing Timer:|r /sst, /super, or /superswingtimer - open config panel")
 			print("|cff00ccffSuper Swing Timer:|r /sst reset - restore default settings")
 		else
 			ns.ToggleConfig()

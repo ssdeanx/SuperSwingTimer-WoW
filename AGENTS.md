@@ -72,3 +72,10 @@ Use these links first when checking Classic addon UI behavior, widgets, frames, 
 - <https://github.com/Gethe/wow-ui-source>
 - <https://github.com/Gethe/wow-ui-source/tree/live/Interface/AddOns/Blizzard_APIDocumentation>
 - <https://github.com/Gethe/wow-ui-source/tree/live/Interface/AddOns/Blizzard_APIDocumentationGenerated>
+
+## Current progress
+
+- Blizzard Interface Options / AddOns registration is now wired for the config panel.
+- Primary slash aliases are `/sst`, `/super`, and `/superswingtimer`; `/swangthang` has been removed.
+- Default bar colors now use class colors until the user picks custom swatches, and the indicator blend mode can switch between glow and opaque.
+- The texture dropdown now uses preview thumbnails, and the `/sst` panel is wider with clearer grouping and labels.

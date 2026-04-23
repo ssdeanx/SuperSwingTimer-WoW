@@ -36,6 +36,29 @@ local function GetNextLayerValue(currentValue)
 	return ns.TEXTURE_LAYER_OPTIONS[3].value
 end
 
+local INDICATOR_BLEND_OPTIONS = {
+	{ label = "Glow", value = "ADD" },
+	{ label = "Opaque", value = "BLEND" },
+}
+
+local function GetOptionLabel(options, value)
+	for _, option in ipairs(options) do
+		if option.value == value then
+			return option.label
+		end
+	end
+	return options[1].label
+end
+
+local function GetNextOptionValue(options, currentValue)
+	for index, option in ipairs(options) do
+		if option.value == currentValue then
+			return options[(index % #options) + 1].value
+		end
+	end
+	return options[1].value
+end
+
 -- ============================================================
 -- Bar preview: show bars while config panel is open
 -- ============================================================
@@ -59,6 +82,7 @@ local function ShowBarPreview()
 	ns.ApplyBarBackgroundAlpha(ns.GetBarBackgroundAlpha())
 	ns.ApplyMinimalMode(ns.IsMinimalMode())
 	ns.ApplyBarColors()
+	ns.ApplyIndicatorBlendMode(ns.GetIndicatorBlendMode())
 	ns.ApplyVisibility()
 end
 
@@ -76,14 +100,29 @@ end
 -- Color picker helper
 -- ============================================================
 local function OpenColorPicker(colorKey, swatch)
-	local c = SuperSwingTimerDB.colors[colorKey]
+	local c = ns.GetBarColor(colorKey)
 	local isSealTwist = (colorKey == "sealTwist")
 
 	local function applyColor(r, g, b)
 		local a = isSealTwist and 0.4 or 1
+		if not isSealTwist then
+			SuperSwingTimerDB.useClassColors = false
+		end
 		SuperSwingTimerDB.colors[colorKey] = { r = r, g = g, b = b, a = a }
 		swatch:SetColorTexture(r, g, b, a)
 		ns.ApplyBarColors()
+		if panel and panel.useClassColorsRow and panel.useClassColorsRow.refresh then
+			panel.useClassColorsRow.refresh()
+		end
+		if panel and panel.colorRows then
+			for _, colorRow in ipairs(panel.colorRows) do
+				local key = colorRow.button.colorKey
+				local effective = ns.GetBarColor(key)
+				if effective then
+					colorRow.swatch:SetColorTexture(effective.r, effective.g, effective.b, effective.a)
+				end
+			end
+		end
 	end
 
 	local info = {
@@ -138,10 +177,11 @@ local function CreateColorButton(parent, label, colorKey, yOffset)
 	local btn = CreateFrame("Button", nil, row)
 	btn:SetSize(22, 22)
 	btn:SetPoint("RIGHT", row, "RIGHT", 0, 0)
+	text:SetPoint("RIGHT", btn, "LEFT", -8, 0)
 
 	local swatch = btn:CreateTexture(nil, "ARTWORK")
 	swatch:SetAllPoints(true)
-	local c = SuperSwingTimerDB.colors[colorKey]
+	local c = ns.GetBarColor(colorKey)
 	if c then
 		swatch:SetColorTexture(c.r, c.g, c.b, c.a)
 	end
@@ -171,7 +211,7 @@ local function EnsureTextureDropdown()
 	end
 
 	local f = CreateFrame("Frame", "SuperSwingTimerTextureDropdown", UIParent, "BackdropTemplate")
-	f:SetSize(320, 320)
+	f:SetSize(420, 400)
 	f:SetPoint("TOPLEFT", UIParent, "TOPLEFT", 120, -120)
 	f:SetBackdrop({
 		bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
@@ -188,15 +228,16 @@ local function EnsureTextureDropdown()
 
 	local scrollFrame = CreateFrame("ScrollFrame", nil, f, "UIPanelScrollFrameTemplate")
 	scrollFrame:SetPoint("TOPLEFT", f, "TOPLEFT", 10, -34)
-	scrollFrame:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -30, 10)
+	scrollFrame:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -20, 10)
 
 	local content = CreateFrame("Frame", nil, scrollFrame)
-	content:SetSize(260, 1000)
+	content:SetSize(380, 1000)
 	scrollFrame:SetScrollChild(content)
 
 	f.rows = {}
 	f.content = content
 	f.applyTexture = nil
+	f.currentTexture = nil
 
 	function f:Build(entries)
 		for _, row in ipairs(self.rows) do
@@ -205,15 +246,40 @@ local function EnsureTextureDropdown()
 		wipe(self.rows)
 
 		local rowHeight = 28
-		self.content:SetSize(260, math.max(1, #entries * rowHeight))
+		self.content:SetSize(380, math.max(1, #entries * rowHeight))
 
 		for index, entry in ipairs(entries) do
-			local row = CreateFrame("Button", nil, self.content, "UIPanelButtonTemplate")
-			row:SetSize(240, 24)
+			local row = CreateFrame("Button", nil, self.content)
+			row:SetSize(360, 24)
 			row:SetPoint("TOPLEFT", self.content, "TOPLEFT", 0, -((index - 1) * rowHeight))
 
-			local label = string.format("[%s / %s] %s", entry.category or "Unknown", entry.style or "style", entry.label or entry.path)
-			row:SetText(label)
+			local background = row:CreateTexture(nil, "BACKGROUND")
+			background:SetAllPoints(true)
+			if entry.path == self.currentTexture then
+				background:SetColorTexture(0.20, 0.35, 0.55, 0.95)
+			else
+				background:SetColorTexture(0.12, 0.12, 0.12, 0.90)
+			end
+
+			local highlight = row:CreateTexture(nil, "HIGHLIGHT")
+			highlight:SetAllPoints(true)
+			highlight:SetColorTexture(1, 1, 1, 0.10)
+
+			local preview = row:CreateTexture(nil, "ARTWORK")
+			preview:SetSize(16, 16)
+			preview:SetPoint("LEFT", row, "LEFT", 6, 0)
+			preview:SetTexture(entry.path)
+
+			local text = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+			text:SetPoint("LEFT", preview, "RIGHT", 6, 0)
+			text:SetPoint("RIGHT", row, "RIGHT", -24, 0)
+			text:SetJustifyH("LEFT")
+			text:SetText(string.format("[%s / %s] %s", entry.category or "Unknown", entry.style or "style", entry.label or entry.path))
+
+			local check = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+			check:SetPoint("RIGHT", row, "RIGHT", -6, 0)
+			check:SetText(entry.path == self.currentTexture and "✓" or "")
+
 			row:SetScript("OnClick", function()
 				if self.applyTexture then
 					self.applyTexture(entry.path)
@@ -221,6 +287,10 @@ local function EnsureTextureDropdown()
 				self:Hide()
 			end)
 
+			row.background = background
+			row.preview = preview
+			row.label = text
+			row.check = check
 			self.rows[#self.rows + 1] = row
 		end
 	end
@@ -233,6 +303,7 @@ end
 local function OpenTextureDropdown(currentTexture, applyTexture)
 	local dropdown = EnsureTextureDropdown()
 	dropdown.applyTexture = applyTexture
+	dropdown.currentTexture = currentTexture
 
 	local library = ns.TEXTURE_LIBRARY or ns.BuildTextureLibrary() or {}
 	dropdown:Build(library)
@@ -261,14 +332,22 @@ local function CreateTexturePathRow(parent, label, yOffset, getTexture, applyTex
 
 	local preview = row:CreateTexture(nil, "ARTWORK")
 	preview:SetSize(18, 18)
-	preview:SetPoint("RIGHT", row, "RIGHT", -98, 0)
+	preview:SetPoint("RIGHT", row, "RIGHT", -228, 0)
 	preview:SetTexture(getTexture())
 	row.preview = preview
+	text:SetPoint("RIGHT", preview, "LEFT", -8, 0)
 
 	local browseBtn = CreateFrame("Button", nil, row, "UIPanelButtonTemplate")
-	browseBtn:SetSize(150, 20)
+	browseBtn:SetSize(210, 20)
 	browseBtn:SetPoint("RIGHT", row, "RIGHT", 0, 0)
 	browseBtn:SetText(ns.GetTextureDisplayText(getTexture()))
+	local browseBtnText = browseBtn:GetFontString()
+	if browseBtnText then
+		browseBtnText:SetJustifyH("LEFT")
+		browseBtnText:ClearAllPoints()
+		browseBtnText:SetPoint("LEFT", browseBtn, "LEFT", 10, 0)
+		browseBtnText:SetPoint("RIGHT", browseBtn, "RIGHT", -10, 0)
+	end
 	browseBtn:SetScript("OnClick", function()
 		OpenTextureDropdown(getTexture(), function(texturePath)
 			applyTexture(texturePath)
@@ -287,7 +366,7 @@ local function CreateTexturePathRow(parent, label, yOffset, getTexture, applyTex
 	return row
 end
 
-local function CreateCycleRow(parent, label, yOffset, getValue, applyValue)
+local function CreateCycleRow(parent, label, yOffset, options, getValue, applyValue)
 	local row = CreateFrame("Frame", nil, parent)
 	row:SetPoint("TOPLEFT", parent, "TOPLEFT", 20, yOffset)
 	row:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -20, yOffset)
@@ -300,13 +379,14 @@ local function CreateCycleRow(parent, label, yOffset, getValue, applyValue)
 	local button = CreateFrame("Button", nil, row, "UIPanelButtonTemplate")
 	button:SetSize(120, 22)
 	button:SetPoint("RIGHT", row, "RIGHT", 0, 0)
+	text:SetPoint("RIGHT", button, "LEFT", -8, 0)
 
 	local function Refresh()
-		button:SetText(GetLayerOptionLabel(getValue()))
+		button:SetText(GetOptionLabel(options, getValue()))
 	end
 
 	button:SetScript("OnClick", function()
-		local nextValue = GetNextLayerValue(getValue())
+		local nextValue = GetNextOptionValue(options, getValue())
 		applyValue(nextValue)
 		Refresh()
 	end)
@@ -333,6 +413,7 @@ local function CreateToggleRow(parent, label, yOffset, getValue, applyValue)
 	toggle:SetScript("OnClick", function(self)
 		applyValue(self:GetChecked() == true)
 	end)
+	text:SetPoint("RIGHT", toggle, "LEFT", -8, 0)
 
 	row.toggle = toggle
 	row.refresh = function()
@@ -360,12 +441,72 @@ local function CreateSectionHeader(parent, label, yOffset)
 	return row
 end
 
+local function CreateDescriptionText(parent, text, yOffset)
+	local row = CreateFrame("Frame", nil, parent)
+	row:SetPoint("TOPLEFT", parent, "TOPLEFT", 20, yOffset)
+	row:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -20, yOffset)
+	row:SetHeight(42)
+
+	local font = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+	font:SetPoint("TOPLEFT", row, "TOPLEFT", 0, 0)
+	font:SetPoint("TOPRIGHT", row, "TOPRIGHT", 0, 0)
+	font:SetJustifyH("LEFT")
+	font:SetJustifyV("TOP")
+	font:SetWordWrap(true)
+	font:SetText(text)
+
+	row.text = font
+	return row
+end
+
+local function CreateWeaveFamilyRow(parent, abbrev, label, yOffset)
+	local row = CreateFrame("Frame", nil, parent)
+	row:SetPoint("TOPLEFT", parent, "TOPLEFT", 20, yOffset)
+	row:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -20, yOffset)
+	row:SetHeight(24)
+
+	local color = ns.GetWeaveFamilyColor and ns.GetWeaveFamilyColor(abbrev) or nil
+	local swatch = row:CreateTexture(nil, "ARTWORK")
+	swatch:SetSize(12, 12)
+	swatch:SetPoint("LEFT", row, "LEFT", 0, 0)
+	if color then
+		swatch:SetColorTexture(color.r, color.g, color.b, color.a or 1)
+	else
+		swatch:SetColorTexture(0.8, 0.8, 0.8, 1)
+	end
+
+	local text = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+	text:SetPoint("LEFT", swatch, "RIGHT", 8, 0)
+	text:SetPoint("RIGHT", row, "RIGHT", -96, 0)
+	text:SetJustifyH("LEFT")
+	text:SetText(string.format("%s — %s", abbrev, label))
+
+	local toggle = CreateFrame("CheckButton", nil, row, "UICheckButtonTemplate")
+	toggle:SetPoint("RIGHT", row, "RIGHT", 0, 0)
+	toggle:SetChecked(ns.GetWeaveFamilyEnabled and ns.GetWeaveFamilyEnabled(abbrev))
+	toggle:SetScript("OnClick", function(self)
+		ns.SetWeaveFamilyEnabled(abbrev, self:GetChecked() == true)
+		if ns.RebuildWeaveSpellCatalog then
+			ns.RebuildWeaveSpellCatalog()
+		end
+		if ns.ClearWeavePreview then
+			ns.ClearWeavePreview()
+		end
+	end)
+
+	row.toggle = toggle
+	row.refresh = function()
+		toggle:SetChecked(ns.GetWeaveFamilyEnabled and ns.GetWeaveFamilyEnabled(abbrev))
+	end
+	return row
+end
+
 -- ============================================================
 -- Panel creation
 -- ============================================================
 local function CreatePanel()
 	local f = CreateFrame("Frame", "SuperSwingTimerConfigPanel", UIParent, "BackdropTemplate")
-	f:SetSize(420, 650)
+	f:SetSize(700, 760)
 	f:SetPoint("CENTER")
 	f:SetBackdrop({
 		bgFile   = "Interface\\DialogFrame\\UI-DialogBox-Background",
@@ -385,6 +526,20 @@ local function CreatePanel()
 	f:SetFrameStrata("DIALOG")
 	f:SetScript("OnHide", function() HideBarPreview() end)
 	f:Hide()
+	f.name = "Super Swing Timer"
+	f.icon = "Interface\\Icons\\INV_Sword_27"
+
+	local interfaceOptionsAddCategory = rawget(_G, "InterfaceOptions_AddCategory")
+	if interfaceOptionsAddCategory then
+		interfaceOptionsAddCategory(f)
+	else
+		local settings = rawget(_G, "Settings")
+		if settings and settings.RegisterCanvasLayoutCategory and settings.RegisterAddOnCategory then
+			local category = settings.RegisterCanvasLayoutCategory(f, f.name)
+			settings.RegisterAddOnCategory(category)
+			f.settingsCategory = category
+		end
+	end
 
 	-- Title
 	local title = f:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
@@ -393,7 +548,7 @@ local function CreatePanel()
 
 	local subtitle = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
 	subtitle:SetPoint("TOP", title, "BOTTOM", 0, -2)
-	subtitle:SetText("Configure bars, textures, visibility, and weave assist")
+	subtitle:SetText("Configure bar sizing, textures, class-color defaults, and weave breakpoint markers.")
 
 	-- Close button
 	local close = CreateFrame("Button", nil, f, "UIPanelCloseButton")
@@ -401,16 +556,16 @@ local function CreatePanel()
 
 	local scrollFrame = CreateFrame("ScrollFrame", nil, f, "UIPanelScrollFrameTemplate")
 	scrollFrame:SetPoint("TOPLEFT", f, "TOPLEFT", 12, -46)
-	scrollFrame:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -30, 50)
+	scrollFrame:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -20, 54)
 
 	local content = CreateFrame("Frame", nil, scrollFrame)
-	content:SetSize(360, 1550)
+	content:SetSize(640, 1920)
 	scrollFrame:SetScrollChild(content)
 	f.scrollFrame = scrollFrame
 	f.content = content
 
 	-- Sliders / selectors
-	CreateSectionHeader(content, "Visibility", -10)
+	CreateSectionHeader(content, "Bar Visibility", -10)
 
 	local showMHRow = CreateToggleRow(
 		content,
@@ -456,7 +611,7 @@ local function CreatePanel()
 		end
 	)
 
-	CreateSectionHeader(content, "Appearance", -174)
+	CreateSectionHeader(content, "Bar Appearance", -174)
 
 	if ns.playerClass ~= "SHAMAN" then
 		showWeaveRow:Hide()
@@ -482,6 +637,7 @@ local function CreatePanel()
 		content,
 		"Bar Texture Layer",
 		ShiftY(-180),
+		ns.TEXTURE_LAYER_OPTIONS,
 		function() return SuperSwingTimerDB.barTextureLayer or ns.DB_DEFAULTS.barTextureLayer end,
 		function(layer) ns.ApplyBarTextureLayer(layer) end
 	)
@@ -506,6 +662,7 @@ local function CreatePanel()
 		content,
 		"Spark Texture Layer",
 		ShiftY(-250),
+		ns.TEXTURE_LAYER_OPTIONS,
 		function() return SuperSwingTimerDB.sparkTextureLayer or ns.DB_DEFAULTS.sparkTextureLayer end,
 		function(layer) ns.ApplySparkTextureLayer(layer) end
 	)
@@ -526,12 +683,23 @@ local function CreatePanel()
 	sparkAlphaSlider:SetValue(SuperSwingTimerDB.sparkAlpha or ns.DB_DEFAULTS.sparkAlpha)
 	sparkAlphaSlider.valueText:SetText(string.format("%.2f", sparkAlphaSlider:GetValue()))
 
-	CreateSectionHeader(content, "Shaman Weave Assist", -504)
+	local indicatorBlendModeRow = CreateCycleRow(
+		content,
+		"Indicator Glow Mode",
+		ShiftY(-495),
+		INDICATOR_BLEND_OPTIONS,
+		function() return SuperSwingTimerDB.indicatorBlendMode or ns.DB_DEFAULTS.indicatorBlendMode end,
+		function(blendMode)
+			ns.ApplyIndicatorBlendMode(blendMode)
+		end
+	)
+
+	CreateSectionHeader(content, "Shaman Weave Assist", -534)
 
 	local weaveSparkTextureRow = CreateTexturePathRow(
 		content,
-		"Weave Spark Texture",
-		ShiftY(-515),
+		"Cast Spark Texture",
+		ShiftY(-545),
 		function() return SuperSwingTimerDB.weaveSparkTexture or ns.DB_DEFAULTS.weaveSparkTexture end,
 		function(texturePath)
 			ns.ApplyWeaveSparkSettings(
@@ -546,28 +714,29 @@ local function CreatePanel()
 
 	local weaveSparkLayerRow = CreateCycleRow(
 		content,
-		"Weave Spark Layer",
-		ShiftY(-550),
+		"Cast Spark Layer",
+		ShiftY(-580),
+		ns.TEXTURE_LAYER_OPTIONS,
 		function() return SuperSwingTimerDB.weaveSparkTextureLayer or ns.DB_DEFAULTS.weaveSparkTextureLayer end,
 		function(layer) ns.ApplyWeaveSparkTextureLayer(layer) end
 	)
 
-	local weaveSparkWidthSlider = CreateSlider(content, "Weave Spark Width", 6, 60, 1, ShiftY(-585))
+	local weaveSparkWidthSlider = CreateSlider(content, "Cast Spark Width", 6, 60, 1, ShiftY(-615))
 	weaveSparkWidthSlider:SetValue(SuperSwingTimerDB.weaveSparkWidth or ns.DB_DEFAULTS.weaveSparkWidth)
 	weaveSparkWidthSlider.valueText:SetText(tostring(weaveSparkWidthSlider:GetValue()))
 
-	local weaveSparkHeightSlider = CreateSlider(content, "Weave Spark Height", 8, 100, 1, ShiftY(-635))
+	local weaveSparkHeightSlider = CreateSlider(content, "Cast Spark Height", 8, 100, 1, ShiftY(-665))
 	weaveSparkHeightSlider:SetValue(SuperSwingTimerDB.weaveSparkHeight or ns.DB_DEFAULTS.weaveSparkHeight)
 	weaveSparkHeightSlider.valueText:SetText(tostring(weaveSparkHeightSlider:GetValue()))
 
-	local weaveSparkAlphaSlider = CreateSlider(content, "Weave Spark Alpha", 0, 1, 0.05, ShiftY(-685))
+	local weaveSparkAlphaSlider = CreateSlider(content, "Cast Spark Alpha", 0, 1, 0.05, ShiftY(-715))
 	weaveSparkAlphaSlider:SetValue(SuperSwingTimerDB.weaveSparkAlpha or ns.DB_DEFAULTS.weaveSparkAlpha)
 	weaveSparkAlphaSlider.valueText:SetText(string.format("%.2f", weaveSparkAlphaSlider:GetValue()))
 
 	local weaveTriangleTopRow = CreateTexturePathRow(
 		content,
-		"Triangle Top Texture",
-		ShiftY(-735),
+		"Upper Marker Texture",
+		ShiftY(-765),
 		function() return SuperSwingTimerDB.weaveTriangleTopTexture or ns.DB_DEFAULTS.weaveTriangleTopTexture end,
 		function(texturePath)
 			ns.ApplyWeaveTriangleSettings(
@@ -583,8 +752,8 @@ local function CreatePanel()
 
 	local weaveTriangleBottomRow = CreateTexturePathRow(
 		content,
-		"Triangle Bottom Texture",
-		ShiftY(-770),
+		"Lower Marker Texture",
+		ShiftY(-800),
 		function() return SuperSwingTimerDB.weaveTriangleBottomTexture or ns.DB_DEFAULTS.weaveTriangleBottomTexture end,
 		function(texturePath)
 			ns.ApplyWeaveTriangleSettings(
@@ -600,8 +769,9 @@ local function CreatePanel()
 
 	local weaveTriangleLayerRow = CreateCycleRow(
 		content,
-		"Triangle Layer",
-		ShiftY(-805),
+		"Marker Layer",
+		ShiftY(-835),
+		ns.TEXTURE_LAYER_OPTIONS,
 		function() return SuperSwingTimerDB.weaveTriangleTextureLayer or ns.DB_DEFAULTS.weaveTriangleTextureLayer end,
 		function(layer)
 			ns.ApplyWeaveTriangleSettings(
@@ -615,24 +785,24 @@ local function CreatePanel()
 		end
 	)
 
-	local weaveTriangleSizeSlider = CreateSlider(content, "Triangle Size", 8, 28, 1, ShiftY(-840))
+	local weaveTriangleSizeSlider = CreateSlider(content, "Marker Size", 6, 24, 1, ShiftY(-870))
 	weaveTriangleSizeSlider:SetValue(SuperSwingTimerDB.weaveTriangleSize or ns.DB_DEFAULTS.weaveTriangleSize)
 	weaveTriangleSizeSlider.valueText:SetText(tostring(weaveTriangleSizeSlider:GetValue()))
 
-	local weaveTriangleGapSlider = CreateSlider(content, "Triangle Gap", 0, 16, 1, ShiftY(-890))
+	local weaveTriangleGapSlider = CreateSlider(content, "Marker Gap", 0, 6, 1, ShiftY(-920))
 	weaveTriangleGapSlider:SetValue(SuperSwingTimerDB.weaveTriangleGap or ns.DB_DEFAULTS.weaveTriangleGap)
 	weaveTriangleGapSlider.valueText:SetText(tostring(weaveTriangleGapSlider:GetValue()))
 
-	local weaveTriangleAlphaSlider = CreateSlider(content, "Triangle Alpha", 0, 1, 0.05, ShiftY(-940))
+	local weaveTriangleAlphaSlider = CreateSlider(content, "Marker Alpha", 0, 1, 0.05, ShiftY(-970))
 	weaveTriangleAlphaSlider:SetValue(SuperSwingTimerDB.weaveTriangleAlpha or ns.DB_DEFAULTS.weaveTriangleAlpha)
 	weaveTriangleAlphaSlider.valueText:SetText(string.format("%.2f", weaveTriangleAlphaSlider:GetValue()))
 
-	CreateSectionHeader(content, "Behavior", -1100)
+	CreateSectionHeader(content, "General Behavior", -1130)
 
 	local minimalModeRow = CreateToggleRow(
 		content,
 		"Minimal Mode",
-		ShiftY(-1115),
+		ShiftY(-1145),
 		function() return SuperSwingTimerDB.minimalMode == true end,
 		function(enabled) ns.ApplyMinimalMode(enabled) end
 	)
@@ -640,7 +810,7 @@ local function CreatePanel()
 	local lockBarsRow = CreateToggleRow(
 		content,
 		"Lock Bars",
-		ShiftY(-1145),
+		ShiftY(-1175),
 		function() return SuperSwingTimerDB.lockBars == true end,
 		function(enabled) SuperSwingTimerDB.lockBars = enabled end
 	)
@@ -763,9 +933,36 @@ local function CreatePanel()
 	end)
 
 	-- Color buttons
-	local yStart = ShiftY(-1210)
+	CreateSectionHeader(content, "Bar Colors", -1210)
+
+	local useClassColorsRow = CreateToggleRow(
+		content,
+		"Use Class Colors",
+		ShiftY(-1238),
+		function() return SuperSwingTimerDB.useClassColors ~= false end,
+		function(enabled)
+			SuperSwingTimerDB.useClassColors = enabled
+			if enabled then
+				ns.SeedLegacyBarColorsFromClass()
+			end
+			ns.ApplyBarColors()
+			if f.useClassColorsRow and f.useClassColorsRow.refresh then
+				f.useClassColorsRow.refresh()
+			end
+			if f.colorRows then
+				for _, colorRow in ipairs(f.colorRows) do
+					local key = colorRow.button.colorKey
+					local effective = ns.GetBarColor(key)
+					if effective then
+						colorRow.swatch:SetColorTexture(effective.r, effective.g, effective.b, effective.a)
+					end
+				end
+			end
+		end
+	)
+
+	local yStart = ShiftY(-1270)
 	local spacing = -28
-	CreateSectionHeader(content, "Colors", -1180)
 
 	local mhRow     = CreateColorButton(content, "Main Hand Color",  "mh",     yStart)
 	local ohRow     = CreateColorButton(content, "Off Hand Color",   "oh",     yStart + spacing)
@@ -775,6 +972,29 @@ local function CreatePanel()
 	-- Seal-twist row only visible for Paladins
 	if ns.playerClass ~= "PALADIN" then
 		sealRow:Hide()
+	end
+
+	local weaveFamiliesHeader = CreateSectionHeader(content, "Weave Families", -1520)
+	local weaveFamiliesDescription = CreateDescriptionText(
+		content,
+		"Each family below is color-coded to match its spell breakpoint family. Toggle a family off to remove every rank in that family from the weave helper. The tiny upper and lower markers stay attached to the MH swing bar and move with spell haste.",
+		-1548
+	)
+
+	local weaveFamilyRows = {
+		CreateWeaveFamilyRow(content, "LB",  "Lightning Bolt",        -1590),
+		CreateWeaveFamilyRow(content, "CL",  "Chain Lightning",       -1618),
+		CreateWeaveFamilyRow(content, "HW",  "Healing Wave",          -1646),
+		CreateWeaveFamilyRow(content, "LHW", "Lesser Healing Wave",   -1674),
+		CreateWeaveFamilyRow(content, "CH",  "Chain Heal",            -1702),
+	}
+
+	if ns.playerClass ~= "SHAMAN" then
+		weaveFamiliesHeader:Hide()
+		weaveFamiliesDescription:Hide()
+		for _, row in ipairs(weaveFamilyRows) do
+			row:Hide()
+		end
 	end
 
 	-- Reset button
@@ -817,6 +1037,12 @@ local function CreatePanel()
 		weaveTriangleSizeSlider:SetValue(ns.DB_DEFAULTS.weaveTriangleSize)
 		weaveTriangleGapSlider:SetValue(ns.DB_DEFAULTS.weaveTriangleGap)
 		weaveTriangleAlphaSlider:SetValue(ns.DB_DEFAULTS.weaveTriangleAlpha)
+		if indicatorBlendModeRow and indicatorBlendModeRow.refresh then
+			indicatorBlendModeRow.refresh()
+		end
+		if useClassColorsRow and useClassColorsRow.refresh then
+			useClassColorsRow.refresh()
+		end
 		if barTextureRow and barTextureRow.refresh then
 			barTextureRow.refresh()
 		end
@@ -865,7 +1091,7 @@ local function CreatePanel()
 		-- Update color swatches
 		for _, row in ipairs({ mhRow, ohRow, rangedRow, sealRow }) do
 			local key = row.button.colorKey
-			local c = SuperSwingTimerDB.colors[key]
+			local c = ns.GetBarColor(key)
 			if c then
 				row.swatch:SetColorTexture(c.r, c.g, c.b, c.a)
 			end
@@ -893,14 +1119,16 @@ local function CreatePanel()
 	f.sparkHeightSlider = sparkHeightSlider
 	f.backgroundAlphaSlider = backgroundAlphaSlider
 	f.sparkAlphaSlider = sparkAlphaSlider
+	f.indicatorBlendModeRow = indicatorBlendModeRow
 	f.minimalModeRow = minimalModeRow
 	f.lockBarsRow = lockBarsRow
 	f.showMHRow = showMHRow
 	f.showOHRow = showOHRow
 	f.showRangedRow = showRangedRow
 	f.showWeaveRow = showWeaveRow
+	f.useClassColorsRow = useClassColorsRow
+	f.weaveFamilyRows = weaveFamilyRows
 	f.colorRows = { mhRow, ohRow, rangedRow, sealRow }
-	textureDropdown = f
 	return f
 end
 
@@ -946,6 +1174,16 @@ function ns.ToggleConfig()
 		if panel.weaveTriangleLayerRow and panel.weaveTriangleLayerRow.refresh then
 			panel.weaveTriangleLayerRow.refresh()
 		end
+		if panel.indicatorBlendModeRow and panel.indicatorBlendModeRow.refresh then
+			panel.indicatorBlendModeRow.refresh()
+		end
+		if panel.weaveFamilyRows then
+			for _, row in ipairs(panel.weaveFamilyRows) do
+				if row.refresh then
+					row.refresh()
+				end
+			end
+		end
 		panel.sparkWidthSlider:SetValue(SuperSwingTimerDB.sparkWidth or ns.DB_DEFAULTS.sparkWidth)
 		panel.sparkHeightSlider:SetValue(SuperSwingTimerDB.sparkHeight or ns.DB_DEFAULTS.sparkHeight)
 		panel.backgroundAlphaSlider:SetValue(SuperSwingTimerDB.barBackgroundAlpha or ns.DB_DEFAULTS.barBackgroundAlpha)
@@ -962,6 +1200,9 @@ function ns.ToggleConfig()
 		if panel.lockBarsRow and panel.lockBarsRow.refresh then
 			panel.lockBarsRow.refresh()
 		end
+		if panel.useClassColorsRow and panel.useClassColorsRow.refresh then
+			panel.useClassColorsRow.refresh()
+		end
 		if panel.showMHRow and panel.showMHRow.refresh then
 			panel.showMHRow.refresh()
 		end
@@ -974,9 +1215,16 @@ function ns.ToggleConfig()
 		if panel.showWeaveRow and panel.showWeaveRow.refresh then
 			panel.showWeaveRow.refresh()
 		end
+		if panel.weaveFamilyRows then
+			for _, row in ipairs(panel.weaveFamilyRows) do
+				if row.refresh then
+					row.refresh()
+				end
+			end
+		end
 		for _, row in ipairs(panel.colorRows) do
 			local key = row.button.colorKey
-			local c = SuperSwingTimerDB.colors[key]
+			local c = ns.GetBarColor(key)
 			if c then
 				row.swatch:SetColorTexture(c.r, c.g, c.b, c.a)
 			end
@@ -1018,14 +1266,25 @@ function ns.ResetConfigDefaults()
 	SuperSwingTimerDB.showOH = ns.DB_DEFAULTS.showOH
 	SuperSwingTimerDB.showRanged = ns.DB_DEFAULTS.showRanged
 	SuperSwingTimerDB.showWeaveAssist = ns.DB_DEFAULTS.showWeaveAssist
+	SuperSwingTimerDB.useClassColors = ns.DB_DEFAULTS.useClassColors
+	SuperSwingTimerDB.indicatorBlendMode = ns.DB_DEFAULTS.indicatorBlendMode
+	SuperSwingTimerDB.weaveSpellFamilies = {
+		LB  = ns.DB_DEFAULTS.weaveSpellFamilies.LB,
+		CL  = ns.DB_DEFAULTS.weaveSpellFamilies.CL,
+		HW  = ns.DB_DEFAULTS.weaveSpellFamilies.HW,
+		LHW = ns.DB_DEFAULTS.weaveSpellFamilies.LHW,
+		CH  = ns.DB_DEFAULTS.weaveSpellFamilies.CH,
+	}
 	for key, def in pairs(ns.DB_DEFAULTS.colors) do
 		SuperSwingTimerDB.colors[key] = { r = def.r, g = def.g, b = def.b, a = def.a }
 	end
+	ns.SeedLegacyBarColorsFromClass()
 	ns.ApplyBarSize(ns.DB_DEFAULTS.barWidth, ns.DB_DEFAULTS.barHeight)
 	ns.ApplyBarTexture(ns.DB_DEFAULTS.barTexture, ns.DB_DEFAULTS.barTextureLayer)
 	ns.ApplyBarTextureLayer(ns.DB_DEFAULTS.barTextureLayer)
 	ns.ApplySparkSettings(ns.DB_DEFAULTS.sparkTexture, ns.DB_DEFAULTS.sparkWidth, ns.DB_DEFAULTS.sparkHeight, ns.DB_DEFAULTS.sparkTextureLayer, ns.DB_DEFAULTS.sparkAlpha)
 	ns.ApplySparkTextureLayer(ns.DB_DEFAULTS.sparkTextureLayer)
+	ns.ApplyIndicatorBlendMode(ns.DB_DEFAULTS.indicatorBlendMode)
 	ns.ApplyWeaveSparkSettings(ns.DB_DEFAULTS.weaveSparkTexture, ns.DB_DEFAULTS.weaveSparkWidth, ns.DB_DEFAULTS.weaveSparkHeight, ns.DB_DEFAULTS.weaveSparkTextureLayer, ns.DB_DEFAULTS.weaveSparkAlpha)
 	ns.ApplyWeaveSparkTextureLayer(ns.DB_DEFAULTS.weaveSparkTextureLayer)
 	ns.ApplyWeaveTriangleSettings(ns.DB_DEFAULTS.weaveTriangleTopTexture, ns.DB_DEFAULTS.weaveTriangleBottomTexture, ns.DB_DEFAULTS.weaveTriangleSize, ns.DB_DEFAULTS.weaveTriangleGap, ns.DB_DEFAULTS.weaveTriangleTextureLayer, ns.DB_DEFAULTS.weaveTriangleAlpha)
@@ -1062,11 +1321,24 @@ function ns.ResetConfigDefaults()
 	if panel and panel.weaveTriangleLayerRow and panel.weaveTriangleLayerRow.refresh then
 		panel.weaveTriangleLayerRow.refresh()
 	end
+	if panel and panel.weaveFamilyRows then
+		for _, row in ipairs(panel.weaveFamilyRows) do
+			if row.refresh then
+				row.refresh()
+			end
+		end
+	end
 	if panel and panel.minimalModeRow and panel.minimalModeRow.refresh then
 		panel.minimalModeRow.refresh()
 	end
 	if panel and panel.lockBarsRow and panel.lockBarsRow.refresh then
 		panel.lockBarsRow.refresh()
+	end
+	if panel and panel.indicatorBlendModeRow and panel.indicatorBlendModeRow.refresh then
+		panel.indicatorBlendModeRow.refresh()
+	end
+	if panel and panel.useClassColorsRow and panel.useClassColorsRow.refresh then
+		panel.useClassColorsRow.refresh()
 	end
 	if panel and panel.showMHRow and panel.showMHRow.refresh then
 		panel.showMHRow.refresh()

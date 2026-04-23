@@ -1,5 +1,21 @@
 # Progress
 
+## Progress Update (2026-04-23 - Blizzard options, class colors, and preview polish)
+
+- Registered Super Swing Timer in Blizzard's Interface Options / AddOns flow and added TOC icon metadata.
+- Replaced the old `/swangthang` path with the primary `/sst`, `/super`, and `/superswingtimer` aliases.
+- Made the default MH / OH / ranged bars follow the player's class color, with a `Use Class Colors` toggle for explicit control.
+- Added an `Indicator Glow Mode` control for bright glow versus opaque blend behavior on sparks and weave markers.
+- Reworked the texture dropdown into a preview-based picker and widened the `/sst` config panel with clearer labels and spacing.
+- Revalidated the touched runtime Lua files with targeted diagnostics; they are clean.
+
+## Progress Update (2026-04-23 - weave family controls and UI polish)
+
+- Added color-coded, individually disable-able weave-family toggles for Lightning Bolt, Chain Lightning, Healing Wave, Lesser Healing Wave, and Chain Heal.
+- Shrunk and renamed the weave marker controls so the upper/lower pair reads more clearly in `/sst`.
+- Widened the `/sst` panel and added a clearer weave-family legend block.
+- Targeted diagnostics on the edited runtime files are clean after the weave/UI pass.
+
 ## Completed (2026-04-23)
 
 - Created `.github/skills/wow-classic-lua/SKILL.md` plus a small API-notes reference so future sessions can load WoW Classic Lua guidance immediately.

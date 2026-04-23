@@ -83,6 +83,14 @@ ns.DRUID_FORM_IDS = {
 -- Shaman weaving spell groups.
 -- Ordered from highest rank to lowest rank so the first available entry
 -- becomes the active breakpoint target.
+ns.WEAVE_SPELL_FAMILY_COLORS = {
+	LB  = { r = 0.45, g = 0.75, b = 1.00, a = 1 }, -- light blue
+	CL  = { r = 0.15, g = 0.45, b = 0.95, a = 1 }, -- dark blue
+	HW  = { r = 0.25, g = 0.90, b = 0.35, a = 1 }, -- green
+	LHW = { r = 0.55, g = 1.00, b = 0.55, a = 1 }, -- light green
+	CH  = { r = 1.00, g = 0.90, b = 0.20, a = 1 }, -- yellow
+}
+
 ns.WEAVE_SPELL_GROUPS = {
 	{ abbrev = "LB",  label = "Lightning Bolt",       ids = { 403, 529, 548, 915, 943, 6041, 10391, 10392, 15207, 15208, 25448, 25449 } },
 	{ abbrev = "CL",  label = "Chain Lightning",     ids = { 421, 930, 2860, 10605, 25439, 25442 } },
@@ -111,27 +119,37 @@ ns.CLASS_CONFIG = {
 -- SavedVariables defaults
 -- ============================================================
 ns.DB_DEFAULTS = {
-	version   = 10,
+	version   = 12,
 	showMH    = true,
 	showOH    = true,
 	showRanged = true,
 	showWeaveAssist = true,
+	useClassColors = true,
+	weaveSpellFamilies = {
+		LB  = true,
+		CL  = true,
+		HW  = true,
+		LHW = true,
+		CH  = true,
+	},
+	indicatorBlendMode = "ADD",
 	barWidth  = 200,
 	barHeight = 20,
 	barTexture = "Interface\\TargetingFrame\\UI-StatusBar",
+	rangedBarTexture = "Interface\\TargetingFrame\\UI-StatusBar",
 	barTextureLayer = "ARTWORK",
 	sparkTexture = "Interface\\CastingBar\\UI-CastingBar-Spark",
 	sparkTextureLayer = "OVERLAY",
 	weaveSparkTexture = "Interface\\CastingBar\\UI-CastingBar-Spark",
 	weaveSparkTextureLayer = "OVERLAY",
-	weaveSparkWidth = 14,
-	weaveSparkHeight = 30,
+	weaveSparkWidth = 10,
+	weaveSparkHeight = 24,
 	weaveSparkAlpha = 0.95,
 	weaveTriangleTopTexture = "Interface\\Buttons\\UI-ScrollBar-ScrollDownButton-Arrow",
 	weaveTriangleBottomTexture = "Interface\\Buttons\\UI-ScrollBar-ScrollUpButton-Arrow",
 	weaveTriangleTextureLayer = "OVERLAY",
-	weaveTriangleSize = 14,
-	weaveTriangleGap = 2,
+	weaveTriangleSize = 10,
+	weaveTriangleGap = 1,
 	weaveTriangleAlpha = 1,
 	weaveMarkerLayer = "OVERLAY",
 	sparkWidth = 20,
@@ -227,6 +245,70 @@ function ns.GetTextureDisplayText(texturePath)
 	return texturePath
 end
 
+function ns.GetPlayerClassColor()
+	local class = ns.playerClass
+	local classColors = rawget(_G, "RAID_CLASS_COLORS")
+	local color = class and classColors and classColors[class] or nil
+	if color then
+		return {
+			r = color.r or 1,
+			g = color.g or 1,
+			b = color.b or 1,
+			a = 1,
+		}
+	end
+
+	return { r = 0.25, g = 0.72, b = 1.0, a = 1 }
+end
+
+function ns.GetBarColor(colorKey)
+	local db = rawget(_G, "SuperSwingTimerDB")
+	local useClassColors = not db or db.useClassColors ~= false
+	if useClassColors and (colorKey == "mh" or colorKey == "oh" or colorKey == "ranged") then
+		return ns.GetPlayerClassColor()
+	end
+
+	local colors = db and db.colors
+	if colors and colors[colorKey] then
+		return colors[colorKey]
+	end
+
+	return ns.DB_DEFAULTS.colors and ns.DB_DEFAULTS.colors[colorKey] or nil
+end
+
+function ns.SeedLegacyBarColorsFromClass()
+	local db = rawget(_G, "SuperSwingTimerDB")
+	if not db then
+		return
+	end
+
+	db.colors = db.colors or {}
+	local classColor = ns.GetPlayerClassColor()
+
+	local function IsLegacyBlackColor(color)
+		return not color or (
+			math.abs((color.r or 0) - 0) < 0.001 and
+			math.abs((color.g or 0) - 0) < 0.001 and
+			math.abs((color.b or 0) - 0) < 0.001 and
+			((color.a == nil) or math.abs((color.a or 1) - 1) < 0.001)
+		)
+	end
+
+	for _, key in ipairs({ "mh", "oh", "ranged" }) do
+		if IsLegacyBlackColor(db.colors[key]) then
+			db.colors[key] = { r = classColor.r, g = classColor.g, b = classColor.b, a = 1 }
+		end
+	end
+end
+
+function ns.GetIndicatorBlendMode()
+	local db = rawget(_G, "SuperSwingTimerDB")
+	if db and db.indicatorBlendMode and db.indicatorBlendMode ~= "" then
+		return db.indicatorBlendMode
+	end
+	return ns.DB_DEFAULTS.indicatorBlendMode
+end
+
 function ns.GetBarTextureLayer()
 	local db = rawget(_G, "SuperSwingTimerDB")
 	if db and db.barTextureLayer then
@@ -291,6 +373,32 @@ function ns.GetWeaveMarkerLayer()
 	return ns.DB_DEFAULTS.weaveMarkerLayer
 end
 
+function ns.GetWeaveFamilyColor(abbrev)
+	return ns.WEAVE_SPELL_FAMILY_COLORS and ns.WEAVE_SPELL_FAMILY_COLORS[abbrev] or nil
+end
+
+function ns.GetWeaveFamilyEnabled(abbrev)
+	local db = rawget(_G, "SuperSwingTimerDB")
+	if db and db.weaveSpellFamilies and db.weaveSpellFamilies[abbrev] ~= nil then
+		return db.weaveSpellFamilies[abbrev] == true
+	end
+	return ns.DB_DEFAULTS.weaveSpellFamilies and ns.DB_DEFAULTS.weaveSpellFamilies[abbrev] ~= false
+end
+
+function ns.SetWeaveFamilyEnabled(abbrev, enabled)
+	local db = rawget(_G, "SuperSwingTimerDB")
+	if not db then
+		return
+	end
+
+	db.weaveSpellFamilies = db.weaveSpellFamilies or {}
+	db.weaveSpellFamilies[abbrev] = enabled == true
+
+	if ns.weaveState then
+		ns.weaveState.spellCatalogDirty = true
+	end
+end
+
 function ns.GetBarBackgroundAlpha()
 	local db = rawget(_G, "SuperSwingTimerDB")
 	if db and db.barBackgroundAlpha ~= nil then
@@ -323,6 +431,14 @@ function ns.GetBarTexture()
 		return db.barTexture
 	end
 	return ns.DB_DEFAULTS.barTexture
+end
+
+function ns.GetRangedBarTexture()
+	local db = rawget(_G, "SuperSwingTimerDB")
+	if db and db.rangedBarTexture then
+		return db.rangedBarTexture
+	end
+	return ns.GetBarTexture()
 end
 
 function ns.GetSparkTexture()

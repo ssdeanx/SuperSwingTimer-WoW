@@ -1,8 +1,9 @@
 ﻿## Interface: 20505
 ## Title: Super Swing Timer
-## Notes: Melee and ranged swing timer for Classic and TBC. Includes in-addon texture dropdown and shaman weave assist overlays.
+## Notes: Melee and ranged swing timer for Classic and TBC. Includes Blizzard options panel support, class-colored swing bars, in-addon texture previews, and color-coded shaman weave assist overlays with per-family toggles.
 ## Author: AcidBomb
-## Version: v3.0.0
+## Version: v3.1.0
+## IconTexture: Interface\Icons\INV_Sword_27
 ## X-Curse-Project-ID: 1521271
 ## SavedVariables: SuperSwingTimerDB SwangThangDB HunterTimerDB
 

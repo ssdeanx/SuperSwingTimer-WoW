@@ -69,7 +69,7 @@ local function CreateBar(frameName, width, height)
 	local sparkTexture = f:CreateTexture(nil, "OVERLAY")
 	sparkTexture:SetTexture(ns.GetSparkTexture())
 	sparkTexture:SetDrawLayer(ns.GetSparkTextureLayer())
-	sparkTexture:SetBlendMode("ADD")
+	sparkTexture:SetBlendMode(ns.GetIndicatorBlendMode())
 	sparkTexture:SetWidth(ns.GetSparkWidth())
 	sparkTexture:SetHeight(ns.GetSparkHeight())
 	sparkTexture:SetAlpha(ns.GetSparkAlpha())
@@ -101,6 +101,14 @@ local function CreateRangedBar()
 	castOverlay:SetWidth(0)
 	f.castOverlay = castOverlay
 
+	-- Opaque marker showing where the bar will switch into the cast window.
+	local castThresholdMarker = f:CreateTexture(nil, "OVERLAY")
+	castThresholdMarker:SetColorTexture(0, 0, 0, 1)
+	castThresholdMarker:SetWidth(5)
+	castThresholdMarker:SetPoint("TOPLEFT")
+	castThresholdMarker:SetPoint("BOTTOMLEFT")
+	f.castThresholdMarker = castThresholdMarker
+
 	f.labelText:SetText("Auto Shot")
 	f:SetMinMaxValues(0, 1)
 	ns.rangedBar = f
@@ -112,7 +120,7 @@ end
 -- ============================================================
 local function CreateMHBar()
 	local f = CreateBar("SuperSwingTimerMHBar")
-	local c = SuperSwingTimerDB and SuperSwingTimerDB.colors and SuperSwingTimerDB.colors.mh
+	local c = ns.GetBarColor and ns.GetBarColor("mh") or (SuperSwingTimerDB and SuperSwingTimerDB.colors and SuperSwingTimerDB.colors.mh)
 	if c then
 		f:SetStatusBarColor(c.r, c.g, c.b, c.a)
 	else
@@ -127,7 +135,7 @@ end
 local function CreateOHBar()
 	local mh = ns.mhBar
 	local f = CreateBar("SuperSwingTimerOHBar")
-	local c = SuperSwingTimerDB and SuperSwingTimerDB.colors and SuperSwingTimerDB.colors.oh
+	local c = ns.GetBarColor and ns.GetBarColor("oh") or (SuperSwingTimerDB and SuperSwingTimerDB.colors and SuperSwingTimerDB.colors.oh)
 	if c then
 		f:SetStatusBarColor(c.r, c.g, c.b, c.a)
 	else
@@ -150,9 +158,24 @@ local function UpdateCastZoneVisual()
 	local f = ns.rangedBar
 	if not f then return end
 	local duration = ns.timers.ranged.duration
-	if duration and duration > 0 then
-		local width = (ns.CAST_WINDOW / duration) * ns.BAR_WIDTH
-		f.castOverlay:SetWidth(math.min(width, ns.BAR_WIDTH))
+	local castWindow = ns.CAST_WINDOW or 0
+	if duration and duration > 0 and castWindow > 0 then
+		local width = math.min((castWindow / duration) * ns.BAR_WIDTH, ns.BAR_WIDTH)
+		if width < 0 then width = 0 end
+		f.castOverlay:SetWidth(width)
+
+		if f.castThresholdMarker then
+			local markerWidth = math.min(5, ns.BAR_WIDTH)
+			local markerLeft = math.max(ns.BAR_WIDTH - width - (markerWidth * 0.5), 0)
+			f.castThresholdMarker:ClearAllPoints()
+			f.castThresholdMarker:SetPoint("TOPLEFT", f, "LEFT", markerLeft, 0)
+			f.castThresholdMarker:SetPoint("BOTTOMLEFT", f, "LEFT", markerLeft, 0)
+			f.castThresholdMarker:SetWidth(markerWidth)
+			f.castThresholdMarker:Show()
+		end
+	elseif f.castThresholdMarker then
+		f.castOverlay:SetWidth(0)
+		f.castThresholdMarker:Hide()
 	end
 end
 ns.UpdateCastZoneVisual = UpdateCastZoneVisual
@@ -372,7 +395,27 @@ function ns.ApplyBarTexture(texturePath, layer)
 
 	SuperSwingTimerDB.barTexture = texturePath
 	SuperSwingTimerDB.barTextureLayer = layer
-	for _, bar in ipairs({ ns.mhBar, ns.ohBar, ns.rangedBar }) do
+	for _, bar in ipairs({ ns.mhBar, ns.ohBar }) do
+		if bar then
+			bar:SetStatusBarTexture(texturePath)
+			bar.statusBarTexture = bar.statusBarTexture or bar:GetStatusBarTexture()
+			if bar.statusBarTexture then
+				bar.statusBarTexture:SetDrawLayer(layer)
+			end
+		end
+	end
+end
+
+function ns.ApplyRangedBarTexture(texturePath, layer)
+	if not texturePath or texturePath == "" then
+		texturePath = ns.DB_DEFAULTS.rangedBarTexture or ns.DB_DEFAULTS.barTexture
+	end
+	if not layer or layer == "" then
+		layer = ns.GetBarTextureLayer()
+	end
+
+	SuperSwingTimerDB.rangedBarTexture = texturePath
+	for _, bar in ipairs({ ns.rangedBar }) do
 		if bar then
 			bar:SetStatusBarTexture(texturePath)
 			bar.statusBarTexture = bar.statusBarTexture or bar:GetStatusBarTexture()
@@ -434,9 +477,31 @@ function ns.ApplySparkSettings(texturePath, width, height, layer, alpha)
 		if bar and bar.sparkTexture then
 			bar.sparkTexture:SetTexture(texturePath)
 			bar.sparkTexture:SetDrawLayer(layer)
+			bar.sparkTexture:SetBlendMode(ns.GetIndicatorBlendMode())
 			bar.sparkTexture:SetWidth(width)
 			bar.sparkTexture:SetHeight(height)
 			bar.sparkTexture:SetAlpha(alpha)
+		end
+	end
+end
+
+function ns.ApplyIndicatorBlendMode(blendMode)
+	blendMode = blendMode or ns.GetIndicatorBlendMode()
+	if blendMode ~= "ADD" and blendMode ~= "BLEND" then
+		blendMode = ns.DB_DEFAULTS.indicatorBlendMode
+	end
+
+	SuperSwingTimerDB.indicatorBlendMode = blendMode
+
+	for _, bar in ipairs({ ns.mhBar, ns.ohBar, ns.rangedBar }) do
+		if bar and bar.sparkTexture then
+			bar.sparkTexture:SetBlendMode(blendMode)
+		end
+	end
+
+	for _, texture in ipairs({ ns.weaveSpark, ns.weaveTriangleTop, ns.weaveTriangleBottom }) do
+		if texture then
+			texture:SetBlendMode(blendMode)
 		end
 	end
 end
@@ -497,6 +562,7 @@ function ns.ApplyWeaveSparkSettings(texturePath, width, height, layer, alpha)
 		if texture then
 			texture:SetTexture(texturePath)
 			texture:SetDrawLayer(layer)
+			texture:SetBlendMode(ns.GetIndicatorBlendMode())
 			texture:SetWidth(width)
 			texture:SetHeight(height)
 			texture:SetAlpha(alpha)
@@ -554,6 +620,7 @@ function ns.ApplyWeaveTriangleSettings(topTexture, bottomTexture, size, gap, lay
 	for _, texture in ipairs({ ns.weaveTriangleTop, ns.weaveTriangleBottom }) do
 		if texture then
 			texture:SetDrawLayer(layer)
+			texture:SetBlendMode(ns.GetIndicatorBlendMode())
 			texture:SetWidth(size)
 			texture:SetHeight(size)
 			texture:SetAlpha(alpha)
@@ -608,6 +675,7 @@ function ns.ApplyVisibility()
 		local showWeave = db.showWeaveAssist ~= false and ns.playerClass == "SHAMAN" and not ns.IsMinimalMode()
 		for _, texture in ipairs({ ns.weaveSpark, ns.weaveTriangleTop, ns.weaveTriangleBottom }) do
 			if texture then
+				texture:SetBlendMode(ns.GetIndicatorBlendMode())
 				texture:SetShown(showWeave)
 			end
 		end
@@ -619,17 +687,20 @@ function ns.ApplyBarColors()
 	if not colors then return end
 
 	-- Bars always use alpha=1; only sealTwist uses fractional alpha
-	if ns.mhBar and colors.mh then
-		local c = colors.mh
+	local mhColor = ns.GetBarColor and ns.GetBarColor("mh") or colors.mh
+	if ns.mhBar and mhColor then
+		local c = mhColor
 		ns.mhBar:SetStatusBarColor(c.r, c.g, c.b, 1)
 		ns.mhBarBaseColor = { r = c.r, g = c.g, b = c.b, a = 1 }
 	end
-	if ns.ohBar and colors.oh then
-		local c = colors.oh
+	local ohColor = ns.GetBarColor and ns.GetBarColor("oh") or colors.oh
+	if ns.ohBar and ohColor then
+		local c = ohColor
 		ns.ohBar:SetStatusBarColor(c.r, c.g, c.b, 1)
 	end
-	if colors.ranged then
-		local c = colors.ranged
+	local rangedColor = ns.GetBarColor and ns.GetBarColor("ranged") or colors.ranged
+	if rangedColor then
+		local c = rangedColor
 		ns.rangedBarBaseColor = { r = c.r, g = c.g, b = c.b, a = 1 }
 		if ns.rangedBar then
 			ns.rangedBar:SetStatusBarColor(c.r, c.g, c.b, 1)

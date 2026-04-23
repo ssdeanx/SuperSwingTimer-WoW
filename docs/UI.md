@@ -24,8 +24,10 @@ This document captures the UI direction for `/sst`.
   - any new overlay layers later
 - Add weave-assist presentation options:
   - show / hide weave overlay
-  - triangle marker size and offset
+  - tiny upper / lower marker pair that follows the spell-haste-adjusted safe swing point
+  - marker size, gap, alpha, and layer controls
   - color selection by spell family
+  - per-family enable / disable toggles for Lightning Bolt, Chain Lightning, Healing Wave, Lesser Healing Wave, and Chain Heal
 - Texture selection should use a searchable browser plus a freeform texture-path field so users can pick from preset assets or enter any valid file path.
 - Keep the panel responsive and straightforward to scan.
 
