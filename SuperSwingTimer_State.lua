@@ -1,5 +1,14 @@
 local addonName, ns = ...
 
+local GetTimePreciseSec = rawget(_G, "GetTimePreciseSec")
+local GetTime = rawget(_G, "GetTime")
+local UnitAttackSpeed = rawget(_G, "UnitAttackSpeed")
+local UnitRangedDamage = rawget(_G, "UnitRangedDamage")
+local CombatLogGetCurrentEventInfo = rawget(_G, "CombatLogGetCurrentEventInfo")
+local C_Timer = rawget(_G, "C_Timer")
+local UnitGUID = rawget(_G, "UnitGUID")
+local GetNetStats = rawget(_G, "GetNetStats")
+
 -- ============================================================
 -- Timer State
 -- ============================================================
@@ -9,22 +18,22 @@ local addonName, ns = ...
 --   lastSwing          GetCurrentTime() / combat-log timestamp at swing start
 --   duration           weapon speed at swing start
 --   speed              cached speed (for haste change detection)
---   extraAttackPending counter for Sword Spec / Windfury suppression
 
 ns.timers = {
-	mh     = { state = "idle", lastSwing = 0, duration = 0, speed = 0, extraAttackPending = 0, nextSpeedCheckAt = 0 },
-	oh     = { state = "idle", lastSwing = 0, duration = 0, speed = 0, extraAttackPending = 0, nextSpeedCheckAt = 0 },
+	mh     = { state = "idle", lastSwing = 0, duration = 0, speed = 0, nextSpeedCheckAt = 0 },
+	oh     = { state = "idle", lastSwing = 0, duration = 0, speed = 0, nextSpeedCheckAt = 0 },
 	ranged = { state = "idle", lastSwing = 0, duration = 0, speed = 0, nextSpeedCheckAt = 0 },
 }
+
+ns.extraAttackPending = 0
 
 -- ============================================================
 -- State helpers
 -- ============================================================
 
 local function GetCurrentTime()
-	local preciseTime = _G.GetTimePreciseSec
-	if preciseTime then
-		return preciseTime()
+	if GetTimePreciseSec then
+		return GetTimePreciseSec()
 	end
 	return GetTime()
 end
@@ -84,6 +93,7 @@ function ns.OnPlayerEnteringWorld()
 	if ns.ClearWeavePreview then
 		ns.ClearWeavePreview()
 	end
+	ns.extraAttackPending = 0
 	ns.StopSanityTicker()
 	ns.ResetTimer("mh")
 	ns.ResetTimer("oh")
@@ -142,7 +152,7 @@ function ns.SyncRangedTimerSpeed(now, force)
 end
 
 -- Start a melee or ranged swing for the given slot ("mh", "oh", "ranged").
--- latencyAdjust: seconds to subtract from lastSwing (ranged only)
+-- latencyAdjust: seconds to subtract from lastSwing (melee and ranged)
 -- startTime: optional timestamp from the combat log
 function ns.StartSwing(slot, latencyAdjust, startTime)
 	local t = ns.timers[slot]
@@ -162,7 +172,7 @@ function ns.StartSwing(slot, latencyAdjust, startTime)
 		else
 			speed = (ohSpeed and ohSpeed > 0) and ohSpeed or 2.0
 		end
-		t.lastSwing = now
+		t.lastSwing = now - (latencyAdjust or 0)
 	end
 
 	t.duration = speed
@@ -214,6 +224,7 @@ function ns.RescaleTimer(slot, newSpeed)
 
 	local now = GetCurrentTime()
 	local remaining = (t.lastSwing + t.duration) - now
+	if remaining < 0 then remaining = 0 end
 	local ratio = newSpeed / t.duration
 	local newRemaining = remaining * ratio
 
@@ -251,22 +262,24 @@ function ns.HandleCLEU()
 		if subEvent == "SWING_DAMAGE" then
 			local isOffHandAttack = cleuArg21
 			local slot = isOffHandAttack and "oh" or "mh"
-			local t = ns.timers[slot]
-			if (t.extraAttackPending or 0) > 0 then
-				t.extraAttackPending = t.extraAttackPending - 1
+			if (ns.extraAttackPending or 0) > 0 then
+				ns.extraAttackPending = ns.extraAttackPending - 1
 			else
-				ns.StartSwing(slot, nil, timestamp)
+				local _, _, _, latencyWorld = GetNetStats()
+				local latencySec = (latencyWorld or 0) / 1000
+				ns.StartSwing(slot, latencySec, timestamp)
 				if ns.OnMeleeSwing then ns.OnMeleeSwing(slot) end
 			end
 
 		elseif subEvent == "SWING_MISSED" then
 			local isOffHandAttack = cleuArg13
 			local slot = isOffHandAttack and "oh" or "mh"
-			local t = ns.timers[slot]
-			if (t.extraAttackPending or 0) > 0 then
-				t.extraAttackPending = t.extraAttackPending - 1
+			if (ns.extraAttackPending or 0) > 0 then
+				ns.extraAttackPending = ns.extraAttackPending - 1
 			else
-				ns.StartSwing(slot, nil, timestamp)
+				local _, _, _, latencyWorld = GetNetStats()
+				local latencySec = (latencyWorld or 0) / 1000
+				ns.StartSwing(slot, latencySec, timestamp)
 				if ns.OnMeleeSwing then ns.OnMeleeSwing(slot) end
 			end
 
@@ -287,10 +300,7 @@ function ns.HandleCLEU()
 
 		elseif subEvent == "SPELL_EXTRA_ATTACKS" then
 			local extraAttackAmount = cleuArg15
-			-- Extra attacks can hit either hand; add to both pending counters
-			-- so whichever hand fires next absorbs them.
-			ns.timers.mh.extraAttackPending = (ns.timers.mh.extraAttackPending or 0) + (extraAttackAmount or 1)
-			ns.timers.oh.extraAttackPending = (ns.timers.oh.extraAttackPending or 0) + (extraAttackAmount or 1)
+			ns.extraAttackPending = (ns.extraAttackPending or 0) + (extraAttackAmount or 1)
 
 		elseif subEvent == "SPELL_AURA_APPLIED" then
 			-- Druid form change → reset MH timer

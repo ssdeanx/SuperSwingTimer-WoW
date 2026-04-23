@@ -96,7 +96,11 @@ local function MigrateDB()
 	end
 
 	-- Fill any missing fields for upgrades
-	SuperSwingTimerDB.version = SuperSwingTimerDB.version or 8
+	SuperSwingTimerDB.version = SuperSwingTimerDB.version or 10
+
+	local function IsVisibleDefaultColor(color)
+		return color and math.abs((color.r or 0) - 0.25) < 0.001 and math.abs((color.g or 0) - 0.72) < 0.001 and math.abs((color.b or 0) - 1.00) < 0.001
+	end
 	SuperSwingTimerDB.showMH  = (SuperSwingTimerDB.showMH  ~= false)
 	SuperSwingTimerDB.showOH  = (SuperSwingTimerDB.showOH  ~= false)
 	SuperSwingTimerDB.showRanged = (SuperSwingTimerDB.showRanged ~= false)
@@ -162,6 +166,34 @@ local function MigrateDB()
 		SuperSwingTimerDB.weaveTriangleGap = SuperSwingTimerDB.weaveTriangleGap or ns.DB_DEFAULTS.weaveTriangleGap
 		SuperSwingTimerDB.weaveTriangleAlpha = SuperSwingTimerDB.weaveTriangleAlpha ~= nil and SuperSwingTimerDB.weaveTriangleAlpha or ns.DB_DEFAULTS.weaveTriangleAlpha
 		SuperSwingTimerDB.version = 8
+	end
+
+	-- v8 â†’ v9: visible default bar colors for fresh installs / old black saves
+	if (SuperSwingTimerDB.version or 0) < 9 then
+		SuperSwingTimerDB.colors = SuperSwingTimerDB.colors or {}
+		for key, def in pairs(ns.DB_DEFAULTS.colors) do
+			local color = SuperSwingTimerDB.colors[key]
+			if not color or (color.r == 0 and color.g == 0 and color.b == 0 and (color.a == nil or color.a == 1)) then
+				SuperSwingTimerDB.colors[key] = { r = def.r, g = def.g, b = def.b, a = def.a }
+			end
+		end
+		SuperSwingTimerDB.version = 9
+	end
+
+	-- v9 â†’ v10: restore the original black bar palette unless the user already custom-tuned colors
+	if (SuperSwingTimerDB.version or 0) < 10 then
+		SuperSwingTimerDB.colors = SuperSwingTimerDB.colors or {}
+		local colors = SuperSwingTimerDB.colors
+		if IsVisibleDefaultColor(colors.mh) or not colors.mh then
+			colors.mh = { r = 0, g = 0, b = 0, a = 1 }
+		end
+		if IsVisibleDefaultColor(colors.oh) or not colors.oh then
+			colors.oh = { r = 0, g = 0, b = 0, a = 1 }
+		end
+		if IsVisibleDefaultColor(colors.ranged) or not colors.ranged then
+			colors.ranged = { r = 0, g = 0, b = 0, a = 1 }
+		end
+		SuperSwingTimerDB.version = 10
 	end
 end
 
@@ -372,6 +404,7 @@ frame:SetScript("OnEvent", function(self, event, ...)
 		ns.ResetTimer("mh")
 		ns.ResetTimer("oh")
 		ns.ResetTimer("ranged")
+		ns.extraAttackPending = 0
 		if ns.ClearWeavePreview then
 			ns.ClearWeavePreview()
 		end

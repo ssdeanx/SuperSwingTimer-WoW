@@ -83,22 +83,19 @@ local function SetupEnhShaman()
 			return
 		end
 
-		if not info.isCasting then
-			ns.weaveSpark:Hide()
-			ns.weaveTriangleTop:Hide()
-			ns.weaveTriangleBottom:Hide()
-			return
-		end
+		local showSpark = info.isCasting == true
 
-		local threshold = math.max((info.castTime or 0) + (info.latency or 0), 0)
-		local markerPos = ((timer.duration - threshold) / timer.duration) * (ns.BAR_WIDTH or 0)
+		local castWindow = math.max((info.castRemaining or info.castTime or 0) + (info.latency or 0), 0)
+		local markerPos = ((timer.duration - castWindow) / timer.duration) * (ns.BAR_WIDTH or 0)
 		if markerPos < 0 then
 			markerPos = 0
 		elseif markerPos > (ns.BAR_WIDTH or markerPos) then
 			markerPos = ns.BAR_WIDTH
 		end
 
-		local now = (GetTimePreciseSec and GetTimePreciseSec()) or GetTime()
+		local preciseTime = rawget(_G, "GetTimePreciseSec")
+		local getTime = rawget(_G, "GetTime")
+		local now = (preciseTime and preciseTime()) or (getTime and getTime()) or 0
 		local swingElapsed = math.max(0, now - (timer.lastSwing or now))
 		local sparkPos = (swingElapsed / timer.duration) * (ns.BAR_WIDTH or 0)
 		if sparkPos < 0 then
@@ -120,7 +117,11 @@ local function SetupEnhShaman()
 		ns.weaveSpark:SetWidth(sparkWidth)
 		ns.weaveSpark:SetHeight(sparkHeight)
 		ns.weaveSpark:SetVertexColor(color.r, color.g, color.b, sparkAlpha)
-		ns.weaveSpark:Show()
+		if showSpark then
+			ns.weaveSpark:Show()
+		else
+			ns.weaveSpark:Hide()
+		end
 
 		ns.weaveTriangleTop:ClearAllPoints()
 		ns.weaveTriangleTop:SetPoint("BOTTOM", ns.mhBar, "TOP", markerPos, triangleGap)
@@ -136,7 +137,7 @@ local function SetupEnhShaman()
 		ns.weaveTriangleBottom:SetVertexColor(color.r, color.g, color.b, triangleAlpha)
 		ns.weaveTriangleBottom:Show()
 		if ns.weaveMarker then
-			ns.weaveMarker:SetShown(true)
+			ns.weaveMarker:SetShown(showSpark)
 		end
 	end
 
@@ -183,7 +184,7 @@ local function SetupEnhShaman()
 		ns.weaveMarker = weaveSpark
 	end
 
-	local origOnUpdate = ns.OnUpdate
+	local origOnUpdate = ns.OnUpdate or function() end
 	ns.OnUpdate = function(elapsed)
 		origOnUpdate(elapsed)
 		UpdateWeaveVisuals()
@@ -204,7 +205,8 @@ local function SetupDruid()
 	end
 	ns.OnBarsCreated = function()
 		-- Set initial label from current shapeshift form
-		local form = GetShapeshiftForm and GetShapeshiftForm() or 0
+		local getShapeshiftForm = rawget(_G, "GetShapeshiftForm")
+		local form = (getShapeshiftForm and getShapeshiftForm()) or 0
 		if form == 0 and ns.mhBar then
 			ns.mhBar.labelText:SetText("Caster")
 		end

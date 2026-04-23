@@ -1,7 +1,13 @@
 local addonName, ns = ...
 
 local math_max = math.max
-local GetClock = _G.GetTimePreciseSec or GetTime
+local GetTimePreciseSec = rawget(_G, "GetTimePreciseSec")
+local GetTime = rawget(_G, "GetTime")
+local GetNetStats = rawget(_G, "GetNetStats")
+local GetSpellInfo = rawget(_G, "GetSpellInfo")
+local UnitSpellHaste = rawget(_G, "UnitSpellHaste")
+local UnitCastingInfo = rawget(_G, "UnitCastingInfo")
+local GetClock = GetTimePreciseSec or GetTime
 
 GetClock()
 
@@ -35,19 +41,12 @@ local function ResolveSpellInfo(group)
 end
 
 local function GetNextSwingExpiration()
-	local nextExpiration
-
-	for _, slot in ipairs({ "mh", "oh" }) do
-		local timer = ns.timers and ns.timers[slot]
-		if timer and timer.state == "swinging" and timer.duration > 0 then
-			local expiration = timer.lastSwing + timer.duration
-			if not nextExpiration or expiration < nextExpiration then
-				nextExpiration = expiration
-			end
-		end
+	local timer = ns.timers and ns.timers.mh
+	if timer and timer.state == "swinging" and timer.duration > 0 then
+		return timer.lastSwing + timer.duration
 	end
 
-	return nextExpiration
+	return nil
 end
 
 local function GetSpellFamilyColor(spellInfo, safe)

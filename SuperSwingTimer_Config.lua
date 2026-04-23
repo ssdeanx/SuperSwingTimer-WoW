@@ -179,7 +179,7 @@ local function OpenTextureBrowser(currentTexture, applyTexture)
 
 		local subtitle = textureBrowser:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
 		subtitle:SetPoint("TOP", title, "BOTTOM", 0, -2)
-		subtitle:SetText("Search presets or type any valid texture path")
+		subtitle:SetText("Browse SharedMedia textures and Blizzard defaults")
 
 		local close = CreateFrame("Button", nil, textureBrowser, "UIPanelCloseButton")
 		close:SetPoint("TOPRIGHT", textureBrowser, "TOPRIGHT", -4, -4)
@@ -191,35 +191,7 @@ local function OpenTextureBrowser(currentTexture, applyTexture)
 		searchBox:SetTextInsets(8, 8, 3, 3)
 		textureBrowser.searchBox = searchBox
 
-		local customBox = CreateFrame("EditBox", nil, textureBrowser, "InputBoxTemplate")
-		customBox:SetSize(320, 20)
-		customBox:SetPoint("BOTTOMLEFT", textureBrowser, "BOTTOMLEFT", 20, 18)
-		customBox:SetAutoFocus(false)
-		customBox:SetTextInsets(8, 8, 3, 3)
-		customBox:SetScript("OnEnterPressed", function(self)
-			local path = strtrim(self:GetText() or "")
-			if path ~= "" and textureBrowser.applyTexture then
-				textureBrowser.applyTexture(path)
-			end
-			textureBrowser:Hide()
-		end)
-		textureBrowser.customBox = customBox
-
-		local applyBtn = CreateFrame("Button", nil, textureBrowser, "UIPanelButtonTemplate")
-		applyBtn:SetSize(120, 22)
-		applyBtn:SetPoint("LEFT", customBox, "RIGHT", 10, 0)
-		applyBtn:SetText("Use Path")
-		applyBtn:SetScript("OnClick", function()
-			local path = strtrim(customBox:GetText() or "")
-			if path ~= "" and textureBrowser.applyTexture then
-				textureBrowser.applyTexture(path)
-			end
-			textureBrowser:Hide()
-		end)
-
 		local scrollFrame = CreateFrame("ScrollFrame", nil, textureBrowser, "UIPanelScrollFrameTemplate")
-		scrollFrame:SetPoint("TOPLEFT", textureBrowser, "TOPLEFT", 14, -74)
-		scrollFrame:SetPoint("BOTTOMRIGHT", textureBrowser, "BOTTOMRIGHT", -30, 50)
 
 		local content = CreateFrame("Frame", nil, scrollFrame)
 		content:SetSize(470, 360)
@@ -269,7 +241,8 @@ local function OpenTextureBrowser(currentTexture, applyTexture)
 		textureBrowser.Refresh = function()
 			local query = string.lower(strtrim(searchBox:GetText() or ""))
 			local entries = {}
-			for _, entry in ipairs(ns.TEXTURE_LIBRARY or {}) do
+			local library = (ns.BuildTextureLibrary and ns.BuildTextureLibrary()) or (ns.TEXTURE_LIBRARY or {})
+			for _, entry in ipairs(library) do
 				local label = string.lower(entry.label or "")
 				local path = string.lower(entry.path or "")
 				local category = string.lower(entry.category or "")
@@ -288,9 +261,6 @@ local function OpenTextureBrowser(currentTexture, applyTexture)
 	end
 
 	textureBrowser.applyTexture = applyTexture
-	if textureBrowser.customBox then
-		textureBrowser.customBox:SetText(currentTexture or "")
-	end
 	if textureBrowser.searchBox then
 		textureBrowser.searchBox:SetText("")
 	end
@@ -298,8 +268,8 @@ local function OpenTextureBrowser(currentTexture, applyTexture)
 		textureBrowser.Refresh()
 	end
 	textureBrowser:Show()
-	if textureBrowser.customBox then
-		textureBrowser.customBox:SetFocus()
+	if textureBrowser.searchBox then
+		textureBrowser.searchBox:SetFocus()
 	end
 end
 
@@ -315,7 +285,6 @@ local function CreateTexturePathRow(parent, label, yOffset, getTexture, applyTex
 
 	local function Refresh()
 		local path = getTexture()
-		row.editBox:SetText(path)
 		if row.preview then
 			row.preview:SetTexture(path)
 		end
@@ -323,48 +292,17 @@ local function CreateTexturePathRow(parent, label, yOffset, getTexture, applyTex
 
 	local preview = row:CreateTexture(nil, "ARTWORK")
 	preview:SetSize(18, 18)
-	preview:SetPoint("RIGHT", row, "RIGHT", -196, 0)
+	preview:SetPoint("RIGHT", row, "RIGHT", -98, 0)
 	preview:SetTexture(getTexture())
 	row.preview = preview
 
-	local editBox = CreateFrame("EditBox", nil, row, "InputBoxTemplate")
-	editBox:SetSize(130, 20)
-	editBox:SetPoint("RIGHT", row, "RIGHT", -48, 0)
-	editBox:SetAutoFocus(false)
-	editBox:SetTextInsets(8, 8, 3, 3)
-	editBox:SetScript("OnEnterPressed", function(self)
-		local texturePath = strtrim(self:GetText() or "")
-		if texturePath == "" then
-			texturePath = getTexture()
-		end
-		applyTexture(texturePath)
-		self:ClearFocus()
-		self:SetText(texturePath)
-	end)
-	editBox:SetScript("OnEscapePressed", function(self)
-		Refresh()
-		self:ClearFocus()
-	end)
-	editBox:SetScript("OnEditFocusLost", function(self)
-		local texturePath = strtrim(self:GetText() or "")
-		if texturePath == "" then
-			texturePath = getTexture()
-		end
-		applyTexture(texturePath)
-		self:SetText(texturePath)
-		if row.preview then
-			row.preview:SetTexture(texturePath)
-		end
-	end)
-
 	local browseBtn = CreateFrame("Button", nil, row, "UIPanelButtonTemplate")
-	browseBtn:SetSize(42, 20)
+	browseBtn:SetSize(84, 20)
 	browseBtn:SetPoint("RIGHT", row, "RIGHT", 0, 0)
-	browseBtn:SetText("...")
+	browseBtn:SetText("Browse")
 	browseBtn:SetScript("OnClick", function()
 		OpenTextureBrowser(getTexture(), function(texturePath)
 			applyTexture(texturePath)
-			row.editBox:SetText(texturePath)
 			if row.preview then
 				row.preview:SetTexture(texturePath)
 			end
@@ -372,7 +310,6 @@ local function CreateTexturePathRow(parent, label, yOffset, getTexture, applyTex
 	end)
 
 	row.refresh = Refresh
-	row.editBox = editBox
 	row.browseBtn = browseBtn
 	Refresh()
 	return row

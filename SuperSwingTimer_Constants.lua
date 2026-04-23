@@ -81,7 +81,7 @@ ns.CLASS_CONFIG = {
 -- SavedVariables defaults
 -- ============================================================
 ns.DB_DEFAULTS = {
-	version   = 8,
+	version   = 10,
 	showMH    = true,
 	showOH    = true,
 	showRanged = true,
@@ -111,10 +111,10 @@ ns.DB_DEFAULTS = {
 	minimalMode = false,
 	lockBars = false,
 	colors = {
-		mh        = { r = 0, g = 0, b = 0, a = 1   },  -- black (matches production look)
-		oh        = { r = 0, g = 0, b = 0, a = 1   },  -- black
-		ranged    = { r = 0, g = 0, b = 0, a = 1   },  -- black
-		sealTwist = { r = 0, g = 0.8, b = 1, a = 0.4 },  -- cyan
+		mh        = { r = 0, g = 0, b = 0, a = 1   },
+		oh        = { r = 0, g = 0, b = 0, a = 1   },
+		ranged    = { r = 0, g = 0, b = 0, a = 1   },
+		sealTwist = { r = 0, g = 0.8, b = 1, a = 0.4 },
 	},
 	positions = {
 		mh     = { point = "CENTER", relativePoint = "CENTER", x = 0, y = -120 },
@@ -131,30 +131,35 @@ ns.TEXTURE_LAYER_OPTIONS = {
 	{ label = "Highlight",   value = "HIGHLIGHT" },
 }
 
-ns.TEXTURE_LIBRARY = {
-	{ category = "Bars", label = "Status Bar", path = "Interface\\TargetingFrame\\UI-StatusBar" },
-	{ category = "Bars", label = "White 8x8", path = "Interface\\Buttons\\WHITE8X8" },
-	{ category = "Bars", label = "Chat Background", path = "Interface\\ChatFrame\\ChatFrameBackground" },
-	{ category = "Bars", label = "Tooltip Background", path = "Interface\\Tooltips\\UI-Tooltip-Background" },
-	{ category = "Bars", label = "Dialog Background", path = "Interface\\DialogFrame\\UI-DialogBox-Background" },
-	{ category = "Bars", label = "Dialog Border", path = "Interface\\DialogFrame\\UI-DialogBox-Border" },
-	{ category = "Bars", label = "Tooltip Border", path = "Interface\\Tooltips\\UI-Tooltip-Border" },
-	{ category = "Bars", label = "Listbox Highlight", path = "Interface\\Buttons\\UI-Listbox-Highlight" },
-	{ category = "Bars", label = "Button Highlight", path = "Interface\\Buttons\\UI-Button-Highlight" },
-	{ category = "Bars", label = "Quest Title Highlight", path = "Interface\\QuestFrame\\UI-QuestTitleHighlight" },
-	{ category = "Bars", label = "Friends Online", path = "Interface\\FriendsFrame\\UI-FriendsFrame-Online" },
-	{ category = "Bars", label = "Friends Highlight Blue", path = "Interface\\FriendsFrame\\UI-FriendsFrame-HighlightBarBlue" },
-	{ category = "Casting", label = "Casting Spark", path = "Interface\\CastingBar\\UI-CastingBar-Spark" },
-	{ category = "Casting", label = "Casting Fill", path = "Interface\\CastingBar\\UI-CastingBar-Fill" },
-	{ category = "Casting", label = "Casting Icon Shield", path = "Interface\\CastingBar\\UI-CastingBar-Shield" },
-	{ category = "Casting", label = "Checkmark", path = "Interface\\Buttons\\UI-CheckBox-Check" },
-	{ category = "Casting", label = "Scroll Up Arrow", path = "Interface\\Buttons\\UI-ScrollBar-ScrollUpButton-Arrow" },
-	{ category = "Casting", label = "Scroll Down Arrow", path = "Interface\\Buttons\\UI-ScrollBar-ScrollDownButton-Arrow" },
-	{ category = "Casting", label = "Radio Checked", path = "Interface\\Buttons\\UI-RadioButton-Check" },
-	{ category = "Casting", label = "Radio Unchecked", path = "Interface\\Buttons\\UI-RadioButton" },
-	{ category = "Casting", label = "Glow", path = "Interface\\Buttons\\UI-DialogBox-Button-Highlight" },
-	{ category = "Casting", label = "Parchment", path = "Interface\\FrameGeneral\\UI-FrameBackground" },
-}
+ns.TEXTURE_LIBRARY = nil
+
+function ns.BuildTextureLibrary()
+	local entries = {}
+	local seen = {}
+
+	local function addEntry(category, label, path)
+		if not path or path == "" or seen[path] then
+			return
+		end
+		seen[path] = true
+		entries[#entries + 1] = { category = category, label = label, path = path }
+	end
+
+	local lsm = LibStub and LibStub("LibSharedMedia-3.0", true)
+	if lsm and lsm.List and lsm.Fetch then
+		for _, name in ipairs(lsm:List("statusbar") or {}) do
+			addEntry("SharedMedia", name, lsm:Fetch("statusbar", name))
+		end
+	end
+
+	addEntry("Blizzard", "Status Bar", "Interface\\TargetingFrame\\UI-StatusBar")
+	addEntry("Blizzard", "Casting Spark", "Interface\\CastingBar\\UI-CastingBar-Spark")
+	addEntry("Blizzard", "Casting Fill", "Interface\\CastingBar\\UI-CastingBar-Fill")
+	addEntry("Blizzard", "Casting Shield", "Interface\\CastingBar\\UI-CastingBar-Shield")
+	addEntry("Blizzard", "White 8x8", "Interface\\Buttons\\WHITE8X8")
+
+	return entries
+end
 
 function ns.GetBarTextureLayer()
 	if SuperSwingTimerDB and SuperSwingTimerDB.barTextureLayer then

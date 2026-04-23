@@ -1,9 +1,15 @@
 ﻿local addonName, ns = ...
 
+local CreateFrame = rawget(_G, "CreateFrame")
+local UIParent = rawget(_G, "UIParent")
+local GetTimePreciseSec = rawget(_G, "GetTimePreciseSec")
+local GetTime = rawget(_G, "GetTime")
+local UnitAttackSpeed = rawget(_G, "UnitAttackSpeed")
+local UnitRangedDamage = rawget(_G, "UnitRangedDamage")
+
 local function GetCurrentTime()
-	local preciseTime = _G.GetTimePreciseSec
-	if preciseTime then
-		return preciseTime()
+	if GetTimePreciseSec then
+		return GetTimePreciseSec()
 	end
 	return GetTime()
 end
@@ -69,7 +75,7 @@ local function CreateBar(frameName, width, height)
 
 	local labelText = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
 	labelText:SetPoint("CENTER")
-	labelText:SetShown(not ns.IsMinimalMode())
+	labelText:Show()
 
 	f.backgroundTexture = backgroundTexture
 	f.statusBarTexture = statusBarTexture
@@ -227,6 +233,7 @@ local function UpdateRangedBar(elapsed)
 	if not f then return end
 
 	local now = GetCurrentTime()
+	if not t.duration or t.duration <= 0 then return end
 
 	-- Haste rescaling: throttled sync + event fallback
 	ns.SyncRangedTimerSpeed(now)
@@ -249,16 +256,18 @@ local function UpdateRangedBar(elapsed)
 	end
 
 	local elapsed_time = now - t.lastSwing
+	if elapsed_time < 0 then elapsed_time = 0 end
+	if elapsed_time > t.duration then elapsed_time = t.duration end
 	local remaining = t.duration - elapsed_time
 	if remaining < 0 then remaining = 0 end
 
 	f:SetMinMaxValues(0, t.duration)
 	f:SetValue(elapsed_time)
+	f.labelText:SetText(string.format("%.1f", remaining))
 
 	local sparkPos = (elapsed_time / t.duration) * f.barWidth
 	if sparkPos > f.barWidth then sparkPos = f.barWidth end
 	f.sparkTexture:SetPoint("CENTER", f, "LEFT", sparkPos, 0)
-	f.labelText:SetText(string.format("%.1f", remaining))
 end
 
 -- ============================================================
@@ -269,6 +278,7 @@ local function UpdateMeleeBar(slot, frame)
 	if not frame or t.state ~= "swinging" then return end
 
 	local now = GetCurrentTime()
+	if not t.duration or t.duration <= 0 then return end
 
 	-- Haste rescaling: throttled sync + event fallback
 	local skipUntil = ns.druidFormChangeTime and (ns.druidFormChangeTime + 0.05)
@@ -277,16 +287,18 @@ local function UpdateMeleeBar(slot, frame)
 	end
 
 	local elapsed_time = now - t.lastSwing
+	if elapsed_time < 0 then elapsed_time = 0 end
+	if elapsed_time > t.duration then elapsed_time = t.duration end
 	local remaining = t.duration - elapsed_time
 	if remaining < 0 then remaining = 0 end
 
 	frame:SetMinMaxValues(0, t.duration)
 	frame:SetValue(elapsed_time)
+	frame.labelText:SetText(string.format("%.1f", remaining))
 
 	local sparkPos = (elapsed_time / t.duration) * frame.barWidth
 	if sparkPos > frame.barWidth then sparkPos = frame.barWidth end
 	frame.sparkTexture:SetPoint("CENTER", frame, "LEFT", sparkPos, 0)
-	frame.labelText:SetText(string.format("%.1f", remaining))
 end
 
 -- ============================================================
@@ -533,11 +545,6 @@ end
 function ns.ApplyMinimalMode(enabled)
 	enabled = enabled == true
 	SuperSwingTimerDB.minimalMode = enabled
-	for _, bar in ipairs({ ns.mhBar, ns.ohBar, ns.rangedBar }) do
-		if bar and bar.labelText then
-			bar.labelText:SetShown(not enabled)
-		end
-	end
 	for _, texture in ipairs({ ns.weaveSpark, ns.weaveTriangleTop, ns.weaveTriangleBottom }) do
 		if texture then
 			texture:SetShown(not enabled)
