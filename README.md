@@ -19,6 +19,8 @@ Super Swing Timer tracks white-hit swing timers across main hand, off hand, and 
 - Customizable bars, textures, spark settings, colors, alpha, visibility, and lock state via /sst
 - Toggle MH / OH / ranged bars and the shaman weave helper from the config panel
 
+- Texture picker: the `/sst` texture selector is an in-addon dropdown showing `[category] label` entries (SharedMedia + Blizzard fallbacks) — no browser popup required.
+
 ## Installation
 
 1. Download the latest release ZIP from [GitHub Releases](https://github.com/AcidBomb/SuperSwingTimer/releases/latest)

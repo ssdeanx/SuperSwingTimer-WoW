@@ -1,4 +1,5 @@
 ﻿local addonName, ns = ...
+local LibStub = rawget(_G, "LibStub")
 
 -- ============================================================
 -- UI constants
@@ -34,13 +35,42 @@ registerNMAs({ 6807, 6808, 6809, 8972, 9745, 9880, 9881, 26996 })
 -- Raptor Strike (Hunter)
 registerNMAs({ 2973, 14260, 14261, 14262, 14263, 14264, 14265, 14266, 27014 })
 
--- Slam (Warrior) â€” resets MH timer on UNIT_SPELLCAST_SUCCEEDED.
--- In original TBC, Arms Warriors timed Slam immediately after a white hit.
--- Default: reset behavior. Verify via in-game test on Anniversary Edition.
-ns.SLAM_IDS = {}
-local SLAM_LIST = { 1464, 8820, 11604, 11605, 25241, 25242 }
-for _, id in ipairs(SLAM_LIST) do
-	ns.SLAM_IDS[id] = true
+-- Spell-ID rules adapted from the reference swingtimer library.
+-- RESET_SWING_SPELLS: casts that should reset melee/ranged swing flow.
+ns.RESET_SWING_SPELLS = {}
+local function registerResetSwingSpells(ids)
+	for _, id in ipairs(ids) do
+		ns.RESET_SWING_SPELLS[id] = true
+	end
+end
+
+registerResetSwingSpells({ 16589, 2645, 51533, 2764, 3018, 5384, 5019, 20066 })
+
+-- NO_RESET_SWING_SPELLS: casts that should not reset swing state.
+ns.NO_RESET_SWING_SPELLS = {}
+local function registerNoResetSwingSpells(ids)
+	for _, id in ipairs(ids) do
+		ns.NO_RESET_SWING_SPELLS[id] = true
+	end
+end
+
+registerNoResetSwingSpells({
+	30310, 30311, 23063, 4054, 4064, 4061, 8331, 4065, 4066, 4062, 4067, 4068,
+	23000, 12421, 4069, 12562, 12543, 19769, 19784, 19821, 34120, 27022,
+	19434, 20900, 20901, 20902, 20903, 20904, 27065,
+})
+
+-- PAUSE_SWING_SPELLS: casts that should pause and then resume swing timing.
+-- Slam uses the pause/extend path rather than a hard MH reset.
+ns.PAUSE_SWING_SPELLS = {}
+for _, id in ipairs({ 1464, 8820, 11604, 11605 }) do
+	ns.PAUSE_SWING_SPELLS[id] = true
+end
+
+-- RESET_RANGED_SWING_SPELLS: landed spell effects that should restart ranged.
+ns.RESET_RANGED_SWING_SPELLS = {}
+for _, id in ipairs({ 14295, 11925, 11951 }) do
+	ns.RESET_RANGED_SWING_SPELLS[id] = true
 end
 
 -- Druid form aura IDs (trigger MH timer reset on apply)
@@ -137,174 +167,232 @@ function ns.BuildTextureLibrary()
 	local entries = {}
 	local seen = {}
 
-	local function addEntry(category, label, path)
+	local function addEntry(category, label, path, style)
 		if not path or path == "" or seen[path] then
 			return
 		end
 		seen[path] = true
-		entries[#entries + 1] = { category = category, label = label, path = path }
+		entries[#entries + 1] = { category = category, style = style or category, label = label, path = path }
 	end
 
-	local lsm = LibStub and LibStub("LibSharedMedia-3.0", true)
+	local libStub = rawget(_G, "LibStub")
+	local lsm = libStub and libStub("LibSharedMedia-3.0", true)
 	if lsm and lsm.List and lsm.Fetch then
-		for _, name in ipairs(lsm:List("statusbar") or {}) do
-			addEntry("SharedMedia", name, lsm:Fetch("statusbar", name))
+		for _, mediaType in ipairs({ "statusbar", "background", "border" }) do
+			for _, name in ipairs(lsm:List(mediaType) or {}) do
+				addEntry("SharedMedia", name, lsm:Fetch(mediaType, name), mediaType)
+			end
 		end
 	end
 
-	addEntry("Blizzard", "Status Bar", "Interface\\TargetingFrame\\UI-StatusBar")
-	addEntry("Blizzard", "Casting Spark", "Interface\\CastingBar\\UI-CastingBar-Spark")
-	addEntry("Blizzard", "Casting Fill", "Interface\\CastingBar\\UI-CastingBar-Fill")
-	addEntry("Blizzard", "Casting Shield", "Interface\\CastingBar\\UI-CastingBar-Shield")
-	addEntry("Blizzard", "White 8x8", "Interface\\Buttons\\WHITE8X8")
+	addEntry("Blizzard", "Status Bar", "Interface\\TargetingFrame\\UI-StatusBar", "fallback")
+	addEntry("Blizzard", "Casting Spark", "Interface\\CastingBar\\UI-CastingBar-Spark", "fallback")
+	addEntry("Blizzard", "Casting Fill", "Interface\\CastingBar\\UI-CastingBar-Fill", "fallback")
+	addEntry("Blizzard", "Casting Shield", "Interface\\CastingBar\\UI-CastingBar-Shield", "fallback")
+	addEntry("Blizzard", "Tooltip Background", "Interface\\Tooltips\\UI-Tooltip-Background", "fallback")
+	addEntry("Blizzard", "Tooltip Border", "Interface\\Tooltips\\UI-Tooltip-Border", "fallback")
+	addEntry("Blizzard", "Dialog Background", "Interface\\DialogFrame\\UI-DialogBox-Background", "fallback")
+	addEntry("Blizzard", "Dialog Dark Background", "Interface\\DialogFrame\\UI-DialogBox-Background-Dark", "fallback")
+	addEntry("Blizzard", "Dialog Border", "Interface\\DialogFrame\\UI-DialogBox-Border", "fallback")
+	addEntry("Blizzard", "Scroll Arrow Down", "Interface\\Buttons\\UI-ScrollBar-ScrollDownButton-Arrow", "fallback")
+	addEntry("Blizzard", "Scroll Arrow Up", "Interface\\Buttons\\UI-ScrollBar-ScrollUpButton-Arrow", "fallback")
+	addEntry("Blizzard", "White 8x8", "Interface\\Buttons\\WHITE8X8", "fallback")
 
+	table.sort(entries, function(a, b)
+		if (a.category or "") ~= (b.category or "") then
+			return (a.category or "") < (b.category or "")
+		end
+		if (a.label or "") ~= (b.label or "") then
+			return (a.label or "") < (b.label or "")
+		end
+		return (a.path or "") < (b.path or "")
+	end)
+
+	ns.TEXTURE_LIBRARY = entries
 	return entries
 end
 
+function ns.GetTextureDisplayText(texturePath)
+	if not texturePath or texturePath == "" then
+		return "Select texture"
+	end
+
+	local library = ns.TEXTURE_LIBRARY or ns.BuildTextureLibrary()
+	for _, entry in ipairs(library) do
+		if entry.path == texturePath then
+			return string.format("[%s / %s] %s", entry.category or "Unknown", entry.style or "style", entry.label or texturePath)
+		end
+	end
+
+	return texturePath
+end
+
 function ns.GetBarTextureLayer()
-	if SuperSwingTimerDB and SuperSwingTimerDB.barTextureLayer then
-		return SuperSwingTimerDB.barTextureLayer
+	local db = rawget(_G, "SuperSwingTimerDB")
+	if db and db.barTextureLayer then
+		return db.barTextureLayer
 	end
 	return ns.DB_DEFAULTS.barTextureLayer
 end
 
 function ns.GetSparkTextureLayer()
-	if SuperSwingTimerDB and SuperSwingTimerDB.sparkTextureLayer then
-		return SuperSwingTimerDB.sparkTextureLayer
+	local db = rawget(_G, "SuperSwingTimerDB")
+	if db and db.sparkTextureLayer then
+		return db.sparkTextureLayer
 	end
 	return ns.DB_DEFAULTS.sparkTextureLayer
 end
 
 function ns.GetWeaveSparkTexture()
-	if SuperSwingTimerDB and SuperSwingTimerDB.weaveSparkTexture then
-		return SuperSwingTimerDB.weaveSparkTexture
+	local db = rawget(_G, "SuperSwingTimerDB")
+	if db and db.weaveSparkTexture then
+		return db.weaveSparkTexture
 	end
 	return ns.DB_DEFAULTS.weaveSparkTexture
 end
 
 function ns.GetWeaveSparkLayer()
-	if SuperSwingTimerDB and SuperSwingTimerDB.weaveSparkTextureLayer then
-		return SuperSwingTimerDB.weaveSparkTextureLayer
+	local db = rawget(_G, "SuperSwingTimerDB")
+	if db and db.weaveSparkTextureLayer then
+		return db.weaveSparkTextureLayer
 	end
 	return ns.DB_DEFAULTS.weaveSparkTextureLayer
 end
 
 function ns.GetWeaveTriangleTopTexture()
-	if SuperSwingTimerDB and SuperSwingTimerDB.weaveTriangleTopTexture then
-		return SuperSwingTimerDB.weaveTriangleTopTexture
+	local db = rawget(_G, "SuperSwingTimerDB")
+	if db and db.weaveTriangleTopTexture then
+		return db.weaveTriangleTopTexture
 	end
 	return ns.DB_DEFAULTS.weaveTriangleTopTexture
 end
 
 function ns.GetWeaveTriangleBottomTexture()
-	if SuperSwingTimerDB and SuperSwingTimerDB.weaveTriangleBottomTexture then
-		return SuperSwingTimerDB.weaveTriangleBottomTexture
+	local db = rawget(_G, "SuperSwingTimerDB")
+	if db and db.weaveTriangleBottomTexture then
+		return db.weaveTriangleBottomTexture
 	end
 	return ns.DB_DEFAULTS.weaveTriangleBottomTexture
 end
 
 function ns.GetWeaveTriangleLayer()
-	if SuperSwingTimerDB and SuperSwingTimerDB.weaveTriangleTextureLayer then
-		return SuperSwingTimerDB.weaveTriangleTextureLayer
+	local db = rawget(_G, "SuperSwingTimerDB")
+	if db and db.weaveTriangleTextureLayer then
+		return db.weaveTriangleTextureLayer
 	end
 	return ns.DB_DEFAULTS.weaveTriangleTextureLayer
 end
 
 function ns.GetWeaveMarkerLayer()
-	if SuperSwingTimerDB and SuperSwingTimerDB.weaveMarkerLayer then
-		return SuperSwingTimerDB.weaveMarkerLayer
+	local db = rawget(_G, "SuperSwingTimerDB")
+	if db and db.weaveMarkerLayer then
+		return db.weaveMarkerLayer
 	end
 	return ns.DB_DEFAULTS.weaveMarkerLayer
 end
 
 function ns.GetBarBackgroundAlpha()
-	if SuperSwingTimerDB and SuperSwingTimerDB.barBackgroundAlpha ~= nil then
-		return SuperSwingTimerDB.barBackgroundAlpha
+	local db = rawget(_G, "SuperSwingTimerDB")
+	if db and db.barBackgroundAlpha ~= nil then
+		return db.barBackgroundAlpha
 	end
 	return ns.DB_DEFAULTS.barBackgroundAlpha
 end
 
 function ns.GetSparkAlpha()
-	if SuperSwingTimerDB and SuperSwingTimerDB.sparkAlpha ~= nil then
-		return SuperSwingTimerDB.sparkAlpha
+	local db = rawget(_G, "SuperSwingTimerDB")
+	if db and db.sparkAlpha ~= nil then
+		return db.sparkAlpha
 	end
 	return ns.DB_DEFAULTS.sparkAlpha
 end
 
 function ns.IsMinimalMode()
-	return SuperSwingTimerDB and SuperSwingTimerDB.minimalMode == true
+	local db = rawget(_G, "SuperSwingTimerDB")
+	return db and db.minimalMode == true
 end
 
 function ns.AreBarsLocked()
-	return SuperSwingTimerDB and SuperSwingTimerDB.lockBars == true
+	local db = rawget(_G, "SuperSwingTimerDB")
+	return db and db.lockBars == true
 end
 
 function ns.GetBarTexture()
-	if SuperSwingTimerDB and SuperSwingTimerDB.barTexture then
-		return SuperSwingTimerDB.barTexture
+	local db = rawget(_G, "SuperSwingTimerDB")
+	if db and db.barTexture then
+		return db.barTexture
 	end
 	return ns.DB_DEFAULTS.barTexture
 end
 
 function ns.GetSparkTexture()
-	if SuperSwingTimerDB and SuperSwingTimerDB.sparkTexture then
-		return SuperSwingTimerDB.sparkTexture
+	local db = rawget(_G, "SuperSwingTimerDB")
+	if db and db.sparkTexture then
+		return db.sparkTexture
 	end
 	return ns.DB_DEFAULTS.sparkTexture
 end
 
 function ns.GetSparkWidth()
-	if SuperSwingTimerDB and SuperSwingTimerDB.sparkWidth then
-		return SuperSwingTimerDB.sparkWidth
+	local db = rawget(_G, "SuperSwingTimerDB")
+	if db and db.sparkWidth then
+		return db.sparkWidth
 	end
 	return ns.DB_DEFAULTS.sparkWidth
 end
 
 function ns.GetSparkHeight()
-	if SuperSwingTimerDB and SuperSwingTimerDB.sparkHeight then
-		return SuperSwingTimerDB.sparkHeight
+	local db = rawget(_G, "SuperSwingTimerDB")
+	if db and db.sparkHeight then
+		return db.sparkHeight
 	end
 	return ns.DB_DEFAULTS.sparkHeight
 end
 
 function ns.GetWeaveSparkWidth()
-	if SuperSwingTimerDB and SuperSwingTimerDB.weaveSparkWidth then
-		return SuperSwingTimerDB.weaveSparkWidth
+	local db = rawget(_G, "SuperSwingTimerDB")
+	if db and db.weaveSparkWidth then
+		return db.weaveSparkWidth
 	end
 	return ns.DB_DEFAULTS.weaveSparkWidth
 end
 
 function ns.GetWeaveSparkHeight()
-	if SuperSwingTimerDB and SuperSwingTimerDB.weaveSparkHeight then
-		return SuperSwingTimerDB.weaveSparkHeight
+	local db = rawget(_G, "SuperSwingTimerDB")
+	if db and db.weaveSparkHeight then
+		return db.weaveSparkHeight
 	end
 	return ns.DB_DEFAULTS.weaveSparkHeight
 end
 
 function ns.GetWeaveSparkAlpha()
-	if SuperSwingTimerDB and SuperSwingTimerDB.weaveSparkAlpha ~= nil then
-		return SuperSwingTimerDB.weaveSparkAlpha
+	local db = rawget(_G, "SuperSwingTimerDB")
+	if db and db.weaveSparkAlpha ~= nil then
+		return db.weaveSparkAlpha
 	end
 	return ns.DB_DEFAULTS.weaveSparkAlpha
 end
 
 function ns.GetWeaveTriangleSize()
-	if SuperSwingTimerDB and SuperSwingTimerDB.weaveTriangleSize then
-		return SuperSwingTimerDB.weaveTriangleSize
+	local db = rawget(_G, "SuperSwingTimerDB")
+	if db and db.weaveTriangleSize then
+		return db.weaveTriangleSize
 	end
 	return ns.DB_DEFAULTS.weaveTriangleSize
 end
 
 function ns.GetWeaveTriangleGap()
-	if SuperSwingTimerDB and SuperSwingTimerDB.weaveTriangleGap then
-		return SuperSwingTimerDB.weaveTriangleGap
+	local db = rawget(_G, "SuperSwingTimerDB")
+	if db and db.weaveTriangleGap then
+		return db.weaveTriangleGap
 	end
 	return ns.DB_DEFAULTS.weaveTriangleGap
 end
 
 function ns.GetWeaveTriangleAlpha()
-	if SuperSwingTimerDB and SuperSwingTimerDB.weaveTriangleAlpha ~= nil then
-		return SuperSwingTimerDB.weaveTriangleAlpha
+	local db = rawget(_G, "SuperSwingTimerDB")
+	if db and db.weaveTriangleAlpha ~= nil then
+		return db.weaveTriangleAlpha
 	end
 	return ns.DB_DEFAULTS.weaveTriangleAlpha
 end

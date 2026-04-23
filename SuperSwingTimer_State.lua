@@ -1,4 +1,4 @@
-local addonName, ns = ...
+local _, ns = ...
 
 local GetTimePreciseSec = rawget(_G, "GetTimePreciseSec")
 local GetTime = rawget(_G, "GetTime")
@@ -8,6 +8,8 @@ local CombatLogGetCurrentEventInfo = rawget(_G, "CombatLogGetCurrentEventInfo")
 local C_Timer = rawget(_G, "C_Timer")
 local UnitGUID = rawget(_G, "UnitGUID")
 local GetNetStats = rawget(_G, "GetNetStats")
+local GetMeleeHaste = rawget(_G, "GetMeleeHaste") or rawget(_G, "GetHaste")
+ns.cachedLatency = ns.cachedLatency or 0
 
 -- ============================================================
 -- Timer State
@@ -26,6 +28,11 @@ ns.timers = {
 }
 
 ns.extraAttackPending = 0
+ns.casting = false
+ns.channeling = false
+ns.channelingSpellId = nil
+ns.preventSwingReset = false
+ns.pauseSwingTime = nil
 
 -- ============================================================
 -- State helpers
@@ -33,9 +40,24 @@ ns.extraAttackPending = 0
 
 local function GetCurrentTime()
 	if GetTimePreciseSec then
-		return GetTimePreciseSec()
+		return GetTimePreciseSec() + (ns.cachedLatency or 0)
 	end
-	return GetTime()
+	return GetTime() + (ns.cachedLatency or 0)
+end
+
+function ns.RefreshLatencyCache()
+	local _, _, homeLatency, worldLatency = GetNetStats()
+	local activeLatency = (worldLatency and worldLatency > 0) and worldLatency or homeLatency or 0
+	ns.cachedLatency = math.max(activeLatency / 1000, 0)
+	return ns.cachedLatency
+end
+
+local function GetPlayerMeleeHastePercent()
+	if type(GetMeleeHaste) == "function" then
+		return math.max(GetMeleeHaste() or 0, 0)
+	end
+
+	return 0
 end
 
 function ns.HasActiveTimers()
@@ -74,6 +96,7 @@ function ns.StartSanityTicker()
 	if ns.sanityTicker then return end
 	if not C_Timer or not C_Timer.NewTicker then return end
 	ns.sanityTicker = C_Timer.NewTicker(1.0, function()
+		ns.RefreshLatencyCache()
 		if ns.HasActiveTimers() then
 			ns.SanityCheckTimers(true)
 		end
@@ -90,6 +113,7 @@ end
 function ns.OnPlayerEnteringWorld()
 	ns.isMoving = false
 	ns.druidFormChangeTime = nil
+	ns.RefreshLatencyCache()
 	if ns.ClearWeavePreview then
 		ns.ClearWeavePreview()
 	end
@@ -152,9 +176,8 @@ function ns.SyncRangedTimerSpeed(now, force)
 end
 
 -- Start a melee or ranged swing for the given slot ("mh", "oh", "ranged").
--- latencyAdjust: seconds to subtract from lastSwing (melee and ranged)
 -- startTime: optional timestamp from the combat log
-function ns.StartSwing(slot, latencyAdjust, startTime)
+function ns.StartSwing(slot, _, startTime)
 	local t = ns.timers[slot]
 	if not t then return end
 
@@ -164,7 +187,7 @@ function ns.StartSwing(slot, latencyAdjust, startTime)
 	if slot == "ranged" then
 		local s = UnitRangedDamage("player")
 		speed = (s and s > 0) and s or 2.0
-		t.lastSwing = now - (latencyAdjust or 0)
+		t.lastSwing = now
 	else
 		local mhSpeed, ohSpeed = UnitAttackSpeed("player")
 		if slot == "mh" then
@@ -172,7 +195,7 @@ function ns.StartSwing(slot, latencyAdjust, startTime)
 		else
 			speed = (ohSpeed and ohSpeed > 0) and ohSpeed or 2.0
 		end
-		t.lastSwing = now - (latencyAdjust or 0)
+		t.lastSwing = now
 	end
 
 	t.duration = speed
@@ -181,6 +204,70 @@ function ns.StartSwing(slot, latencyAdjust, startTime)
 	t.nextSpeedCheckAt = now
 
 	ns.RefreshUpdateLoop()
+end
+
+function ns.AdjustSwingTimesAfterPause(now)
+	if not ns.pauseSwingTime then
+		return
+	end
+
+	local offset = now - ns.pauseSwingTime
+	ns.pauseSwingTime = nil
+
+	if ns.timers.mh and ns.timers.mh.state == "swinging" then
+		ns.timers.mh.lastSwing = ns.timers.mh.lastSwing + offset
+	end
+	if ns.timers.oh and ns.timers.oh.state == "swinging" then
+		ns.timers.oh.lastSwing = ns.timers.oh.lastSwing + offset
+	end
+end
+
+function ns.HandleSpellcastStart(unit, _, _, spellId)
+	if unit ~= "player" then return end
+	ns.RefreshLatencyCache()
+	ns.casting = true
+	ns.preventSwingReset = ns.preventSwingReset or (ns.NO_RESET_SWING_SPELLS and ns.NO_RESET_SWING_SPELLS[spellId])
+	if ns.PAUSE_SWING_SPELLS and ns.PAUSE_SWING_SPELLS[spellId] and not ns.pauseSwingTime then
+		ns.pauseSwingTime = GetCurrentTime()
+	end
+end
+
+function ns.HandleSpellcastChannelStart(unit, _, _, spellId)
+	if unit ~= "player" then return end
+	ns.RefreshLatencyCache()
+	ns.casting = true
+	ns.channeling = true
+	ns.channelingSpellId = spellId
+	ns.preventSwingReset = ns.NO_RESET_SWING_SPELLS and ns.NO_RESET_SWING_SPELLS[spellId]
+end
+
+function ns.HandleSpellcastStop(unit)
+	if unit ~= "player" then return end
+	ns.casting = false
+	ns.channeling = false
+	ns.channelingSpellId = nil
+	ns.preventSwingReset = false
+end
+
+function ns.HandleSpellcastChannelStop(unit)
+	if unit ~= "player" then return end
+	ns.casting = false
+	ns.channeling = false
+	ns.channelingSpellId = nil
+	ns.preventSwingReset = false
+end
+
+function ns.HandleSpellcastInterruptedOrFailed(unit, _, _, spellId)
+	if unit ~= "player" then return end
+	ns.RefreshLatencyCache()
+	local now = GetCurrentTime()
+	if ns.PAUSE_SWING_SPELLS and ns.PAUSE_SWING_SPELLS[spellId] and ns.pauseSwingTime then
+		ns.AdjustSwingTimesAfterPause(now)
+	end
+	ns.casting = false
+	ns.channeling = false
+	ns.channelingSpellId = nil
+	ns.preventSwingReset = false
 end
 
 -- Reset a timer slot to idle.
@@ -209,10 +296,13 @@ function ns.ApplyParryHaste(slot)
 		return  -- already nearly ready; no change
 	end
 
-	local reduction = 0.4 * t.duration
+	local meleeHaste = GetPlayerMeleeHastePercent() / 100
+	local adjustedReduction = math.max(0.2, 0.4 - (meleeHaste * 0.1))
+	local reduction = adjustedReduction * t.duration
 	local newRemaining = math.max(remaining - reduction, floor)
 	-- Shift lastSwing so the bar reflects the new remaining time
 	t.lastSwing = now + newRemaining - t.duration
+	t.nextSpeedCheckAt = now
 end
 
 -- Rescale remaining time proportionally when weapon speed changes mid-swing.
@@ -248,11 +338,8 @@ end
 
 -- Main CLEU handler. Called from the bootstrap OnEvent.
 function ns.HandleCLEU()
-	local timestamp, subEvent,
-	      _,
-	      sourceGUID, _, _, _,
-	      targetGUID, _, _, _,
-	      cleuArg12, cleuArg13, cleuArg14, cleuArg15, cleuArg16, cleuArg17, cleuArg18, cleuArg19, cleuArg20, cleuArg21 = CombatLogGetCurrentEventInfo()
+	local _, subEvent, _, sourceGUID, _, _, _, targetGUID, _, _, _, cleuArg12, cleuArg13, _, cleuArg15, _, _, _, _, _, cleuArg21 = CombatLogGetCurrentEventInfo()
+	ns.RefreshLatencyCache()
 
 	local playerGUID = GetPlayerGUID()
 
@@ -265,9 +352,7 @@ function ns.HandleCLEU()
 			if (ns.extraAttackPending or 0) > 0 then
 				ns.extraAttackPending = ns.extraAttackPending - 1
 			else
-				local _, _, _, latencyWorld = GetNetStats()
-				local latencySec = (latencyWorld or 0) / 1000
-				ns.StartSwing(slot, latencySec, timestamp)
+				ns.StartSwing(slot, nil, GetCurrentTime())
 				if ns.OnMeleeSwing then ns.OnMeleeSwing(slot) end
 			end
 
@@ -277,30 +362,28 @@ function ns.HandleCLEU()
 			if (ns.extraAttackPending or 0) > 0 then
 				ns.extraAttackPending = ns.extraAttackPending - 1
 			else
-				local _, _, _, latencyWorld = GetNetStats()
-				local latencySec = (latencyWorld or 0) / 1000
-				ns.StartSwing(slot, latencySec, timestamp)
+				ns.StartSwing(slot, nil, GetCurrentTime())
 				if ns.OnMeleeSwing then ns.OnMeleeSwing(slot) end
 			end
 
 		elseif subEvent == "SPELL_CAST_SUCCESS" then
 			local spellId = cleuArg12
 			if spellId == ns.AUTO_SHOT_ID then
-				-- Ranged: latency-adjusted
-				local _, _, _, latencyWorld = GetNetStats()
-				local latencySec = (latencyWorld or 0) / 1000
-				ns.StartSwing("ranged", latencySec, timestamp)
+				-- Ranged: start from the same latency-aware clock used by melee.
+				ns.StartSwing("ranged", nil, GetCurrentTime())
 				if ns.OnRangedSwing then ns.OnRangedSwing() end
-			elseif ns.NMA_LOOKUP[spellId] then
-				-- NMA fired as SPELL_CAST_SUCCESS (belt-and-suspenders with
-				-- UNIT_SPELLCAST_SUCCEEDED; whichever fires first wins)
-				ns.StartSwing("mh", nil, timestamp)
-				if ns.OnMeleeSwing then ns.OnMeleeSwing("mh") end
 			end
 
 		elseif subEvent == "SPELL_EXTRA_ATTACKS" then
 			local extraAttackAmount = cleuArg15
 			ns.extraAttackPending = (ns.extraAttackPending or 0) + (extraAttackAmount or 1)
+
+		elseif (subEvent == "SPELL_DAMAGE" or subEvent == "SPELL_MISSED") and sourceGUID == playerGUID then
+			local spellId = cleuArg12
+			if ns.RESET_RANGED_SWING_SPELLS and ns.RESET_RANGED_SWING_SPELLS[spellId] then
+				ns.StartSwing("ranged", nil, GetCurrentTime())
+				if ns.OnRangedSwing then ns.OnRangedSwing() end
+			end
 
 		elseif subEvent == "SPELL_AURA_APPLIED" then
 			-- Druid form change → reset MH timer
@@ -327,14 +410,33 @@ end
 -- UNIT_SPELLCAST_SUCCEEDED handler
 -- ============================================================
 -- NMA detection via UNIT_SPELLCAST_SUCCEEDED (belt-and-suspenders with CLEU).
--- Slam detection: resets MH timer on cast completion.
+-- Slam detection: pause/extend path that preserves the remaining swing.
 function ns.HandleSpellcastSucceeded(unit, _, spellId)
 	if unit ~= "player" then return end
-	if ns.NMA_LOOKUP[spellId] then
-		ns.StartSwing("mh")
+	ns.RefreshLatencyCache()
+	local now = GetCurrentTime()
+
+	if ns.PAUSE_SWING_SPELLS and ns.PAUSE_SWING_SPELLS[spellId] and ns.pauseSwingTime then
+		ns.AdjustSwingTimesAfterPause(now)
+	elseif spellId == ns.AUTO_SHOT_ID then
+		-- Auto Shot is handled from CLEU so we do not double-reset here.
+	elseif ns.NMA_LOOKUP[spellId] then
+		ns.StartSwing("mh", nil, now)
 		if ns.OnMeleeSwing then ns.OnMeleeSwing("mh") end
-	elseif ns.SLAM_IDS[spellId] then
-		ns.StartSwing("mh")
+	elseif ns.RESET_SWING_SPELLS and ns.RESET_SWING_SPELLS[spellId] then
+		ns.StartSwing("mh", nil, now)
+		ns.StartSwing("oh", nil, now)
+		ns.StartSwing("ranged", nil, now)
 		if ns.OnMeleeSwing then ns.OnMeleeSwing("mh") end
+		if ns.OnRangedSwing then ns.OnRangedSwing() end
+	elseif ns.casting and not ns.preventSwingReset then
+		ns.StartSwing("mh", nil, now)
+		ns.StartSwing("oh", nil, now)
+		ns.StartSwing("ranged", nil, now)
 	end
+
+	ns.casting = false
+	ns.channeling = false
+	ns.channelingSpellId = nil
+	ns.preventSwingReset = false
 end

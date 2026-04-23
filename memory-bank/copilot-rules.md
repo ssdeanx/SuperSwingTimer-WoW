@@ -28,3 +28,7 @@
 
 - The shaman weave breakpoint visuals should be driven by the current cast window and latency-aware timing, then drawn on the MH bar canvas.
 - Breakpoint markers likely need to stay visible even when the player is not actively casting; only the live spark should remain cast-progress dependent.
+- The swing engine should refresh latency while the active update loop is running, not only on a slow ticker, so white-hit end timing stays tight.
+- Use `GetMeleeHaste()` when adjusting parry haste so the remaining swing shift reflects live melee haste instead of a flat static reduction.
+- Keep hunter channel behavior on the ranged side; it should not leak into shaman weave timing or the MH swing-reset path.
+- Prefer `_` placeholders or `select()` over binding unused CLEU return values in the state engine so the timing file stays lean and easy to audit.

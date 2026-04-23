@@ -1,0 +1,11 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "type": "command",
+        "windows": "pwsh -NoProfile -ExecutionPolicy Bypass -File .github/hooks/scripts/wow-classic-lua-sessionstart.ps1",
+        "timeout": 5
+      }
+    ]
+  }
+}

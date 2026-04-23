@@ -1,4 +1,10 @@
 ﻿local addonName, ns = ...
+local CreateFrame = rawget(_G, "CreateFrame")
+local UIParent = rawget(_G, "UIParent")
+local SlashCmdList = rawget(_G, "SlashCmdList")
+local UnitClass = rawget(_G, "UnitClass")
+local strtrim = rawget(_G, "strtrim")
+local GetShapeshiftForm = rawget(_G, "GetShapeshiftForm")
 
 -- ============================================================
 -- Bootstrap: event frame, SavedVariables init, dispatch
@@ -266,32 +272,27 @@ local function RegisterEvents()
 		frame:RegisterEvent("PLAYER_EQUIPMENT_CHANGED")
 		frame:RegisterEvent("UNIT_INVENTORY_CHANGED")
 		frame:RegisterEvent("UNIT_SPELLCAST_SUCCEEDED")
-	end
-
-	if cfg.melee and ns.playerClass == "SHAMAN" then
-		frame:RegisterEvent("SPELLS_CHANGED")
 		frame:RegisterEvent("UNIT_SPELLCAST_START")
 		frame:RegisterEvent("UNIT_SPELLCAST_STOP")
 		frame:RegisterEvent("UNIT_SPELLCAST_INTERRUPTED")
 		frame:RegisterEvent("UNIT_SPELLCAST_FAILED")
 		frame:RegisterEvent("UNIT_SPELLCAST_DELAYED")
+		frame:RegisterEvent("UNIT_SPELLCAST_CHANNEL_START")
+		frame:RegisterEvent("UNIT_SPELLCAST_CHANNEL_STOP")
+	end
+
+	if cfg.melee and ns.playerClass == "SHAMAN" then
+		frame:RegisterEvent("SPELLS_CHANGED")
 	end
 
 	if cfg.ranged then
 		frame:RegisterEvent("UNIT_RANGEDDAMAGE")
-		frame:RegisterEvent("UNIT_SPELLCAST_START")
-		frame:RegisterEvent("UNIT_SPELLCAST_CHANNEL_START")
 		frame:RegisterEvent("START_AUTOREPEAT_SPELL")
 		frame:RegisterEvent("STOP_AUTOREPEAT_SPELL")
 		frame:RegisterEvent("PLAYER_STARTED_MOVING")
 		frame:RegisterEvent("PLAYER_STOPPED_MOVING")
 		frame:RegisterEvent("PLAYER_REGEN_DISABLED")
 		frame:RegisterEvent("PLAYER_REGEN_ENABLED")
-	end
-
-	if cfg.melee and ns.playerClass == "WARRIOR" then
-		frame:RegisterEvent("UNIT_SPELLCAST_START")
-		frame:RegisterEvent("UNIT_SPELLCAST_SUCCEEDED")
 	end
 
 	if cfg.melee and ns.playerClass == "DRUID" then
@@ -302,11 +303,17 @@ local function RegisterEvents()
 end
 
 local function UpdateFrameOnUpdate(self, elapsed)
+	if ns.RefreshLatencyCache then
+		ns.RefreshLatencyCache()
+	end
 	ns.OnUpdate(elapsed)
 end
 
 function ns.SetUpdateEnabled(enabled)
 	if enabled then
+		if ns.RefreshLatencyCache then
+			ns.RefreshLatencyCache()
+		end
 		frame:SetScript("OnUpdate", UpdateFrameOnUpdate)
 	else
 		frame:SetScript("OnUpdate", nil)
@@ -332,17 +339,47 @@ frame:SetScript("OnEvent", function(self, event, ...)
 			ns.HandleWeavingSpellcast(event, ...)
 		end
 
-	elseif event == "UNIT_SPELLCAST_START" or event == "UNIT_SPELLCAST_CHANNEL_START" then
-		local unit, _, spellId = ...
+	elseif event == "UNIT_SPELLCAST_START" then
+		if ns.HandleSpellcastStart then
+			ns.HandleSpellcastStart(...)
+		end
 		if ns.playerClass == "SHAMAN" and ns.HandleWeavingSpellcast then
 			ns.HandleWeavingSpellcast(event, ...)
 		end
-		if unit == "player" and spellId ~= ns.AUTO_SHOT_ID then
-			ns.ResetTimer("ranged")
-			if ns.rangedBar then ns.rangedBar:SetAlpha(0) end
+
+	elseif event == "UNIT_SPELLCAST_CHANNEL_START" then
+		if ns.HandleSpellcastChannelStart then
+			ns.HandleSpellcastChannelStart(...)
+		end
+		if ns.playerClass == "SHAMAN" and ns.HandleWeavingSpellcast then
+			ns.HandleWeavingSpellcast(event, ...)
 		end
 
-	elseif event == "UNIT_SPELLCAST_STOP" or event == "UNIT_SPELLCAST_INTERRUPTED" or event == "UNIT_SPELLCAST_FAILED" or event == "UNIT_SPELLCAST_DELAYED" then
+	elseif event == "UNIT_SPELLCAST_STOP" then
+		if ns.HandleSpellcastStop then
+			ns.HandleSpellcastStop(...)
+		end
+		if ns.playerClass == "SHAMAN" and ns.HandleWeavingSpellcast then
+			ns.HandleWeavingSpellcast(event, ...)
+		end
+
+	elseif event == "UNIT_SPELLCAST_CHANNEL_STOP" then
+		if ns.HandleSpellcastChannelStop then
+			ns.HandleSpellcastChannelStop(...)
+		end
+		if ns.playerClass == "SHAMAN" and ns.HandleWeavingSpellcast then
+			ns.HandleWeavingSpellcast(event, ...)
+		end
+
+	elseif event == "UNIT_SPELLCAST_INTERRUPTED" or event == "UNIT_SPELLCAST_FAILED" then
+		if ns.HandleSpellcastInterruptedOrFailed then
+			ns.HandleSpellcastInterruptedOrFailed(...)
+		end
+		if ns.playerClass == "SHAMAN" and ns.HandleWeavingSpellcast then
+			ns.HandleWeavingSpellcast(event, ...)
+		end
+
+	elseif event == "UNIT_SPELLCAST_DELAYED" then
 		if ns.playerClass == "SHAMAN" and ns.HandleWeavingSpellcast then
 			ns.HandleWeavingSpellcast(event, ...)
 		end

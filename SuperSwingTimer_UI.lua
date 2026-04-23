@@ -4,14 +4,16 @@ local CreateFrame = rawget(_G, "CreateFrame")
 local UIParent = rawget(_G, "UIParent")
 local GetTimePreciseSec = rawget(_G, "GetTimePreciseSec")
 local GetTime = rawget(_G, "GetTime")
+local GetSpellInfo = rawget(_G, "GetSpellInfo")
 local UnitAttackSpeed = rawget(_G, "UnitAttackSpeed")
 local UnitRangedDamage = rawget(_G, "UnitRangedDamage")
+local UnitChannelInfo = rawget(_G, "UnitChannelInfo")
 
 local function GetCurrentTime()
 	if GetTimePreciseSec then
-		return GetTimePreciseSec()
+		return GetTimePreciseSec() + (ns.cachedLatency or 0)
 	end
-	return GetTime()
+	return GetTime() + (ns.cachedLatency or 0)
 end
 
 -- ============================================================
@@ -227,10 +229,37 @@ ns.HideBars = HideBars
 -- ============================================================
 local function UpdateRangedBar(elapsed)
 	local t = ns.timers.ranged
-	if t.state ~= "swinging" then return end
-
 	local f = ns.rangedBar
 	if not f then return end
+
+	if ns.channeling and UnitChannelInfo then
+		local channelName, _, _, startTimeMs, endTimeMs = UnitChannelInfo("player")
+		if not channelName and ns.channelingSpellId and GetSpellInfo then
+			channelName = GetSpellInfo(ns.channelingSpellId)
+		end
+		channelName = channelName or "Channel"
+		if channelName and startTimeMs and endTimeMs and endTimeMs > startTimeMs then
+			local channelNow = GetTimePreciseSec and GetTimePreciseSec() or GetTime()
+			local channelDuration = (endTimeMs - startTimeMs) / 1000
+			local elapsedChannel = channelNow - (startTimeMs / 1000)
+			if elapsedChannel < 0 then elapsedChannel = 0 end
+			if elapsedChannel > channelDuration then elapsedChannel = channelDuration end
+			local remainingChannel = channelDuration - elapsedChannel
+			if remainingChannel < 0 then remainingChannel = 0 end
+
+			f.castOverlay:SetWidth(0)
+			f:SetMinMaxValues(0, channelDuration)
+			f:SetValue(elapsedChannel)
+			f.labelText:SetText(string.format("%s %.1f", channelName, remainingChannel))
+
+			local sparkPos = (elapsedChannel / channelDuration) * f.barWidth
+			if sparkPos > f.barWidth then sparkPos = f.barWidth end
+			f.sparkTexture:SetPoint("CENTER", f, "LEFT", sparkPos, 0)
+			return
+		end
+	end
+
+	if t.state ~= "swinging" then return end
 
 	local now = GetCurrentTime()
 	if not t.duration or t.duration <= 0 then return end
@@ -278,6 +307,9 @@ local function UpdateMeleeBar(slot, frame)
 	if not frame or t.state ~= "swinging" then return end
 
 	local now = GetCurrentTime()
+	if ns.pauseSwingTime and (slot == "mh" or slot == "oh") then
+		now = ns.pauseSwingTime
+	end
 	if not t.duration or t.duration <= 0 then return end
 
 	-- Haste rescaling: throttled sync + event fallback
@@ -430,6 +462,10 @@ function ns.ApplyWeaveMarkerLayer(layer)
 		if texture and texture.SetDrawLayer then
 			texture:SetDrawLayer(layer)
 		end
+	end
+	-- Also apply layer to the canonical weave marker if present
+	if ns.weaveMarker and ns.weaveMarker.SetDrawLayer then
+		ns.weaveMarker:SetDrawLayer(layer)
 	end
 end
 

@@ -9,6 +9,7 @@
 - Updated project metadata for CurseForge project 1521271 and author AcidBomb.
 - Kept Classic/TBC-compatible timing fallbacks.
 - Expanded the `/sst` panel with bar visibility toggles and a shaman weave-assist toggle.
+- Replaced the browser texture picker with an in-addon dropdown showing `[category] label` entries (SharedMedia + Blizzard fallbacks). This enables quick texture selection without leaving the game.
 
 ## 2.5 - 2026-03-31
 

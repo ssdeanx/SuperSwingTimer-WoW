@@ -7,6 +7,7 @@ local GetNetStats = rawget(_G, "GetNetStats")
 local GetSpellInfo = rawget(_G, "GetSpellInfo")
 local UnitSpellHaste = rawget(_G, "UnitSpellHaste")
 local UnitCastingInfo = rawget(_G, "UnitCastingInfo")
+local UnitChannelInfo = rawget(_G, "UnitChannelInfo")
 local GetClock = GetTimePreciseSec or GetTime
 
 GetClock()
@@ -189,6 +190,10 @@ local function BuildDisplayInfo(spellInfo)
 
 	if isCasting then
 		local _, _, _, _, endTime = UnitCastingInfo("player")
+		if not endTime and UnitChannelInfo then
+			local _, _, _, _, channelEndTime = UnitChannelInfo("player")
+			endTime = channelEndTime
+		end
 		if endTime then
 			castRemaining = math_max(0, (endTime / 1000) - now)
 		end
@@ -258,7 +263,7 @@ function ns.HandleWeavingSpellcast(event, unit, _, spellId)
 	end
 
 	local spellInfo = GetTrackedSpellInfo(spellId)
-	if event == "UNIT_SPELLCAST_START" or event == "UNIT_SPELLCAST_DELAYED" then
+	if event == "UNIT_SPELLCAST_START" or event == "UNIT_SPELLCAST_DELAYED" or event == "UNIT_SPELLCAST_CHANNEL_START" then
 		if spellInfo then
 			state.isCasting = true
 			state.currentSpellId = spellId
@@ -273,7 +278,7 @@ function ns.HandleWeavingSpellcast(event, unit, _, spellId)
 			state.currentSpellId = spellId
 			state.lastSpellId = spellId
 		end
-	elseif event == "UNIT_SPELLCAST_STOP" or event == "UNIT_SPELLCAST_INTERRUPTED" or event == "UNIT_SPELLCAST_FAILED" then
+	elseif event == "UNIT_SPELLCAST_STOP" or event == "UNIT_SPELLCAST_INTERRUPTED" or event == "UNIT_SPELLCAST_FAILED" or event == "UNIT_SPELLCAST_CHANNEL_STOP" then
 		state.isCasting = false
 		if spellInfo then
 			state.lastSpellId = spellId

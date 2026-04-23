@@ -1,4 +1,10 @@
 ﻿local addonName, ns = ...
+local CreateFrame = rawget(_G, "CreateFrame")
+local UIParent = rawget(_G, "UIParent")
+local InCombatLockdown = rawget(_G, "InCombatLockdown")
+local ColorPickerFrame = rawget(_G, "ColorPickerFrame")
+local wipe = rawget(_G, "wipe")
+local strtrim = rawget(_G, "strtrim")
 
 -- ============================================================
 -- Config panel: /sst opens this frame.
@@ -157,120 +163,80 @@ local function CreateColorButton(parent, label, colorKey, yOffset)
 	return row
 end
 
-local textureBrowser
+local textureDropdown
 
-local function OpenTextureBrowser(currentTexture, applyTexture)
-	if not textureBrowser then
-		textureBrowser = CreateFrame("Frame", "SuperSwingTimerTextureBrowser", UIParent, "BackdropTemplate")
-		textureBrowser:SetSize(560, 520)
-		textureBrowser:SetPoint("CENTER")
-		textureBrowser:SetBackdrop({
-			bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
-			edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
-			tile = true, tileSize = 32, edgeSize = 32,
-			insets = { left = 8, right = 8, top = 8, bottom = 8 },
-		})
-		textureBrowser:SetFrameStrata("DIALOG")
-		textureBrowser:Hide()
+local function EnsureTextureDropdown()
+	if textureDropdown then
+		return textureDropdown
+	end
 
-		local title = textureBrowser:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-		title:SetPoint("TOP", textureBrowser, "TOP", 0, -14)
-		title:SetText("Texture Browser")
+	local f = CreateFrame("Frame", "SuperSwingTimerTextureDropdown", UIParent, "BackdropTemplate")
+	f:SetSize(320, 320)
+	f:SetPoint("TOPLEFT", UIParent, "TOPLEFT", 120, -120)
+	f:SetBackdrop({
+		bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
+		edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
+		tile = true, tileSize = 32, edgeSize = 32,
+		insets = { left = 8, right = 8, top = 8, bottom = 8 },
+	})
+	f:SetFrameStrata("DIALOG")
+	f:Hide()
 
-		local subtitle = textureBrowser:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-		subtitle:SetPoint("TOP", title, "BOTTOM", 0, -2)
-		subtitle:SetText("Browse SharedMedia textures and Blizzard defaults")
+	local title = f:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+	title:SetPoint("TOP", f, "TOP", 0, -12)
+	title:SetText("Select Texture")
 
-		local close = CreateFrame("Button", nil, textureBrowser, "UIPanelCloseButton")
-		close:SetPoint("TOPRIGHT", textureBrowser, "TOPRIGHT", -4, -4)
+	local scrollFrame = CreateFrame("ScrollFrame", nil, f, "UIPanelScrollFrameTemplate")
+	scrollFrame:SetPoint("TOPLEFT", f, "TOPLEFT", 10, -34)
+	scrollFrame:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -30, 10)
 
-		local searchBox = CreateFrame("EditBox", nil, textureBrowser, "InputBoxTemplate")
-		searchBox:SetSize(240, 20)
-		searchBox:SetPoint("TOPLEFT", textureBrowser, "TOPLEFT", 20, -42)
-		searchBox:SetAutoFocus(false)
-		searchBox:SetTextInsets(8, 8, 3, 3)
-		textureBrowser.searchBox = searchBox
+	local content = CreateFrame("Frame", nil, scrollFrame)
+	content:SetSize(260, 1000)
+	scrollFrame:SetScrollChild(content)
 
-		local scrollFrame = CreateFrame("ScrollFrame", nil, textureBrowser, "UIPanelScrollFrameTemplate")
+	f.rows = {}
+	f.content = content
+	f.applyTexture = nil
 
-		local content = CreateFrame("Frame", nil, scrollFrame)
-		content:SetSize(470, 360)
-		scrollFrame:SetScrollChild(content)
-		textureBrowser.scrollFrame = scrollFrame
-		textureBrowser.content = content
-		textureBrowser.rows = {}
-
-		local function BuildRows(entries)
-			for _, row in ipairs(textureBrowser.rows) do
-				row:Hide()
-			end
-			wipe(textureBrowser.rows)
-
-			local rowHeight = 28
-			content:SetSize(470, math.max(1, #entries * rowHeight))
-
-			for i, entry in ipairs(entries) do
-				local row = CreateFrame("Button", nil, content)
-				row:SetSize(440, 24)
-				row:SetPoint("TOPLEFT", content, "TOPLEFT", 0, -((i - 1) * rowHeight))
-
-				local preview = row:CreateTexture(nil, "ARTWORK")
-				preview:SetSize(18, 18)
-				preview:SetPoint("LEFT", row, "LEFT", 0, 0)
-				preview:SetTexture(entry.path)
-
-				local label = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-				label:SetPoint("LEFT", preview, "RIGHT", 8, 0)
-				label:SetText(string.format("[%s] %s", entry.category, entry.label))
-
-				local pathText = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-				pathText:SetPoint("TOPLEFT", label, "BOTTOMLEFT", 0, -1)
-				pathText:SetText(entry.path)
-
-				row:SetScript("OnClick", function()
-					if textureBrowser.applyTexture then
-						textureBrowser.applyTexture(entry.path)
-					end
-					textureBrowser:Hide()
-				end)
-
-				table.insert(textureBrowser.rows, row)
-			end
+	function f:Build(entries)
+		for _, row in ipairs(self.rows) do
+			row:Hide()
 		end
+		wipe(self.rows)
 
-		textureBrowser.Refresh = function()
-			local query = string.lower(strtrim(searchBox:GetText() or ""))
-			local entries = {}
-			local library = (ns.BuildTextureLibrary and ns.BuildTextureLibrary()) or (ns.TEXTURE_LIBRARY or {})
-			for _, entry in ipairs(library) do
-				local label = string.lower(entry.label or "")
-				local path = string.lower(entry.path or "")
-				local category = string.lower(entry.category or "")
-				if query == "" or label:find(query, 1, true) or path:find(query, 1, true) or category:find(query, 1, true) then
-					entries[#entries + 1] = entry
+		local rowHeight = 28
+		self.content:SetSize(260, math.max(1, #entries * rowHeight))
+
+		for index, entry in ipairs(entries) do
+			local row = CreateFrame("Button", nil, self.content, "UIPanelButtonTemplate")
+			row:SetSize(240, 24)
+			row:SetPoint("TOPLEFT", self.content, "TOPLEFT", 0, -((index - 1) * rowHeight))
+
+			local label = string.format("[%s / %s] %s", entry.category or "Unknown", entry.style or "style", entry.label or entry.path)
+			row:SetText(label)
+			row:SetScript("OnClick", function()
+				if self.applyTexture then
+					self.applyTexture(entry.path)
 				end
-			end
-			BuildRows(entries)
+				self:Hide()
+			end)
+
+			self.rows[#self.rows + 1] = row
 		end
-
-		searchBox:SetScript("OnTextChanged", function()
-			if textureBrowser and textureBrowser.Refresh then
-				textureBrowser.Refresh()
-			end
-		end)
 	end
 
-	textureBrowser.applyTexture = applyTexture
-	if textureBrowser.searchBox then
-		textureBrowser.searchBox:SetText("")
-	end
-	if textureBrowser.Refresh then
-		textureBrowser.Refresh()
-	end
-	textureBrowser:Show()
-	if textureBrowser.searchBox then
-		textureBrowser.searchBox:SetFocus()
-	end
+	-- parent is already UIParent via CreateFrame; do not attempt to treat UIParent as a Lua table
+	textureDropdown = f
+	return f
+end
+
+local function OpenTextureDropdown(currentTexture, applyTexture)
+	local dropdown = EnsureTextureDropdown()
+	dropdown.applyTexture = applyTexture
+
+	local library = ns.TEXTURE_LIBRARY or ns.BuildTextureLibrary() or {}
+	dropdown:Build(library)
+	dropdown:Show()
 end
 
 local function CreateTexturePathRow(parent, label, yOffset, getTexture, applyTexture)
@@ -288,6 +254,9 @@ local function CreateTexturePathRow(parent, label, yOffset, getTexture, applyTex
 		if row.preview then
 			row.preview:SetTexture(path)
 		end
+		if row.browseBtn then
+			row.browseBtn:SetText(ns.GetTextureDisplayText(path))
+		end
 	end
 
 	local preview = row:CreateTexture(nil, "ARTWORK")
@@ -297,14 +266,17 @@ local function CreateTexturePathRow(parent, label, yOffset, getTexture, applyTex
 	row.preview = preview
 
 	local browseBtn = CreateFrame("Button", nil, row, "UIPanelButtonTemplate")
-	browseBtn:SetSize(84, 20)
+	browseBtn:SetSize(150, 20)
 	browseBtn:SetPoint("RIGHT", row, "RIGHT", 0, 0)
-	browseBtn:SetText("Browse")
+	browseBtn:SetText(ns.GetTextureDisplayText(getTexture()))
 	browseBtn:SetScript("OnClick", function()
-		OpenTextureBrowser(getTexture(), function(texturePath)
+		OpenTextureDropdown(getTexture(), function(texturePath)
 			applyTexture(texturePath)
 			if row.preview then
 				row.preview:SetTexture(texturePath)
+			end
+			if browseBtn then
+				browseBtn:SetText(ns.GetTextureDisplayText(texturePath))
 			end
 		end)
 	end)
@@ -928,6 +900,7 @@ local function CreatePanel()
 	f.showRangedRow = showRangedRow
 	f.showWeaveRow = showWeaveRow
 	f.colorRows = { mhRow, ohRow, rangedRow, sealRow }
+	textureDropdown = f
 	return f
 end
 

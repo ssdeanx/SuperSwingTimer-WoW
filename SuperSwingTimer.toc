@@ -1,6 +1,6 @@
 ﻿## Interface: 20505
 ## Title: Super Swing Timer
-## Notes: Melee and ranged swing timer for Classic and TBC.
+## Notes: Melee and ranged swing timer for Classic and TBC. Includes in-addon texture dropdown and shaman weave assist overlays.
 ## Author: AcidBomb
 ## Version: v3.0.0
 ## X-Curse-Project-ID: 1521271

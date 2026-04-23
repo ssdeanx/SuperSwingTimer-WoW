@@ -54,8 +54,8 @@ local function SetupWarrior()
 	-- Hook slam cast to show yellow tint
 	local origHandleSpellcast = ns.HandleSpellcastSucceeded
 	ns.HandleSpellcastSucceeded = function(unit, castGUID, spellId)
-		if unit == "player" and ns.SLAM_IDS[spellId] and ns.mhBar then
-			ns.mhBar:SetStatusBarColor(0.8, 0.8, 0.1, 1)  -- yellow during slam
+		if unit == "player" and ns.PAUSE_SWING_SPELLS and ns.PAUSE_SWING_SPELLS[spellId] and ns.mhBar then
+			ns.mhBar:SetStatusBarColor(0.8, 0.8, 0.1, 1)  -- yellow during pause/extend cast
 		end
 		origHandleSpellcast(unit, castGUID, spellId)
 	end
@@ -93,11 +93,10 @@ local function SetupEnhShaman()
 			markerPos = ns.BAR_WIDTH
 		end
 
-		local preciseTime = rawget(_G, "GetTimePreciseSec")
-		local getTime = rawget(_G, "GetTime")
-		local now = (preciseTime and preciseTime()) or (getTime and getTime()) or 0
-		local swingElapsed = math.max(0, now - (timer.lastSwing or now))
-		local sparkPos = (swingElapsed / timer.duration) * (ns.BAR_WIDTH or 0)
+		local castTime = math.max(info.castTime or 0, 0)
+		local castRemaining = math.max(info.castRemaining or castTime, 0)
+		local castElapsed = math.max(0, castTime - castRemaining)
+		local sparkPos = castTime > 0 and ((castElapsed / castTime) * (ns.BAR_WIDTH or 0)) or 0
 		if sparkPos < 0 then
 			sparkPos = 0
 		elseif sparkPos > (ns.BAR_WIDTH or sparkPos) then

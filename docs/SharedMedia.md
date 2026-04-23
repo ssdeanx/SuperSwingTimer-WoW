@@ -1,5 +1,35 @@
 # Shared Media
 
+The addon’s texture picker now shows these entries in a dropdown list labeled as `[{category}] {label}` instead of opening a browser window.
+
+## Blizzard fallback textures
+
+These Blizzard textures are always available even when `LibSharedMedia-3.0` is not installed, and they are grouped in the same dropdown with a `[{category}] {label}` prefix.
+
+```lua
+-- STATUSBAR / BAR FALLBACKS
+Interface\TargetingFrame\UI-StatusBar          -- default status bar fill used by the addon
+Interface\CastingBar\UI-CastingBar-Spark       -- default spark texture
+Interface\CastingBar\UI-CastingBar-Fill        -- cast bar fill texture
+Interface\CastingBar\UI-CastingBar-Shield      -- cast shield/interrupt protection texture
+Interface\Buttons\WHITE8X8                     -- solid fallback for simple fills and debugging
+Interface\DialogFrame\UI-DialogBox-Background   -- Blizzard dialog background texture
+Interface\DialogFrame\UI-DialogBox-Border       -- Blizzard dialog border texture
+Interface\Buttons\UI-ScrollBar-ScrollDownButton-Arrow -- Blizzard down-arrow texture
+Interface\Buttons\UI-ScrollBar-ScrollUpButton-Arrow   -- Blizzard up-arrow texture
+```
+
+## Other Blizzard UI assets already used by the addon
+
+These are not part of the statusbar picker, but they are already referenced in the addon UI and are useful when auditing Blizzard fallback behavior.
+
+```lua
+Interface\Buttons\UI-ScrollBar-ScrollDownButton-Arrow
+Interface\Buttons\UI-ScrollBar-ScrollUpButton-Arrow
+Interface\DialogFrame\UI-DialogBox-Background
+Interface\DialogFrame\UI-DialogBox-Border
+```
+
 ```lua
 -- --------------
 -- BACKGROUND (7)
