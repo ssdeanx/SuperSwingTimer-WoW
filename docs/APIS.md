@@ -15,6 +15,11 @@ This document stores the API facts we should rely on while building the `/sst` U
 - `UnitCastingInfo()` for active cast timing.
 - `GetSpellInfo()` for resolving ranks and cast times.
 
+## Hunter ranged timing inputs
+
+- `GetSpellCooldown(75)` / `GetSpellCooldown("Auto Shot")` for the active Auto Shot cooldown when the client exposes it.
+- `UnitRangedDamage()` for ranged weapon speed; the first return value is the ranged speed, and it reflects ranged haste rather than melee haste.
+
 ## StatusBar / texture reminders
 
 - `StatusBar:SetStatusBarTexture(asset)` sets the fill texture.

@@ -1,5 +1,16 @@
 ﻿# Super Swing Timer Changelog
 
+## 3.1.1 - 2026-04-23
+
+- Added a latency-aware hunter Auto Shot red-zone marker so the cast window shows up before the bar turns red.
+- Added a dedicated ranged bar texture selector so Hunters can skin Auto Shot separately from MH / OH.
+- Switched Hunter Auto Shot timing to use the Auto Shot cooldown API when active, anchoring the ranged bar to the cooldown start and falling back to `UnitRangedDamage()` when needed.
+- Widened the `/sst` panel and clarified the MH / OH, ranged, and weave breakpoint appearance sections.
+- Reflowed the `/sst` rows so labels sit above the controls and the texture, cycle, toggle, and color rows are easier to click.
+- Hardened the paladin seal breakpoint lookup so it prefers aura names, uses verified seal IDs, and still works when a rank ID is missing.
+- Expanded the paladin seal family table to match `docs/spellIds.md` for Command, Corruption, Blood, Martyr, Vengeance, Justice, Wisdom, Righteousness, Light, and Crusader.
+- Made the ret paladin seal-twist indicator into a UnitAura-aware breakpoint line that switches between the end-of-swing twist point and the earlier reseal point, and defaults to an opaque black marker.
+
 ## 3.1.0 - 2026-04-23
 
 - Added Blizzard Interface Options / AddOns registration so the config panel is available in-game without slash commands.

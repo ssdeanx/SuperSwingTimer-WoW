@@ -75,7 +75,22 @@ Use these links first when checking Classic addon UI behavior, widgets, frames, 
 
 ## Current progress
 
+- Final paladin pass expanded the seal family table to match `docs/spellIds.md` for Command, Corruption, Blood, Martyr, Vengeance, Justice, Wisdom, Righteousness, Light, and Crusader.
+- Hunter Auto Shot cooldown start is now aligned to the addon’s latency-adjusted clock so the ranged bar and cooldown API share the same timing base.
+- The ret paladin seal breakpoint line remains aura-driven, latency-aware, and opaque black, with Blood/Martyr treated as the twist-side seals and first-write-wins aura-name lookup to avoid duplicate-ID overwrites.
+
+- Final pass tightened Hunter Auto Shot by anchoring the ranged bar to the cooldown API start time when active, with `UnitRangedDamage()` still as the fallback.
+- Paladin seal breakpoint lookup now prefers aura names, falls back to verified IDs, and survives missing rank IDs via localized name fallback.
+- The shaman weave-assist and melee white-damage start/reset/end paths were reviewed again and left structurally unchanged after the final polish pass.
+
+- Hunter Auto Shot timing now uses `GetSpellCooldown(75)` / `GetSpellCooldown("Auto Shot")` as the active cooldown source, with `UnitRangedDamage()` as the ranged-speed fallback and `SPELL_UPDATE_COOLDOWN` as the reactive trigger.
+- The ret paladin seal breakpoint line remains UnitAura-aware, latency-aware, and opaque black.
+- README, API notes, changelog, TOC, and memory-bank notes were synced to the new hunter timing path.
+- The `/sst` config rows now use a labels-above-controls layout with full-row click targets for texture, cycle, toggle, and color settings.
+- Ret paladin seal-twist timing is now latency-aware, using the fixed 0.4s window plus cached latency.
 - Blizzard Interface Options / AddOns registration is now wired for the config panel.
 - Primary slash aliases are `/sst`, `/super`, and `/superswingtimer`; `/swangthang` has been removed.
 - Default bar colors now use class colors until the user picks custom swatches, and the indicator blend mode can switch between glow and opaque.
 - The texture dropdown now uses preview thumbnails, and the `/sst` panel is wider with clearer grouping and labels.
+- Hunter Auto Shot now has a latency-aware red-zone marker plus a dedicated ranged texture picker, and the `/sst` appearance rows now split MH/OH and ranged controls more clearly.
+- Current focus is in-game validation for hunter Auto Shot, then a look at the ret paladin seal-twist window and coloring.

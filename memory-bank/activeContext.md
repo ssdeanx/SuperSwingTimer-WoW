@@ -1,5 +1,48 @@
 # Active Context
 
+## Active Context Update (2026-04-24 - final paladin seal coverage)
+
+- Expanded the paladin seal family table to match `docs/spellIds.md` for Command, Corruption, Blood, Martyr, Vengeance, Justice, Wisdom, Righteousness, Light, and Crusader.
+- Kept the ret paladin breakpoint line aura-driven, latency-aware, and opaque black, with Blood/Martyr treated as the twist-side seals and first-write-wins aura-name lookup to avoid duplicate-ID overwrites.
+- Anchored Hunter Auto Shot cooldown start to the addon’s latency-adjusted clock so the ranged timer and cooldown API stay on the same time base.
+- Re-reviewed the shaman weave-assist and melee white-damage reset/start flow; no further structural changes were needed in this pass.
+
+## Active Context Update (2026-04-23 - final hunter/paladin polish pass)
+
+- Anchored Hunter Auto Shot to the cooldown API start time when active, while keeping `UnitRangedDamage()` as the ranged-speed fallback.
+- Hardened the paladin seal breakpoint lookup so it prefers aura names, still falls back to verified spell IDs, and survives missing rank IDs with localized name fallback.
+- Reviewed the shaman and melee white-damage end/reset/start paths again; no further structural changes were needed in this pass.
+- Updated the changelog and repo notes to reflect the final accuracy pass.
+
+## Active Context Update (2026-04-23 - hunter cooldown API and paladin polish)
+
+- Hunter Auto Shot now uses `GetSpellCooldown(75)` / `GetSpellCooldown("Auto Shot")` as the authoritative active-cooldown signal, with `UnitRangedDamage()` first-return ranged speed as the haste-aware fallback.
+- `SPELL_UPDATE_COOLDOWN` now participates in hunter start/resync so the ranged bar can react immediately when Auto Shot becomes active.
+- The ret paladin seal breakpoint line remains UnitAura-driven, latency-aware, and opaque black, with the seal family table kept in sync with the active aura.
+- README, API notes, changelog, and the addon TOC were updated to match the API-backed hunter timing path.
+
+## Active Context Update (2026-04-23 - config reflow and seal-twist timing pass)
+
+- Reworked the `/sst` config rows so labels sit above the controls and the texture, cycle, toggle, and color rows are clickable across the row.
+- Made the ret paladin seal-twist overlay latency-aware by expanding the fixed 0.4s window with cached latency.
+- Refreshed the README and changelog to match the reflowed UI and updated timing notes.
+- Hunter validation is still the final in-game test step.
+
+## Active Context Update (2026-04-23 - hunter Auto Shot test-ready)
+
+- Hunter Auto Shot now has a latency-aware red-zone marker, a dedicated ranged texture picker, and deduped start handling across CLEU and spellcast success.
+- The `/sst` panel now separates MH/OH, ranged, and weave-breakpoint appearance controls more clearly.
+- Current focus is in-game validation for the hunter timing path, then the paladin seal-twist review.
+- Seal-twist behavior is still handled in the ret paladin class mod; the width is driven by a fixed 0.4s window and the color comes from SavedVariables.
+
+## Active Context Update (2026-04-23 - hunter Auto Shot marker and ranged texture split)
+
+- Added a latency-aware black threshold marker to the hunter Auto Shot bar so the red cast window is visible before it starts.
+- Added a dedicated ranged bar texture selector so hunters can skin Auto Shot separately from MH / OH bars.
+- Widened the `/sst` panel and relabeled the appearance rows to clearly separate MH/OH, ranged, and weave-breakpoint controls.
+- Kept the existing Blizzard AddOns registration, class-color defaults, and indicator glow/opaque toggle intact.
+- Targeted diagnostics on the touched runtime files still need to be run/confirmed after the latest UI pass.
+
 ## Active Context Update (2026-04-23 - Blizzard options, class colors, and preview polish)
 
 - Registered the addon in Blizzard's Interface Options / AddOns flow and added TOC icon metadata for the addon list.

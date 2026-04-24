@@ -1,10 +1,9 @@
-﻿local addonName, ns = ...
+﻿local _, ns = ...
 local CreateFrame = rawget(_G, "CreateFrame")
 local UIParent = rawget(_G, "UIParent")
 local InCombatLockdown = rawget(_G, "InCombatLockdown")
 local ColorPickerFrame = rawget(_G, "ColorPickerFrame")
 local wipe = rawget(_G, "wipe")
-local strtrim = rawget(_G, "strtrim")
 
 -- ============================================================
 -- Config panel: /sst opens this frame.
@@ -13,27 +12,10 @@ local strtrim = rawget(_G, "strtrim")
 
 local panel
 local layoutShift = 120
+local layoutScale = 1.6
 
 local function ShiftY(y)
-	return y - layoutShift
-end
-
-local function GetLayerOptionLabel(layerValue)
-	for _, option in ipairs(ns.TEXTURE_LAYER_OPTIONS) do
-		if option.value == layerValue then
-			return option.label
-		end
-	end
-	return ns.TEXTURE_LAYER_OPTIONS[3].label
-end
-
-local function GetNextLayerValue(currentValue)
-	for index, option in ipairs(ns.TEXTURE_LAYER_OPTIONS) do
-		if option.value == currentValue then
-			return ns.TEXTURE_LAYER_OPTIONS[(index % #ns.TEXTURE_LAYER_OPTIONS) + 1].value
-		end
-	end
-	return ns.TEXTURE_LAYER_OPTIONS[3].value
+	return math.floor((y * layoutScale) + 0.5) - layoutShift
 end
 
 local INDICATOR_BLEND_OPTIONS = {
@@ -72,6 +54,7 @@ local function ShowBarPreview()
 		end
 	end
 	ns.ApplyBarTexture(ns.GetBarTexture(), ns.GetBarTextureLayer())
+	ns.ApplyRangedBarTexture(ns.GetRangedBarTexture(), ns.GetBarTextureLayer())
 	ns.ApplySparkSettings(
 		ns.GetSparkTexture(),
 		ns.GetSparkWidth(),
@@ -104,7 +87,7 @@ local function OpenColorPicker(colorKey, swatch)
 	local isSealTwist = (colorKey == "sealTwist")
 
 	local function applyColor(r, g, b)
-		local a = isSealTwist and 0.4 or 1
+		local a = 1
 		if not isSealTwist then
 			SuperSwingTimerDB.useClassColors = false
 		end
@@ -168,16 +151,17 @@ local function CreateColorButton(parent, label, colorKey, yOffset)
 	local row = CreateFrame("Frame", nil, parent)
 	row:SetPoint("TOPLEFT", parent, "TOPLEFT", 20, yOffset)
 	row:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -20, yOffset)
-	row:SetHeight(22)
+	row:SetHeight(44)
+	row:EnableMouse(true)
 
 	local text = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-	text:SetPoint("LEFT", row, "LEFT", 0, 0)
+	text:SetPoint("TOPLEFT", row, "TOPLEFT", 0, 0)
 	text:SetText(label)
 
-	local btn = CreateFrame("Button", nil, row)
-	btn:SetSize(22, 22)
-	btn:SetPoint("RIGHT", row, "RIGHT", 0, 0)
-	text:SetPoint("RIGHT", btn, "LEFT", -8, 0)
+	local btn = CreateFrame("Button", nil, row, "UIPanelButtonTemplate")
+	btn:SetSize(180, 20)
+	btn:SetPoint("BOTTOMRIGHT", row, "BOTTOMRIGHT", 0, 0)
+	text:SetPoint("RIGHT", btn, "LEFT", -12, 0)
 
 	local swatch = btn:CreateTexture(nil, "ARTWORK")
 	swatch:SetAllPoints(true)
@@ -196,6 +180,12 @@ local function CreateColorButton(parent, label, colorKey, yOffset)
 
 	btn:SetScript("OnClick", function()
 		OpenColorPicker(colorKey, swatch)
+	end)
+
+	row:SetScript("OnMouseUp", function(_, button)
+		if button == "LeftButton" then
+			OpenColorPicker(colorKey, swatch)
+		end
 	end)
 
 	row.button = btn
@@ -314,10 +304,11 @@ local function CreateTexturePathRow(parent, label, yOffset, getTexture, applyTex
 	local row = CreateFrame("Frame", nil, parent)
 	row:SetPoint("TOPLEFT", parent, "TOPLEFT", 20, yOffset)
 	row:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -20, yOffset)
-	row:SetHeight(24)
+	row:SetHeight(46)
+	row:EnableMouse(true)
 
 	local text = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-	text:SetPoint("LEFT", row, "LEFT", 0, 0)
+	text:SetPoint("TOPLEFT", row, "TOPLEFT", 0, 0)
 	text:SetText(label)
 
 	local function Refresh()
@@ -332,14 +323,14 @@ local function CreateTexturePathRow(parent, label, yOffset, getTexture, applyTex
 
 	local preview = row:CreateTexture(nil, "ARTWORK")
 	preview:SetSize(18, 18)
-	preview:SetPoint("RIGHT", row, "RIGHT", -228, 0)
+	preview:SetPoint("BOTTOMRIGHT", row, "BOTTOMRIGHT", -268, 0)
 	preview:SetTexture(getTexture())
 	row.preview = preview
 	text:SetPoint("RIGHT", preview, "LEFT", -8, 0)
 
 	local browseBtn = CreateFrame("Button", nil, row, "UIPanelButtonTemplate")
-	browseBtn:SetSize(210, 20)
-	browseBtn:SetPoint("RIGHT", row, "RIGHT", 0, 0)
+	browseBtn:SetSize(250, 20)
+	browseBtn:SetPoint("BOTTOMRIGHT", row, "BOTTOMRIGHT", 0, 0)
 	browseBtn:SetText(ns.GetTextureDisplayText(getTexture()))
 	local browseBtnText = browseBtn:GetFontString()
 	if browseBtnText then
@@ -360,6 +351,12 @@ local function CreateTexturePathRow(parent, label, yOffset, getTexture, applyTex
 		end)
 	end)
 
+	row:SetScript("OnMouseUp", function(_, button)
+		if button == "LeftButton" then
+			browseBtn:Click()
+		end
+	end)
+
 	row.refresh = Refresh
 	row.browseBtn = browseBtn
 	Refresh()
@@ -370,15 +367,16 @@ local function CreateCycleRow(parent, label, yOffset, options, getValue, applyVa
 	local row = CreateFrame("Frame", nil, parent)
 	row:SetPoint("TOPLEFT", parent, "TOPLEFT", 20, yOffset)
 	row:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -20, yOffset)
-	row:SetHeight(22)
+	row:SetHeight(40)
+	row:EnableMouse(true)
 
 	local text = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-	text:SetPoint("LEFT", row, "LEFT", 0, 0)
+	text:SetPoint("TOPLEFT", row, "TOPLEFT", 0, 0)
 	text:SetText(label)
 
 	local button = CreateFrame("Button", nil, row, "UIPanelButtonTemplate")
-	button:SetSize(120, 22)
-	button:SetPoint("RIGHT", row, "RIGHT", 0, 0)
+	button:SetSize(180, 20)
+	button:SetPoint("BOTTOMRIGHT", row, "BOTTOMRIGHT", 0, 0)
 	text:SetPoint("RIGHT", button, "LEFT", -8, 0)
 
 	local function Refresh()
@@ -391,6 +389,12 @@ local function CreateCycleRow(parent, label, yOffset, options, getValue, applyVa
 		Refresh()
 	end)
 
+	row:SetScript("OnMouseUp", function(_, mouseButton)
+		if mouseButton == "LeftButton" then
+			button:Click()
+		end
+	end)
+
 	row.button = button
 	row.refresh = Refresh
 	Refresh()
@@ -401,19 +405,26 @@ local function CreateToggleRow(parent, label, yOffset, getValue, applyValue)
 	local row = CreateFrame("Frame", nil, parent)
 	row:SetPoint("TOPLEFT", parent, "TOPLEFT", 20, yOffset)
 	row:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -20, yOffset)
-	row:SetHeight(22)
+	row:SetHeight(40)
+	row:EnableMouse(true)
 
 	local text = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-	text:SetPoint("LEFT", row, "LEFT", 0, 0)
+	text:SetPoint("TOPLEFT", row, "TOPLEFT", 0, 0)
 	text:SetText(label)
 
 	local toggle = CreateFrame("CheckButton", nil, row, "UICheckButtonTemplate")
-	toggle:SetPoint("RIGHT", row, "RIGHT", 0, 0)
+	toggle:SetPoint("BOTTOMRIGHT", row, "BOTTOMRIGHT", 0, 0)
 	toggle:SetChecked(getValue())
 	toggle:SetScript("OnClick", function(self)
 		applyValue(self:GetChecked() == true)
 	end)
 	text:SetPoint("RIGHT", toggle, "LEFT", -8, 0)
+
+	row:SetScript("OnMouseUp", function(_, mouseButton)
+		if mouseButton == "LeftButton" then
+			toggle:Click()
+		end
+	end)
 
 	row.toggle = toggle
 	row.refresh = function()
@@ -463,12 +474,13 @@ local function CreateWeaveFamilyRow(parent, abbrev, label, yOffset)
 	local row = CreateFrame("Frame", nil, parent)
 	row:SetPoint("TOPLEFT", parent, "TOPLEFT", 20, yOffset)
 	row:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -20, yOffset)
-	row:SetHeight(24)
+	row:SetHeight(40)
+	row:EnableMouse(true)
 
 	local color = ns.GetWeaveFamilyColor and ns.GetWeaveFamilyColor(abbrev) or nil
 	local swatch = row:CreateTexture(nil, "ARTWORK")
 	swatch:SetSize(12, 12)
-	swatch:SetPoint("LEFT", row, "LEFT", 0, 0)
+	swatch:SetPoint("TOPLEFT", row, "TOPLEFT", 0, 0)
 	if color then
 		swatch:SetColorTexture(color.r, color.g, color.b, color.a or 1)
 	else
@@ -476,13 +488,13 @@ local function CreateWeaveFamilyRow(parent, abbrev, label, yOffset)
 	end
 
 	local text = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-	text:SetPoint("LEFT", swatch, "RIGHT", 8, 0)
+	text:SetPoint("TOPLEFT", swatch, "RIGHT", 8, 0)
 	text:SetPoint("RIGHT", row, "RIGHT", -96, 0)
 	text:SetJustifyH("LEFT")
 	text:SetText(string.format("%s — %s", abbrev, label))
 
 	local toggle = CreateFrame("CheckButton", nil, row, "UICheckButtonTemplate")
-	toggle:SetPoint("RIGHT", row, "RIGHT", 0, 0)
+	toggle:SetPoint("BOTTOMRIGHT", row, "BOTTOMRIGHT", 0, 0)
 	toggle:SetChecked(ns.GetWeaveFamilyEnabled and ns.GetWeaveFamilyEnabled(abbrev))
 	toggle:SetScript("OnClick", function(self)
 		ns.SetWeaveFamilyEnabled(abbrev, self:GetChecked() == true)
@@ -491,6 +503,12 @@ local function CreateWeaveFamilyRow(parent, abbrev, label, yOffset)
 		end
 		if ns.ClearWeavePreview then
 			ns.ClearWeavePreview()
+		end
+	end)
+
+	row:SetScript("OnMouseUp", function(_, mouseButton)
+		if mouseButton == "LeftButton" then
+			toggle:Click()
 		end
 	end)
 
@@ -506,7 +524,7 @@ end
 -- ============================================================
 local function CreatePanel()
 	local f = CreateFrame("Frame", "SuperSwingTimerConfigPanel", UIParent, "BackdropTemplate")
-	f:SetSize(700, 760)
+	f:SetSize(780, 760)
 	f:SetPoint("CENTER")
 	f:SetBackdrop({
 		bgFile   = "Interface\\DialogFrame\\UI-DialogBox-Background",
@@ -548,7 +566,7 @@ local function CreatePanel()
 
 	local subtitle = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
 	subtitle:SetPoint("TOP", title, "BOTTOM", 0, -2)
-	subtitle:SetText("Configure bar sizing, textures, class-color defaults, and weave breakpoint markers.")
+	subtitle:SetText("Labels sit above the controls. Click a row anywhere to change its setting.")
 
 	-- Close button
 	local close = CreateFrame("Button", nil, f, "UIPanelCloseButton")
@@ -559,7 +577,7 @@ local function CreatePanel()
 	scrollFrame:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -20, 54)
 
 	local content = CreateFrame("Frame", nil, scrollFrame)
-	content:SetSize(640, 1920)
+	content:SetSize(720, 3600)
 	scrollFrame:SetScrollChild(content)
 	f.scrollFrame = scrollFrame
 	f.content = content
@@ -611,7 +629,7 @@ local function CreatePanel()
 		end
 	)
 
-	CreateSectionHeader(content, "Bar Appearance", -174)
+	CreateSectionHeader(content, "MH/OH Bar Appearance", -174)
 
 	if ns.playerClass ~= "SHAMAN" then
 		showWeaveRow:Hide()
@@ -627,7 +645,7 @@ local function CreatePanel()
 
 	local barTextureRow = CreateTexturePathRow(
 		content,
-		"Bar Texture",
+		"MH/OH Bar Texture",
 		ShiftY(-145),
 		function() return SuperSwingTimerDB.barTexture or ns.DB_DEFAULTS.barTexture end,
 		function(texturePath) ns.ApplyBarTexture(texturePath, SuperSwingTimerDB.barTextureLayer or ns.DB_DEFAULTS.barTextureLayer) end
@@ -635,16 +653,24 @@ local function CreatePanel()
 
 	local barLayerRow = CreateCycleRow(
 		content,
-		"Bar Texture Layer",
+		"MH/OH Texture Layer",
 		ShiftY(-180),
 		ns.TEXTURE_LAYER_OPTIONS,
 		function() return SuperSwingTimerDB.barTextureLayer or ns.DB_DEFAULTS.barTextureLayer end,
 		function(layer) ns.ApplyBarTextureLayer(layer) end
 	)
 
+	local rangedTextureRow = CreateTexturePathRow(
+		content,
+		"Ranged Bar Texture",
+		ShiftY(-200),
+		function() return SuperSwingTimerDB.rangedBarTexture or ns.DB_DEFAULTS.rangedBarTexture end,
+		function(texturePath) ns.ApplyRangedBarTexture(texturePath, SuperSwingTimerDB.barTextureLayer or ns.DB_DEFAULTS.barTextureLayer) end
+	)
+
 	local sparkTextureRow = CreateTexturePathRow(
 		content,
-		"Spark Texture",
+		"MH/OH Spark Texture",
 		ShiftY(-215),
 		function() return SuperSwingTimerDB.sparkTexture or ns.DB_DEFAULTS.sparkTexture end,
 		function(texturePath)
@@ -660,7 +686,7 @@ local function CreatePanel()
 
 	local sparkLayerRow = CreateCycleRow(
 		content,
-		"Spark Texture Layer",
+		"MH/OH Spark Layer",
 		ShiftY(-250),
 		ns.TEXTURE_LAYER_OPTIONS,
 		function() return SuperSwingTimerDB.sparkTextureLayer or ns.DB_DEFAULTS.sparkTextureLayer end,
@@ -698,7 +724,7 @@ local function CreatePanel()
 
 	local weaveSparkTextureRow = CreateTexturePathRow(
 		content,
-		"Cast Spark Texture",
+		"Cast Breakpoint Spark Texture",
 		ShiftY(-545),
 		function() return SuperSwingTimerDB.weaveSparkTexture or ns.DB_DEFAULTS.weaveSparkTexture end,
 		function(texturePath)
@@ -714,7 +740,7 @@ local function CreatePanel()
 
 	local weaveSparkLayerRow = CreateCycleRow(
 		content,
-		"Cast Spark Layer",
+		"Cast Breakpoint Layer",
 		ShiftY(-580),
 		ns.TEXTURE_LAYER_OPTIONS,
 		function() return SuperSwingTimerDB.weaveSparkTextureLayer or ns.DB_DEFAULTS.weaveSparkTextureLayer end,
@@ -967,7 +993,7 @@ local function CreatePanel()
 	local mhRow     = CreateColorButton(content, "Main Hand Color",  "mh",     yStart)
 	local ohRow     = CreateColorButton(content, "Off Hand Color",   "oh",     yStart + spacing)
 	local rangedRow = CreateColorButton(content, "Ranged Color",     "ranged", yStart + spacing * 2)
-	local sealRow   = CreateColorButton(content, "Seal-Twist Color", "sealTwist", yStart + spacing * 3)
+	local sealRow   = CreateColorButton(content, "Seal Breakpoint Line", "sealTwist", yStart + spacing * 3)
 
 	-- Seal-twist row only visible for Paladins
 	if ns.playerClass ~= "PALADIN" then
@@ -1102,6 +1128,7 @@ local function CreatePanel()
 	f.heightSlider = heightSlider
 	f.barTextureRow = barTextureRow
 	f.barLayerRow = barLayerRow
+	f.rangedTextureRow = rangedTextureRow
 	f.sparkTextureRow = sparkTextureRow
 	f.sparkLayerRow = sparkLayerRow
 	f.weaveSparkTextureRow = weaveSparkTextureRow
@@ -1152,6 +1179,9 @@ function ns.ToggleConfig()
 		end
 		if panel.barLayerRow and panel.barLayerRow.refresh then
 			panel.barLayerRow.refresh()
+		end
+		if panel.rangedTextureRow and panel.rangedTextureRow.refresh then
+			panel.rangedTextureRow.refresh()
 		end
 		if panel.sparkTextureRow and panel.sparkTextureRow.refresh then
 			panel.sparkTextureRow.refresh()
@@ -1242,6 +1272,7 @@ function ns.ResetConfigDefaults()
 	SuperSwingTimerDB.barHeight = ns.DB_DEFAULTS.barHeight
 	SuperSwingTimerDB.barTexture = ns.DB_DEFAULTS.barTexture
 	SuperSwingTimerDB.barTextureLayer = ns.DB_DEFAULTS.barTextureLayer
+	SuperSwingTimerDB.rangedBarTexture = ns.DB_DEFAULTS.rangedBarTexture
 	SuperSwingTimerDB.sparkTexture = ns.DB_DEFAULTS.sparkTexture
 	SuperSwingTimerDB.sparkTextureLayer = ns.DB_DEFAULTS.sparkTextureLayer
 	SuperSwingTimerDB.weaveSparkTexture = ns.DB_DEFAULTS.weaveSparkTexture
@@ -1281,6 +1312,7 @@ function ns.ResetConfigDefaults()
 	ns.SeedLegacyBarColorsFromClass()
 	ns.ApplyBarSize(ns.DB_DEFAULTS.barWidth, ns.DB_DEFAULTS.barHeight)
 	ns.ApplyBarTexture(ns.DB_DEFAULTS.barTexture, ns.DB_DEFAULTS.barTextureLayer)
+	ns.ApplyRangedBarTexture(ns.DB_DEFAULTS.rangedBarTexture, ns.DB_DEFAULTS.barTextureLayer)
 	ns.ApplyBarTextureLayer(ns.DB_DEFAULTS.barTextureLayer)
 	ns.ApplySparkSettings(ns.DB_DEFAULTS.sparkTexture, ns.DB_DEFAULTS.sparkWidth, ns.DB_DEFAULTS.sparkHeight, ns.DB_DEFAULTS.sparkTextureLayer, ns.DB_DEFAULTS.sparkAlpha)
 	ns.ApplySparkTextureLayer(ns.DB_DEFAULTS.sparkTextureLayer)
@@ -1299,6 +1331,9 @@ function ns.ResetConfigDefaults()
 	end
 	if panel and panel.barLayerRow and panel.barLayerRow.refresh then
 		panel.barLayerRow.refresh()
+	end
+	if panel and panel.rangedTextureRow and panel.rangedTextureRow.refresh then
+		panel.rangedTextureRow.refresh()
 	end
 	if panel and panel.sparkTextureRow and panel.sparkTextureRow.refresh then
 		panel.sparkTextureRow.refresh()

@@ -4,6 +4,8 @@ local GetTimePreciseSec = rawget(_G, "GetTimePreciseSec")
 local GetTime = rawget(_G, "GetTime")
 local UnitAttackSpeed = rawget(_G, "UnitAttackSpeed")
 local UnitRangedDamage = rawget(_G, "UnitRangedDamage")
+local GetSpellCooldown = rawget(_G, "GetSpellCooldown")
+local GetSpellInfo = rawget(_G, "GetSpellInfo")
 local CombatLogGetCurrentEventInfo = rawget(_G, "CombatLogGetCurrentEventInfo")
 local C_Timer = rawget(_G, "C_Timer")
 local UnitGUID = rawget(_G, "UnitGUID")
@@ -51,6 +53,26 @@ function ns.RefreshLatencyCache()
 	local activeLatency = (worldLatency and worldLatency > 0) and worldLatency or homeLatency or 0
 	ns.cachedLatency = math.max(activeLatency / 1000, 0)
 	return ns.cachedLatency
+end
+
+function ns.GetAutoShotCooldown()
+	ns.RefreshLatencyCache()
+	if type(GetSpellCooldown) ~= "function" then
+		return nil, nil
+	end
+
+	local startTime, duration, enabled = GetSpellCooldown(ns.AUTO_SHOT_ID)
+	if (not duration or duration <= 0) and type(GetSpellInfo) == "function" then
+		local autoShotName = GetSpellInfo(ns.AUTO_SHOT_ID)
+		if autoShotName then
+			startTime, duration, enabled = GetSpellCooldown(autoShotName)
+		end
+	end
+	if enabled == 1 and startTime and duration and duration > 0 then
+		return startTime + (ns.cachedLatency or 0), duration
+	end
+
+	return nil, nil
 end
 
 local function GetPlayerMeleeHastePercent()
@@ -130,6 +152,9 @@ function ns.OnPlayerEnteringWorld()
 	if ns.ApplyBarTexture then
 		ns.ApplyBarTexture(ns.GetBarTexture())
 	end
+	if ns.ApplyRangedBarTexture then
+		ns.ApplyRangedBarTexture(ns.GetRangedBarTexture(), ns.GetBarTextureLayer())
+	end
 	if ns.ApplySparkSettings then
 		ns.ApplySparkSettings(ns.GetSparkTexture(), ns.GetSparkWidth(), ns.GetSparkHeight())
 	end
@@ -170,9 +195,15 @@ function ns.SyncRangedTimerSpeed(now, force)
 	if not force and now < (t.nextSpeedCheckAt or 0) then return end
 	t.nextSpeedCheckAt = now + SPEED_CHECK_INTERVAL
 
-	local currentSpeed = UnitRangedDamage("player")
-	if currentSpeed and currentSpeed > 0 then
-		ns.RescaleTimer("ranged", currentSpeed)
+	local _, autoShotDuration = ns.GetAutoShotCooldown()
+	if autoShotDuration and autoShotDuration > 0 then
+		ns.RescaleTimer("ranged", autoShotDuration)
+		return
+	end
+
+	local rangedSpeedValue = UnitRangedDamage("player")
+	if rangedSpeedValue and rangedSpeedValue > 0 then
+		ns.RescaleTimer("ranged", rangedSpeedValue)
 	end
 end
 
@@ -186,9 +217,15 @@ function ns.StartSwing(slot, _, startTime)
 	local speed
 
 	if slot == "ranged" then
-		local s = UnitRangedDamage("player")
-		speed = (s and s > 0) and s or 2.0
-		t.lastSwing = now
+		local autoShotStart, autoShotDuration = ns.GetAutoShotCooldown()
+		if autoShotDuration and autoShotDuration > 0 then
+			speed = autoShotDuration
+			t.lastSwing = (autoShotStart and autoShotStart > 0) and autoShotStart or now
+		else
+			local s = UnitRangedDamage("player")
+			speed = (s and s > 0) and s or 2.0
+			t.lastSwing = now
+		end
 	else
 		local mhSpeed, ohSpeed = UnitAttackSpeed("player")
 		if slot == "mh" then
@@ -214,14 +251,18 @@ function ns.StartRangedSwing(startTime)
 	end
 
 	local now = startTime or GetCurrentTime()
+	local dedupeWindow = math.max(RANGED_START_DEDUPE_WINDOW, (ns.cachedLatency or 0) + 0.05)
 	if t.state == "swinging" and t.lastSwing and t.lastSwing > 0 then
 		local elapsed = now - t.lastSwing
-		if elapsed >= 0 and elapsed < RANGED_START_DEDUPE_WINDOW then
+		if elapsed >= 0 and elapsed < dedupeWindow then
 			return false
 		end
 	end
 
 	ns.StartSwing("ranged", nil, now)
+	if ns.UpdateCastZoneVisual then
+		ns.UpdateCastZoneVisual()
+	end
 	return true
 end
 
@@ -299,6 +340,9 @@ function ns.ResetTimer(slot)
 	t.nextSpeedCheckAt = 0
 
 	ns.RefreshUpdateLoop()
+	if slot == "ranged" and ns.UpdateCastZoneVisual then
+		ns.UpdateCastZoneVisual()
+	end
 end
 
 -- Apply parry haste to a melee timer when the player parries an incoming attack.

@@ -1,4 +1,5 @@
 ﻿local addonName, ns = ...
+local UnitAura = rawget(_G, "UnitAura")
 
 -- ============================================================
 -- Class-specific visual overlays and behavior hooks.
@@ -7,33 +8,101 @@
 -- ============================================================
 
 local function SetupRetPaladin()
-	-- Seal-twist window: colored overlay ~0.4s before swing
+	local function GetActivePaladinSeal()
+		if not UnitAura then
+			return nil
+		end
+
+		for index = 1, 40 do
+			local auraName, _, _, _, _, _, _, _, _, auraSpellId = UnitAura("player", index, "HELPFUL")
+			if not auraName then
+				break
+			end
+
+			local familyKey = ns.GetPaladinSealFamilyByAuraName and ns.GetPaladinSealFamilyByAuraName(auraName) or nil
+			if not familyKey and ns.GetPaladinSealFamilyBySpellId then
+				familyKey = ns.GetPaladinSealFamilyBySpellId(auraSpellId)
+			end
+
+			if familyKey then
+				return familyKey, auraSpellId, auraName
+			end
+		end
+
+		return nil
+	end
+
+	local function UpdateSealBreakpointLine()
+		local sealLine = ns.sealTwistBreakpoint
+		if not sealLine or not ns.mhBar then
+			return
+		end
+
+		local timer = ns.timers and ns.timers.mh
+		if not timer or timer.state ~= "swinging" or not timer.duration or timer.duration <= 0 then
+			sealLine:Hide()
+			return
+		end
+
+		local activeFamily = GetActivePaladinSeal()
+		if not activeFamily then
+			sealLine:Hide()
+			return
+		end
+
+		local barWidth = ns.mhBar.barWidth or ns.BAR_WIDTH or 0
+		if barWidth <= 0 then
+			sealLine:Hide()
+			return
+		end
+
+		local sealTwistLead = 0.4 + (ns.cachedLatency or 0)
+		local duration = timer.duration
+		local width = math.min(5, barWidth)
+		local offset = math.min((sealTwistLead / duration) * barWidth, barWidth)
+		local lineX
+
+		if ns.PALADIN_SEAL_TWIST_FAMILIES and ns.PALADIN_SEAL_TWIST_FAMILIES[activeFamily] then
+			-- Twist seal active: show the reseal breakpoint earlier in the swing.
+			lineX = offset - (width * 0.5)
+		else
+			-- Base seal active: show the breakpoint near the end of the swing.
+			lineX = barWidth - offset - (width * 0.5)
+		end
+
+		if lineX < 0 then
+			lineX = 0
+		elseif lineX > (barWidth - width) then
+			lineX = math.max(barWidth - width, 0)
+		end
+
+		sealLine:ClearAllPoints()
+		sealLine:SetPoint("TOPLEFT", ns.mhBar, "LEFT", lineX, 0)
+		sealLine:SetPoint("BOTTOMLEFT", ns.mhBar, "LEFT", lineX, 0)
+		sealLine:SetWidth(width)
+		sealLine:Show()
+	end
+
+	-- Seal breakpoint line: 5px opaque marker that flips with the active seal.
 	ns.OnBarsCreated = function()
 		if not ns.mhBar then return end
-		local sealZone = ns.mhBar:CreateTexture(nil, "ARTWORK")
-		local c = SuperSwingTimerDB and SuperSwingTimerDB.colors and SuperSwingTimerDB.colors.sealTwist
-		if c then
-			sealZone:SetColorTexture(c.r, c.g, c.b, c.a)
-		else
-			sealZone:SetColorTexture(0, 0.8, 1, 0.4)  -- cyan default
+		if not ns.sealTwistBreakpoint then
+			local sealLine = ns.mhBar:CreateTexture(nil, "OVERLAY")
+			sealLine:SetColorTexture(0, 0, 0, 1)
+			sealLine:SetPoint("TOPLEFT", ns.mhBar, "LEFT", 0, 0)
+			sealLine:SetPoint("BOTTOMLEFT", ns.mhBar, "LEFT", 0, 0)
+			sealLine:SetWidth(5)
+			sealLine:Hide()
+			ns.sealTwistBreakpoint = sealLine
+			ns.sealTwistZone = sealLine
 		end
-		sealZone:SetPoint("TOPRIGHT")
-		sealZone:SetPoint("BOTTOMRIGHT")
-		sealZone:SetWidth(0)
-		ns.sealTwistZone = sealZone
 
-		local SEAL_WINDOW = 0.4
 		local origOnUpdate = ns.OnUpdate
 		ns.OnUpdate = function(elapsed)
 			origOnUpdate(elapsed)
-			if ns.sealTwistZone and ns.timers.mh.state == "swinging" and ns.mhBar then
-				local dur = ns.timers.mh.duration
-				if dur > 0 then
-					local w = (SEAL_WINDOW / dur) * ns.BAR_WIDTH
-					ns.sealTwistZone:SetWidth(math.min(w, ns.BAR_WIDTH))
-				end
-			end
+			UpdateSealBreakpointLine()
 		end
+		UpdateSealBreakpointLine()
 	end
 end
 

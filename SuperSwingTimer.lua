@@ -78,6 +78,7 @@ local function MigrateDB()
 			barHeight = ns.DB_DEFAULTS.barHeight,
 			barTexture = ns.DB_DEFAULTS.barTexture,
 			barTextureLayer = ns.DB_DEFAULTS.barTextureLayer,
+			rangedBarTexture = ns.DB_DEFAULTS.rangedBarTexture,
 			sparkTexture = ns.DB_DEFAULTS.sparkTexture,
 			sparkTextureLayer = ns.DB_DEFAULTS.sparkTextureLayer,
 			weaveSparkTexture = ns.DB_DEFAULTS.weaveSparkTexture,
@@ -249,6 +250,30 @@ local function MigrateDB()
 		SuperSwingTimerDB.indicatorBlendMode = SuperSwingTimerDB.indicatorBlendMode or ns.DB_DEFAULTS.indicatorBlendMode
 		SuperSwingTimerDB.version = 12
 	end
+
+	-- v12 -> v13: separate ranged texture selection for hunters
+	if (SuperSwingTimerDB.version or 0) < 13 then
+		SuperSwingTimerDB.rangedBarTexture = SuperSwingTimerDB.rangedBarTexture or ns.DB_DEFAULTS.rangedBarTexture
+		SuperSwingTimerDB.version = 13
+	end
+
+	-- v13 -> v14: seal twist becomes an opaque breakpoint line by default
+	if (SuperSwingTimerDB.version or 0) < 14 then
+		SuperSwingTimerDB.colors = SuperSwingTimerDB.colors or {}
+		local sealTwist = SuperSwingTimerDB.colors.sealTwist
+		local isLegacySealTwist = sealTwist and math.abs((sealTwist.r or 0) - 0) < 0.001
+			and math.abs((sealTwist.g or 0) - 0.8) < 0.001
+			and math.abs((sealTwist.b or 0) - 1) < 0.001
+			and math.abs((sealTwist.a or 0) - 0.4) < 0.001
+
+		if not sealTwist or isLegacySealTwist then
+			SuperSwingTimerDB.colors.sealTwist = { r = 0, g = 0, b = 0, a = 1 }
+		elseif sealTwist.a == nil then
+			sealTwist.a = 1
+		end
+
+		SuperSwingTimerDB.version = 14
+	end
 end
 
 -- ============================================================
@@ -337,6 +362,7 @@ local function RegisterEvents()
 
 	if cfg.ranged then
 		frame:RegisterEvent("UNIT_RANGEDDAMAGE")
+		frame:RegisterEvent("SPELL_UPDATE_COOLDOWN")
 		frame:RegisterEvent("START_AUTOREPEAT_SPELL")
 		frame:RegisterEvent("STOP_AUTOREPEAT_SPELL")
 		frame:RegisterEvent("PLAYER_STARTED_MOVING")
@@ -453,6 +479,18 @@ frame:SetScript("OnEvent", function(self, event, ...)
 	elseif event == "UNIT_RANGEDDAMAGE" then
 		ns.SyncRangedTimerSpeed(nil, true)
 
+	elseif event == "SPELL_UPDATE_COOLDOWN" then
+		if ns.playerClass == "HUNTER" and ns.GetAutoShotCooldown then
+			local _, autoShotDuration = ns.GetAutoShotCooldown()
+			if autoShotDuration and autoShotDuration > 0 then
+				if ns.timers.ranged and ns.timers.ranged.state == "swinging" then
+					ns.SyncRangedTimerSpeed(nil, true)
+				else
+					ns.StartRangedSwing()
+				end
+			end
+		end
+
 	elseif event == "UNIT_INVENTORY_CHANGED" then
 		ns.UpdateOHBar()
 		ns.SanityCheckTimers()
@@ -475,6 +513,12 @@ frame:SetScript("OnEvent", function(self, event, ...)
 
 	elseif event == "START_AUTOREPEAT_SPELL" then
 		-- Hunter starts auto-shooting
+		if ns.playerClass == "HUNTER" and ns.GetAutoShotCooldown then
+			local _, autoShotDuration = ns.GetAutoShotCooldown()
+			if autoShotDuration and autoShotDuration > 0 and ns.timers.ranged and ns.timers.ranged.state ~= "swinging" then
+				ns.StartRangedSwing()
+			end
+		end
 		if ns.rangedBar then ns.rangedBar:SetAlpha(1) end
 
 	elseif event == "STOP_AUTOREPEAT_SPELL" then

@@ -16,6 +16,15 @@ local function GetCurrentTime()
 	return GetTime() + (ns.cachedLatency or 0)
 end
 
+local function GetRangedCastWindow()
+	local baseWindow = ns.CAST_WINDOW or 0
+	local castWindow = baseWindow + (ns.cachedLatency or 0)
+	if castWindow < 0 then
+		return 0
+	end
+	return castWindow
+end
+
 -- ============================================================
 -- Bar factory
 -- ============================================================
@@ -107,6 +116,7 @@ local function CreateRangedBar()
 	castThresholdMarker:SetWidth(5)
 	castThresholdMarker:SetPoint("TOPLEFT")
 	castThresholdMarker:SetPoint("BOTTOMLEFT")
+	castThresholdMarker:Hide()
 	f.castThresholdMarker = castThresholdMarker
 
 	f.labelText:SetText("Auto Shot")
@@ -154,28 +164,32 @@ end
 -- ============================================================
 -- Cast-zone visual for ranged bar
 -- ============================================================
-local function UpdateCastZoneVisual()
+local function UpdateCastZoneVisual(castWindow)
 	local f = ns.rangedBar
 	if not f then return end
-	local duration = ns.timers.ranged.duration
-	local castWindow = ns.CAST_WINDOW or 0
-	if duration and duration > 0 and castWindow > 0 then
-		local width = math.min((castWindow / duration) * ns.BAR_WIDTH, ns.BAR_WIDTH)
+	local t = ns.timers.ranged
+	local duration = t and t.duration or 0
+	local barWidth = f.barWidth or ns.BAR_WIDTH or 0
+	castWindow = castWindow or GetRangedCastWindow()
+	if t and t.state == "swinging" and duration > 0 and castWindow > 0 then
+		local width = math.min((castWindow / duration) * barWidth, barWidth)
 		if width < 0 then width = 0 end
 		f.castOverlay:SetWidth(width)
 
 		if f.castThresholdMarker then
-			local markerWidth = math.min(5, ns.BAR_WIDTH)
-			local markerLeft = math.max(ns.BAR_WIDTH - width - (markerWidth * 0.5), 0)
+			local markerWidth = math.min(5, barWidth)
+			local markerLeft = math.max(barWidth - width - (markerWidth * 0.5), 0)
 			f.castThresholdMarker:ClearAllPoints()
 			f.castThresholdMarker:SetPoint("TOPLEFT", f, "LEFT", markerLeft, 0)
 			f.castThresholdMarker:SetPoint("BOTTOMLEFT", f, "LEFT", markerLeft, 0)
 			f.castThresholdMarker:SetWidth(markerWidth)
 			f.castThresholdMarker:Show()
 		end
-	elseif f.castThresholdMarker then
+	else
 		f.castOverlay:SetWidth(0)
-		f.castThresholdMarker:Hide()
+		if f.castThresholdMarker then
+			f.castThresholdMarker:Hide()
+		end
 	end
 end
 ns.UpdateCastZoneVisual = UpdateCastZoneVisual
@@ -271,6 +285,9 @@ local function UpdateRangedBar(elapsed)
 			if remainingChannel < 0 then remainingChannel = 0 end
 
 			f.castOverlay:SetWidth(0)
+			if f.castThresholdMarker then
+				f.castThresholdMarker:Hide()
+			end
 			f:SetMinMaxValues(0, channelDuration)
 			f:SetValue(elapsedChannel)
 			f.labelText:SetText(string.format("%s %.1f", channelName, remainingChannel))
@@ -282,21 +299,29 @@ local function UpdateRangedBar(elapsed)
 		end
 	end
 
-	if t.state ~= "swinging" then return end
+	if t.state ~= "swinging" then
+		f.castOverlay:SetWidth(0)
+		if f.castThresholdMarker then
+			f.castThresholdMarker:Hide()
+		end
+		return
+	end
 
 	local now = GetCurrentTime()
 	if not t.duration or t.duration <= 0 then return end
 
 	-- Haste rescaling: throttled sync + event fallback
 	ns.SyncRangedTimerSpeed(now)
+	local rangedWindowLead = GetRangedCastWindow()
+	UpdateCastZoneVisual(rangedWindowLead)
 
 	-- Movement clipping in cast window
-	local cooldownEnd = t.lastSwing + t.duration - ns.CAST_WINDOW
+	local cooldownEnd = t.lastSwing + t.duration - rangedWindowLead
 	if now >= cooldownEnd then
 		f:SetStatusBarColor(1, 0, 0, 1)  -- red: cast window
 		if ns.isMoving then
 			-- Pin timer at cast-window boundary
-			t.lastSwing = now - (t.duration - ns.CAST_WINDOW)
+			t.lastSwing = now - (t.duration - rangedWindowLead)
 		end
 	else
 		local c = ns.rangedBarBaseColor
@@ -383,6 +408,9 @@ function ns.ApplyBarSize(width, height)
 		ns.ohBar:SetPoint("TOPLEFT", ns.mhBar, "BOTTOMLEFT", 0, -2)
 		ns.ohBar:SetPoint("TOPRIGHT", ns.mhBar, "BOTTOMRIGHT", 0, -2)
 	end
+	if ns.UpdateCastZoneVisual then
+		ns.UpdateCastZoneVisual()
+	end
 end
 
 function ns.ApplyBarTexture(texturePath, layer)
@@ -423,6 +451,9 @@ function ns.ApplyRangedBarTexture(texturePath, layer)
 				bar.statusBarTexture:SetDrawLayer(layer)
 			end
 		end
+	end
+	if ns.UpdateCastZoneVisual then
+		ns.UpdateCastZoneVisual()
 	end
 end
 
@@ -686,7 +717,7 @@ function ns.ApplyBarColors()
 	local colors = SuperSwingTimerDB and SuperSwingTimerDB.colors
 	if not colors then return end
 
-	-- Bars always use alpha=1; only sealTwist uses fractional alpha
+	-- Bars always use alpha=1; the seal breakpoint line is also kept opaque by default.
 	local mhColor = ns.GetBarColor and ns.GetBarColor("mh") or colors.mh
 	if ns.mhBar and mhColor then
 		local c = mhColor
@@ -706,9 +737,10 @@ function ns.ApplyBarColors()
 			ns.rangedBar:SetStatusBarColor(c.r, c.g, c.b, 1)
 		end
 	end
-	if ns.sealTwistZone and colors.sealTwist then
+	if (ns.sealTwistBreakpoint or ns.sealTwistZone) and colors.sealTwist then
 		local c = colors.sealTwist
-		ns.sealTwistZone:SetColorTexture(c.r, c.g, c.b, c.a or 0.4)
+		local sealLine = ns.sealTwistBreakpoint or ns.sealTwistZone
+		sealLine:SetColorTexture(c.r, c.g, c.b, c.a or 1)
 	end
 end
 

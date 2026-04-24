@@ -1,5 +1,5 @@
 ﻿local addonName, ns = ...
-local LibStub = rawget(_G, "LibStub")
+local GetSpellInfo = rawget(_G, "GetSpellInfo")
 
 -- ============================================================
 -- UI constants
@@ -12,6 +12,123 @@ ns.CAST_WINDOW = 0.5    -- hidden ranged cast time in TBC
 -- Spell IDs
 -- ============================================================
 ns.AUTO_SHOT_ID = 75
+
+-- Paladin seal spell IDs used for UnitAura-aware breakpoint logic.
+-- The lookup prefers verified TBC/Classic spell IDs and also keeps literal
+-- seal names so aura detection stays resilient across rank gaps and client
+-- spell-ID availability.
+ns.PALADIN_SEAL_FAMILIES = {
+	COMMAND = {
+		label = "Seal of Command",
+		ids = { 20375, 20915, 20918, 20919, 20920, 27170 },
+		names = { "Seal of Command" },
+	},
+	CORRUPTION = {
+		label = "Seal of Corruption",
+		ids = { 348704 },
+		names = { "Seal of Corruption" },
+	},
+	BLOOD = {
+		label = "Seal of Blood",
+		ids = { 31892 },
+		names = { "Seal of Blood" },
+	},
+	MARTYR = {
+		label = "Seal of the Martyr",
+		ids = { 348700 },
+		names = { "Seal of the Martyr" },
+	},
+	VENGEANCE = {
+		label = "Seal of Vengeance",
+		ids = { 31801 },
+		names = { "Seal of Vengeance" },
+	},
+	JUSTICE = {
+		label = "Seal of Justice",
+		ids = { 20165, 31895 },
+		names = { "Seal of Justice" },
+	},
+	WISDOM = {
+		label = "Seal of Wisdom",
+		ids = { 20166, 20356, 20357, 27166 },
+		names = { "Seal of Wisdom" },
+	},
+	RIGHTEOUSNESS = {
+		label = "Seal of Righteousness",
+		ids = { 20154, 20287, 20288, 20289, 20290, 20291, 20292, 20293, 27155 },
+		names = { "Seal of Righteousness" },
+	},
+	LIGHT = {
+		label = "Seal of Light",
+		ids = { 20166, 20347, 20348, 20349, 27160 },
+		names = { "Seal of Light" },
+	},
+	CRUSADER = {
+		label = "Seal of the Crusader",
+		ids = { 21082, 20162, 20305, 20306, 20307, 20308, 27158 },
+		names = { "Seal of the Crusader" },
+	},
+}
+
+ns.PALADIN_SEAL_LOOKUP = {}
+ns.PALADIN_SEAL_NAME_LOOKUP = {}
+ns.PALADIN_SEAL_TWIST_FAMILIES = {
+	BLOOD = true,
+	MARTYR = true,
+}
+
+ns.PALADIN_SEAL_FAMILY_ORDER = {
+	"COMMAND",
+	"CORRUPTION",
+	"BLOOD",
+	"MARTYR",
+	"VENGEANCE",
+	"JUSTICE",
+	"WISDOM",
+	"RIGHTEOUSNESS",
+	"LIGHT",
+	"CRUSADER",
+}
+
+for _, familyKey in ipairs(ns.PALADIN_SEAL_FAMILY_ORDER) do
+	local family = ns.PALADIN_SEAL_FAMILIES[familyKey]
+	if family then
+		for _, spellName in ipairs(family.names or {}) do
+			if not ns.PALADIN_SEAL_NAME_LOOKUP[spellName] then
+				ns.PALADIN_SEAL_NAME_LOOKUP[spellName] = familyKey
+			end
+			local localizedName = GetSpellInfo and GetSpellInfo(spellName)
+			if localizedName and not ns.PALADIN_SEAL_NAME_LOOKUP[localizedName] then
+				ns.PALADIN_SEAL_NAME_LOOKUP[localizedName] = familyKey
+			end
+		end
+
+		for _, spellId in ipairs(family.ids) do
+			if not ns.PALADIN_SEAL_LOOKUP[spellId] then
+				ns.PALADIN_SEAL_LOOKUP[spellId] = familyKey
+			end
+
+			local spellName = GetSpellInfo and GetSpellInfo(spellId)
+			if spellName and not ns.PALADIN_SEAL_NAME_LOOKUP[spellName] then
+				ns.PALADIN_SEAL_NAME_LOOKUP[spellName] = familyKey
+			end
+		end
+	end
+end
+
+function ns.GetPaladinSealFamilyBySpellId(spellId)
+	if not spellId then
+		return nil
+	end
+	return ns.PALADIN_SEAL_LOOKUP and ns.PALADIN_SEAL_LOOKUP[spellId] or nil
+end
+
+function ns.GetPaladinSealFamilyByAuraName(auraName)
+	if not auraName then
+		return nil
+	end
+	return ns.PALADIN_SEAL_NAME_LOOKUP and ns.PALADIN_SEAL_NAME_LOOKUP[auraName] or nil
+end
 
 -- Next-Melee-Attack (NMA) abilities: queue on the MH swing, fire
 -- as SPELL_DAMAGE (not SWING_DAMAGE), reset MH timer on land.
@@ -119,7 +236,7 @@ ns.CLASS_CONFIG = {
 -- SavedVariables defaults
 -- ============================================================
 ns.DB_DEFAULTS = {
-	version   = 12,
+	version   = 14,
 	showMH    = true,
 	showOH    = true,
 	showRanged = true,
@@ -162,7 +279,7 @@ ns.DB_DEFAULTS = {
 		mh        = { r = 0, g = 0, b = 0, a = 1   },
 		oh        = { r = 0, g = 0, b = 0, a = 1   },
 		ranged    = { r = 0, g = 0, b = 0, a = 1   },
-		sealTwist = { r = 0, g = 0.8, b = 1, a = 0.4 },
+		sealTwist = { r = 0, g = 0, b = 0, a = 1 },
 	},
 	positions = {
 		mh     = { point = "CENTER", relativePoint = "CENTER", x = 0, y = -120 },
@@ -236,9 +353,14 @@ function ns.GetTextureDisplayText(texturePath)
 	end
 
 	local library = ns.TEXTURE_LIBRARY or ns.BuildTextureLibrary()
-	for _, entry in ipairs(library) do
-		if entry.path == texturePath then
-			return string.format("[%s / %s] %s", entry.category or "Unknown", entry.style or "style", entry.label or texturePath)
+	if library then
+		for _, entry in ipairs(library) do
+			if entry.path == texturePath then
+				if entry.category and entry.label then
+					return string.format("%s / %s", entry.category, entry.label)
+				end
+				return entry.label or texturePath
+			end
 		end
 	end
 
