@@ -33,26 +33,27 @@ local function SetupRetPaladin()
 	end
 
 	local function UpdateSealBreakpointLine()
-		local sealLine = ns.sealTwistBreakpoint
-		if not sealLine or not ns.mhBar then
+		local sealEndLine = ns.sealTwistBreakpoint
+		local sealResealLine = ns.sealTwistResealBreakpoint
+		if not sealEndLine or not ns.mhBar then
 			return
 		end
 
 		local timer = ns.timers and ns.timers.mh
 		if not timer or timer.state ~= "swinging" or not timer.duration or timer.duration <= 0 then
-			sealLine:Hide()
-			return
-		end
-
-		local activeFamily = GetActivePaladinSeal()
-		if not activeFamily then
-			sealLine:Hide()
+			sealEndLine:Hide()
+			if sealResealLine then
+				sealResealLine:Hide()
+			end
 			return
 		end
 
 		local barWidth = ns.mhBar.barWidth or ns.BAR_WIDTH or 0
 		if barWidth <= 0 then
-			sealLine:Hide()
+			sealEndLine:Hide()
+			if sealResealLine then
+				sealResealLine:Hide()
+			end
 			return
 		end
 
@@ -60,41 +61,62 @@ local function SetupRetPaladin()
 		local duration = timer.duration
 		local width = math.min(5, barWidth)
 		local offset = math.min((sealTwistLead / duration) * barWidth, barWidth)
-		local lineX
+		local endLineX = math.max(barWidth - width, 0)
+		if endLineX < 0 then
+			endLineX = 0
+		elseif endLineX > (barWidth - width) then
+			endLineX = math.max(barWidth - width, 0)
+		end
 
-		if ns.PALADIN_SEAL_TWIST_FAMILIES and ns.PALADIN_SEAL_TWIST_FAMILIES[activeFamily] then
+		sealEndLine:ClearAllPoints()
+		sealEndLine:SetPoint("TOPLEFT", ns.mhBar, "LEFT", endLineX, 0)
+		sealEndLine:SetPoint("BOTTOMLEFT", ns.mhBar, "LEFT", endLineX, 0)
+		sealEndLine:SetWidth(width)
+		sealEndLine:Show()
+
+		local activeFamily = GetActivePaladinSeal()
+		if sealResealLine and activeFamily and ns.PALADIN_SEAL_TWIST_FAMILIES and ns.PALADIN_SEAL_TWIST_FAMILIES[activeFamily] then
 			-- Twist seal active: show the reseal breakpoint earlier in the swing.
-			lineX = offset - (width * 0.5)
-		else
-			-- Base seal active: show the breakpoint near the end of the swing.
-			lineX = barWidth - offset - (width * 0.5)
-		end
+			local resealLineX = barWidth - offset - (width * 0.5)
+			if resealLineX < 0 then
+				resealLineX = 0
+			elseif resealLineX > (barWidth - width) then
+				resealLineX = math.max(barWidth - width, 0)
+			end
 
-		if lineX < 0 then
-			lineX = 0
-		elseif lineX > (barWidth - width) then
-			lineX = math.max(barWidth - width, 0)
+			sealResealLine:ClearAllPoints()
+			sealResealLine:SetPoint("TOPLEFT", ns.mhBar, "LEFT", resealLineX, 0)
+			sealResealLine:SetPoint("BOTTOMLEFT", ns.mhBar, "LEFT", resealLineX, 0)
+			sealResealLine:SetWidth(width)
+			sealResealLine:Show()
+		elseif sealResealLine then
+			sealResealLine:Hide()
 		end
-
-		sealLine:ClearAllPoints()
-		sealLine:SetPoint("TOPLEFT", ns.mhBar, "LEFT", lineX, 0)
-		sealLine:SetPoint("BOTTOMLEFT", ns.mhBar, "LEFT", lineX, 0)
-		sealLine:SetWidth(width)
-		sealLine:Show()
 	end
 
-	-- Seal breakpoint line: 5px opaque marker that flips with the active seal.
+	-- Seal breakpoint lines: end-of-swing twist marker plus optional reseal marker.
 	ns.OnBarsCreated = function()
 		if not ns.mhBar then return end
 		if not ns.sealTwistBreakpoint then
-			local sealLine = ns.mhBar:CreateTexture(nil, "OVERLAY")
-			sealLine:SetColorTexture(0, 0, 0, 1)
-			sealLine:SetPoint("TOPLEFT", ns.mhBar, "LEFT", 0, 0)
-			sealLine:SetPoint("BOTTOMLEFT", ns.mhBar, "LEFT", 0, 0)
-			sealLine:SetWidth(5)
-			sealLine:Hide()
-			ns.sealTwistBreakpoint = sealLine
-			ns.sealTwistZone = sealLine
+			local sealEndLine = ns.mhBar:CreateTexture(nil, "OVERLAY")
+			sealEndLine:SetColorTexture(0, 0, 0, 1)
+			sealEndLine:SetPoint("TOPLEFT", ns.mhBar, "LEFT", 0, 0)
+			sealEndLine:SetPoint("BOTTOMLEFT", ns.mhBar, "LEFT", 0, 0)
+			sealEndLine:SetWidth(5)
+			sealEndLine:Hide()
+			ns.sealTwistBreakpoint = sealEndLine
+			ns.sealTwistZone = sealEndLine
+		end
+
+		if not ns.sealTwistResealBreakpoint then
+			local sealResealLine = ns.mhBar:CreateTexture(nil, "OVERLAY")
+			sealResealLine:SetColorTexture(0, 0, 0, 1)
+			sealResealLine:SetPoint("TOPLEFT", ns.mhBar, "LEFT", 0, 0)
+			sealResealLine:SetPoint("BOTTOMLEFT", ns.mhBar, "LEFT", 0, 0)
+			sealResealLine:SetWidth(5)
+			sealResealLine:Hide()
+			ns.sealTwistResealBreakpoint = sealResealLine
+			ns.sealTwistResealZone = sealResealLine
 		end
 
 		local origOnUpdate = ns.OnUpdate

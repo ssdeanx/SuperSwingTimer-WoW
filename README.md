@@ -14,7 +14,7 @@ Super Swing Timer tracks white-hit swing timers across main hand, off hand, and 
 - Parry haste handling
 - Extra attack suppression for Sword Spec and Windfury
 - Druid form reset handling
-- Ret Paladin seal breakpoint line that shows the end-of-swing twist point on the base seal and the earlier reseal point on the twist seal, both latency-aware, with the full seal list from `docs/spellIds.md` covered by aura-name fallback
+- Ret Paladin seal breakpoint line that shows the actual strike-edge end marker plus a latency-aware reseal point on twist seals, with the full seal list from `docs/spellIds.md` covered by aura-name fallback
 - Shaman weave assist for Lightning Bolt, Chain Lightning, Healing Wave, Lesser Healing Wave, and Chain Heal breakpoints, with color-coded family markers you can disable individually
 - Default MH / OH / ranged bar colors now follow your class color until you pick a custom color
 - Customizable bars, separate MH/OH and ranged textures, glow/opaque indicator mode, spark settings, colors, alpha, visibility, and lock state via `/sst`, `/super`, or `/superswingtimer`

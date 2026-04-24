@@ -77,7 +77,7 @@ Use these links first when checking Classic addon UI behavior, widgets, frames, 
 
 - Final paladin pass expanded the seal family table to match `docs/spellIds.md` for Command, Corruption, Blood, Martyr, Vengeance, Justice, Wisdom, Righteousness, Light, and Crusader.
 - Hunter Auto Shot cooldown start is now aligned to the addon’s latency-adjusted clock so the ranged bar and cooldown API share the same timing base.
-- The ret paladin seal breakpoint line remains aura-driven, latency-aware, and opaque black, with Blood/Martyr treated as the twist-side seals and first-write-wins aura-name lookup to avoid duplicate-ID overwrites.
+- The ret paladin seal breakpoint line now keeps the actual strike-edge marker visible and adds a second latency-aware reseal marker for twist seals while staying aura-driven and opaque black.
 
 - Final pass tightened Hunter Auto Shot by anchoring the ranged bar to the cooldown API start time when active, with `UnitRangedDamage()` still as the fallback.
 - Paladin seal breakpoint lookup now prefers aura names, falls back to verified IDs, and survives missing rank IDs via localized name fallback.

@@ -742,6 +742,10 @@ function ns.ApplyBarColors()
 		local sealLine = ns.sealTwistBreakpoint or ns.sealTwistZone
 		sealLine:SetColorTexture(c.r, c.g, c.b, c.a or 1)
 	end
+	if ns.sealTwistResealBreakpoint and colors.sealTwist then
+		local c = colors.sealTwist
+		ns.sealTwistResealBreakpoint:SetColorTexture(c.r, c.g, c.b, c.a or 1)
+	end
 end
 
 -- ============================================================

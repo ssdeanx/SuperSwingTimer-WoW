@@ -3,7 +3,7 @@
 ## Progress Update (2026-04-24 - final paladin seal coverage)
 
 - Expanded the paladin seal family lookup to cover every seal and spell ID listed in `docs/spellIds.md`.
-- Kept the ret paladin breakpoint line UnitAura-aware, latency-aware, and black, with the twist-family mapping limited to the actual twist seals and the aura-name lookup set to first-write-wins.
+- Restored the ret paladin breakpoint line so the actual strike-edge marker stays visible again, with a second latency-aware reseal marker for twist seals, still UnitAura-aware and black.
 - Anchored Hunter Auto Shot cooldown start to the addon’s latency-adjusted clock so the cooldown API and the ranged bar share the same time base.
 - Re-reviewed the shaman weave-assist and melee white-damage reset/start flow; no extra logic changes were required in this pass.
 

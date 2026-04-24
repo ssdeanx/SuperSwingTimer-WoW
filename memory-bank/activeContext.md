@@ -3,7 +3,7 @@
 ## Active Context Update (2026-04-24 - final paladin seal coverage)
 
 - Expanded the paladin seal family table to match `docs/spellIds.md` for Command, Corruption, Blood, Martyr, Vengeance, Justice, Wisdom, Righteousness, Light, and Crusader.
-- Kept the ret paladin breakpoint line aura-driven, latency-aware, and opaque black, with Blood/Martyr treated as the twist-side seals and first-write-wins aura-name lookup to avoid duplicate-ID overwrites.
+- Restored the ret paladin breakpoint line so the actual strike-edge marker stays visible again, with a second latency-aware reseal marker for twist seals, still aura-driven and opaque black.
 - Anchored Hunter Auto Shot cooldown start to the addon’s latency-adjusted clock so the ranged timer and cooldown API stay on the same time base.
 - Re-reviewed the shaman weave-assist and melee white-damage reset/start flow; no further structural changes were needed in this pass.
 

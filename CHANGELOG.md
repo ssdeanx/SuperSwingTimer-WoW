@@ -9,7 +9,7 @@
 - Reflowed the `/sst` rows so labels sit above the controls and the texture, cycle, toggle, and color rows are easier to click.
 - Hardened the paladin seal breakpoint lookup so it prefers aura names, uses verified seal IDs, and still works when a rank ID is missing.
 - Expanded the paladin seal family table to match `docs/spellIds.md` for Command, Corruption, Blood, Martyr, Vengeance, Justice, Wisdom, Righteousness, Light, and Crusader.
-- Made the ret paladin seal-twist indicator into a UnitAura-aware breakpoint line that switches between the end-of-swing twist point and the earlier reseal point, and defaults to an opaque black marker.
+- Restored the ret paladin seal breakpoint line so the actual strike-edge marker stays visible again, with a second latency-aware reseal marker for twist seals and an opaque black default color.
 
 ## 3.1.0 - 2026-04-23
 
