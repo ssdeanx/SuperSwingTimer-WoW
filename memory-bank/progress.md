@@ -1,5 +1,33 @@
 # Progress
 
+## Progress Update (2026-04-27 - dropdown interaction and spark refresh cleanup)
+
+- Improved the dropdown UX so cycle and texture rows open from the whole row instead of only the small control area.
+- Removed the unused texture-browser popup implementation to keep the config code aligned with the actual dropdown UI.
+- Cleared spark anchors before each update so the moving overlays do not accumulate stale points.
+- Added subtle hover highlights to the interactive rows so users can spot the clickable controls faster.
+- Enabled mouse interaction on the texture rows so the new hover and click-open behavior is actually reachable.
+- Added hover tooltips to the config rows and controls so the panel explains what each setting means when hovered.
+
+## Progress Update (2026-04-27 - overlay frame and UI control refit)
+
+- Reworked the bar visual path so overlay textures are parented to dedicated non-mouse frames above the bars, eliminating the hover-sensitive HIGHLIGHT fallback that was making the hunter spark appear and disappear.
+- Updated the `/sst` config to use visible dropdowns for cycle settings and editable numeric fields beside sliders.
+- Synced the README and UI notes to match the new control layout and overlay-frame strategy.
+
+## Progress Update (2026-04-27 - hunter spark / breakpoint visibility fix)
+
+- Fixed the fill-vs-overlay layering bug that could bury the hunter Auto Shot spark and the shaman / ret paladin breakpoint markers behind the bar skin.
+- Updated the config subtitle copy so it tells players to hover for help and then use the right-side controls to change settings.
+- Recorded the fix in `CHANGELOG.md` as a 3.1.3 entry so the visibility regression is tracked for the next release.
+
+## Progress Update (2026-04-24 - breakpoint overlays above bar fill)
+
+- Added a shared above-bar texture-layer helper so breakpoint visuals stay visible even when the bar texture layer is raised.
+- Rewired the shaman weave spark, triangles, the ranged cast-threshold marker, and the ret paladin seal breakpoint lines to use that above-bar layering path.
+- Updated shaman weave positioning to use the actual MH bar width instead of only the static default width.
+- Synced README.md and CHANGELOG.md with the above-bar breakpoint behavior; the TOC already carries v3.1.2.
+
 ## Progress Update (2026-04-24 - final paladin seal coverage)
 
 - Expanded the paladin seal family lookup to cover every seal and spell ID listed in `docs/spellIds.md`.

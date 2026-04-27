@@ -14,8 +14,8 @@ Super Swing Timer tracks white-hit swing timers across main hand, off hand, and 
 - Parry haste handling
 - Extra attack suppression for Sword Spec and Windfury
 - Druid form reset handling
-- Ret Paladin seal breakpoint line that shows the actual strike-edge end marker plus a latency-aware reseal point on twist seals, with the full seal list from `docs/spellIds.md` covered by aura-name fallback
-- Shaman weave assist for Lightning Bolt, Chain Lightning, Healing Wave, Lesser Healing Wave, and Chain Heal breakpoints, with color-coded family markers you can disable individually
+- Ret Paladin seal breakpoint line that shows the actual strike-edge end marker plus a latency-aware reseal point on twist seals, with the full seal list from `docs/spellIds.md` covered by aura-name fallback and the breakpoint lines clamped above the bar texture
+- Shaman weave assist for Lightning Bolt, Chain Lightning, Healing Wave, Lesser Healing Wave, and Chain Heal breakpoints, with color-coded family markers that stay above the MH bar texture and can be disabled individually
 - Default MH / OH / ranged bar colors now follow your class color until you pick a custom color
 - Customizable bars, separate MH/OH and ranged textures, glow/opaque indicator mode, spark settings, colors, alpha, visibility, and lock state via `/sst`, `/super`, or `/superswingtimer`
 - Toggle MH / OH / ranged bars plus the shaman weave helper and its family controls from the config panel or Blizzard's Interface Options → AddOns list
@@ -71,11 +71,11 @@ Type `/sst`, `/super`, or `/superswingtimer` to open the config panel.
 
 - Show or hide the main-hand, off-hand, and ranged bars
 - Enable or disable the shaman weave assist and individual spell families
-- Adjust bar, ranged, and spark textures, layers, sizes, alpha, and the tiny upper/lower weave markers that follow spell haste
+- Adjust bar, ranged, and spark textures, layers, sizes, alpha, and the tiny upper/lower weave markers that follow spell haste; breakpoint overlays now live on a dedicated overlay frame so they stay above the bar fill without relying on hover-sensitive HIGHLIGHT layering
 - Switch indicator glow between a bright additive style and a more opaque blend
 - Toggle minimal mode and bar locking
 - Change colors for MH, OH, ranged, and the paladin seal breakpoint line, or keep MH / OH / ranged on class colors
-- Labels sit above the controls in `/sst`, and the rows themselves are clickable so texture, cycle, toggle, and color changes are easier to hit
+- Labels sit above the controls in `/sst`, the rows are clickable, and hover tooltips explain what each setting does; the right-side checkbox, dropdown, or editable number field is the control for each row
 
 ## Feedback
 

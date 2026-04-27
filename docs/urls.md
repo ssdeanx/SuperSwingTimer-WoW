@@ -30,3 +30,14 @@
 - [Blizzard UI Source](https://github.com/Gethe/wow-ui-source)
 - [Blizzard API Documentation AddOn](https://github.com/Gethe/wow-ui-source/tree/live/Interface/AddOns/Blizzard_APIDocumentation)
 - [Blizzard API Documentation Generated AddOn](https://github.com/Gethe/wow-ui-source/tree/live/Interface/AddOns/Blizzard_APIDocumentationGenerated)
+
+## Classic timer and layering references
+
+- [GetTimePreciseSec](https://warcraft.wiki.gg/wiki/API_GetTimePreciseSec)
+- [GetSpellCooldown](https://warcraft.wiki.gg/wiki/API_GetSpellCooldown)
+- [C_Timer.After](https://warcraft.wiki.gg/wiki/API_C_Timer.After)
+- [C_Timer.NewTimer](https://warcraft.wiki.gg/wiki/API_C_Timer.NewTimer)
+- [C_Timer.NewTicker](https://warcraft.wiki.gg/wiki/API_C_Timer.NewTicker)
+- [Region:SetDrawLayer](https://warcraft.wiki.gg/wiki/API_Region_SetDrawLayer)
+- [Layer](https://warcraft.wiki.gg/wiki/Layer)
+- [ScriptRegion:EnableMouse](https://warcraft.wiki.gg/wiki/API_ScriptRegion_EnableMouse)

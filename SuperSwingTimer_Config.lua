@@ -3,11 +3,18 @@ local CreateFrame = rawget(_G, "CreateFrame")
 local UIParent = rawget(_G, "UIParent")
 local InCombatLockdown = rawget(_G, "InCombatLockdown")
 local ColorPickerFrame = rawget(_G, "ColorPickerFrame")
-local wipe = rawget(_G, "wipe")
+local GameTooltip = rawget(_G, "GameTooltip")
+local UIDropDownMenu_AddButton = rawget(_G, "UIDropDownMenu_AddButton")
+local UIDropDownMenu_CreateInfo = rawget(_G, "UIDropDownMenu_CreateInfo")
+local UIDropDownMenu_Initialize = rawget(_G, "UIDropDownMenu_Initialize")
+local UIDropDownMenu_SetText = rawget(_G, "UIDropDownMenu_SetText")
+local UIDropDownMenu_SetWidth = rawget(_G, "UIDropDownMenu_SetWidth")
+local ToggleDropDownMenu = rawget(_G, "ToggleDropDownMenu")
 
 -- ============================================================
 -- Config panel: /sst opens this frame.
--- Sliders for bar dimensions, color picker buttons for bar colors.
+-- Dropdowns for layer / mode selectors, checkboxes for toggles,
+-- sliders with numeric entry boxes, and color picker buttons for bar colors.
 -- ============================================================
 
 local panel
@@ -32,13 +39,78 @@ local function GetOptionLabel(options, value)
 	return options[1].label
 end
 
-local function GetNextOptionValue(options, currentValue)
-	for index, option in ipairs(options) do
-		if option.value == currentValue then
-			return options[(index % #options) + 1].value
-		end
+local function FormatSliderValue(step, value)
+	if step and step < 1 then
+		return string.format("%.2f", value)
 	end
-	return options[1].value
+
+	return tostring(math.floor(value + 0.5))
+end
+
+local function NormalizeSliderValue(text, minVal, maxVal, step)
+	local value = tonumber(text)
+	if not value then
+		return nil
+	end
+
+	value = math.max(minVal, math.min(maxVal, value))
+	if step and step > 0 then
+		value = minVal + math.floor(((value - minVal) / step) + 0.5) * step
+		value = math.max(minVal, math.min(maxVal, value))
+	end
+
+	return value
+end
+
+local function SyncSliderDisplay(slider, value)
+	if not slider then
+		return
+	end
+
+	local displayValue = slider.formatValue and slider.formatValue(value) or tostring(value)
+	if slider.valueText then
+		slider.valueText:SetText(displayValue)
+	end
+	if slider.valueBox and not slider.valueBox:HasFocus() then
+		slider.valueBox:SetText(displayValue)
+	end
+end
+
+local function AddRowHoverHighlight(row, alpha)
+	if not row then
+		return nil
+	end
+
+	local highlight = row:CreateTexture(nil, "HIGHLIGHT")
+	highlight:SetColorTexture(1, 1, 1, alpha or 0.06)
+	highlight:SetAllPoints(true)
+	return highlight
+end
+
+local function AddControlTooltip(frame, title, text)
+	if not frame or not GameTooltip or not frame.HookScript then
+		return
+	end
+
+	frame:HookScript("OnEnter", function(self)
+		GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+		GameTooltip:SetText(title or "", 1, 1, 1)
+		if text and text ~= "" then
+			GameTooltip:AddLine(text, 0.9, 0.9, 0.9, true)
+		end
+		GameTooltip:Show()
+	end)
+	frame:HookScript("OnLeave", function()
+		GameTooltip:Hide()
+	end)
+end
+
+local function GetTextureSummaryText(texturePath)
+	if ns.GetTextureSummaryText then
+		return ns.GetTextureSummaryText(texturePath)
+	end
+
+	return string.format("%s | Bar: %s", ns.GetTextureDisplayText(texturePath), ns.GetTextureDisplayText(ns.GetBarTexture and ns.GetBarTexture() or nil))
 end
 
 -- ============================================================
@@ -129,7 +201,7 @@ end
 local function CreateSlider(parent, label, minVal, maxVal, step, yOffset)
 	local slider = CreateFrame("Slider", nil, parent, "OptionsSliderTemplate")
 	slider:SetPoint("TOPLEFT", parent, "TOPLEFT", 20, yOffset)
-	slider:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -20, yOffset)
+	slider:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -90, yOffset)
 	slider:SetMinMaxValues(minVal, maxVal)
 	slider:SetValueStep(step)
 	slider:SetObeyStepOnDrag(true)
@@ -138,11 +210,44 @@ local function CreateSlider(parent, label, minVal, maxVal, step, yOffset)
 	slider.Text:SetText(label)
 	slider.Low:SetText(tostring(minVal))
 	slider.High:SetText(tostring(maxVal))
+	slider.formatValue = function(value)
+		return FormatSliderValue(step, value)
+	end
 
 	-- Value label below the slider
 	local valText = slider:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
 	valText:SetPoint("TOP", slider, "BOTTOM", 0, -2)
 	slider.valueText = valText
+
+	local valueBox = CreateFrame("EditBox", nil, parent, "InputBoxTemplate")
+	valueBox:SetSize(54, 20)
+	valueBox:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -20, yOffset - 1)
+	valueBox:SetAutoFocus(false)
+	valueBox:SetMaxLetters(8)
+	valueBox:SetJustifyH("CENTER")
+	valueBox:SetScript("OnEnterPressed", function(self)
+		local parsed = NormalizeSliderValue(self:GetText(), minVal, maxVal, step)
+		if parsed ~= nil then
+			slider:SetValue(parsed)
+		end
+		self:ClearFocus()
+		SyncSliderDisplay(slider, slider:GetValue())
+	end)
+	valueBox:SetScript("OnEscapePressed", function(self)
+		self:ClearFocus()
+		SyncSliderDisplay(slider, slider:GetValue())
+	end)
+	valueBox:SetScript("OnEditFocusGained", function(self)
+		self:HighlightText()
+	end)
+	valueBox:SetScript("OnEditFocusLost", function(self)
+		SyncSliderDisplay(slider, slider:GetValue())
+	end)
+	slider.valueBox = valueBox
+	AddControlTooltip(slider, label, string.format("Drag or type a value to change %s.", label))
+	AddControlTooltip(valueBox, label, string.format("Type a value for %s.", label))
+
+	SyncSliderDisplay(slider, slider:GetValue())
 
 	return slider
 end
@@ -153,6 +258,7 @@ local function CreateColorButton(parent, label, colorKey, yOffset)
 	row:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -20, yOffset)
 	row:SetHeight(44)
 	row:EnableMouse(true)
+	row.hover = AddRowHoverHighlight(row)
 
 	local text = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
 	text:SetPoint("TOPLEFT", row, "TOPLEFT", 0, 0)
@@ -181,6 +287,7 @@ local function CreateColorButton(parent, label, colorKey, yOffset)
 	btn:SetScript("OnClick", function()
 		OpenColorPicker(colorKey, swatch)
 	end)
+	AddControlTooltip(row, label, string.format("Click the swatch button to change the %s color.", label))
 
 	row:SetScript("OnMouseUp", function(_, button)
 		if button == "LeftButton" then
@@ -193,119 +300,13 @@ local function CreateColorButton(parent, label, colorKey, yOffset)
 	return row
 end
 
-local textureDropdown
-
-local function EnsureTextureDropdown()
-	if textureDropdown then
-		return textureDropdown
-	end
-
-	local f = CreateFrame("Frame", "SuperSwingTimerTextureDropdown", UIParent, "BackdropTemplate")
-	f:SetSize(420, 400)
-	f:SetPoint("TOPLEFT", UIParent, "TOPLEFT", 120, -120)
-	f:SetBackdrop({
-		bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
-		edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
-		tile = true, tileSize = 32, edgeSize = 32,
-		insets = { left = 8, right = 8, top = 8, bottom = 8 },
-	})
-	f:SetFrameStrata("DIALOG")
-	f:Hide()
-
-	local title = f:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-	title:SetPoint("TOP", f, "TOP", 0, -12)
-	title:SetText("Select Texture")
-
-	local scrollFrame = CreateFrame("ScrollFrame", nil, f, "UIPanelScrollFrameTemplate")
-	scrollFrame:SetPoint("TOPLEFT", f, "TOPLEFT", 10, -34)
-	scrollFrame:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -20, 10)
-
-	local content = CreateFrame("Frame", nil, scrollFrame)
-	content:SetSize(380, 1000)
-	scrollFrame:SetScrollChild(content)
-
-	f.rows = {}
-	f.content = content
-	f.applyTexture = nil
-	f.currentTexture = nil
-
-	function f:Build(entries)
-		for _, row in ipairs(self.rows) do
-			row:Hide()
-		end
-		wipe(self.rows)
-
-		local rowHeight = 28
-		self.content:SetSize(380, math.max(1, #entries * rowHeight))
-
-		for index, entry in ipairs(entries) do
-			local row = CreateFrame("Button", nil, self.content)
-			row:SetSize(360, 24)
-			row:SetPoint("TOPLEFT", self.content, "TOPLEFT", 0, -((index - 1) * rowHeight))
-
-			local background = row:CreateTexture(nil, "BACKGROUND")
-			background:SetAllPoints(true)
-			if entry.path == self.currentTexture then
-				background:SetColorTexture(0.20, 0.35, 0.55, 0.95)
-			else
-				background:SetColorTexture(0.12, 0.12, 0.12, 0.90)
-			end
-
-			local highlight = row:CreateTexture(nil, "HIGHLIGHT")
-			highlight:SetAllPoints(true)
-			highlight:SetColorTexture(1, 1, 1, 0.10)
-
-			local preview = row:CreateTexture(nil, "ARTWORK")
-			preview:SetSize(16, 16)
-			preview:SetPoint("LEFT", row, "LEFT", 6, 0)
-			preview:SetTexture(entry.path)
-
-			local text = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-			text:SetPoint("LEFT", preview, "RIGHT", 6, 0)
-			text:SetPoint("RIGHT", row, "RIGHT", -24, 0)
-			text:SetJustifyH("LEFT")
-			text:SetText(string.format("[%s / %s] %s", entry.category or "Unknown", entry.style or "style", entry.label or entry.path))
-
-			local check = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-			check:SetPoint("RIGHT", row, "RIGHT", -6, 0)
-			check:SetText(entry.path == self.currentTexture and "✓" or "")
-
-			row:SetScript("OnClick", function()
-				if self.applyTexture then
-					self.applyTexture(entry.path)
-				end
-				self:Hide()
-			end)
-
-			row.background = background
-			row.preview = preview
-			row.label = text
-			row.check = check
-			self.rows[#self.rows + 1] = row
-		end
-	end
-
-	-- parent is already UIParent via CreateFrame; do not attempt to treat UIParent as a Lua table
-	textureDropdown = f
-	return f
-end
-
-local function OpenTextureDropdown(currentTexture, applyTexture)
-	local dropdown = EnsureTextureDropdown()
-	dropdown.applyTexture = applyTexture
-	dropdown.currentTexture = currentTexture
-
-	local library = ns.TEXTURE_LIBRARY or ns.BuildTextureLibrary() or {}
-	dropdown:Build(library)
-	dropdown:Show()
-end
-
 local function CreateTexturePathRow(parent, label, yOffset, getTexture, applyTexture)
 	local row = CreateFrame("Frame", nil, parent)
 	row:SetPoint("TOPLEFT", parent, "TOPLEFT", 20, yOffset)
 	row:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -20, yOffset)
-	row:SetHeight(46)
+	row:SetHeight(52)
 	row:EnableMouse(true)
+	row.hover = AddRowHoverHighlight(row)
 
 	local text = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
 	text:SetPoint("TOPLEFT", row, "TOPLEFT", 0, 0)
@@ -313,52 +314,56 @@ local function CreateTexturePathRow(parent, label, yOffset, getTexture, applyTex
 
 	local function Refresh()
 		local path = getTexture()
+		row.currentTexture = path
 		if row.preview then
 			row.preview:SetTexture(path)
 		end
-		if row.browseBtn then
-			row.browseBtn:SetText(ns.GetTextureDisplayText(path))
+		if row.dropdown and UIDropDownMenu_SetText then
+			UIDropDownMenu_SetText(row.dropdown, GetTextureSummaryText(path))
 		end
 	end
 
 	local preview = row:CreateTexture(nil, "ARTWORK")
 	preview:SetSize(18, 18)
-	preview:SetPoint("BOTTOMRIGHT", row, "BOTTOMRIGHT", -268, 0)
+	preview:SetPoint("BOTTOMRIGHT", row, "BOTTOMRIGHT", -282, 0)
 	preview:SetTexture(getTexture())
 	row.preview = preview
 	text:SetPoint("RIGHT", preview, "LEFT", -8, 0)
 
-	local browseBtn = CreateFrame("Button", nil, row, "UIPanelButtonTemplate")
-	browseBtn:SetSize(250, 20)
-	browseBtn:SetPoint("BOTTOMRIGHT", row, "BOTTOMRIGHT", 0, 0)
-	browseBtn:SetText(ns.GetTextureDisplayText(getTexture()))
-	local browseBtnText = browseBtn:GetFontString()
-	if browseBtnText then
-		browseBtnText:SetJustifyH("LEFT")
-		browseBtnText:ClearAllPoints()
-		browseBtnText:SetPoint("LEFT", browseBtn, "LEFT", 10, 0)
-		browseBtnText:SetPoint("RIGHT", browseBtn, "RIGHT", -10, 0)
+	local dropdown = CreateFrame("Frame", nil, row, "UIDropDownMenuTemplate")
+	dropdown:SetPoint("BOTTOMRIGHT", row, "BOTTOMRIGHT", 0, -1)
+	if UIDropDownMenu_SetWidth then
+		UIDropDownMenu_SetWidth(dropdown, 260)
 	end
-	browseBtn:SetScript("OnClick", function()
-		OpenTextureDropdown(getTexture(), function(texturePath)
-			applyTexture(texturePath)
-			if row.preview then
-				row.preview:SetTexture(texturePath)
-			end
-			if browseBtn then
-				browseBtn:SetText(ns.GetTextureDisplayText(texturePath))
-			end
-		end)
-	end)
-
-	row:SetScript("OnMouseUp", function(_, button)
-		if button == "LeftButton" then
-			browseBtn:Click()
+	row.dropdown = dropdown
+	row:SetScript("OnMouseUp", function(_, mouseButton)
+		if mouseButton == "LeftButton" and ToggleDropDownMenu then
+			ToggleDropDownMenu(1, nil, dropdown, dropdown, 0, 0)
 		end
 	end)
+	AddControlTooltip(row, label, string.format("Choose the texture used for %s from the dropdown preview list.", label))
+
+	if UIDropDownMenu_Initialize and UIDropDownMenu_AddButton and UIDropDownMenu_CreateInfo then
+		UIDropDownMenu_Initialize(dropdown, function(_, level)
+			local library = ns.TEXTURE_LIBRARY or ns.BuildTextureLibrary() or {}
+			for _, entry in ipairs(library) do
+				local info = UIDropDownMenu_CreateInfo()
+				info.text = string.format("[%s / %s] %s", entry.category or "Unknown", entry.style or "style", entry.label or entry.path)
+				info.value = entry.path
+				info.checked = entry.path == row.currentTexture
+				info.func = function()
+					applyTexture(entry.path)
+					Refresh()
+					if ns.RefreshTextureRows then
+						ns.RefreshTextureRows()
+					end
+				end
+				UIDropDownMenu_AddButton(info, level)
+			end
+		end)
+	end
 
 	row.refresh = Refresh
-	row.browseBtn = browseBtn
 	Refresh()
 	return row
 end
@@ -367,35 +372,51 @@ local function CreateCycleRow(parent, label, yOffset, options, getValue, applyVa
 	local row = CreateFrame("Frame", nil, parent)
 	row:SetPoint("TOPLEFT", parent, "TOPLEFT", 20, yOffset)
 	row:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -20, yOffset)
-	row:SetHeight(40)
+	row:SetHeight(52)
 	row:EnableMouse(true)
+	row.hover = AddRowHoverHighlight(row)
 
 	local text = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
 	text:SetPoint("TOPLEFT", row, "TOPLEFT", 0, 0)
 	text:SetText(label)
 
-	local button = CreateFrame("Button", nil, row, "UIPanelButtonTemplate")
-	button:SetSize(180, 20)
-	button:SetPoint("BOTTOMRIGHT", row, "BOTTOMRIGHT", 0, 0)
-	text:SetPoint("RIGHT", button, "LEFT", -8, 0)
+	local dropdown = CreateFrame("Frame", nil, row, "UIDropDownMenuTemplate")
+	dropdown:SetPoint("BOTTOMRIGHT", row, "BOTTOMRIGHT", 0, -1)
+	if UIDropDownMenu_SetWidth then
+		UIDropDownMenu_SetWidth(dropdown, 180)
+	end
+	text:SetPoint("RIGHT", dropdown, "LEFT", -8, 0)
 
 	local function Refresh()
-		button:SetText(GetOptionLabel(options, getValue()))
+		if UIDropDownMenu_SetText then
+			UIDropDownMenu_SetText(dropdown, GetOptionLabel(options, getValue()))
+		end
 	end
 
-	button:SetScript("OnClick", function()
-		local nextValue = GetNextOptionValue(options, getValue())
-		applyValue(nextValue)
-		Refresh()
-	end)
+	if UIDropDownMenu_Initialize and UIDropDownMenu_AddButton and UIDropDownMenu_CreateInfo then
+		UIDropDownMenu_Initialize(dropdown, function(_, level)
+			local currentValue = getValue()
+			for _, option in ipairs(options) do
+				local info = UIDropDownMenu_CreateInfo()
+				info.text = option.label
+				info.value = option.value
+				info.checked = option.value == currentValue
+				info.func = function()
+					applyValue(option.value)
+					Refresh()
+				end
+				UIDropDownMenu_AddButton(info, level)
+			end
+		end)
+	end
 
+	row.dropdown = dropdown
 	row:SetScript("OnMouseUp", function(_, mouseButton)
-		if mouseButton == "LeftButton" then
-			button:Click()
+		if mouseButton == "LeftButton" and ToggleDropDownMenu then
+			ToggleDropDownMenu(1, nil, dropdown, dropdown, 0, 0)
 		end
 	end)
-
-	row.button = button
+	AddControlTooltip(row, label, string.format("Choose the %s option from the dropdown. The full list shows the real WoW draw layers and modes.", label))
 	row.refresh = Refresh
 	Refresh()
 	return row
@@ -407,6 +428,7 @@ local function CreateToggleRow(parent, label, yOffset, getValue, applyValue)
 	row:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -20, yOffset)
 	row:SetHeight(40)
 	row:EnableMouse(true)
+	row.hover = AddRowHoverHighlight(row)
 
 	local text = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
 	text:SetPoint("TOPLEFT", row, "TOPLEFT", 0, 0)
@@ -425,6 +447,7 @@ local function CreateToggleRow(parent, label, yOffset, getValue, applyValue)
 			toggle:Click()
 		end
 	end)
+	AddControlTooltip(row, label, string.format("Toggle %s on or off.", label))
 
 	row.toggle = toggle
 	row.refresh = function()
@@ -438,6 +461,11 @@ local function CreateSectionHeader(parent, label, yOffset)
 	row:SetPoint("TOPLEFT", parent, "TOPLEFT", 20, yOffset)
 	row:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -20, yOffset)
 	row:SetHeight(18)
+
+	local bg = row:CreateTexture(nil, "BACKGROUND")
+	bg:SetColorTexture(0.08, 0.08, 0.08, 0.55)
+	bg:SetPoint("TOPLEFT", row, "TOPLEFT", -4, 2)
+	bg:SetPoint("BOTTOMRIGHT", row, "BOTTOMRIGHT", 4, -2)
 
 	local text = row:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
 	text:SetPoint("LEFT", row, "LEFT", 0, 0)
@@ -476,6 +504,7 @@ local function CreateWeaveFamilyRow(parent, abbrev, label, yOffset)
 	row:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -20, yOffset)
 	row:SetHeight(40)
 	row:EnableMouse(true)
+	row.hover = AddRowHoverHighlight(row)
 
 	local color = ns.GetWeaveFamilyColor and ns.GetWeaveFamilyColor(abbrev) or nil
 	local swatch = row:CreateTexture(nil, "ARTWORK")
@@ -511,6 +540,7 @@ local function CreateWeaveFamilyRow(parent, abbrev, label, yOffset)
 			toggle:Click()
 		end
 	end)
+	AddControlTooltip(row, string.format("%s family", abbrev), string.format("Keep the %s family in the weave breakpoint helper.", label))
 
 	row.toggle = toggle
 	row.refresh = function()
@@ -566,7 +596,7 @@ local function CreatePanel()
 
 	local subtitle = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
 	subtitle:SetPoint("TOP", title, "BOTTOM", 0, -2)
-	subtitle:SetText("Labels sit above the controls. Click a row anywhere to change its setting.")
+	subtitle:SetText("Hover rows for help, then use the right-side checkbox, dropdown, numeric field, or swatch button to change them.")
 
 	-- Close button
 	local close = CreateFrame("Button", nil, f, "UIPanelCloseButton")
@@ -637,11 +667,11 @@ local function CreatePanel()
 
 	local widthSlider = CreateSlider(content, "Bar Width", 100, 400, 10, ShiftY(-50))
 	widthSlider:SetValue(SuperSwingTimerDB.barWidth or ns.DB_DEFAULTS.barWidth)
-	widthSlider.valueText:SetText(tostring(widthSlider:GetValue()))
+	SyncSliderDisplay(widthSlider, widthSlider:GetValue())
 
 	local heightSlider = CreateSlider(content, "Bar Height", 10, 40, 2, ShiftY(-100))
 	heightSlider:SetValue(SuperSwingTimerDB.barHeight or ns.DB_DEFAULTS.barHeight)
-	heightSlider.valueText:SetText(tostring(heightSlider:GetValue()))
+	SyncSliderDisplay(heightSlider, heightSlider:GetValue())
 
 	local barTextureRow = CreateTexturePathRow(
 		content,
@@ -695,19 +725,19 @@ local function CreatePanel()
 
 	local sparkWidthSlider = CreateSlider(content, "Spark Width", 8, 60, 1, ShiftY(-315))
 	sparkWidthSlider:SetValue(SuperSwingTimerDB.sparkWidth or ns.DB_DEFAULTS.sparkWidth)
-	sparkWidthSlider.valueText:SetText(tostring(sparkWidthSlider:GetValue()))
+	SyncSliderDisplay(sparkWidthSlider, sparkWidthSlider:GetValue())
 
 	local sparkHeightSlider = CreateSlider(content, "Spark Height", 12, 90, 1, ShiftY(-365))
 	sparkHeightSlider:SetValue(SuperSwingTimerDB.sparkHeight or ns.DB_DEFAULTS.sparkHeight)
-	sparkHeightSlider.valueText:SetText(tostring(sparkHeightSlider:GetValue()))
+	SyncSliderDisplay(sparkHeightSlider, sparkHeightSlider:GetValue())
 
 	local backgroundAlphaSlider = CreateSlider(content, "Bar Background Alpha", 0, 1, 0.05, ShiftY(-415))
 	backgroundAlphaSlider:SetValue(SuperSwingTimerDB.barBackgroundAlpha or ns.DB_DEFAULTS.barBackgroundAlpha)
-	backgroundAlphaSlider.valueText:SetText(string.format("%.2f", backgroundAlphaSlider:GetValue()))
+	SyncSliderDisplay(backgroundAlphaSlider, backgroundAlphaSlider:GetValue())
 
 	local sparkAlphaSlider = CreateSlider(content, "Spark Alpha", 0, 1, 0.05, ShiftY(-465))
 	sparkAlphaSlider:SetValue(SuperSwingTimerDB.sparkAlpha or ns.DB_DEFAULTS.sparkAlpha)
-	sparkAlphaSlider.valueText:SetText(string.format("%.2f", sparkAlphaSlider:GetValue()))
+	SyncSliderDisplay(sparkAlphaSlider, sparkAlphaSlider:GetValue())
 
 	local indicatorBlendModeRow = CreateCycleRow(
 		content,
@@ -749,15 +779,15 @@ local function CreatePanel()
 
 	local weaveSparkWidthSlider = CreateSlider(content, "Cast Spark Width", 6, 60, 1, ShiftY(-615))
 	weaveSparkWidthSlider:SetValue(SuperSwingTimerDB.weaveSparkWidth or ns.DB_DEFAULTS.weaveSparkWidth)
-	weaveSparkWidthSlider.valueText:SetText(tostring(weaveSparkWidthSlider:GetValue()))
+	SyncSliderDisplay(weaveSparkWidthSlider, weaveSparkWidthSlider:GetValue())
 
 	local weaveSparkHeightSlider = CreateSlider(content, "Cast Spark Height", 8, 100, 1, ShiftY(-665))
 	weaveSparkHeightSlider:SetValue(SuperSwingTimerDB.weaveSparkHeight or ns.DB_DEFAULTS.weaveSparkHeight)
-	weaveSparkHeightSlider.valueText:SetText(tostring(weaveSparkHeightSlider:GetValue()))
+	SyncSliderDisplay(weaveSparkHeightSlider, weaveSparkHeightSlider:GetValue())
 
 	local weaveSparkAlphaSlider = CreateSlider(content, "Cast Spark Alpha", 0, 1, 0.05, ShiftY(-715))
 	weaveSparkAlphaSlider:SetValue(SuperSwingTimerDB.weaveSparkAlpha or ns.DB_DEFAULTS.weaveSparkAlpha)
-	weaveSparkAlphaSlider.valueText:SetText(string.format("%.2f", weaveSparkAlphaSlider:GetValue()))
+	SyncSliderDisplay(weaveSparkAlphaSlider, weaveSparkAlphaSlider:GetValue())
 
 	local weaveTriangleTopRow = CreateTexturePathRow(
 		content,
@@ -813,15 +843,15 @@ local function CreatePanel()
 
 	local weaveTriangleSizeSlider = CreateSlider(content, "Marker Size", 6, 24, 1, ShiftY(-870))
 	weaveTriangleSizeSlider:SetValue(SuperSwingTimerDB.weaveTriangleSize or ns.DB_DEFAULTS.weaveTriangleSize)
-	weaveTriangleSizeSlider.valueText:SetText(tostring(weaveTriangleSizeSlider:GetValue()))
+	SyncSliderDisplay(weaveTriangleSizeSlider, weaveTriangleSizeSlider:GetValue())
 
 	local weaveTriangleGapSlider = CreateSlider(content, "Marker Gap", 0, 6, 1, ShiftY(-920))
 	weaveTriangleGapSlider:SetValue(SuperSwingTimerDB.weaveTriangleGap or ns.DB_DEFAULTS.weaveTriangleGap)
-	weaveTriangleGapSlider.valueText:SetText(tostring(weaveTriangleGapSlider:GetValue()))
+	SyncSliderDisplay(weaveTriangleGapSlider, weaveTriangleGapSlider:GetValue())
 
 	local weaveTriangleAlphaSlider = CreateSlider(content, "Marker Alpha", 0, 1, 0.05, ShiftY(-970))
 	weaveTriangleAlphaSlider:SetValue(SuperSwingTimerDB.weaveTriangleAlpha or ns.DB_DEFAULTS.weaveTriangleAlpha)
-	weaveTriangleAlphaSlider.valueText:SetText(string.format("%.2f", weaveTriangleAlphaSlider:GetValue()))
+	SyncSliderDisplay(weaveTriangleAlphaSlider, weaveTriangleAlphaSlider:GetValue())
 
 	CreateSectionHeader(content, "General Behavior", -1130)
 
@@ -843,19 +873,19 @@ local function CreatePanel()
 
 	widthSlider:SetScript("OnValueChanged", function(self, value)
 		value = math.floor(value + 0.5)
-		self.valueText:SetText(tostring(value))
+		SyncSliderDisplay(self, value)
 		ns.ApplyBarSize(value, heightSlider:GetValue())
 	end)
 
 	heightSlider:SetScript("OnValueChanged", function(self, value)
 		value = math.floor(value + 0.5)
-		self.valueText:SetText(tostring(value))
+		SyncSliderDisplay(self, value)
 		ns.ApplyBarSize(widthSlider:GetValue(), value)
 	end)
 
 	sparkWidthSlider:SetScript("OnValueChanged", function(self, value)
 		value = math.floor(value + 0.5)
-		self.valueText:SetText(tostring(value))
+		SyncSliderDisplay(self, value)
 		ns.ApplySparkSettings(
 			SuperSwingTimerDB.sparkTexture or ns.DB_DEFAULTS.sparkTexture,
 			value,
@@ -867,7 +897,7 @@ local function CreatePanel()
 
 	sparkHeightSlider:SetScript("OnValueChanged", function(self, value)
 		value = math.floor(value + 0.5)
-		self.valueText:SetText(tostring(value))
+		SyncSliderDisplay(self, value)
 		ns.ApplySparkSettings(
 			SuperSwingTimerDB.sparkTexture or ns.DB_DEFAULTS.sparkTexture,
 			sparkWidthSlider:GetValue(),
@@ -879,19 +909,19 @@ local function CreatePanel()
 
 	backgroundAlphaSlider:SetScript("OnValueChanged", function(self, value)
 		value = math.floor((value + 0.0001) * 100) / 100
-		self.valueText:SetText(string.format("%.2f", value))
+		SyncSliderDisplay(self, value)
 		ns.ApplyBarBackgroundAlpha(value)
 	end)
 
 	sparkAlphaSlider:SetScript("OnValueChanged", function(self, value)
 		value = math.floor((value + 0.0001) * 100) / 100
-		self.valueText:SetText(string.format("%.2f", value))
+		SyncSliderDisplay(self, value)
 		ns.ApplySparkAlpha(value)
 	end)
 
 	weaveSparkWidthSlider:SetScript("OnValueChanged", function(self, value)
 		value = math.floor(value + 0.5)
-		self.valueText:SetText(tostring(value))
+		SyncSliderDisplay(self, value)
 		ns.ApplyWeaveSparkSettings(
 			SuperSwingTimerDB.weaveSparkTexture or ns.DB_DEFAULTS.weaveSparkTexture,
 			value,
@@ -903,7 +933,7 @@ local function CreatePanel()
 
 	weaveSparkHeightSlider:SetScript("OnValueChanged", function(self, value)
 		value = math.floor(value + 0.5)
-		self.valueText:SetText(tostring(value))
+		SyncSliderDisplay(self, value)
 		ns.ApplyWeaveSparkSettings(
 			SuperSwingTimerDB.weaveSparkTexture or ns.DB_DEFAULTS.weaveSparkTexture,
 			weaveSparkWidthSlider:GetValue(),
@@ -915,13 +945,13 @@ local function CreatePanel()
 
 	weaveSparkAlphaSlider:SetScript("OnValueChanged", function(self, value)
 		value = math.floor((value + 0.0001) * 100) / 100
-		self.valueText:SetText(string.format("%.2f", value))
+		SyncSliderDisplay(self, value)
 		ns.ApplyWeaveSparkAlpha(value)
 	end)
 
 	weaveTriangleSizeSlider:SetScript("OnValueChanged", function(self, value)
 		value = math.floor(value + 0.5)
-		self.valueText:SetText(tostring(value))
+		SyncSliderDisplay(self, value)
 		ns.ApplyWeaveTriangleSettings(
 			SuperSwingTimerDB.weaveTriangleTopTexture or ns.DB_DEFAULTS.weaveTriangleTopTexture,
 			SuperSwingTimerDB.weaveTriangleBottomTexture or ns.DB_DEFAULTS.weaveTriangleBottomTexture,
@@ -934,7 +964,7 @@ local function CreatePanel()
 
 	weaveTriangleGapSlider:SetScript("OnValueChanged", function(self, value)
 		value = math.floor(value + 0.5)
-		self.valueText:SetText(tostring(value))
+		SyncSliderDisplay(self, value)
 		ns.ApplyWeaveTriangleSettings(
 			SuperSwingTimerDB.weaveTriangleTopTexture or ns.DB_DEFAULTS.weaveTriangleTopTexture,
 			SuperSwingTimerDB.weaveTriangleBottomTexture or ns.DB_DEFAULTS.weaveTriangleBottomTexture,
@@ -947,7 +977,7 @@ local function CreatePanel()
 
 	weaveTriangleAlphaSlider:SetScript("OnValueChanged", function(self, value)
 		value = math.floor((value + 0.0001) * 100) / 100
-		self.valueText:SetText(string.format("%.2f", value))
+		SyncSliderDisplay(self, value)
 		ns.ApplyWeaveTriangleSettings(
 			SuperSwingTimerDB.weaveTriangleTopTexture or ns.DB_DEFAULTS.weaveTriangleTopTexture,
 			SuperSwingTimerDB.weaveTriangleBottomTexture or ns.DB_DEFAULTS.weaveTriangleBottomTexture,
@@ -1142,6 +1172,14 @@ local function CreatePanel()
 	f.weaveTriangleSizeSlider = weaveTriangleSizeSlider
 	f.weaveTriangleGapSlider = weaveTriangleGapSlider
 	f.weaveTriangleAlphaSlider = weaveTriangleAlphaSlider
+	f.textureRows = {
+		barTextureRow,
+		rangedTextureRow,
+		sparkTextureRow,
+		weaveSparkTextureRow,
+		weaveTriangleTopRow,
+		weaveTriangleBottomRow,
+	}
 	f.sparkWidthSlider = sparkWidthSlider
 	f.sparkHeightSlider = sparkHeightSlider
 	f.backgroundAlphaSlider = backgroundAlphaSlider
@@ -1157,6 +1195,18 @@ local function CreatePanel()
 	f.weaveFamilyRows = weaveFamilyRows
 	f.colorRows = { mhRow, ohRow, rangedRow, sealRow }
 	return f
+end
+
+function ns.RefreshTextureRows()
+	if not panel or not panel.textureRows then
+		return
+	end
+
+	for _, textureRow in ipairs(panel.textureRows) do
+		if textureRow and textureRow.refresh then
+			textureRow.refresh()
+		end
+	end
 end
 
 -- ============================================================

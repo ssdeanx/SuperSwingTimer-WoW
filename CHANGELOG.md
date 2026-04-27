@@ -1,5 +1,22 @@
 ﻿# Super Swing Timer Changelog
 
+## 3.1.3 - 2026-04-27
+
+- Kept the hunter Auto Shot spark and the shaman / ret paladin breakpoint markers above the bar fill by moving them to dedicated non-mouse overlay frames, so the overlays no longer disappear behind the status bar skin or mouse-hover HIGHLIGHT behavior.
+- Stopped the bar fill itself from being promoted into the overlay layer when textures are changed, which preserves the intended draw order for sparks and breakpoint lines.
+- Reworked the `/sst` config rows so cycle settings use visible dropdowns and slider rows include editable numeric fields.
+- Let the dropdown rows open from the full row body, removed the dead texture-browser popup, and clear spark anchors before each update so the moving visuals stay stable and the settings panel is easier to use.
+- Added subtle hover highlights to the clickable config rows so the dropdowns, toggles, and texture selectors read more clearly as interactive controls.
+- Enabled mouse interaction on the texture rows so their hover highlights and click-open dropdowns actually work.
+- Added hover tooltips to the config rows and controls so the UI explains what each setting represents when you mouse over it.
+
+## 3.1.2 - 2026-04-24
+
+- Kept the shaman weave spark, triangles, and ranged cast-threshold marker above the bar fill even when the user raises the bar texture layer.
+- Kept the ret paladin seal breakpoint lines above the MH bar fill so the strike-edge and reseal markers stay visible during seal twisting.
+- Re-resolved weave and breakpoint overlays whenever the bar texture layer changes so the visuals stay on top of the active bar skin.
+- Updated shaman weave positioning to use the actual MH bar width instead of only the static default width.
+
 ## 3.1.1 - 2026-04-23
 
 - Added a latency-aware hunter Auto Shot red-zone marker so the cast window shows up before the bar turns red.

@@ -1,5 +1,31 @@
 # Active Context
 
+## Active Context Update (2026-04-27 - dropdown interaction and spark refresh cleanup)
+
+- Dropdown rows now open from the full row body, the old texture-browser popup was removed, and the moving spark anchors are cleared before each update so the visuals stay stable and the config is easier to use.
+- Added subtle hover highlights to the interactive rows so the dropdowns, toggles, and texture selectors are easier to discover at a glance.
+- Enabled mouse interaction on the texture rows so the hover highlight and click-open dropdown behavior actually activates.
+- Added hover tooltips to the config rows and controls so the panel now explains what each setting represents when hovered.
+
+## Active Context Update (2026-04-27 - overlay frame and UI control refit)
+
+- Moved hunter, shaman, and ret paladin visual cues onto dedicated non-mouse overlay frames above each bar so the spark / breakpoint markers no longer depend on the HIGHLIGHT draw layer and cannot disappear on hover.
+- Converted the cycle-style config rows to visible dropdowns and added editable numeric boxes beside the slider rows for faster direct value entry.
+- Synced `README.md` and `docs/UI.md` to describe the dropdown selectors, numeric fields, and overlay-frame behavior.
+
+## Active Context Update (2026-04-27 - hunter spark / breakpoint visibility fix)
+
+- Fixed the overlay visibility regression by keeping the MH / OH / ranged bar fills on their requested draw layer and forcing spark / breakpoint overlays one sublayer above the fill again.
+- Clarified the `/sst` subtitle so it tells players to hover for help and use the right-side controls to change settings.
+- Added a changelog note for the visibility fix so the hunter, shaman, and ret paladin marker behavior stays documented.
+
+## Active Context Update (2026-04-24 - breakpoint overlays above bar fill)
+
+- Added a shared above-bar texture-layer helper so breakpoint visuals stay visible even if the bar texture layer is raised.
+- Rewired the shaman weave spark, triangles, the ranged cast-threshold marker, and the ret paladin seal breakpoint lines to use that above-bar layering path.
+- Updated shaman weave positioning to use the actual MH bar width instead of only the static default width.
+- Synced README.md and CHANGELOG.md with the new above-bar breakpoint behavior; the addon TOC already carries v3.1.2.
+
 ## Active Context Update (2026-04-24 - final paladin seal coverage)
 
 - Expanded the paladin seal family table to match `docs/spellIds.md` for Command, Corruption, Blood, Martyr, Vengeance, Justice, Wisdom, Righteousness, Light, and Crusader.

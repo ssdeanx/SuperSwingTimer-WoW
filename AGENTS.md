@@ -75,6 +75,21 @@ Use these links first when checking Classic addon UI behavior, widgets, frames, 
 
 ## Current progress
 
+- Dropdown rows now open from the full row body, the dead texture-browser popup has been removed, and the moving spark anchors are cleared before each update so the visuals stay stable.
+- The `/sst` config now feels more like a real settings panel: visible dropdowns for selector rows, checkboxes for toggles, editable numeric fields for sliders, and section backdrops for visual grouping.
+- Hover highlights were added to the clickable config rows so the selectors are easier to discover.
+- Hover tooltips now explain what each config row means so the panel is easier to understand without guessing.
+
+- Hunter Auto Shot, shaman weave, and ret paladin seal-breakpoint visuals now live on dedicated non-mouse overlay frames above the bars, which removes the hover-sensitive HIGHLIGHT fallback and keeps the spark / markers visible.
+- The `/sst` config now uses visible dropdowns for cycle settings and editable numeric fields beside sliders.
+- README and `docs/UI.md` were updated to match the new control layout and overlay-frame behavior.
+
+- Hunter Auto Shot, shaman weave, and ret paladin seal-breakpoint overlays are now kept above the bar fill again when textures are reapplied, which fixes the visibility regression where the spark / markers could disappear behind the skin.
+- The `/sst` subtitle now tells players to hover for help and then use the right-side checkbox, dropdown, numeric field, or swatch button to change each setting.
+
+- Breakpoint overlays now resolve to an above-bar draw layer, so the shaman weave spark/triangles, the ranged cast-threshold marker, and the ret paladin seal lines stay visible when the bar texture layer is raised.
+- Shaman weave positioning now uses the actual MH bar width instead of only the static default width.
+
 - Final paladin pass expanded the seal family table to match `docs/spellIds.md` for Command, Corruption, Blood, Martyr, Vengeance, Justice, Wisdom, Righteousness, Light, and Crusader.
 - Hunter Auto Shot cooldown start is now aligned to the addon’s latency-adjusted clock so the ranged bar and cooldown API share the same timing base.
 - The ret paladin seal breakpoint line now keeps the actual strike-edge marker visible and adds a second latency-aware reseal marker for twist seals while staying aura-driven and opaque black.

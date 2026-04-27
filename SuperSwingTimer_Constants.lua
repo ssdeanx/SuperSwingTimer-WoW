@@ -367,6 +367,12 @@ function ns.GetTextureDisplayText(texturePath)
 	return texturePath
 end
 
+function ns.GetTextureSummaryText(texturePath)
+	local textureLabel = ns.GetTextureDisplayText(texturePath)
+	local barLabel = ns.GetTextureDisplayText(ns.GetBarTexture and ns.GetBarTexture() or nil)
+	return string.format("%s | Bar: %s", textureLabel, barLabel)
+end
+
 function ns.GetPlayerClassColor()
 	local class = ns.playerClass
 	local classColors = rawget(_G, "RAID_CLASS_COLORS")
@@ -493,6 +499,21 @@ function ns.GetWeaveMarkerLayer()
 		return db.weaveMarkerLayer
 	end
 	return ns.DB_DEFAULTS.weaveMarkerLayer
+end
+
+-- Overlay textures live on a dedicated non-mouse frame above the bar, so the
+-- requested draw layer can be preserved directly while still using a positive
+-- sublayer to keep same-frame ordering predictable.
+function ns.ResolveTextureLayerAboveBar(requestedLayer, barLayer)
+	local layer = requestedLayer or "OVERLAY"
+	return layer, 1
+end
+
+function ns.SetTextureLayerAboveBar(texture, requestedLayer, barLayer)
+	if texture and texture.SetDrawLayer then
+		local layer, subLayer = ns.ResolveTextureLayerAboveBar(requestedLayer, barLayer)
+		texture:SetDrawLayer(layer, subLayer)
+	end
 end
 
 function ns.GetWeaveFamilyColor(abbrev)

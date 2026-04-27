@@ -25,6 +25,22 @@ local function GetRangedCastWindow()
 	return castWindow
 end
 
+local function CreateOverlayFrame(parent)
+	local overlayFrame = CreateFrame("Frame", nil, parent)
+	overlayFrame:SetAllPoints(parent)
+	overlayFrame:SetFrameStrata(parent:GetFrameStrata())
+	overlayFrame:SetFrameLevel((parent:GetFrameLevel() or 0) + 1)
+	overlayFrame:EnableMouse(false)
+	return overlayFrame
+end
+
+function ns.GetOverlayFrame(frame)
+	if frame and frame.overlayFrame then
+		return frame.overlayFrame
+	end
+	return frame
+end
+
 -- ============================================================
 -- Bar factory
 -- ============================================================
@@ -39,6 +55,9 @@ local function CreateBar(frameName, width, height)
 	f:SetStatusBarTexture(ns.GetBarTexture())
 	f:SetStatusBarColor(0, 0, 0, 1)
 	f:SetAlpha(0)
+
+	local overlayFrame = CreateOverlayFrame(f)
+	f.overlayFrame = overlayFrame
 
 	local statusBarTexture = f:GetStatusBarTexture()
 	if statusBarTexture then
@@ -75,16 +94,20 @@ local function CreateBar(frameName, width, height)
 	borderRight:SetPoint("BOTTOMRIGHT", 1, -1)
 	borderRight:SetWidth(1)
 
-	local sparkTexture = f:CreateTexture(nil, "OVERLAY")
+	local sparkTexture = overlayFrame:CreateTexture(nil, "OVERLAY")
 	sparkTexture:SetTexture(ns.GetSparkTexture())
-	sparkTexture:SetDrawLayer(ns.GetSparkTextureLayer())
+	if ns.SetTextureLayerAboveBar then
+		ns.SetTextureLayerAboveBar(sparkTexture, ns.GetSparkTextureLayer(), ns.GetBarTextureLayer())
+	else
+		sparkTexture:SetDrawLayer(ns.GetSparkTextureLayer())
+	end
 	sparkTexture:SetBlendMode(ns.GetIndicatorBlendMode())
 	sparkTexture:SetWidth(ns.GetSparkWidth())
 	sparkTexture:SetHeight(ns.GetSparkHeight())
 	sparkTexture:SetAlpha(ns.GetSparkAlpha())
-	sparkTexture:SetPoint("CENTER", f, "LEFT", 0, 0)
+	sparkTexture:SetPoint("CENTER", overlayFrame, "LEFT", 0, 0)
 
-	local labelText = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+	local labelText = overlayFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
 	labelText:SetPoint("CENTER")
 	labelText:Show()
 
@@ -92,7 +115,7 @@ local function CreateBar(frameName, width, height)
 	f.statusBarTexture = statusBarTexture
 	f.sparkTexture = sparkTexture
 	f.labelText = labelText
-	f.barWidth = width or ns.BAR_WIDTH
+	f.barWidth = f:GetWidth()
 	return f
 end
 
@@ -101,21 +124,28 @@ end
 -- ============================================================
 local function CreateRangedBar()
 	local f = CreateBar("SuperSwingTimerRangedBar")
+	local overlayFrame = ns.GetOverlayFrame and ns.GetOverlayFrame(f) or f
 
 	-- Red "cast window" overlay
-	local castOverlay = f:CreateTexture(nil, "ARTWORK")
+	local castOverlay = overlayFrame:CreateTexture(nil, "ARTWORK")
 	castOverlay:SetColorTexture(1, 0, 0, 0.4)
 	castOverlay:SetPoint("TOPRIGHT")
 	castOverlay:SetPoint("BOTTOMRIGHT")
+	if ns.SetTextureLayerAboveBar then
+		ns.SetTextureLayerAboveBar(castOverlay, ns.GetWeaveMarkerLayer and ns.GetWeaveMarkerLayer() or "OVERLAY", ns.GetBarTextureLayer and ns.GetBarTextureLayer() or "ARTWORK")
+	end
 	castOverlay:SetWidth(0)
 	f.castOverlay = castOverlay
 
 	-- Opaque marker showing where the bar will switch into the cast window.
-	local castThresholdMarker = f:CreateTexture(nil, "OVERLAY")
+	local castThresholdMarker = overlayFrame:CreateTexture(nil, "OVERLAY")
 	castThresholdMarker:SetColorTexture(0, 0, 0, 1)
 	castThresholdMarker:SetWidth(5)
 	castThresholdMarker:SetPoint("TOPLEFT")
 	castThresholdMarker:SetPoint("BOTTOMLEFT")
+	if ns.SetTextureLayerAboveBar then
+		ns.SetTextureLayerAboveBar(castThresholdMarker, ns.GetWeaveTriangleLayer(), ns.GetBarTextureLayer())
+	end
 	castThresholdMarker:Hide()
 	f.castThresholdMarker = castThresholdMarker
 
@@ -169,7 +199,7 @@ local function UpdateCastZoneVisual(castWindow)
 	if not f then return end
 	local t = ns.timers.ranged
 	local duration = t and t.duration or 0
-	local barWidth = f.barWidth or ns.BAR_WIDTH or 0
+	local barWidth = f:GetWidth() or f.barWidth or ns.BAR_WIDTH or 0
 	castWindow = castWindow or GetRangedCastWindow()
 	if t and t.state == "swinging" and duration > 0 and castWindow > 0 then
 		local width = math.min((castWindow / duration) * barWidth, barWidth)
@@ -179,9 +209,10 @@ local function UpdateCastZoneVisual(castWindow)
 		if f.castThresholdMarker then
 			local markerWidth = math.min(5, barWidth)
 			local markerLeft = math.max(barWidth - width - (markerWidth * 0.5), 0)
+			local markerAnchor = ns.GetOverlayFrame and ns.GetOverlayFrame(f) or f
 			f.castThresholdMarker:ClearAllPoints()
-			f.castThresholdMarker:SetPoint("TOPLEFT", f, "LEFT", markerLeft, 0)
-			f.castThresholdMarker:SetPoint("BOTTOMLEFT", f, "LEFT", markerLeft, 0)
+			f.castThresholdMarker:SetPoint("TOPLEFT", markerAnchor, "LEFT", markerLeft, 0)
+			f.castThresholdMarker:SetPoint("BOTTOMLEFT", markerAnchor, "LEFT", markerLeft, 0)
 			f.castThresholdMarker:SetWidth(markerWidth)
 			f.castThresholdMarker:Show()
 		end
@@ -292,9 +323,12 @@ local function UpdateRangedBar(elapsed)
 			f:SetValue(elapsedChannel)
 			f.labelText:SetText(string.format("%s %.1f", channelName, remainingChannel))
 
-			local sparkPos = (elapsedChannel / channelDuration) * f.barWidth
-			if sparkPos > f.barWidth then sparkPos = f.barWidth end
-			f.sparkTexture:SetPoint("CENTER", f, "LEFT", sparkPos, 0)
+			local barWidth = f:GetWidth() or f.barWidth or ns.BAR_WIDTH or 0
+			local sparkPos = (elapsedChannel / channelDuration) * barWidth
+			if sparkPos > barWidth then sparkPos = barWidth end
+			local sparkAnchor = ns.GetOverlayFrame and ns.GetOverlayFrame(f) or f
+			f.sparkTexture:ClearAllPoints()
+			f.sparkTexture:SetPoint("CENTER", sparkAnchor, "LEFT", sparkPos, 0)
 			return
 		end
 	end
@@ -342,9 +376,12 @@ local function UpdateRangedBar(elapsed)
 	f:SetValue(elapsed_time)
 	f.labelText:SetText(string.format("%.1f", remaining))
 
-	local sparkPos = (elapsed_time / t.duration) * f.barWidth
-	if sparkPos > f.barWidth then sparkPos = f.barWidth end
-	f.sparkTexture:SetPoint("CENTER", f, "LEFT", sparkPos, 0)
+	local barWidth = f:GetWidth() or f.barWidth or ns.BAR_WIDTH or 0
+	local sparkPos = (elapsed_time / t.duration) * barWidth
+	if sparkPos > barWidth then sparkPos = barWidth end
+	local sparkAnchor = ns.GetOverlayFrame and ns.GetOverlayFrame(f) or f
+	f.sparkTexture:ClearAllPoints()
+	f.sparkTexture:SetPoint("CENTER", sparkAnchor, "LEFT", sparkPos, 0)
 end
 
 -- ============================================================
@@ -376,9 +413,12 @@ local function UpdateMeleeBar(slot, frame)
 	frame:SetValue(elapsed_time)
 	frame.labelText:SetText(string.format("%.1f", remaining))
 
-	local sparkPos = (elapsed_time / t.duration) * frame.barWidth
-	if sparkPos > frame.barWidth then sparkPos = frame.barWidth end
-	frame.sparkTexture:SetPoint("CENTER", frame, "LEFT", sparkPos, 0)
+	local barWidth = frame:GetWidth() or frame.barWidth or ns.BAR_WIDTH or 0
+	local sparkPos = (elapsed_time / t.duration) * barWidth
+	if sparkPos > barWidth then sparkPos = barWidth end
+	local sparkAnchor = ns.GetOverlayFrame and ns.GetOverlayFrame(frame) or frame
+	frame.sparkTexture:ClearAllPoints()
+	frame.sparkTexture:SetPoint("CENTER", sparkAnchor, "LEFT", sparkPos, 0)
 end
 
 -- ============================================================
@@ -428,6 +468,8 @@ function ns.ApplyBarTexture(texturePath, layer)
 			bar:SetStatusBarTexture(texturePath)
 			bar.statusBarTexture = bar.statusBarTexture or bar:GetStatusBarTexture()
 			if bar.statusBarTexture then
+				-- Keep the fill on its requested layer; the above-bar helper is
+				-- reserved for spark / breakpoint overlays so they stay visible.
 				bar.statusBarTexture:SetDrawLayer(layer)
 			end
 		end
@@ -448,6 +490,8 @@ function ns.ApplyRangedBarTexture(texturePath, layer)
 			bar:SetStatusBarTexture(texturePath)
 			bar.statusBarTexture = bar.statusBarTexture or bar:GetStatusBarTexture()
 			if bar.statusBarTexture then
+				-- Keep the ranged fill on its requested layer; overlays are
+				-- positioned separately and must not be promoted with the fill.
 				bar.statusBarTexture:SetDrawLayer(layer)
 			end
 		end
@@ -466,6 +510,18 @@ function ns.ApplyBarTextureLayer(layer)
 		if bar and bar.statusBarTexture then
 			bar.statusBarTexture:SetDrawLayer(layer)
 		end
+	end
+	if ns.ApplySparkTextureLayer then
+		ns.ApplySparkTextureLayer(SuperSwingTimerDB.sparkTextureLayer or ns.DB_DEFAULTS.sparkTextureLayer)
+	end
+	if ns.ApplyWeaveSparkTextureLayer then
+		ns.ApplyWeaveSparkTextureLayer(SuperSwingTimerDB.weaveSparkTextureLayer or ns.DB_DEFAULTS.weaveSparkTextureLayer)
+	end
+	if ns.ApplyWeaveMarkerLayer then
+		ns.ApplyWeaveMarkerLayer(SuperSwingTimerDB.weaveTriangleTextureLayer or ns.DB_DEFAULTS.weaveTriangleTextureLayer)
+	end
+	if ns.rangedBar and ns.rangedBar.castOverlay and ns.SetTextureLayerAboveBar then
+		ns.SetTextureLayerAboveBar(ns.rangedBar.castOverlay, SuperSwingTimerDB.weaveMarkerLayer or ns.DB_DEFAULTS.weaveMarkerLayer, layer)
 	end
 end
 
@@ -507,7 +563,11 @@ function ns.ApplySparkSettings(texturePath, width, height, layer, alpha)
 	for _, bar in ipairs({ ns.mhBar, ns.ohBar, ns.rangedBar }) do
 		if bar and bar.sparkTexture then
 			bar.sparkTexture:SetTexture(texturePath)
-			bar.sparkTexture:SetDrawLayer(layer)
+			if ns.SetTextureLayerAboveBar then
+				ns.SetTextureLayerAboveBar(bar.sparkTexture, layer, ns.GetBarTextureLayer())
+			else
+				bar.sparkTexture:SetDrawLayer(layer)
+			end
 			bar.sparkTexture:SetBlendMode(ns.GetIndicatorBlendMode())
 			bar.sparkTexture:SetWidth(width)
 			bar.sparkTexture:SetHeight(height)
@@ -544,7 +604,11 @@ function ns.ApplySparkTextureLayer(layer)
 	SuperSwingTimerDB.sparkTextureLayer = layer
 	for _, bar in ipairs({ ns.mhBar, ns.ohBar, ns.rangedBar }) do
 		if bar and bar.sparkTexture then
-			bar.sparkTexture:SetDrawLayer(layer)
+			if ns.SetTextureLayerAboveBar then
+				ns.SetTextureLayerAboveBar(bar.sparkTexture, layer, ns.GetBarTextureLayer())
+			else
+				bar.sparkTexture:SetDrawLayer(layer)
+			end
 		end
 	end
 end
@@ -554,14 +618,36 @@ function ns.ApplyWeaveMarkerLayer(layer)
 		layer = ns.DB_DEFAULTS.weaveMarkerLayer
 	end
 	SuperSwingTimerDB.weaveMarkerLayer = layer
-	for _, texture in ipairs({ ns.weaveTriangleTop, ns.weaveTriangleBottom }) do
+	for _, texture in ipairs({ ns.weaveTriangleTop, ns.weaveTriangleBottom, ns.sealTwistBreakpoint, ns.sealTwistResealBreakpoint }) do
 		if texture and texture.SetDrawLayer then
-			texture:SetDrawLayer(layer)
+			if ns.SetTextureLayerAboveBar then
+				ns.SetTextureLayerAboveBar(texture, layer, ns.GetBarTextureLayer())
+			else
+				texture:SetDrawLayer(layer)
+			end
 		end
 	end
 	-- Also apply layer to the canonical weave marker if present
 	if ns.weaveMarker and ns.weaveMarker.SetDrawLayer then
-		ns.weaveMarker:SetDrawLayer(layer)
+		if ns.SetTextureLayerAboveBar then
+			ns.SetTextureLayerAboveBar(ns.weaveMarker, layer, ns.GetBarTextureLayer())
+		else
+			ns.weaveMarker:SetDrawLayer(layer)
+		end
+	end
+	if ns.rangedBar and ns.rangedBar.castThresholdMarker and ns.rangedBar.castThresholdMarker.SetDrawLayer then
+		if ns.SetTextureLayerAboveBar then
+			ns.SetTextureLayerAboveBar(ns.rangedBar.castThresholdMarker, layer, ns.GetBarTextureLayer())
+		else
+			ns.rangedBar.castThresholdMarker:SetDrawLayer(layer)
+		end
+	end
+	if ns.rangedBar and ns.rangedBar.castOverlay and ns.rangedBar.castOverlay.SetDrawLayer then
+		if ns.SetTextureLayerAboveBar then
+			ns.SetTextureLayerAboveBar(ns.rangedBar.castOverlay, layer, ns.GetBarTextureLayer())
+		else
+			ns.rangedBar.castOverlay:SetDrawLayer(layer)
+		end
 	end
 end
 
@@ -592,7 +678,11 @@ function ns.ApplyWeaveSparkSettings(texturePath, width, height, layer, alpha)
 	for _, texture in ipairs({ ns.weaveSpark }) do
 		if texture then
 			texture:SetTexture(texturePath)
-			texture:SetDrawLayer(layer)
+			if ns.SetTextureLayerAboveBar then
+				ns.SetTextureLayerAboveBar(texture, layer, ns.GetBarTextureLayer())
+			else
+				texture:SetDrawLayer(layer)
+			end
 			texture:SetBlendMode(ns.GetIndicatorBlendMode())
 			texture:SetWidth(width)
 			texture:SetHeight(height)
@@ -607,7 +697,11 @@ function ns.ApplyWeaveSparkTextureLayer(layer)
 	end
 	SuperSwingTimerDB.weaveSparkTextureLayer = layer
 	if ns.weaveSpark then
-		ns.weaveSpark:SetDrawLayer(layer)
+		if ns.SetTextureLayerAboveBar then
+			ns.SetTextureLayerAboveBar(ns.weaveSpark, layer, ns.GetBarTextureLayer())
+		else
+			ns.weaveSpark:SetDrawLayer(layer)
+		end
 	end
 end
 
@@ -656,6 +750,9 @@ function ns.ApplyWeaveTriangleSettings(topTexture, bottomTexture, size, gap, lay
 			texture:SetHeight(size)
 			texture:SetAlpha(alpha)
 		end
+	end
+	if ns.ApplyWeaveMarkerLayer then
+		ns.ApplyWeaveMarkerLayer(layer)
 	end
 	if ns.weaveTriangleTop then
 		ns.weaveTriangleTop:SetTexture(topTexture)
