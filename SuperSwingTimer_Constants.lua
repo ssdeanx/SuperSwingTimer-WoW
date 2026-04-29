@@ -1,17 +1,29 @@
 ﻿local addonName, ns = ...
 local GetSpellInfo = rawget(_G, "GetSpellInfo")
+local GetAddOnInfo = rawget(_G, "GetAddOnInfo")
 
 -- ============================================================
 -- UI constants
 -- ============================================================
 ns.BAR_WIDTH   = 200
 ns.BAR_HEIGHT  = 20
+ns.HUNTER_CAST_BAR_HEIGHT = 10
+ns.HUNTER_CAST_BAR_GAP = 2
 ns.CAST_WINDOW = 0.5    -- hidden ranged cast time in TBC
 
 -- ============================================================
 -- Spell IDs
 -- ============================================================
 ns.AUTO_SHOT_ID = 75
+ns.HUNTER_CAST_SPELLS = {
+	[75] = true,     -- Auto Shot
+	[2643] = true,   -- Multi-Shot rank 1
+	[14288] = true,  -- Multi-Shot rank 2
+	[14289] = true,  -- Multi-Shot rank 3
+	[14290] = true,  -- Multi-Shot rank 4
+	[25294] = true,  -- Multi-Shot rank 5
+	[27021] = true,  -- Multi-Shot rank 6
+}
 
 -- Paladin seal spell IDs used for UnitAura-aware breakpoint logic.
 -- The lookup prefers verified TBC/Classic spell IDs and also keeps literal
@@ -174,13 +186,14 @@ end
 registerNoResetSwingSpells({
 	30310, 30311, 23063, 4054, 4064, 4061, 8331, 4065, 4066, 4062, 4067, 4068,
 	23000, 12421, 4069, 12562, 12543, 19769, 19784, 19821, 34120, 27022,
+	2643, 14288, 14289, 14290, 25294, 27021,
 	19434, 20900, 20901, 20902, 20903, 20904, 27065,
 })
 
 -- PAUSE_SWING_SPELLS: casts that should pause and then resume swing timing.
 -- Slam uses the pause/extend path rather than a hard MH reset.
 ns.PAUSE_SWING_SPELLS = {}
-for _, id in ipairs({ 1464, 8820, 11604, 11605 }) do
+for _, id in ipairs({ 1464, 8820, 11604, 11605, 25241, 25242 }) do
 	ns.PAUSE_SWING_SPELLS[id] = true
 end
 
@@ -209,9 +222,17 @@ ns.WEAVE_SPELL_FAMILY_COLORS = {
 }
 
 ns.WEAVE_SPELL_GROUPS = {
-	{ abbrev = "LB",  label = "Lightning Bolt",       ids = { 403, 529, 548, 915, 943, 6041, 10391, 10392, 15207, 15208, 25448, 25449 } },
+	{
+		abbrev = "LB",
+		label = "Lightning Bolt",
+		ids = { 403, 529, 548, 915, 943, 6041, 10391, 10392, 15207, 15208, 25448, 25449 },
+	},
 	{ abbrev = "CL",  label = "Chain Lightning",     ids = { 421, 930, 2860, 10605, 25439, 25442 } },
-	{ abbrev = "HW",  label = "Healing Wave",        ids = { 331, 332, 547, 913, 939, 959, 8005, 10395, 10396, 25357, 25391, 25396 } },
+	{
+		abbrev = "HW",
+		label = "Healing Wave",
+		ids = { 331, 332, 547, 913, 939, 959, 8005, 10395, 10396, 25357, 25391, 25396 },
+	},
 	{ abbrev = "LHW", label = "Lesser Healing Wave", ids = { 8004, 8008, 8010, 10466, 10467, 10468, 25420 } },
 	{ abbrev = "CH",  label = "Chain Heal",         ids = { 1064, 10622, 10623, 25422, 25423 } },
 }
@@ -221,7 +242,7 @@ ns.WEAVE_SPELL_GROUPS = {
 -- ============================================================
 -- Determines which bars to create and which events to register.
 ns.CLASS_CONFIG = {
-	HUNTER  = { ranged = true,  melee = true,  dualWield = false },
+	HUNTER  = { ranged = true,  melee = true,  dualWield = false, hunterCastBar = true },
 	WARRIOR = { ranged = false, melee = true,  dualWield = true  },
 	ROGUE   = { ranged = false, melee = true,  dualWield = true  },
 	PALADIN = { ranged = false, melee = true,  dualWield = false },
@@ -236,7 +257,7 @@ ns.CLASS_CONFIG = {
 -- SavedVariables defaults
 -- ============================================================
 ns.DB_DEFAULTS = {
-	version   = 14,
+	version   = 15,
 	showMH    = true,
 	showOH    = true,
 	showRanged = true,
@@ -255,13 +276,14 @@ ns.DB_DEFAULTS = {
 	barTexture = "Interface\\TargetingFrame\\UI-StatusBar",
 	rangedBarTexture = "Interface\\TargetingFrame\\UI-StatusBar",
 	barTextureLayer = "ARTWORK",
-	sparkTexture = "Interface\\CastingBar\\UI-CastingBar-Spark",
+	sparkTexture = "Interface\\AddOns\\WeakAuras\\Media\\Textures\\Square_FullWhite",
 	sparkTextureLayer = "OVERLAY",
-	weaveSparkTexture = "Interface\\CastingBar\\UI-CastingBar-Spark",
+	weaveSparkTexture = "Interface\\AddOns\\WeakAuras\\Media\\Textures\\target_indicator.tga",
 	weaveSparkTextureLayer = "OVERLAY",
 	weaveSparkWidth = 10,
 	weaveSparkHeight = 24,
 	weaveSparkAlpha = 0.95,
+	sparkColor = { r = 1, g = 1, b = 1, a = 1 },
 	weaveTriangleTopTexture = "Interface\\Buttons\\UI-ScrollBar-ScrollDownButton-Arrow",
 	weaveTriangleBottomTexture = "Interface\\Buttons\\UI-ScrollBar-ScrollUpButton-Arrow",
 	weaveTriangleTextureLayer = "OVERLAY",
@@ -296,42 +318,183 @@ ns.TEXTURE_LAYER_OPTIONS = {
 	{ label = "Highlight",   value = "HIGHLIGHT" },
 }
 
+local function IsAddOnInstalled(addonKey)
+	if type(GetAddOnInfo) ~= "function" then
+		return true
+	end
+
+	return GetAddOnInfo(addonKey) ~= nil
+end
+
+function ns.GetTextureBrowserDisplayCategory(entry)
+	if not entry then
+		return ""
+	end
+
+	local category = entry.category or ""
+	local style = entry.style or ""
+
+	if category == "WeakAuras" then
+		if style == "bar" then
+			return "WeakAuras / Bars"
+		end
+		return "WeakAuras / Shapes"
+	elseif category == "SharedMedia" then
+		return string.format("SharedMedia / %s", style ~= "" and style or "media")
+	elseif category == "Platynator" then
+		return string.format("Platynator / %s", style ~= "" and style or "preset")
+	elseif category == "Blizzard" then
+		return string.format("Blizzard / %s", style ~= "" and style or "fallback")
+	end
+
+	return category
+end
+
 ns.TEXTURE_LIBRARY = nil
 
 function ns.BuildTextureLibrary()
 	local entries = {}
 	local seen = {}
 
-	local function addEntry(category, label, path, style)
+	local function addEntry(category, label, path, style, usage)
 		if not path or path == "" or seen[path] then
 			return
 		end
 		seen[path] = true
-		entries[#entries + 1] = { category = category, style = style or category, label = label, path = path }
+		entries[#entries + 1] = {
+			category = category,
+			style = style or category,
+			usage = usage or "both",
+			label = label,
+			path = path,
+		}
 	end
+
+	local weakAurasInstalled = IsAddOnInstalled("WeakAuras")
+	local platynatorInstalled = IsAddOnInstalled("Platynator")
 
 	local libStub = rawget(_G, "LibStub")
 	local lsm = libStub and libStub("LibSharedMedia-3.0", true)
 	if lsm and lsm.List and lsm.Fetch then
 		for _, mediaType in ipairs({ "statusbar", "background", "border" }) do
 			for _, name in ipairs(lsm:List(mediaType) or {}) do
-				addEntry("SharedMedia", name, lsm:Fetch(mediaType, name), mediaType)
+				local usage = (mediaType == "statusbar") and "both" or "spark"
+				addEntry("SharedMedia", name, lsm:Fetch(mediaType, name), mediaType, usage)
 			end
 		end
 	end
 
-	addEntry("Blizzard", "Status Bar", "Interface\\TargetingFrame\\UI-StatusBar", "fallback")
-	addEntry("Blizzard", "Casting Spark", "Interface\\CastingBar\\UI-CastingBar-Spark", "fallback")
-	addEntry("Blizzard", "Casting Fill", "Interface\\CastingBar\\UI-CastingBar-Fill", "fallback")
-	addEntry("Blizzard", "Casting Shield", "Interface\\CastingBar\\UI-CastingBar-Shield", "fallback")
-	addEntry("Blizzard", "Tooltip Background", "Interface\\Tooltips\\UI-Tooltip-Background", "fallback")
-	addEntry("Blizzard", "Tooltip Border", "Interface\\Tooltips\\UI-Tooltip-Border", "fallback")
-	addEntry("Blizzard", "Dialog Background", "Interface\\DialogFrame\\UI-DialogBox-Background", "fallback")
-	addEntry("Blizzard", "Dialog Dark Background", "Interface\\DialogFrame\\UI-DialogBox-Background-Dark", "fallback")
-	addEntry("Blizzard", "Dialog Border", "Interface\\DialogFrame\\UI-DialogBox-Border", "fallback")
-	addEntry("Blizzard", "Scroll Arrow Down", "Interface\\Buttons\\UI-ScrollBar-ScrollDownButton-Arrow", "fallback")
-	addEntry("Blizzard", "Scroll Arrow Up", "Interface\\Buttons\\UI-ScrollBar-ScrollUpButton-Arrow", "fallback")
-	addEntry("Blizzard", "White 8x8", "Interface\\Buttons\\WHITE8X8", "fallback")
+	if weakAurasInstalled then
+		local weakAurasShapeTextures = {
+			{ label = "Square Full White", path = "Interface\\AddOns\\WeakAuras\\Media\\Textures\\Square_FullWhite" },
+			{ label = "Target Indicator", path = "Interface\\AddOns\\WeakAuras\\Media\\Textures\\target_indicator.tga" },
+			{
+				label = "Target Indicator Glow",
+				path = "Interface\\AddOns\\WeakAuras\\Media\\Textures\\target_indicator_glow.tga",
+			},
+			{ label = "Triangle", path = "Interface\\AddOns\\WeakAuras\\Media\\Textures\\triangle.tga" },
+			{ label = "Triangle Border", path = "Interface\\AddOns\\WeakAuras\\Media\\Textures\\triangle-border.tga" },
+			{ label = "Triangle 45", path = "Interface\\AddOns\\WeakAuras\\Media\\Textures\\Triangle45.tga" },
+			{
+				label = "Square Alpha Gradient",
+				path = "Interface\\AddOns\\WeakAuras\\Media\\Textures\\Square_AlphaGradient.tga",
+			},
+			{ label = "Square White", path = "Interface\\AddOns\\WeakAuras\\Media\\Textures\\Square_White.tga" },
+			{ label = "Square White Border", path = "Interface\\AddOns\\WeakAuras\\Media\\Textures\\Square_White_Border.tga" },
+			{ label = "Square Smooth", path = "Interface\\AddOns\\WeakAuras\\Media\\Textures\\Square_Smooth.tga" },
+			{ label = "Square Smooth Border", path = "Interface\\AddOns\\WeakAuras\\Media\\Textures\\Square_Smooth_Border.tga" },
+			{
+				label = "Square Smooth Border 2",
+				path = "Interface\\AddOns\\WeakAuras\\Media\\Textures\\Square_Smooth_Border2.tga",
+			},
+			{ label = "Square Squirrel", path = "Interface\\AddOns\\WeakAuras\\Media\\Textures\\Square_Squirrel.tga" },
+			{
+				label = "Square Squirrel Border",
+				path = "Interface\\AddOns\\WeakAuras\\Media\\Textures\\Square_Squirrel_Border.tga",
+			},
+			{
+				label = "Circle Alpha Gradient In",
+				path = "Interface\\AddOns\\WeakAuras\\Media\\Textures\\Circle_AlphaGradient_In.tga",
+			},
+			{
+				label = "Circle Alpha Gradient Out",
+				path = "Interface\\AddOns\\WeakAuras\\Media\\Textures\\Circle_AlphaGradient_Out.tga",
+			},
+			{ label = "Circle Smooth", path = "Interface\\AddOns\\WeakAuras\\Media\\Textures\\Circle_Smooth.tga" },
+			{ label = "Circle Smooth 2", path = "Interface\\AddOns\\WeakAuras\\Media\\Textures\\Circle_Smooth2.tga" },
+			{ label = "Circle Smooth Border", path = "Interface\\AddOns\\WeakAuras\\Media\\Textures\\Circle_Smooth_Border.tga" },
+			{ label = "Circle Squirrel", path = "Interface\\AddOns\\WeakAuras\\Media\\Textures\\Circle_Squirrel.tga" },
+			{
+				label = "Circle Squirrel Border",
+				path = "Interface\\AddOns\\WeakAuras\\Media\\Textures\\Circle_Squirrel_Border.tga",
+			},
+			{ label = "Circle White", path = "Interface\\AddOns\\WeakAuras\\Media\\Textures\\Circle_White.tga" },
+			{ label = "Circle White Border", path = "Interface\\AddOns\\WeakAuras\\Media\\Textures\\Circle_White_Border.tga" },
+			{ label = "Ring 10px", path = "Interface\\AddOns\\WeakAuras\\Media\\Textures\\Ring_10px.tga" },
+			{ label = "Ring 20px", path = "Interface\\AddOns\\WeakAuras\\Media\\Textures\\Ring_20px.tga" },
+			{ label = "Ring 30px", path = "Interface\\AddOns\\WeakAuras\\Media\\Textures\\Ring_30px.tga" },
+			{ label = "Ring 40px", path = "Interface\\AddOns\\WeakAuras\\Media\\Textures\\Ring_40px.tga" },
+			{ label = "Trapezoid", path = "Interface\\AddOns\\WeakAuras\\Media\\Textures\\Trapezoid.tga" },
+			{ label = "Striped Texture", path = "Interface\\AddOns\\WeakAuras\\Media\\Textures\\StripedTexture.tga" },
+			{ label = "Arrows Target", path = "Interface\\AddOns\\WeakAuras\\Media\\Textures\\arrows_target.tga" },
+			{ label = "Targeting Mark", path = "Interface\\AddOns\\WeakAuras\\Media\\Textures\\targeting-mark.tga" },
+		}
+
+		for _, texture in ipairs(weakAurasShapeTextures) do
+			addEntry("WeakAuras", texture.label, texture.path, "shape", "spark")
+		end
+
+		local weakAurasBarTextures = {
+			{ label = "Statusbar Clean", path = "Interface\\AddOns\\WeakAuras\\Media\\Textures\\Statusbar_Clean.blp" },
+			{ label = "Statusbar Stripes", path = "Interface\\AddOns\\WeakAuras\\Media\\Textures\\Statusbar_Stripes.blp" },
+			{
+				label = "Statusbar Stripes Thick",
+				path = "Interface\\AddOns\\WeakAuras\\Media\\Textures\\Statusbar_Stripes_Thick.blp",
+			},
+			{
+				label = "Statusbar Stripes Thin",
+				path = "Interface\\AddOns\\WeakAuras\\Media\\Textures\\Statusbar_Stripes_Thin.blp",
+			},
+			{ label = "Rainbow Bar", path = "Interface\\AddOns\\WeakAuras\\Media\\Textures\\rainbowbar.tga" },
+			{ label = "Striped Bar", path = "Interface\\AddOns\\WeakAuras\\Media\\Textures\\stripe-bar.tga" },
+			{ label = "Striped Rainbow Bar", path = "Interface\\AddOns\\WeakAuras\\Media\\Textures\\stripe-rainbow-bar.tga" },
+		}
+
+		for _, texture in ipairs(weakAurasBarTextures) do
+			addEntry("WeakAuras", texture.label, texture.path, "bar", "both")
+		end
+	end
+
+	if platynatorInstalled then
+		-- Texture packs from other installed addons can be good bar-skin sources.
+		addEntry("Platynator", "GW2", "Interface\\AddOns\\Platynator\\Assets\\gw2.png", "preset", "both")
+		addEntry("Platynator", "ToxiUI G2", "Interface\\AddOns\\Platynator\\Assets\\ToxiUI-g2.tga", "preset", "both")
+	end
+
+	addEntry("Blizzard", "Status Bar", "Interface\\TargetingFrame\\UI-StatusBar", "fallback", "both")
+	addEntry("Blizzard", "Casting Fill", "Interface\\CastingBar\\UI-CastingBar-Fill", "fallback", "both")
+	addEntry("Blizzard", "Casting Spark", "Interface\\CastingBar\\UI-CastingBar-Spark", "fallback", "spark")
+	addEntry("Blizzard", "Casting Shield", "Interface\\CastingBar\\UI-CastingBar-Shield", "fallback", "spark")
+	addEntry("Blizzard", "Tooltip Background", "Interface\\Tooltips\\UI-Tooltip-Background", "fallback", "spark")
+	addEntry("Blizzard", "Tooltip Border", "Interface\\Tooltips\\UI-Tooltip-Border", "fallback", "spark")
+	addEntry("Blizzard", "Dialog Background", "Interface\\DialogFrame\\UI-DialogBox-Background", "fallback", "spark")
+	addEntry(
+		"Blizzard",
+		"Dialog Dark Background",
+		"Interface\\DialogFrame\\UI-DialogBox-Background-Dark",
+		"fallback",
+		"spark"
+	)
+	addEntry("Blizzard", "Dialog Border", "Interface\\DialogFrame\\UI-DialogBox-Border", "fallback", "spark")
+	addEntry(
+		"Blizzard",
+		"Scroll Arrow Down",
+		"Interface\\Buttons\\UI-ScrollBar-ScrollDownButton-Arrow",
+		"fallback",
+		"spark"
+	)
+	addEntry("Blizzard", "Scroll Arrow Up", "Interface\\Buttons\\UI-ScrollBar-ScrollUpButton-Arrow", "fallback", "spark")
+	addEntry("Blizzard", "White 8x8", "Interface\\Buttons\\WHITE8X8", "fallback", "both")
 
 	table.sort(entries, function(a, b)
 		if (a.category or "") ~= (b.category or "") then
@@ -350,6 +513,14 @@ end
 function ns.GetTextureDisplayText(texturePath)
 	if not texturePath or texturePath == "" then
 		return "Select texture"
+	end
+
+	if texturePath == ns.DB_DEFAULTS.sparkTexture then
+		return "Normal"
+	end
+
+	if texturePath == ns.DB_DEFAULTS.weaveSparkTexture then
+		return "Target Indicator"
 	end
 
 	local library = ns.TEXTURE_LIBRARY or ns.BuildTextureLibrary()
@@ -552,10 +723,21 @@ end
 
 function ns.GetSparkAlpha()
 	local db = rawget(_G, "SuperSwingTimerDB")
+	if db and db.sparkColor and db.sparkColor.a ~= nil then
+		return db.sparkColor.a
+	end
 	if db and db.sparkAlpha ~= nil then
 		return db.sparkAlpha
 	end
 	return ns.DB_DEFAULTS.sparkAlpha
+end
+
+function ns.GetSparkColor()
+	local db = rawget(_G, "SuperSwingTimerDB")
+	if db and db.sparkColor then
+		return db.sparkColor
+	end
+	return ns.DB_DEFAULTS.sparkColor
 end
 
 function ns.IsMinimalMode()

@@ -1,17 +1,84 @@
 # Swingtimer lua WeakAuras Lib - Optimized for Vanilla & TBC Classic
 
-This is a highly optimized Lua library for tracking main hand and off hand swing timers in WoW Classic (Vanilla & TBC). It provides accurate timing for melee attacks and handles all edge cases.
+This is a highly optimized Lua library for tracking main hand, off hand, and ranged swing timers in WoW Classic (Vanilla & TBC).
+It now mirrors the current addon timing model more closely: start, end, reset, resync, and restart are separated cleanly,
+ranged prefers the Auto Shot cooldown when the client exposes it, and melee still uses `UnitAttackSpeed()` plus haste-aware
+rescaling.
 
 **Features:**
 
 - Accurate main/off hand swing tracking
+- Accurate ranged swing tracking with `GetSpellCooldown(75)` / `GetSpellCooldown("Auto Shot")` fallback behavior
 - Supports both Vanilla and TBC Classic spell IDs
 - Weapon switch detection and handling
 - Parry reaction time adjustment
 - Next swing abilities (Heroic Strike, Cleave, etc.)
 - Bomb/ability handling that pauses/resets swing
+- Explicit start / end / reset / restart handling for each hand
 
-v1.2.2 - Update this number when making changes to the code, and update the CHANGELOG.md with details of the changes.
+v1.2.4 - Update this number when making changes to the code, and update the CHANGELOG.md with details of the changes.
+
+## WeakAuras trigger map
+
+The event strings are the same for every bar; the hand comes through as the `hand` argument.
+Use one custom init action only to set which hand the aura should listen for.
+
+### Custom Init action / shared hand selector
+
+```lua
+function()
+    -- Set this per aura: "mainhand", "offhand", or "ranged".
+    aura_env.trackHand = aura_env.trackHand or "mainhand"
+end
+```
+
+### Custom trigger events by bar
+
+| Bar | `hand` filter | Trigger events to watch | Optional advanced events | Notes |
+| --- | --- | --- | --- | --- |
+| Main hand | `hand == "mainhand"` | `SWING_TIMER_START`, `SWING_TIMER_UPDATE`, `SWING_TIMER_STOP` | `SWING_TIMER_PAUSED`, `SWING_TIMER_CLIPPED`, `SWING_TIMER_DELTA` | Use this for the main-hand swing bar or timer text. |
+| Off hand | `hand == "offhand"` | `SWING_TIMER_START`, `SWING_TIMER_UPDATE`, `SWING_TIMER_STOP` | `SWING_TIMER_PAUSED`, `SWING_TIMER_CLIPPED`, `SWING_TIMER_DELTA` | Same event names as MH; only the `hand` filter changes. |
+| Ranged | `hand == "ranged"` | `SWING_TIMER_START`, `SWING_TIMER_UPDATE`, `SWING_TIMER_STOP` | Wrapper `safe` metadata if you mirror the green/red ranged feedback | Same event names as melee; use the ranged safe-state only if your relay adds it. |
+
+### Melee / off-hand logic notes
+
+- Main-hand and off-hand bars listen to the same three core events; the `hand` value decides which timer gets updated.
+- `SWING_TIMER_START` begins a fresh swing, `SWING_TIMER_UPDATE` resyncs an active swing, and `SWING_TIMER_STOP` ends the current bar.
+- `SWING_TIMER_PAUSED` and `SWING_TIMER_CLIPPED` are melee-only quality-of-life events for cast pauses and automatic restarts.
+- `SWING_TIMER_DELTA` is diagnostic and is only useful if you want to inspect MH / OH drift.
+- Off-hand does not need its own event names; it just needs the `hand == "offhand"` filter and the same swing event list.
+
+### Example: one trigger for one bar
+
+```lua
+function(event, hand, speed, expirationTime, safe)
+    if event ~= "SWING_TIMER_START"
+    and event ~= "SWING_TIMER_UPDATE"
+    and event ~= "SWING_TIMER_STOP" then
+        return false
+    end
+
+    if hand ~= aura_env.trackHand then
+        return false
+    end
+
+    if event == "SWING_TIMER_STOP" then
+        return false
+    end
+
+    return true, {
+        show = true,
+        changed = true,
+        hand = hand,
+        duration = speed,
+        expirationTime = expirationTime,
+        progressType = "timed",
+        safe = safe == true,
+    }
+end
+```
+
+> Note: the raw swing-timer feed does not emit `safe`; only add that field if your own relay or wrapper decides to carry the green/red ranged state.
 
 ```lua
 local MAJOR, MINOR = "LibClassicSwingTimerAPI", 3
@@ -27,6 +94,7 @@ local frame = CreateFrame("Frame")
 local C_Timer, tonumber = C_Timer, tonumber
 local GetNetStats = GetNetStats
 local GetClock = _G.GetTimePreciseSec or GetTime
+local GetSpellCooldown = GetSpellCooldown
 local math_max = math.max
 
 local cachedLatency = 0
@@ -45,6 +113,22 @@ end)
 
 local function GetTimePrecise()
     return GetClock() + cachedLatency
+end
+
+local function GetAutoShotCooldown()
+    local startTime, duration, enabled = GetSpellCooldown(75)
+    if (not duration or duration <= 0) and GetSpellInfo then
+        local autoShotName = GetSpellInfo(75)
+        if autoShotName then
+            startTime, duration, enabled = GetSpellCooldown(autoShotName)
+        end
+    end
+
+    if enabled == 1 and startTime and duration and duration > 0 then
+        return startTime + cachedLatency, duration
+    end
+
+    return nil, nil
 end
 
 local reset_swing_spells = {
@@ -126,6 +210,12 @@ local noreset_swing_spells = {
     [19821] = true, -- Arcane Bomb
     [34120] = true, -- Steady Shot (TBC)
     [27022] = true, -- Volley (TBC)
+    [2643] = true, -- Multi-Shot rank 1 (TBC)
+    [14288] = true, -- Multi-Shot rank 2 (TBC)
+    [14289] = true, -- Multi-Shot rank 3 (TBC)
+    [14290] = true, -- Multi-Shot rank 4 (TBC)
+    [25294] = true, -- Multi-Shot rank 5 (TBC)
+    [27021] = true, -- Multi-Shot rank 6 (TBC)
     [19434] = true, -- Aimed Shot (rank 1)
     [20900] = true, -- Aimed Shot (rank 2)
     [20901] = true, -- Aimed Shot (rank 3)
@@ -144,6 +234,8 @@ local pause_swing_spells = {
     [8820] = true, -- Slam (rank 2)
     [11604] = true, -- Slam (rank 3)
     [11605] = true, -- Slam (rank 4)
+    [25241] = true, -- Slam (rank 5)
+    [25242] = true, -- Slam (rank 6)
 }
 
 local ranged_swing = {
@@ -271,11 +363,57 @@ end
 
 function lib:HandleRangedSwing(startTime, isReset)
     if self.rangedTimer and isReset then self.rangedTimer:Cancel() end
-    self.rangedSpeed = UnitRangedDamage("player") or 0
-    self.lastRangedSwing = startTime
-    self.rangedExpirationTime = startTime + self.rangedSpeed
+    -- Prefer the active Auto Shot cooldown when it exists, then fall back to
+    -- the ranged weapon speed so the timer stays aligned with the live client.
+    local autoShotStart, autoShotDuration = GetAutoShotCooldown()
+    if autoShotDuration and autoShotDuration > 0 then
+        self.rangedSpeed = autoShotDuration
+        self.lastRangedSwing = (autoShotStart and autoShotStart > 0) and autoShotStart or startTime
+    else
+        self.rangedSpeed = UnitRangedDamage("player") or 0
+        self.lastRangedSwing = startTime
+    end
+    self.rangedExpirationTime = self.lastRangedSwing + self.rangedSpeed
     self:Fire("SWING_TIMER_START", self.rangedSpeed, self.rangedExpirationTime, "ranged")
     -- Ensure the duration is non-negative
+    local duration = math_max(0, self.rangedExpirationTime - GetTimePrecise())
+    if duration > 0 then
+        self.rangedTimer = C_Timer.NewTimer(duration, function() self:SwingEnd("ranged") end)
+    else
+        self:SwingEnd("ranged")
+    end
+end
+
+
+function lib:UpdateRangedSpeed(now)
+    if not self.rangedTimer or self.rangedSpeed <= 0 then
+        return
+    end
+
+    now = now or GetTimePrecise()
+    local autoShotStart, autoShotDuration = GetAutoShotCooldown()
+    local newSpeed = autoShotDuration
+    if not newSpeed or newSpeed <= 0 then
+        newSpeed = UnitRangedDamage("player") or 0
+    end
+
+    if newSpeed <= 0 or math.abs(newSpeed - self.rangedSpeed) < 0.01 then
+        return
+    end
+
+    local remaining = math_max(0, self.rangedExpirationTime - now)
+    local ratio = newSpeed / self.rangedSpeed
+    local newRemaining = remaining * ratio
+
+    if self.rangedTimer then
+        self.rangedTimer:Cancel()
+    end
+
+    self.rangedSpeed = newSpeed
+    self.lastRangedSwing = (autoShotStart and autoShotStart > 0) and autoShotStart or self.lastRangedSwing
+    self.rangedExpirationTime = now + newRemaining
+    self:Fire("SWING_TIMER_UPDATE", self.rangedSpeed, self.rangedExpirationTime, "ranged")
+
     local duration = math_max(0, self.rangedExpirationTime - GetTimePrecise())
     if duration > 0 then
         self.rangedTimer = C_Timer.NewTimer(duration, function() self:SwingEnd("ranged") end)
@@ -291,7 +429,8 @@ function lib:SwingEnd(hand)
     if hand == "offhand" then self.offTimer = nil end
     if hand == "ranged" then self.rangedTimer = nil end
     self:Fire("SWING_TIMER_STOP", hand)
-    -- Auto-restart swing if still attacking and not casting
+    -- Auto-restart melee swings if the player is still attacking and not casting.
+    -- Ranged restarts from the next Auto Shot / reset event instead of a blind loop.
     if (self.casting or self.channeling) and self.isAttacking and hand ~= "ranged" then
         self:SwingStart(hand, GetTimePrecise(), true)
         self:Fire("SWING_TIMER_CLIPPED", hand)
@@ -637,6 +776,8 @@ frame:RegisterEvent("PLAYER_EQUIPMENT_CHANGED")
 frame:RegisterEvent("PLAYER_ENTER_COMBAT")
 frame:RegisterEvent("PLAYER_LEAVE_COMBAT")
 frame:RegisterEvent("PLAYER_TALENT_UPDATE")
+frame:RegisterEvent("SPELL_UPDATE_COOLDOWN")
+frame:RegisterUnitEvent("UNIT_RANGEDDAMAGE", "player")
 frame:RegisterUnitEvent("UNIT_AURA", "player")
 frame:RegisterUnitEvent("UNIT_ATTACK_SPEED", "player")
 frame:RegisterUnitEvent("UNIT_SPELLCAST_START", "player")
@@ -652,6 +793,8 @@ frame:SetScript("OnEvent", function(_, event, ...)
         lib[event](lib, event, CombatLogGetCurrentEventInfo())
     elseif event == "UNIT_ATTACK_SPEED" then
         lib[event](lib, event, ...)
+    elseif event == "SPELL_UPDATE_COOLDOWN" or event == "UNIT_RANGEDDAMAGE" then
+        lib:UpdateRangedSpeed(GetTimePrecise())
     elseif event == "UNIT_AURA" then
         lib:UpdateSwingSpeeds(GetTimePrecise())
     else

@@ -1,8 +1,8 @@
 ﻿## Interface: 20505
 ## Title: Super Swing Timer
-## Notes: Melee and ranged swing timer for Classic and TBC. Includes Blizzard options panel support, class-colored swing bars, in-addon texture previews, a latency-aware hunter Auto Shot cooldown line, a dedicated ranged texture picker, a UnitAura-aware paladin seal breakpoint line, and color-coded shaman weave assist overlays with per-family toggles that stay above the bar fill.
+## Notes: Melee and ranged swing timer for Classic and TBC. Includes Blizzard options panel support, class-colored swing bars, in-addon texture previews, a latency-aware hunter Auto Shot cooldown line, a dedicated Hunter Auto Shot / Multi-Shot cast bar, dedicated spark and weave texture browsers, bar-only texture filtering, a UnitAura-aware paladin seal breakpoint line, and color-coded shaman weave assist overlays with per-family toggles that stay above the bar fill.
 ## Author: AcidBomb
-## Version: v3.1.2
+## Version: v3.1.7
 ## IconTexture: Interface\Icons\INV_Sword_27
 ## X-Curse-Project-ID: 1521271
 ## SavedVariables: SuperSwingTimerDB SwangThangDB HunterTimerDB

@@ -5,6 +5,15 @@ local SlashCmdList = rawget(_G, "SlashCmdList")
 local UnitClass = rawget(_G, "UnitClass")
 local strtrim = rawget(_G, "strtrim")
 local GetShapeshiftForm = rawget(_G, "GetShapeshiftForm")
+local GetTimePreciseSec = rawget(_G, "GetTimePreciseSec")
+local GetTime = rawget(_G, "GetTime")
+
+local function GetCurrentTime()
+	if GetTimePreciseSec then
+		return GetTimePreciseSec() + (ns.cachedLatency or 0)
+	end
+	return GetTime() + (ns.cachedLatency or 0)
+end
 
 -- ============================================================
 -- Bootstrap: event frame, SavedVariables init, dispatch
@@ -20,6 +29,7 @@ local GetShapeshiftForm = rawget(_G, "GetShapeshiftForm")
 -- Runtime globals
 -- ============================================================
 ns.isMoving        = false
+ns.lastStoppedMovingAt = nil
 ns.playerClass     = nil
 ns.classConfig     = nil
 ns.druidFormChangeTime = nil
@@ -97,6 +107,12 @@ local function MigrateDB()
 			sparkHeight = ns.DB_DEFAULTS.sparkHeight,
 			barBackgroundAlpha = ns.DB_DEFAULTS.barBackgroundAlpha,
 			sparkAlpha = ns.DB_DEFAULTS.sparkAlpha,
+			sparkColor = {
+				r = ns.DB_DEFAULTS.sparkColor.r,
+				g = ns.DB_DEFAULTS.sparkColor.g,
+				b = ns.DB_DEFAULTS.sparkColor.b,
+				a = ns.DB_DEFAULTS.sparkColor.a,
+			},
 			minimalMode = ns.DB_DEFAULTS.minimalMode,
 			lockBars = ns.DB_DEFAULTS.lockBars,
 			colors    = {},
@@ -136,6 +152,16 @@ local function MigrateDB()
 			SuperSwingTimerDB.positions[slot] = { point = def.point, relativePoint = def.relativePoint, x = def.x, y = def.y }
 		end
 	end
+	SuperSwingTimerDB.sparkColor = SuperSwingTimerDB.sparkColor or {
+		r = ns.DB_DEFAULTS.sparkColor.r,
+		g = ns.DB_DEFAULTS.sparkColor.g,
+		b = ns.DB_DEFAULTS.sparkColor.b,
+		a = SuperSwingTimerDB.sparkAlpha ~= nil and SuperSwingTimerDB.sparkAlpha or ns.DB_DEFAULTS.sparkColor.a,
+	}
+	if SuperSwingTimerDB.sparkColor.a == nil then
+		SuperSwingTimerDB.sparkColor.a = SuperSwingTimerDB.sparkAlpha or ns.DB_DEFAULTS.sparkColor.a
+	end
+	SuperSwingTimerDB.sparkAlpha = SuperSwingTimerDB.sparkColor.a or SuperSwingTimerDB.sparkAlpha or ns.DB_DEFAULTS.sparkAlpha
 
 	-- v2 â†’ v3: bar dimensions + colors
 	if (SuperSwingTimerDB.version or 0) < 3 then
@@ -273,6 +299,28 @@ local function MigrateDB()
 		end
 
 		SuperSwingTimerDB.version = 14
+	end
+
+	-- v14 -> v15: spark browser defaults and WeakAuras indicator textures
+	if (SuperSwingTimerDB.version or 0) < 15 then
+		if SuperSwingTimerDB.sparkTexture == nil or SuperSwingTimerDB.sparkTexture == "Interface\\CastingBar\\UI-CastingBar-Spark" then
+			SuperSwingTimerDB.sparkTexture = ns.DB_DEFAULTS.sparkTexture
+		end
+		if SuperSwingTimerDB.weaveSparkTexture == nil or SuperSwingTimerDB.weaveSparkTexture == "Interface\\CastingBar\\UI-CastingBar-Spark" then
+			SuperSwingTimerDB.weaveSparkTexture = ns.DB_DEFAULTS.weaveSparkTexture
+		end
+		if not SuperSwingTimerDB.sparkColor then
+			SuperSwingTimerDB.sparkColor = {
+				r = ns.DB_DEFAULTS.sparkColor.r,
+				g = ns.DB_DEFAULTS.sparkColor.g,
+				b = ns.DB_DEFAULTS.sparkColor.b,
+				a = SuperSwingTimerDB.sparkAlpha or ns.DB_DEFAULTS.sparkColor.a,
+			}
+		elseif SuperSwingTimerDB.sparkColor.a == nil then
+			SuperSwingTimerDB.sparkColor.a = SuperSwingTimerDB.sparkAlpha or ns.DB_DEFAULTS.sparkColor.a
+		end
+		SuperSwingTimerDB.sparkAlpha = SuperSwingTimerDB.sparkColor.a or SuperSwingTimerDB.sparkAlpha or ns.DB_DEFAULTS.sparkAlpha
+		SuperSwingTimerDB.version = 15
 	end
 end
 
@@ -462,9 +510,19 @@ frame:SetScript("OnEvent", function(self, event, ...)
 
 	elseif event == "PLAYER_STARTED_MOVING" then
 		ns.isMoving = true
+		if ns.UpdateCastZoneVisual then
+			ns.UpdateCastZoneVisual()
+		end
 
 	elseif event == "PLAYER_STOPPED_MOVING" then
 		ns.isMoving = false
+		if ns.RefreshLatencyCache then
+			ns.RefreshLatencyCache()
+		end
+		ns.lastStoppedMovingAt = GetCurrentTime()
+		if ns.UpdateCastZoneVisual then
+			ns.UpdateCastZoneVisual()
+		end
 
 	elseif event == "UNIT_ATTACK_SPEED" then
 		ns.SyncMeleeTimerSpeed("mh", nil, true)
@@ -535,6 +593,7 @@ frame:SetScript("OnEvent", function(self, event, ...)
 		ns.ResetTimer("mh")
 		ns.ResetTimer("oh")
 		ns.ResetTimer("ranged")
+		ns.lastStoppedMovingAt = nil
 		ns.extraAttackPending = 0
 		if ns.ClearWeavePreview then
 			ns.ClearWeavePreview()

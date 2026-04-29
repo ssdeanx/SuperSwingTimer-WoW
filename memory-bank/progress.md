@@ -1,5 +1,29 @@
 # Progress
 
+## Progress Update (2026-04-29 - hunter cast bar and TBC spell IDs)
+
+- Added a dedicated Hunter Auto Shot / Multi-Shot cast bar beneath the ranged timer and wired it to the ranged bar's texture, spark settings, and visibility rules.
+- Fixed the Classic spellcast handler signatures so the 3-argument `UNIT_SPELLCAST_*` payloads populate the hunter cast state correctly.
+- Synced the TBC Multi-Shot ranks and Slam ranks 5-6 into the addon tables and `docs/swingtimer.md`, then bumped the addon metadata and release notes to `v3.1.7`.
+
+## Progress Update (2026-04-29 - texture catalog and browser polish)
+
+- Reworked the texture catalog so MH/OH and ranged rows now stay on bar-style textures from Blizzard, SharedMedia, WeakAuras, and installed addon packs instead of showing the entire generic texture list.
+- Switched the spark and shaman weave spark rows to folder-style browse buttons with the WeakAuras browse icon, restored the spark alpha slider, and kept the `Square_FullWhite` / `Normal` default behavior intact.
+- Refreshed README, changelog, UI docs, and SharedMedia notes so the release-facing documentation matches the new picker behavior.
+
+## Progress Update (2026-04-29 - spark picker final polish)
+
+- Reworked the spark texture row into a dedicated thumbnail browser so the default `Square_FullWhite` preset now presents as `Normal` and the picker feels closer to the WeakAuras texture browser.
+- Cleaned up the spark row labels and tooltip copy for the final release pass, and kept the shaman weave default on `Target Indicator`.
+- Refreshed the README, changelog, TOC, and texture/UI docs so the release-facing wording matches the polished browser and default labels.
+
+## Progress Update (2026-04-28 - ranged safe-state and WeakAuras bridge)
+
+- Added a green-safe hunter ranged cast-window state so the red zone now turns green when you stop before the breakpoint and only stays red when you are still moving too late.
+- Kept the existing latency-aware breakpoint math intact while refreshing the ranged movement feedback and immediate overlay updates on movement start/stop.
+- Refreshed `README.md`, `CHANGELOG.md`, `SuperSwingTimer.toc`, `docs/swingtimer.md`, and `docs/WeakAuras/Expert-Patterns.md` so the addon docs, metadata, and WeakAuras bridge example match the new behavior.
+
 ## Progress Update (2026-04-27 - dropdown interaction and spark refresh cleanup)
 
 - Improved the dropdown UX so cycle and texture rows open from the whole row instead of only the small control area.
@@ -75,6 +99,7 @@
 - Made the default MH / OH / ranged bars follow the player's class color, with a `Use Class Colors` toggle for explicit control.
 - Added an `Indicator Glow Mode` control for bright glow versus opaque blend behavior on sparks and weave markers.
 - Reworked the texture dropdown into a preview-based picker and widened the `/sst` config panel with clearer labels and spacing.
+- The spark row now opens a dedicated thumbnail browser for the Normal `Square_FullWhite` preset, while bar/ranged textures stay on compact preview dropdown rows.
 - Revalidated the touched runtime Lua files with targeted diagnostics; they are clean.
 
 ## Progress Update (2026-04-23 - weave family controls and UI polish)

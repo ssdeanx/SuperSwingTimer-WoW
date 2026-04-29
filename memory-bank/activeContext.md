@@ -1,5 +1,31 @@
 # Active Context
 
+## Active Context Update (2026-04-29 - hunter cast bar and TBC spell IDs)
+
+- Hunter now has a dedicated 10px Auto Shot / Multi-Shot cast bar beneath the ranged timer, and it stays tied to the ranged bar's texture, spark settings, and visibility rules instead of floating independently.
+- The hunter spellcast handlers now read Classic's 3-argument `UNIT_SPELLCAST_*` payloads, which lets the cast state and swing-reset logic see the live spell ID correctly.
+- The TBC Multi-Shot ranks and Slam ranks 5-6 were synced into the addon tables and the `docs/swingtimer.md` reference so the no-reset and pause logic stay aligned before release.
+
+## Active Context Update (2026-04-29 - texture catalog and browser polish)
+
+- The MH/OH and ranged texture rows now filter down to bar-style textures from Blizzard, SharedMedia, WeakAuras, and installed addon packs, so the bar selectors stay focused on actual bar skins.
+- The spark row and the shaman weave spark row now open folder-style thumbnail browsers, the browse buttons use the WeakAuras browse icon, and the spark alpha slider is restored in the config panel.
+- `README.md`, `CHANGELOG.md`, `docs/SharedMedia.md`, and `docs/UI.md` were refreshed so the user-facing docs match the broader texture catalog and the new picker behavior.
+
+## Active Context Update (2026-04-29 - spark picker final polish)
+
+- The MH/OH spark texture row now opens a dedicated square-thumbnail browser instead of the old rectangular selector, and the browser title / tooltip copy now reads like a polished final-release picker.
+- The WeakAuras `Square_FullWhite` spark preset is surfaced as `Normal`, while the shaman weave spark now reads as `Target Indicator`; the alternate triangle shape remains available in the same texture library.
+- `README.md`, `CHANGELOG.md`, `SuperSwingTimer.toc`, `docs/SharedMedia.md`, and `docs/UI.md` were refreshed so the release notes, metadata, and UI docs match the polished spark picker and final wording.
+
+## Active Context Update (2026-04-28 - ranged safe-state and WeakAuras bridge)
+
+- The hunter ranged cast window now has a true green-safe state: the red zone turns green when the player stops before the breakpoint, while still staying red if the player is moving too late.
+- `SuperSwingTimer_UI.lua` now uses a movement-stop timestamp plus the existing latency-aware breakpoint math to color the cast window and the overlay consistently.
+- `README.md`, `CHANGELOG.md`, and `SuperSwingTimer.toc` were refreshed so the user-facing docs and addon metadata match the new green/red ranged feedback.
+- `docs/swingtimer.md` was updated to mirror the current addon timing model more closely, including Auto Shot cooldown preference, ranged resync hooks, and clearer start/end/reset/restart comments.
+- `docs/WeakAuras/Expert-Patterns.md` now includes a bridge example for consuming swing-timer events and carrying the ranged safe-state into a WeakAura state table.
+
 ## Active Context Update (2026-04-27 - dropdown interaction and spark refresh cleanup)
 
 - Dropdown rows now open from the full row body, the old texture-browser popup was removed, and the moving spark anchors are cleared before each update so the visuals stay stable and the config is easier to use.
@@ -98,7 +124,7 @@
 - The main-hand swing timer now refreshes latency in the active update loop, so end-of-swing timing stays closer to live network state.
 - Parry haste now scales from the player's current melee haste (`GetMeleeHaste()` / `GetHaste()` fallback) instead of a flat reduction.
 - The config panel now has Blizzard AddOns registration, class-color defaults for the main bars, and an indicator glow/opaque mode for sparks and weave markers.
-- Texture selection now uses preview thumbnails plus labels instead of a plain text-only picker.
+- Bar and ranged texture selection now uses preview dropdown rows, while the spark row opens a dedicated thumbnail browser for the Normal `Square_FullWhite` preset.
 - A new WoW Classic Lua skill now exists at `.github/skills/wow-classic-lua` for loading at the start of future sessions.
 - White-hit handling still stays split by hand, and ranged reset spells keep their own path.
 - The overlay keeps the breakpoint triangles visible while the MH timer is active; the spark remains cast-only.

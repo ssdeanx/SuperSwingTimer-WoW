@@ -1,10 +1,22 @@
 # Shared Media
 
-The addon’s texture picker now shows these entries in a dropdown list labeled as `[{category}] {label}` instead of opening a browser window.
+Bar and ranged texture rows use compact preview dropdowns that stay focused on bar-style textures, while the spark row and the shaman weave spark row open dedicated thumbnail browsers. The browsers treat the WeakAuras `Square_FullWhite` texture as the default `Normal` spark preset and include Blizzard, SharedMedia, WeakAuras, and supported addon-pack sources when they are installed.
+
+## WeakAuras shape presets used by the spark / weave pickers
+
+These textures are bundled by WeakAuras and are used by the spark and weave overlays.
+
+```lua
+Interface\AddOns\WeakAuras\Media\Textures\Square_FullWhite   -- default spark preset, shown as Normal
+Interface\AddOns\WeakAuras\Media\Textures\target_indicator.tga -- default shaman weave spark preset
+Interface\AddOns\WeakAuras\Media\Textures\triangle.tga        -- alternate weave marker texture
+```
 
 ## Blizzard fallback textures
 
 These Blizzard textures are always available even when `LibSharedMedia-3.0` is not installed, and they are grouped in the same dropdown with a `[{category}] {label}` prefix.
+
+The addon cannot walk arbitrary folders at runtime, so the browser is built from registered media plus curated addon presets rather than a live filesystem scan.
 
 ```lua
 -- STATUSBAR / BAR FALLBACKS

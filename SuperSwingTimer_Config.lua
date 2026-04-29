@@ -10,6 +10,7 @@ local UIDropDownMenu_Initialize = rawget(_G, "UIDropDownMenu_Initialize")
 local UIDropDownMenu_SetText = rawget(_G, "UIDropDownMenu_SetText")
 local UIDropDownMenu_SetWidth = rawget(_G, "UIDropDownMenu_SetWidth")
 local ToggleDropDownMenu = rawget(_G, "ToggleDropDownMenu")
+local strtrim = rawget(_G, "strtrim")
 
 -- ============================================================
 -- Config panel: /sst opens this frame.
@@ -29,6 +30,24 @@ local INDICATOR_BLEND_OPTIONS = {
 	{ label = "Glow", value = "ADD" },
 	{ label = "Opaque", value = "BLEND" },
 }
+
+local TEXTURE_BROWSER_CATEGORY_CHOICES = {
+	{ label = "All", value = "All" },
+	{ label = "Shapes", value = "WeakAuras" },
+	{ label = "SharedMedia", value = "SharedMedia" },
+	{ label = "Blizzard", value = "Blizzard" },
+	{ label = "Platynator", value = "Platynator" },
+}
+
+local function GetTextureBrowserCategoryLabel(categoryValue)
+	for _, choice in ipairs(TEXTURE_BROWSER_CATEGORY_CHOICES) do
+		if choice.value == categoryValue then
+			return choice.label
+		end
+	end
+
+	return TEXTURE_BROWSER_CATEGORY_CHOICES[1].label
+end
 
 local function GetOptionLabel(options, value)
 	for _, option in ipairs(options) do
@@ -110,7 +129,10 @@ local function GetTextureSummaryText(texturePath)
 		return ns.GetTextureSummaryText(texturePath)
 	end
 
-	return string.format("%s | Bar: %s", ns.GetTextureDisplayText(texturePath), ns.GetTextureDisplayText(ns.GetBarTexture and ns.GetBarTexture() or nil))
+	local sparkLabel = ns.GetTextureDisplayText(texturePath)
+	local barTexture = ns.GetBarTexture and ns.GetBarTexture() or nil
+	local barLabel = ns.GetTextureDisplayText(barTexture)
+	return string.format("%s | Bar: %s", sparkLabel, barLabel)
 end
 
 -- ============================================================
@@ -154,44 +176,56 @@ end
 -- ============================================================
 -- Color picker helper
 -- ============================================================
-local function OpenColorPicker(colorKey, swatch)
-	local c = ns.GetBarColor(colorKey)
-	local isSealTwist = (colorKey == "sealTwist")
+local function OpenColorPicker(options)
+	if not options or not options.getColor or not options.applyColor then
+		return
+	end
 
-	local function applyColor(r, g, b)
-		local a = 1
-		if not isSealTwist then
-			SuperSwingTimerDB.useClassColors = false
+	local c = options.getColor() or { r = 1, g = 1, b = 1, a = 1 }
+	local allowAlpha = options.allowAlpha == true
+
+	local function Commit(r, g, b, a)
+		a = tonumber(a)
+		if not allowAlpha then
+			a = 1
+		elseif a == nil then
+			a = c.a or 1
+		elseif a < 0 then
+			a = 0
+		elseif a > 1 then
+			a = 1
 		end
-		SuperSwingTimerDB.colors[colorKey] = { r = r, g = g, b = b, a = a }
-		swatch:SetColorTexture(r, g, b, a)
-		ns.ApplyBarColors()
-		if panel and panel.useClassColorsRow and panel.useClassColorsRow.refresh then
-			panel.useClassColorsRow.refresh()
-		end
-		if panel and panel.colorRows then
-			for _, colorRow in ipairs(panel.colorRows) do
-				local key = colorRow.button.colorKey
-				local effective = ns.GetBarColor(key)
-				if effective then
-					colorRow.swatch:SetColorTexture(effective.r, effective.g, effective.b, effective.a)
-				end
-			end
-		end
+		options.applyColor(r or 1, g or 1, b or 1, a)
 	end
 
 	local info = {
-		r = c.r,
-		g = c.g,
-		b = c.b,
+		r = c.r or 1,
+		g = c.g or 1,
+		b = c.b or 1,
+		hasOpacity = allowAlpha,
+		opacity = allowAlpha and (c.a or 1) or nil,
 		swatchFunc = function()
 			local r, g, b = ColorPickerFrame:GetColorRGB()
-			applyColor(r, g, b)
+			local a = allowAlpha and (ColorPickerFrame.GetColorAlpha and ColorPickerFrame:GetColorAlpha() or c.a or 1) or 1
+			Commit(r, g, b, a)
 		end,
 		cancelFunc = function(prev)
-			applyColor(prev.r, prev.g, prev.b)
+			if prev then
+				Commit(prev.r, prev.g, prev.b, allowAlpha and (prev.a or 1) or 1)
+			else
+				Commit(c.r or 1, c.g or 1, c.b or 1, allowAlpha and (c.a or 1) or 1)
+			end
 		end,
 	}
+
+	if allowAlpha then
+		info.opacityFunc = function()
+			local r, g, b = ColorPickerFrame:GetColorRGB()
+			local a = ColorPickerFrame.GetColorAlpha and ColorPickerFrame:GetColorAlpha() or c.a or 1
+			Commit(r, g, b, a)
+		end
+	end
+
 	ColorPickerFrame:SetupColorPickerAndShow(info)
 end
 
@@ -252,7 +286,13 @@ local function CreateSlider(parent, label, minVal, maxVal, step, yOffset)
 	return slider
 end
 
-local function CreateColorButton(parent, label, colorKey, yOffset)
+local function CreateColorButton(parent, label, colorKey, yOffset, options)
+	options = options or {}
+	local getColor = options.getColor or function()
+		return ns.GetBarColor(colorKey)
+	end
+	local allowAlpha = options.allowAlpha == true
+	local tooltipText = options.tooltipText or string.format("Click the swatch button to change the %s color.", label)
 	local row = CreateFrame("Frame", nil, parent)
 	row:SetPoint("TOPLEFT", parent, "TOPLEFT", 20, yOffset)
 	row:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -20, yOffset)
@@ -271,7 +311,7 @@ local function CreateColorButton(parent, label, colorKey, yOffset)
 
 	local swatch = btn:CreateTexture(nil, "ARTWORK")
 	swatch:SetAllPoints(true)
-	local c = ns.GetBarColor(colorKey)
+	local c = getColor()
 	if c then
 		swatch:SetColorTexture(c.r, c.g, c.b, c.a)
 	end
@@ -284,23 +324,400 @@ local function CreateColorButton(parent, label, colorKey, yOffset)
 	border:SetPoint("BOTTOMRIGHT", 1, -1)
 	border:SetDrawLayer("OVERLAY", -1)
 
-	btn:SetScript("OnClick", function()
-		OpenColorPicker(colorKey, swatch)
-	end)
-	AddControlTooltip(row, label, string.format("Click the swatch button to change the %s color.", label))
+	local function ApplySelectedColor(r, g, b, a)
+		local alpha = allowAlpha and (a or 1) or 1
+		if options.applyColor then
+			options.applyColor(r, g, b, alpha, swatch)
+		else
+			local isSealTwist = (colorKey == "sealTwist")
+			if not isSealTwist then
+				SuperSwingTimerDB.useClassColors = false
+			end
+			SuperSwingTimerDB.colors[colorKey] = { r = r, g = g, b = b, a = alpha }
+			ns.ApplyBarColors()
+			if panel and panel.useClassColorsRow and panel.useClassColorsRow.refresh then
+				panel.useClassColorsRow.refresh()
+			end
+			if panel and panel.colorRows then
+				for _, colorRow in ipairs(panel.colorRows) do
+					local key = colorRow.button.colorKey
+					local effective = ns.GetBarColor(key)
+					if effective then
+						colorRow.swatch:SetColorTexture(effective.r, effective.g, effective.b, effective.a)
+					end
+				end
+			end
+		end
+		swatch:SetColorTexture(r, g, b, alpha)
+	end
+
+	local function Refresh()
+		local color = getColor() or { r = 1, g = 1, b = 1, a = 1 }
+		swatch:SetColorTexture(color.r or 1, color.g or 1, color.b or 1, color.a or 1)
+	end
+
+	local function OpenPicker()
+		OpenColorPicker({
+			getColor = getColor,
+			allowAlpha = allowAlpha,
+			applyColor = ApplySelectedColor,
+		})
+	end
+
+	btn:SetScript("OnClick", OpenPicker)
+	AddControlTooltip(row, label, tooltipText)
 
 	row:SetScript("OnMouseUp", function(_, button)
 		if button == "LeftButton" then
-			OpenColorPicker(colorKey, swatch)
+			OpenPicker()
 		end
 	end)
 
 	row.button = btn
 	row.swatch = swatch
+	row.refresh = Refresh
+	Refresh()
 	return row
 end
 
+local function NormalizeTexturePath(texturePath, defaultTexture)
+	texturePath = strtrim(texturePath or "")
+	if texturePath == "" then
+		return defaultTexture or ns.DB_DEFAULTS.sparkTexture
+	end
+	return texturePath
+end
+
+local function GetTextureBrowserEntries(allowedCategories, allowedUsages)
+	local library = ns.TEXTURE_LIBRARY or ns.BuildTextureLibrary() or {}
+	local entries = {}
+	for _, entry in ipairs(library) do
+		local categoryAllowed = not allowedCategories or allowedCategories[entry.category]
+		local usage = entry.usage or "both"
+		local usageAllowed = not allowedUsages or allowedUsages[usage]
+		if categoryAllowed and usageAllowed then
+			entries[#entries + 1] = entry
+		end
+	end
+	table.sort(entries, function(a, b)
+		local aCategory = a.category or ""
+		local bCategory = b.category or ""
+		if aCategory ~= bCategory then
+			return aCategory < bCategory
+		end
+		local aLabel = a.label or a.path or ""
+		local bLabel = b.label or b.path or ""
+		if aLabel ~= bLabel then
+			return aLabel < bLabel
+		end
+		return (a.path or "") < (b.path or "")
+	end)
+	return entries
+end
+
+local textureBrowserFrame
+
+local function RefreshTextureBrowser(frame)
+	if not frame then
+		return
+	end
+
+	local searchText = strtrim(frame.searchBox and frame.searchBox:GetText() or "")
+	searchText = string.lower(searchText or "")
+	local category = frame.currentCategory or "All"
+	local filtered = {}
+	for _, entry in ipairs(frame.textureChoices or {}) do
+		local categoryMatches = (category == "All") or (entry.category == category)
+		if categoryMatches then
+			local matchesSearch = true
+			if searchText ~= "" then
+				local displayLabel = entry.label or entry.path or ""
+				if ns.GetTextureDisplayText then
+					displayLabel = ns.GetTextureDisplayText(entry.path) or displayLabel
+				end
+
+				local categoryLabel = entry.category or ""
+				if ns.GetTextureBrowserDisplayCategory then
+					categoryLabel = ns.GetTextureBrowserDisplayCategory(entry) or categoryLabel
+				end
+
+				local haystack = string.lower(string.format(
+					"%s %s %s %s",
+					categoryLabel,
+					displayLabel,
+					entry.label or "",
+					entry.path or ""
+				))
+				matchesSearch = string.find(haystack, searchText, 1, true) ~= nil
+			end
+			if matchesSearch then
+				filtered[#filtered + 1] = entry
+			end
+		end
+	end
+
+	frame.filteredChoices = filtered
+	for index, button in ipairs(frame.buttons or {}) do
+		local entry = filtered[index]
+		if entry then
+			button:Show()
+			button.entry = entry
+			if button.texture then
+				button.texture:SetTexture(entry.path)
+			end
+				button.displayLabel = entry.label or entry.path
+				if ns.GetTextureDisplayText then
+					button.displayLabel = ns.GetTextureDisplayText(entry.path) or button.displayLabel
+				end
+
+				button.displayCategory = entry.category or ""
+				if ns.GetTextureBrowserDisplayCategory then
+					button.displayCategory = ns.GetTextureBrowserDisplayCategory(entry) or button.displayCategory
+				end
+			button.displayPath = entry.path
+			local selected = frame.pendingTexture and entry.path == frame.pendingTexture
+			if button.SetBackdropBorderColor then
+				if selected then
+					button:SetBackdropBorderColor(0.95, 0.78, 0.20, 1)
+					button:SetBackdropColor(0.14, 0.11, 0.05, 0.95)
+				else
+					button:SetBackdropBorderColor(0.30, 0.30, 0.30, 1)
+					button:SetBackdropColor(0.08, 0.08, 0.08, 0.95)
+				end
+			end
+		else
+			button:Hide()
+			button.entry = nil
+		end
+	end
+
+	if frame.noResultsText then
+		frame.noResultsText:SetShown(#filtered == 0)
+	end
+end
+
+local function CreateTextureBrowserFrame()
+	local frame = CreateFrame("Frame", "SuperSwingTimerTextureBrowserFrame", UIParent, "BackdropTemplate")
+	frame:SetSize(660, 580)
+	frame:SetPoint("CENTER")
+	frame:SetFrameStrata("DIALOG")
+	frame:SetMovable(true)
+	frame:EnableMouse(true)
+	frame:RegisterForDrag("LeftButton")
+	frame:SetScript("OnDragStart", frame.StartMoving)
+	frame:SetScript("OnDragStop", frame.StopMovingOrSizing)
+	frame:SetBackdrop({
+		bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
+		edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
+		tile = true,
+		tileSize = 16,
+		edgeSize = 16,
+		insets = { left = 4, right = 4, top = 4, bottom = 4 },
+	})
+	frame:SetBackdropColor(0.06, 0.06, 0.06, 0.98)
+	frame:SetBackdropBorderColor(0.35, 0.35, 0.35, 1)
+	frame:Hide()
+
+	local title = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+	title:SetPoint("TOP", frame, "TOP", 0, -12)
+	title:SetText("Spark Texture Picker")
+	frame.titleText = title
+
+	local close = CreateFrame("Button", nil, frame, "UIPanelCloseButton")
+	close:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -3, -3)
+	frame.closeButton = close
+
+	local categoryLabel = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+	categoryLabel:SetPoint("TOPLEFT", frame, "TOPLEFT", 18, -34)
+	categoryLabel:SetText("Category")
+
+	local categoryDropdown = CreateFrame("Frame", nil, frame, "UIDropDownMenuTemplate")
+	categoryDropdown:SetPoint("TOPLEFT", frame, "TOPLEFT", 2, -46)
+	if UIDropDownMenu_SetWidth then
+		UIDropDownMenu_SetWidth(categoryDropdown, 150)
+	end
+	frame.categoryDropdown = categoryDropdown
+	frame.categoryChoices = TEXTURE_BROWSER_CATEGORY_CHOICES
+
+	local searchLabel = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+	searchLabel:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -214, -34)
+	searchLabel:SetText("Search")
+
+	local searchBox = CreateFrame("EditBox", nil, frame, "InputBoxTemplate")
+	searchBox:SetSize(180, 20)
+	searchBox:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -18, -44)
+	searchBox:SetAutoFocus(false)
+	searchBox:SetMaxLetters(128)
+	searchBox:SetScript("OnEnterPressed", function(self)
+		self:ClearFocus()
+		RefreshTextureBrowser(frame)
+	end)
+	searchBox:SetScript("OnEscapePressed", function(self)
+		self:SetText("")
+		self:ClearFocus()
+		RefreshTextureBrowser(frame)
+	end)
+	searchBox:SetScript("OnTextChanged", function(self, userInput)
+		if userInput then
+			RefreshTextureBrowser(frame)
+		end
+	end)
+	frame.searchBox = searchBox
+
+	if UIDropDownMenu_Initialize and UIDropDownMenu_CreateInfo and UIDropDownMenu_AddButton and UIDropDownMenu_SetText then
+		UIDropDownMenu_Initialize(categoryDropdown, function(_, level)
+			for _, category in ipairs(frame.categoryChoices) do
+				local info = UIDropDownMenu_CreateInfo()
+				info.text = category.label
+				info.checked = frame.currentCategory == category.value
+				info.func = function()
+					frame.currentCategory = category.value
+					UIDropDownMenu_SetText(categoryDropdown, category.label)
+					RefreshTextureBrowser(frame)
+				end
+				UIDropDownMenu_AddButton(info, level)
+			end
+		end)
+		UIDropDownMenu_SetText(categoryDropdown, GetTextureBrowserCategoryLabel(frame.currentCategory))
+	end
+
+	local buttonWidth = 100
+	local buttonHeight = 100
+	local buttonPaddingX = 8
+	local buttonPaddingY = 8
+	local columns = 5
+	local startX = 16
+	local startY = -78
+	frame.buttons = {}
+	for index = 1, 20 do
+		local button = CreateFrame("Button", nil, frame, "BackdropTemplate")
+		button:SetSize(buttonWidth, buttonHeight)
+		button:SetBackdrop({
+			bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
+			edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+			tile = true,
+			tileSize = 4,
+			edgeSize = 8,
+			insets = { left = 1, right = 1, top = 1, bottom = 1 },
+		})
+		button:SetBackdropColor(0.08, 0.08, 0.08, 0.95)
+		button:SetBackdropBorderColor(0.30, 0.30, 0.30, 1)
+		local columnOffset = ((index - 1) % columns) * (buttonWidth + buttonPaddingX)
+		local rowOffset = math.floor((index - 1) / columns) * (buttonHeight + buttonPaddingY)
+		button:SetPoint("TOPLEFT", frame, "TOPLEFT", startX + columnOffset, startY - rowOffset)
+		button:SetScript("OnEnter", function(self)
+			if self.entry then
+				self:SetBackdropBorderColor(0.75, 0.75, 0.75, 1)
+				if GameTooltip then
+					GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+					GameTooltip:SetText(self.displayLabel or self.entry.label or self.entry.path or "", 1, 1, 1)
+					if self.displayPath and self.displayPath ~= "" then
+						GameTooltip:AddLine(self.displayPath, 0.85, 0.85, 0.85, true)
+					end
+					if self.displayCategory and self.displayCategory ~= "" then
+						GameTooltip:AddLine(self.displayCategory, 0.70, 0.70, 0.70)
+					end
+					GameTooltip:Show()
+				end
+			end
+		end)
+		button:SetScript("OnLeave", function(self)
+			if GameTooltip then
+				GameTooltip:Hide()
+			end
+			RefreshTextureBrowser(frame)
+		end)
+		button:SetScript("OnClick", function(self)
+			if self.entry then
+				frame.pendingTexture = self.entry.path
+				RefreshTextureBrowser(frame)
+			end
+		end)
+
+		local texture = button:CreateTexture(nil, "ARTWORK")
+		texture:SetPoint("TOPLEFT", 4, -4)
+		texture:SetPoint("BOTTOMRIGHT", -4, 4)
+		texture:SetTexCoord(0.05, 0.95, 0.05, 0.95)
+		button.texture = texture
+
+		frame.buttons[#frame.buttons + 1] = button
+	end
+
+	local noResultsText = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+	noResultsText:SetPoint("CENTER", frame, "CENTER", 0, -12)
+	noResultsText:SetText("No matching textures.")
+	noResultsText:Hide()
+	frame.noResultsText = noResultsText
+
+	local okButton = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
+	okButton:SetSize(90, 22)
+	okButton:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -106, 12)
+	okButton:SetText("Okay")
+	okButton:SetScript("OnClick", function()
+		if frame.applyTexture then
+			frame.applyTexture(NormalizeTexturePath(frame.pendingTexture, ns.DB_DEFAULTS.sparkTexture))
+		end
+		frame:Hide()
+	end)
+	frame.okButton = okButton
+
+	local cancelButton = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
+	cancelButton:SetSize(90, 22)
+	cancelButton:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -12, 12)
+	cancelButton:SetText("Cancel")
+	cancelButton:SetScript("OnClick", function()
+		frame:Hide()
+	end)
+	frame.cancelButton = cancelButton
+
+	frame:SetScript("OnHide", function(self)
+		self.applyTexture = nil
+		self.pendingTexture = nil
+	end)
+
+	frame.Refresh = RefreshTextureBrowser
+	return frame
+end
+
+local function OpenTextureBrowser(initialTexture, applyTexture, options)
+	if not textureBrowserFrame then
+		textureBrowserFrame = CreateTextureBrowserFrame()
+	end
+
+	local frame = textureBrowserFrame
+	frame.applyTexture = applyTexture
+	frame.allowedCategories = (options and options.allowedCategories) or {
+		WeakAuras = true,
+		SharedMedia = true,
+		Blizzard = true,
+		Platynator = true,
+	}
+	frame.textureChoices = GetTextureBrowserEntries(frame.allowedCategories)
+	frame.currentCategory = (options and options.defaultCategory) or "WeakAuras"
+	local browserDefaultTexture = (options and options.defaultTexture) or ns.DB_DEFAULTS.sparkTexture
+	frame.pendingTexture = NormalizeTexturePath(initialTexture, browserDefaultTexture)
+	frame.searchBox:SetText("")
+	if frame.titleText then
+		frame.titleText:SetText((options and options.title) or "Spark Texture Picker")
+	end
+	if UIDropDownMenu_SetText then
+		UIDropDownMenu_SetText(frame.categoryDropdown, GetTextureBrowserCategoryLabel(frame.currentCategory))
+	end
+	RefreshTextureBrowser(frame)
+	frame:Show()
+	frame:Raise()
+end
+
 local function CreateTexturePathRow(parent, label, yOffset, getTexture, applyTexture)
+	local options = nil
+	if type(getTexture) == "table" then
+		options = getTexture
+		getTexture = options.getTexture
+		applyTexture = options.applyTexture
+		yOffset = options.yOffset or yOffset
+		label = options.label or label
+	end
+	options = options or {}
 	local row = CreateFrame("Frame", nil, parent)
 	row:SetPoint("TOPLEFT", parent, "TOPLEFT", 20, yOffset)
 	row:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -20, yOffset)
@@ -321,6 +738,74 @@ local function CreateTexturePathRow(parent, label, yOffset, getTexture, applyTex
 		if row.dropdown and UIDropDownMenu_SetText then
 			UIDropDownMenu_SetText(row.dropdown, GetTextureSummaryText(path))
 		end
+		if row.pathBox then
+			row.pathBox:SetText(path or "")
+		end
+	end
+
+	if options.mode == "browser" then
+		local defaultTexture = options.defaultTexture or getTexture() or ns.DB_DEFAULTS.sparkTexture
+		local pathBox = CreateFrame("EditBox", nil, row, "InputBoxTemplate")
+		pathBox:SetSize(236, 20)
+		pathBox:SetPoint("BOTTOMRIGHT", row, "BOTTOMRIGHT", -30, 0)
+		pathBox:SetAutoFocus(false)
+		pathBox:SetMaxLetters(260)
+		pathBox:SetScript("OnEnterPressed", function(self)
+			local path = NormalizeTexturePath(self:GetText(), defaultTexture)
+			applyTexture(path)
+			self:ClearFocus()
+			Refresh()
+			if ns.RefreshTextureRows then
+				ns.RefreshTextureRows()
+			end
+		end)
+		pathBox:SetScript("OnEscapePressed", function(self)
+			self:ClearFocus()
+			Refresh()
+		end)
+		pathBox:SetScript("OnEditFocusLost", function(self)
+			local path = NormalizeTexturePath(self:GetText(), defaultTexture)
+			applyTexture(path)
+			Refresh()
+			if ns.RefreshTextureRows then
+				ns.RefreshTextureRows()
+			end
+		end)
+		row.pathBox = pathBox
+
+		local browseButton = CreateFrame("Button", nil, row, "UIPanelButtonTemplate")
+		browseButton:SetSize(22, 20)
+		browseButton:SetPoint("BOTTOMRIGHT", row, "BOTTOMRIGHT", 0, 0)
+		browseButton:SetText("")
+		browseButton:SetNormalTexture("Interface\\AddOns\\WeakAuras\\Media\\Textures\\browse.tga")
+		browseButton:SetScript("OnClick", function()
+			OpenTextureBrowser(getTexture(), function(texturePath)
+				applyTexture(NormalizeTexturePath(texturePath, defaultTexture))
+				Refresh()
+				if ns.RefreshTextureRows then
+					ns.RefreshTextureRows()
+				end
+			end, {
+				defaultTexture = defaultTexture,
+				defaultCategory = options.browserDefaultCategory or "WeakAuras",
+				allowedCategories = options.browserCategories or {
+					WeakAuras = true,
+					SharedMedia = true,
+					Blizzard = true,
+					Platynator = true,
+				},
+				title = options.browserTitle or "Spark Texture Picker",
+			})
+		end)
+		row.browseButton = browseButton
+		local browserTooltip = options.tooltipText or string.format(
+			"Type a texture path or click the browse icon to open the spark texture picker for %s.",
+			label
+		)
+		AddControlTooltip(row, label, browserTooltip)
+		row.refresh = Refresh
+		Refresh()
+		return row
 	end
 
 	local preview = row:CreateTexture(nil, "ARTWORK")
@@ -345,10 +830,14 @@ local function CreateTexturePathRow(parent, label, yOffset, getTexture, applyTex
 
 	if UIDropDownMenu_Initialize and UIDropDownMenu_AddButton and UIDropDownMenu_CreateInfo then
 		UIDropDownMenu_Initialize(dropdown, function(_, level)
-			local library = ns.TEXTURE_LIBRARY or ns.BuildTextureLibrary() or {}
+			local allowedUsages = options.dropdownUsages or { both = true }
+			local library = GetTextureBrowserEntries(options.dropdownCategories, allowedUsages)
 			for _, entry in ipairs(library) do
 				local info = UIDropDownMenu_CreateInfo()
-				info.text = string.format("[%s / %s] %s", entry.category or "Unknown", entry.style or "style", entry.label or entry.path)
+				local entryCategory = entry.category or "Unknown"
+				local entryStyle = entry.style or "style"
+				local entryLabel = entry.label or entry.path
+				info.text = string.format("[%s / %s] %s", entryCategory, entryStyle, entryLabel)
 				info.value = entry.path
 				info.checked = entry.path == row.currentTexture
 				info.func = function()
@@ -416,7 +905,11 @@ local function CreateCycleRow(parent, label, yOffset, options, getValue, applyVa
 			ToggleDropDownMenu(1, nil, dropdown, dropdown, 0, 0)
 		end
 	end)
-	AddControlTooltip(row, label, string.format("Choose the %s option from the dropdown. The full list shows the real WoW draw layers and modes.", label))
+	local dropdownTooltip = string.format(
+		"Choose the %s option from the dropdown. The full list shows the real WoW draw layers and modes.",
+		label
+	)
+	AddControlTooltip(row, label, dropdownTooltip)
 	row.refresh = Refresh
 	Refresh()
 	return row
@@ -540,7 +1033,9 @@ local function CreateWeaveFamilyRow(parent, abbrev, label, yOffset)
 			toggle:Click()
 		end
 	end)
-	AddControlTooltip(row, string.format("%s family", abbrev), string.format("Keep the %s family in the weave breakpoint helper.", label))
+	local familyLabel = string.format("%s family", abbrev)
+	local familyTooltip = string.format("Keep the %s family in the weave breakpoint helper.", label)
+	AddControlTooltip(row, familyLabel, familyTooltip)
 
 	row.toggle = toggle
 	row.refresh = function()
@@ -677,8 +1172,14 @@ local function CreatePanel()
 		content,
 		"MH/OH Bar Texture",
 		ShiftY(-145),
-		function() return SuperSwingTimerDB.barTexture or ns.DB_DEFAULTS.barTexture end,
-		function(texturePath) ns.ApplyBarTexture(texturePath, SuperSwingTimerDB.barTextureLayer or ns.DB_DEFAULTS.barTextureLayer) end
+		{
+			defaultTexture = ns.DB_DEFAULTS.barTexture,
+			getTexture = function() return SuperSwingTimerDB.barTexture or ns.DB_DEFAULTS.barTexture end,
+			applyTexture = function(texturePath)
+				ns.ApplyBarTexture(texturePath, SuperSwingTimerDB.barTextureLayer or ns.DB_DEFAULTS.barTextureLayer)
+			end,
+			dropdownUsages = { both = true },
+		}
 	)
 
 	local barLayerRow = CreateCycleRow(
@@ -694,55 +1195,102 @@ local function CreatePanel()
 		content,
 		"Ranged Bar Texture",
 		ShiftY(-200),
-		function() return SuperSwingTimerDB.rangedBarTexture or ns.DB_DEFAULTS.rangedBarTexture end,
-		function(texturePath) ns.ApplyRangedBarTexture(texturePath, SuperSwingTimerDB.barTextureLayer or ns.DB_DEFAULTS.barTextureLayer) end
+		{
+			defaultTexture = ns.DB_DEFAULTS.rangedBarTexture,
+			getTexture = function() return SuperSwingTimerDB.rangedBarTexture or ns.DB_DEFAULTS.rangedBarTexture end,
+			applyTexture = function(texturePath)
+				ns.ApplyRangedBarTexture(texturePath, SuperSwingTimerDB.barTextureLayer or ns.DB_DEFAULTS.barTextureLayer)
+			end,
+			dropdownUsages = { both = true },
+		}
 	)
 
 	local sparkTextureRow = CreateTexturePathRow(
 		content,
-		"MH/OH Spark Texture",
+		"Spark Texture",
 		ShiftY(-215),
-		function() return SuperSwingTimerDB.sparkTexture or ns.DB_DEFAULTS.sparkTexture end,
-		function(texturePath)
-			ns.ApplySparkSettings(
-				texturePath,
-				SuperSwingTimerDB.sparkWidth or ns.DB_DEFAULTS.sparkWidth,
-				SuperSwingTimerDB.sparkHeight or ns.DB_DEFAULTS.sparkHeight,
-				SuperSwingTimerDB.sparkTextureLayer or ns.DB_DEFAULTS.sparkTextureLayer,
-				SuperSwingTimerDB.sparkAlpha or ns.DB_DEFAULTS.sparkAlpha
-			)
-		end
+		{
+			mode = "browser",
+			label = "Spark Texture",
+			yOffset = ShiftY(-215),
+			defaultTexture = ns.DB_DEFAULTS.sparkTexture,
+			getTexture = function() return SuperSwingTimerDB.sparkTexture or ns.DB_DEFAULTS.sparkTexture end,
+			applyTexture = function(texturePath)
+				ns.ApplySparkSettings(
+					texturePath,
+					SuperSwingTimerDB.sparkWidth or ns.DB_DEFAULTS.sparkWidth,
+					SuperSwingTimerDB.sparkHeight or ns.DB_DEFAULTS.sparkHeight,
+					SuperSwingTimerDB.sparkTextureLayer or ns.DB_DEFAULTS.sparkTextureLayer,
+					SuperSwingTimerDB.sparkAlpha or ns.DB_DEFAULTS.sparkAlpha,
+					SuperSwingTimerDB.sparkColor or ns.GetSparkColor()
+				)
+			end,
+			browserDefaultCategory = "WeakAuras",
+			browserCategories = {
+				WeakAuras = true,
+				SharedMedia = true,
+				Blizzard = true,
+				Platynator = true,
+			},
+			browserTitle = "Spark Texture Picker",
+			tooltipText = "Type a texture path or click the browse icon to choose the Normal spark preset (Square_FullWhite) or another texture.",
+		}
+	)
+
+	local sparkAlphaSlider = CreateSlider(content, "Spark Alpha", 0, 1, 0.05, ShiftY(-425))
+	sparkAlphaSlider:SetValue(SuperSwingTimerDB.sparkAlpha or ns.DB_DEFAULTS.sparkAlpha)
+	SyncSliderDisplay(sparkAlphaSlider, sparkAlphaSlider:GetValue())
+
+	local sparkColorRow = CreateColorButton(
+		content,
+		"Spark Color",
+		"spark",
+		ShiftY(-250),
+		{
+			allowAlpha = true,
+			getColor = function()
+				return SuperSwingTimerDB.sparkColor or ns.GetSparkColor() or ns.DB_DEFAULTS.sparkColor
+			end,
+			applyColor = function(r, g, b, a)
+				local texturePath = SuperSwingTimerDB.sparkTexture or ns.DB_DEFAULTS.sparkTexture
+				ns.ApplySparkSettings(
+					texturePath,
+					SuperSwingTimerDB.sparkWidth or ns.DB_DEFAULTS.sparkWidth,
+					SuperSwingTimerDB.sparkHeight or ns.DB_DEFAULTS.sparkHeight,
+					SuperSwingTimerDB.sparkTextureLayer or ns.DB_DEFAULTS.sparkTextureLayer,
+					a,
+					{ r = r, g = g, b = b, a = a }
+				)
+			end,
+			tooltipText = "Pick the spark tint and opacity with the color wheel.",
+		}
 	)
 
 	local sparkLayerRow = CreateCycleRow(
 		content,
-		"MH/OH Spark Layer",
-		ShiftY(-250),
+		"Spark Layer",
+		ShiftY(-285),
 		ns.TEXTURE_LAYER_OPTIONS,
 		function() return SuperSwingTimerDB.sparkTextureLayer or ns.DB_DEFAULTS.sparkTextureLayer end,
 		function(layer) ns.ApplySparkTextureLayer(layer) end
 	)
 
-	local sparkWidthSlider = CreateSlider(content, "Spark Width", 8, 60, 1, ShiftY(-315))
+	local sparkWidthSlider = CreateSlider(content, "Spark Width", 8, 60, 1, ShiftY(-350))
 	sparkWidthSlider:SetValue(SuperSwingTimerDB.sparkWidth or ns.DB_DEFAULTS.sparkWidth)
 	SyncSliderDisplay(sparkWidthSlider, sparkWidthSlider:GetValue())
 
-	local sparkHeightSlider = CreateSlider(content, "Spark Height", 12, 90, 1, ShiftY(-365))
+	local sparkHeightSlider = CreateSlider(content, "Spark Height", 12, 90, 1, ShiftY(-400))
 	sparkHeightSlider:SetValue(SuperSwingTimerDB.sparkHeight or ns.DB_DEFAULTS.sparkHeight)
 	SyncSliderDisplay(sparkHeightSlider, sparkHeightSlider:GetValue())
 
-	local backgroundAlphaSlider = CreateSlider(content, "Bar Background Alpha", 0, 1, 0.05, ShiftY(-415))
+	local backgroundAlphaSlider = CreateSlider(content, "Bar Background Alpha", 0, 1, 0.05, ShiftY(-450))
 	backgroundAlphaSlider:SetValue(SuperSwingTimerDB.barBackgroundAlpha or ns.DB_DEFAULTS.barBackgroundAlpha)
 	SyncSliderDisplay(backgroundAlphaSlider, backgroundAlphaSlider:GetValue())
-
-	local sparkAlphaSlider = CreateSlider(content, "Spark Alpha", 0, 1, 0.05, ShiftY(-465))
-	sparkAlphaSlider:SetValue(SuperSwingTimerDB.sparkAlpha or ns.DB_DEFAULTS.sparkAlpha)
-	SyncSliderDisplay(sparkAlphaSlider, sparkAlphaSlider:GetValue())
 
 	local indicatorBlendModeRow = CreateCycleRow(
 		content,
 		"Indicator Glow Mode",
-		ShiftY(-495),
+		ShiftY(-500),
 		INDICATOR_BLEND_OPTIONS,
 		function() return SuperSwingTimerDB.indicatorBlendMode or ns.DB_DEFAULTS.indicatorBlendMode end,
 		function(blendMode)
@@ -750,22 +1298,37 @@ local function CreatePanel()
 		end
 	)
 
-	CreateSectionHeader(content, "Shaman Weave Assist", -534)
+	CreateSectionHeader(content, "Shaman Weave Assist", -539)
 
 	local weaveSparkTextureRow = CreateTexturePathRow(
 		content,
 		"Cast Breakpoint Spark Texture",
 		ShiftY(-545),
-		function() return SuperSwingTimerDB.weaveSparkTexture or ns.DB_DEFAULTS.weaveSparkTexture end,
-		function(texturePath)
-			ns.ApplyWeaveSparkSettings(
-				texturePath,
-				SuperSwingTimerDB.weaveSparkWidth or ns.DB_DEFAULTS.weaveSparkWidth,
-				SuperSwingTimerDB.weaveSparkHeight or ns.DB_DEFAULTS.weaveSparkHeight,
-				SuperSwingTimerDB.weaveSparkTextureLayer or ns.DB_DEFAULTS.weaveSparkTextureLayer,
-				SuperSwingTimerDB.weaveSparkAlpha or ns.DB_DEFAULTS.weaveSparkAlpha
-			)
-		end
+		{
+			mode = "browser",
+			label = "Cast Breakpoint Spark Texture",
+			yOffset = ShiftY(-545),
+			defaultTexture = ns.DB_DEFAULTS.weaveSparkTexture,
+			getTexture = function() return SuperSwingTimerDB.weaveSparkTexture or ns.DB_DEFAULTS.weaveSparkTexture end,
+			applyTexture = function(texturePath)
+				ns.ApplyWeaveSparkSettings(
+					texturePath,
+					SuperSwingTimerDB.weaveSparkWidth or ns.DB_DEFAULTS.weaveSparkWidth,
+					SuperSwingTimerDB.weaveSparkHeight or ns.DB_DEFAULTS.weaveSparkHeight,
+					SuperSwingTimerDB.weaveSparkTextureLayer or ns.DB_DEFAULTS.weaveSparkTextureLayer,
+					SuperSwingTimerDB.weaveSparkAlpha or ns.DB_DEFAULTS.weaveSparkAlpha
+				)
+			end,
+			browserDefaultCategory = "WeakAuras",
+			browserCategories = {
+				WeakAuras = true,
+				SharedMedia = true,
+				Blizzard = true,
+				Platynator = true,
+			},
+			browserTitle = "Cast Breakpoint Spark Picker",
+			tooltipText = "Type a texture path or click the browse icon to choose the cast-breakpoint spark preset (Target Indicator) or another texture.",
+		}
 	)
 
 	local weaveSparkLayerRow = CreateCycleRow(
@@ -1166,6 +1729,7 @@ local function CreatePanel()
 	f.weaveSparkWidthSlider = weaveSparkWidthSlider
 	f.weaveSparkHeightSlider = weaveSparkHeightSlider
 	f.weaveSparkAlphaSlider = weaveSparkAlphaSlider
+	f.sparkColorRow = sparkColorRow
 	f.weaveTriangleTopRow = weaveTriangleTopRow
 	f.weaveTriangleBottomRow = weaveTriangleBottomRow
 	f.weaveTriangleLayerRow = weaveTriangleLayerRow
@@ -1183,7 +1747,6 @@ local function CreatePanel()
 	f.sparkWidthSlider = sparkWidthSlider
 	f.sparkHeightSlider = sparkHeightSlider
 	f.backgroundAlphaSlider = backgroundAlphaSlider
-	f.sparkAlphaSlider = sparkAlphaSlider
 	f.indicatorBlendModeRow = indicatorBlendModeRow
 	f.minimalModeRow = minimalModeRow
 	f.lockBarsRow = lockBarsRow
@@ -1236,6 +1799,9 @@ function ns.ToggleConfig()
 		if panel.sparkTextureRow and panel.sparkTextureRow.refresh then
 			panel.sparkTextureRow.refresh()
 		end
+		if panel.sparkColorRow and panel.sparkColorRow.refresh then
+			panel.sparkColorRow.refresh()
+		end
 		if panel.sparkLayerRow and panel.sparkLayerRow.refresh then
 			panel.sparkLayerRow.refresh()
 		end
@@ -1267,7 +1833,6 @@ function ns.ToggleConfig()
 		panel.sparkWidthSlider:SetValue(SuperSwingTimerDB.sparkWidth or ns.DB_DEFAULTS.sparkWidth)
 		panel.sparkHeightSlider:SetValue(SuperSwingTimerDB.sparkHeight or ns.DB_DEFAULTS.sparkHeight)
 		panel.backgroundAlphaSlider:SetValue(SuperSwingTimerDB.barBackgroundAlpha or ns.DB_DEFAULTS.barBackgroundAlpha)
-		panel.sparkAlphaSlider:SetValue(SuperSwingTimerDB.sparkAlpha or ns.DB_DEFAULTS.sparkAlpha)
 		panel.weaveSparkWidthSlider:SetValue(SuperSwingTimerDB.weaveSparkWidth or ns.DB_DEFAULTS.weaveSparkWidth)
 		panel.weaveSparkHeightSlider:SetValue(SuperSwingTimerDB.weaveSparkHeight or ns.DB_DEFAULTS.weaveSparkHeight)
 		panel.weaveSparkAlphaSlider:SetValue(SuperSwingTimerDB.weaveSparkAlpha or ns.DB_DEFAULTS.weaveSparkAlpha)
@@ -1282,6 +1847,9 @@ function ns.ToggleConfig()
 		end
 		if panel.useClassColorsRow and panel.useClassColorsRow.refresh then
 			panel.useClassColorsRow.refresh()
+		end
+		if panel.sparkColorRow and panel.sparkColorRow.refresh then
+			panel.sparkColorRow.refresh()
 		end
 		if panel.showMHRow and panel.showMHRow.refresh then
 			panel.showMHRow.refresh()
@@ -1341,6 +1909,12 @@ function ns.ResetConfigDefaults()
 	SuperSwingTimerDB.sparkHeight = ns.DB_DEFAULTS.sparkHeight
 	SuperSwingTimerDB.barBackgroundAlpha = ns.DB_DEFAULTS.barBackgroundAlpha
 	SuperSwingTimerDB.sparkAlpha = ns.DB_DEFAULTS.sparkAlpha
+	SuperSwingTimerDB.sparkColor = {
+		r = ns.DB_DEFAULTS.sparkColor.r,
+		g = ns.DB_DEFAULTS.sparkColor.g,
+		b = ns.DB_DEFAULTS.sparkColor.b,
+		a = ns.DB_DEFAULTS.sparkColor.a,
+	}
 	SuperSwingTimerDB.minimalMode = ns.DB_DEFAULTS.minimalMode
 	SuperSwingTimerDB.lockBars = ns.DB_DEFAULTS.lockBars
 	SuperSwingTimerDB.showMH = ns.DB_DEFAULTS.showMH
@@ -1364,15 +1938,22 @@ function ns.ResetConfigDefaults()
 	ns.ApplyBarTexture(ns.DB_DEFAULTS.barTexture, ns.DB_DEFAULTS.barTextureLayer)
 	ns.ApplyRangedBarTexture(ns.DB_DEFAULTS.rangedBarTexture, ns.DB_DEFAULTS.barTextureLayer)
 	ns.ApplyBarTextureLayer(ns.DB_DEFAULTS.barTextureLayer)
-	ns.ApplySparkSettings(ns.DB_DEFAULTS.sparkTexture, ns.DB_DEFAULTS.sparkWidth, ns.DB_DEFAULTS.sparkHeight, ns.DB_DEFAULTS.sparkTextureLayer, ns.DB_DEFAULTS.sparkAlpha)
+	ns.ApplySparkSettings(ns.DB_DEFAULTS.sparkTexture, ns.DB_DEFAULTS.sparkWidth, ns.DB_DEFAULTS.sparkHeight, ns.DB_DEFAULTS.sparkTextureLayer, ns.DB_DEFAULTS.sparkColor.a, ns.DB_DEFAULTS.sparkColor)
 	ns.ApplySparkTextureLayer(ns.DB_DEFAULTS.sparkTextureLayer)
 	ns.ApplyIndicatorBlendMode(ns.DB_DEFAULTS.indicatorBlendMode)
 	ns.ApplyWeaveSparkSettings(ns.DB_DEFAULTS.weaveSparkTexture, ns.DB_DEFAULTS.weaveSparkWidth, ns.DB_DEFAULTS.weaveSparkHeight, ns.DB_DEFAULTS.weaveSparkTextureLayer, ns.DB_DEFAULTS.weaveSparkAlpha)
 	ns.ApplyWeaveSparkTextureLayer(ns.DB_DEFAULTS.weaveSparkTextureLayer)
-	ns.ApplyWeaveTriangleSettings(ns.DB_DEFAULTS.weaveTriangleTopTexture, ns.DB_DEFAULTS.weaveTriangleBottomTexture, ns.DB_DEFAULTS.weaveTriangleSize, ns.DB_DEFAULTS.weaveTriangleGap, ns.DB_DEFAULTS.weaveTriangleTextureLayer, ns.DB_DEFAULTS.weaveTriangleAlpha)
+	ns.ApplyWeaveTriangleSettings(
+		ns.DB_DEFAULTS.weaveTriangleTopTexture,
+		ns.DB_DEFAULTS.weaveTriangleBottomTexture,
+		ns.DB_DEFAULTS.weaveTriangleSize,
+		ns.DB_DEFAULTS.weaveTriangleGap,
+		ns.DB_DEFAULTS.weaveTriangleTextureLayer,
+		ns.DB_DEFAULTS.weaveTriangleAlpha
+	)
 	ns.ApplyWeaveMarkerLayer(ns.DB_DEFAULTS.weaveMarkerLayer)
 	ns.ApplyBarBackgroundAlpha(ns.DB_DEFAULTS.barBackgroundAlpha)
-	ns.ApplySparkAlpha(ns.DB_DEFAULTS.sparkAlpha)
+	ns.ApplySparkColor(ns.DB_DEFAULTS.sparkColor)
 	ns.ApplyMinimalMode(ns.DB_DEFAULTS.minimalMode)
 	ns.ApplyBarColors()
 	ns.ApplyVisibility()
@@ -1387,6 +1968,12 @@ function ns.ResetConfigDefaults()
 	end
 	if panel and panel.sparkTextureRow and panel.sparkTextureRow.refresh then
 		panel.sparkTextureRow.refresh()
+	end
+	if panel and panel.sparkColorRow and panel.sparkColorRow.refresh then
+		panel.sparkColorRow.refresh()
+	end
+	if panel and panel.sparkColorRow and panel.sparkColorRow.refresh then
+		panel.sparkColorRow.refresh()
 	end
 	if panel and panel.sparkLayerRow and panel.sparkLayerRow.refresh then
 		panel.sparkLayerRow.refresh()

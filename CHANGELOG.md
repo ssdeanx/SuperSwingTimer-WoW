@@ -1,5 +1,28 @@
 ﻿# Super Swing Timer Changelog
 
+## 3.1.7 - 2026-04-29
+
+- Added a dedicated 10px Hunter Auto Shot / Multi-Shot cast bar beneath the ranged timer and kept it synced to the ranged texture, spark settings, and visibility rules.
+- Corrected the TBC Multi-Shot and Slam rank spell IDs in the addon tables and swing-timer reference docs so the no-reset and pause logic stays aligned.
+- Fixed the spellcast event handling to use Classic's 3-argument `UNIT_SPELLCAST_*` payloads so the hunter cast state and swing-reset logic read the live spell ID correctly.
+
+## 3.1.6 - 2026-04-29
+
+- Expanded the texture catalog so MH/OH and ranged bar rows stay focused on bar-style textures from Blizzard, SharedMedia, WeakAuras, and installed addon packs, while spark and weave spark rows can browse the broader thumbnail library.
+- Switched the spark and shaman weave spark rows to folder-style browse buttons and kept the WeakAuras `Square_FullWhite` preset surfaced as `Normal`.
+- Restored the spark alpha slider in the config panel so spark opacity can be tuned again alongside width, height, layer, and color.
+
+## 3.1.5 - 2026-04-29
+
+- Polished the spark texture picker into a dedicated thumbnail browser and surfaced the WeakAuras `Square_FullWhite` preset as `Normal`.
+- Cleaned up the spark row labels and tooltip copy so the final release reads more like a curated UI than an internal settings panel.
+- Kept the shaman weave default on `Target Indicator` and preserved the alternate triangle preset in the same texture library.
+
+## 3.1.4 - 2026-04-28
+
+- Added a green-safe hunter ranged cast-window state so the red zone now turns green when you stop before the breakpoint and only stays red when you are still moving too late.
+- Kept the latency-aware cast-window math and black breakpoint marker intact while refreshing the movement feedback text in the README.
+
 ## 3.1.3 - 2026-04-27
 
 - Kept the hunter Auto Shot spark and the shaman / ret paladin breakpoint markers above the bar fill by moving them to dedicated non-mouse overlay frames, so the overlays no longer disappear behind the status bar skin or mouse-hover HIGHLIGHT behavior.

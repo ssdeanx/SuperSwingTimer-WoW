@@ -23,3 +23,6 @@ Read the files in order for a progressive understanding:
 6. `Expert-Patterns.md`
 
 Each file contains code examples suitable for TBC Classic WeakAuras custom code.
+
+If you are wiring a swing-timer feed into a WeakAura, start with `Expert-Patterns.md` for the bridge example, then
+use `Triggers.md` and `Actions.md` to split the trigger/state flow from any cleanup or relay logic.

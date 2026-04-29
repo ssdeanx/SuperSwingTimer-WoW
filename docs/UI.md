@@ -29,7 +29,7 @@ This document captures the UI direction for `/sst`.
   - marker size, gap, alpha, and layer controls
   - color selection by spell family
   - per-family enable / disable toggles for Lightning Bolt, Chain Lightning, Healing Wave, Lesser Healing Wave, and Chain Heal
-- Texture selection should use the in-addon dropdown with preview rows and the SharedMedia / Blizzard fallback library; the collapsed row should summarize the current texture and the active bar texture.
+- Texture selection should use compact preview dropdown rows for the MH/OH and ranged bars, but those dropdowns should stay focused on bar-style textures from Blizzard, SharedMedia, WeakAuras, and installed addon packs. The spark row and the shaman weave spark row should open a dedicated thumbnail browser seeded with the Normal `Square_FullWhite` preset, and the collapsed rows should summarize the current texture and the active bar texture.
 - Make the row controls obvious: toggles use the right-side checkbox, selector settings use the right-side dropdown, and sliders expose a right-side editable numeric field.
 - Add hover tooltips to explain what each row changes so the panel remains understandable without memorizing the labels.
 - Keep the panel responsive and straightforward to scan.
@@ -38,7 +38,7 @@ This document captures the UI direction for `/sst`.
 
 - WoW does not expose a full API that enumerates every texture file on disk.
 - The addon should therefore provide:
-  - a preset texture browser for common UI assets
+  - a preset texture browser for common UI assets gathered from Blizzard fallbacks, LibSharedMedia registrations, and curated addon texture packs
   - a manual texture path entry for any custom or packaged texture
 
 ## Blizzard references checked

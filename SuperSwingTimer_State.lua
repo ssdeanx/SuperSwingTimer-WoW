@@ -23,6 +23,7 @@ local RANGED_START_DEDUPE_WINDOW = 0.25
 --   lastSwing          GetCurrentTime() / combat-log timestamp at swing start
 --   duration           weapon speed at swing start
 --   speed              cached speed (for haste change detection)
+--   nextSpeedCheckAt   GetCurrentTime() when next haste check should occur
 
 ns.timers = {
 	mh     = { state = "idle", lastSwing = 0, duration = 0, speed = 0, nextSpeedCheckAt = 0 },
@@ -34,6 +35,7 @@ ns.extraAttackPending = 0
 ns.casting = false
 ns.channeling = false
 ns.channelingSpellId = nil
+ns.currentCastSpellId = nil
 ns.preventSwingReset = false
 ns.pauseSwingTime = nil
 
@@ -89,6 +91,9 @@ function ns.HasActiveTimers()
 			return true
 		end
 	end
+	if ns.playerClass == "HUNTER" and ns.casting and ns.currentCastSpellId and ns.HUNTER_CAST_SPELLS and ns.HUNTER_CAST_SPELLS[ns.currentCastSpellId] then
+		return true
+	end
 	return false
 end
 
@@ -135,6 +140,7 @@ end
 
 function ns.OnPlayerEnteringWorld()
 	ns.isMoving = false
+	ns.lastStoppedMovingAt = nil
 	ns.druidFormChangeTime = nil
 	ns.RefreshLatencyCache()
 	if ns.ClearWeavePreview then
@@ -282,23 +288,27 @@ function ns.AdjustSwingTimesAfterPause(now)
 	end
 end
 
-function ns.HandleSpellcastStart(unit, _, _, spellId)
+function ns.HandleSpellcastStart(unit, _, spellId)
 	if unit ~= "player" then return end
 	ns.RefreshLatencyCache()
 	ns.casting = true
+	ns.currentCastSpellId = spellId
 	ns.preventSwingReset = ns.preventSwingReset or (ns.NO_RESET_SWING_SPELLS and ns.NO_RESET_SWING_SPELLS[spellId])
 	if ns.PAUSE_SWING_SPELLS and ns.PAUSE_SWING_SPELLS[spellId] and not ns.pauseSwingTime then
 		ns.pauseSwingTime = GetCurrentTime()
 	end
+	ns.RefreshUpdateLoop()
 end
 
-function ns.HandleSpellcastChannelStart(unit, _, _, spellId)
+function ns.HandleSpellcastChannelStart(unit, _, spellId)
 	if unit ~= "player" then return end
 	ns.RefreshLatencyCache()
 	ns.casting = true
 	ns.channeling = true
 	ns.channelingSpellId = spellId
+	ns.currentCastSpellId = spellId
 	ns.preventSwingReset = ns.NO_RESET_SWING_SPELLS and ns.NO_RESET_SWING_SPELLS[spellId]
+	ns.RefreshUpdateLoop()
 end
 
 function ns.HandleSpellcastStop(unit)
@@ -306,7 +316,9 @@ function ns.HandleSpellcastStop(unit)
 	ns.casting = false
 	ns.channeling = false
 	ns.channelingSpellId = nil
+	ns.currentCastSpellId = nil
 	ns.preventSwingReset = false
+	ns.RefreshUpdateLoop()
 end
 
 function ns.HandleSpellcastChannelStop(unit)
@@ -314,10 +326,12 @@ function ns.HandleSpellcastChannelStop(unit)
 	ns.casting = false
 	ns.channeling = false
 	ns.channelingSpellId = nil
+	ns.currentCastSpellId = nil
 	ns.preventSwingReset = false
+	ns.RefreshUpdateLoop()
 end
 
-function ns.HandleSpellcastInterruptedOrFailed(unit, _, _, spellId)
+function ns.HandleSpellcastInterruptedOrFailed(unit, _, spellId)
 	if unit ~= "player" then return end
 	ns.RefreshLatencyCache()
 	local now = GetCurrentTime()
@@ -327,7 +341,9 @@ function ns.HandleSpellcastInterruptedOrFailed(unit, _, _, spellId)
 	ns.casting = false
 	ns.channeling = false
 	ns.channelingSpellId = nil
+	ns.currentCastSpellId = nil
 	ns.preventSwingReset = false
+	ns.RefreshUpdateLoop()
 end
 
 -- Reset a timer slot to idle.
@@ -404,10 +420,10 @@ function ns.HandleCLEU()
 	local _, subEvent, _, sourceGUID, _, _, _, targetGUID, _, _, _, cleuArg12, cleuArg13, _, cleuArg15, _, _, _, _, _, cleuArg21 = CombatLogGetCurrentEventInfo()
 	ns.RefreshLatencyCache()
 
-	local playerGUID = GetPlayerGUID()
+	local currentPlayerGUID = GetPlayerGUID()
 
 	-- ---- Player is the source ----
-	if sourceGUID == playerGUID then
+	if sourceGUID == currentPlayerGUID then
 
 		if subEvent == "SWING_DAMAGE" then
 			local isOffHandAttack = cleuArg21
@@ -443,7 +459,7 @@ function ns.HandleCLEU()
 			local extraAttackAmount = cleuArg15
 			ns.extraAttackPending = (ns.extraAttackPending or 0) + (extraAttackAmount or 1)
 
-		elseif (subEvent == "SPELL_DAMAGE" or subEvent == "SPELL_MISSED") and sourceGUID == playerGUID then
+		elseif (subEvent == "SPELL_DAMAGE" or subEvent == "SPELL_MISSED") and sourceGUID == currentPlayerGUID then
 			local spellId = cleuArg12
 			if ns.RESET_RANGED_SWING_SPELLS and ns.RESET_RANGED_SWING_SPELLS[spellId] then
 				if ns.StartRangedSwing(GetCurrentTime()) and ns.OnRangedSwing then
@@ -462,7 +478,7 @@ function ns.HandleCLEU()
 		end
 
 	-- ---- Player is the destination (incoming parry) ----
-	elseif targetGUID == playerGUID then
+	elseif targetGUID == currentPlayerGUID then
 		if subEvent == "SWING_MISSED" then
 			local missType = cleuArg12
 			if missType == "PARRY" then
@@ -511,5 +527,7 @@ function ns.HandleSpellcastSucceeded(unit, _, spellId)
 	ns.casting = false
 	ns.channeling = false
 	ns.channelingSpellId = nil
+	ns.currentCastSpellId = nil
 	ns.preventSwingReset = false
+	ns.RefreshUpdateLoop()
 end

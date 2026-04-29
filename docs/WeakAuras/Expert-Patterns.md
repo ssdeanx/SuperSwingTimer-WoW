@@ -223,6 +223,59 @@ function(event, ...)
 end
 ```
 
+### Bridging a swing-timer feed into WeakAuras
+
+When an addon or helper library already emits swing-timer events, keep the aura trigger event-driven and map the payload into `aura_env.state`.
+This is the cleanest way to mirror the addon’s start / update / stop flow, and it also gives you a place to carry a ranged safe-state flag
+when the cast window turns green because the player stopped before the breakpoint.
+
+```lua
+-- On Init
+function()
+  aura_env.state = aura_env.state or {}
+  aura_env.state.show = false
+  aura_env.state.hand = nil
+  aura_env.state.safe = false
+end
+```
+
+```lua
+-- Custom Trigger
+function(event, hand, duration, expirationTime, safe)
+  if event ~= "SWING_TIMER_START"
+  and event ~= "SWING_TIMER_UPDATE"
+  and event ~= "SWING_TIMER_STOP" then
+    return false
+  end
+
+  -- Only track the hand you care about.
+  if hand ~= "ranged" and hand ~= "mainhand" and hand ~= "offhand" then
+    return false
+  end
+
+  if event == "SWING_TIMER_STOP" then
+    return false
+  end
+
+  return true, {
+    show = true,
+    changed = true,
+    hand = hand,
+    duration = duration,
+    expirationTime = expirationTime,
+    progressType = "timed",
+    safe = safe == true,
+  }
+end
+```
+
+#### Connection notes
+
+- If your source addon already calls `WeakAuras.ScanEvents("SWING_TIMER_START", ...)`, you can listen for those events directly.
+- If you need to forward the data to another aura, create a unique custom event name in `aura_env` and re-emit the payload with `WeakAuras.ScanEvents`.
+- Keep the `safe` flag in the state table if you want the display to react to the green ranged safe-stop state.
+- Use `aura_env.id` when you create your own custom relay event so duplicated auras do not collide.
+
 ## Performance Best Practices
 
 - Avoid `Status` or custom frame polling when event-driven triggers will do.

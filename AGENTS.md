@@ -75,6 +75,20 @@ Use these links first when checking Classic addon UI behavior, widgets, frames, 
 
 ## Current progress
 
+- Hunter now has a dedicated 10px Auto Shot / Multi-Shot cast bar beneath the ranged timer, tied to the ranged texture, spark settings, and visibility rules instead of floating independently.
+- The hunter spellcast handlers were corrected to consume Classic's 3-argument `UNIT_SPELLCAST_*` payloads so the cast state and swing-reset logic can read the live spell ID.
+- The TBC Multi-Shot ranks and Slam ranks 5-6 were synced into the addon tables and `docs/swingtimer.md`, and the TOC / changelog were bumped to `v3.1.7`.
+
+- The MH/OH and ranged texture rows now stay focused on bar-style textures from Blizzard, SharedMedia, WeakAuras, and installed addon packs, while the spark and shaman weave spark rows open folder-style thumbnail browsers with `Square_FullWhite` surfaced as `Normal`.
+- The spark alpha slider has been restored in the config panel, and the spark / weave browse buttons now use the dedicated WeakAuras browse icon for a more polished picker feel.
+
+- The MH/OH spark texture row now opens a dedicated square-thumbnail browser, the WeakAuras `Square_FullWhite` spark preset is surfaced as `Normal`, and the shaman weave spark reads as `Target Indicator` for cleaner final-release wording.
+- README, CHANGELOG, `SuperSwingTimer.toc`, `docs/SharedMedia.md`, and `docs/UI.md` were refreshed to match the polished spark picker and metadata bump.
+
+- Hunter Auto Shot now has a green-safe cast-window state: the cast window turns green when the player stops before the breakpoint and stays red when the player is still moving too late.
+- The ranged safe-state uses a stored movement-stop timestamp plus the existing latency-aware breakpoint math, and the overlay updates immediately on movement start/stop.
+- README, CHANGELOG, `SuperSwingTimer.toc`, `docs/swingtimer.md`, and `docs/WeakAuras/Expert-Patterns.md` were refreshed so the docs, addon metadata, and WeakAuras bridge example match the new behavior.
+
 - Dropdown rows now open from the full row body, the dead texture-browser popup has been removed, and the moving spark anchors are cleared before each update so the visuals stay stable.
 - The `/sst` config now feels more like a real settings panel: visible dropdowns for selector rows, checkboxes for toggles, editable numeric fields for sliders, and section backdrops for visual grouping.
 - Hover highlights were added to the clickable config rows so the selectors are easier to discover.

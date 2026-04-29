@@ -3,6 +3,7 @@ local UnitAura = rawget(_G, "UnitAura")
 local GetTimePreciseSec = rawget(_G, "GetTimePreciseSec")
 local GetTime = rawget(_G, "GetTime")
 local GetSpellCooldown = rawget(_G, "GetSpellCooldown")
+local GCD_SPELL_ID = 61304 -- Spell ID used to query the GCD for seal twist timing.
 
 local function GetCurrentTime()
 	if GetTimePreciseSec then
@@ -95,8 +96,13 @@ local function SetupRetPaladin()
 			swingElapsed = 0
 		end
 
-		local gcdStart, gcdDuration = GetSpellCooldown and GetSpellCooldown(61304)
-		if not gcdStart or not gcdDuration or gcdDuration <= 0 then
+		-- Query GCD in seconds and handle API failures gracefully. The GCD is used as a proxy for the seal twist window, which is generally accurate but may not be perfect in all cases (e.g. if the player has a haste effect that reduces GCD but not swing timer).
+		-- We also add latency to the current time when calculating the GCD remaining, to help compensate for latency in the spellcast that triggers the seal twist.
+		local gcdStart, gcdDuration
+		if GetSpellCooldown then
+			gcdStart, gcdDuration = GetSpellCooldown(GCD_SPELL_ID)
+		end
+		if type(gcdStart) ~= "number" or type(gcdDuration) ~= "number" or gcdDuration <= 0 then
 			sealEndLine:Hide()
 			if sealResealLine then
 				sealResealLine:Hide()
