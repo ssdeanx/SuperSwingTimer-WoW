@@ -1,4 +1,4 @@
-﻿local addonName, ns = ...
+local addonName, ns = ...
 local GetSpellInfo = rawget(_G, "GetSpellInfo")
 local GetAddOnInfo = rawget(_G, "GetAddOnInfo")
 
@@ -331,8 +331,9 @@ ns.DB_DEFAULTS = {
 	showOH    = true,
 	showRanged = true,
 	showWeaveAssist = true,
-	useClassColors = true,
+	useClassColors = false,
 	weaveSpellFamilies = {
+
 		LB  = true,
 		CL  = true,
 		HW  = true,
