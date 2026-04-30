@@ -1,6 +1,49 @@
 # Active Context
 
+## Active Context Update (2026-04-30 - hunter ranged reset-state hardening)
+
+- `ResetTimer("ranged")` now also clears hunter cast state, preventing stale hidden-cast bar remnants when ranged cycling is explicitly stopped/reset.
+
+## Active Context Update (2026-04-30 - hunter end-of-cycle hidden cast window)
+
+- Hunter cast-bar display now includes a ranged-timer-derived hidden cast window path (`windowEnd - ns.CAST_WINDOW`) so the cast bar reflects the stop-to-fire period at the end of the ranged cycle.
+- Hunter `HandleSpellcastSucceeded` no longer forces a synthetic post-shot cast window when no active hunter cast can be confirmed.
+
+## Active Context Update (2026-04-30 - broad audit hunter fallback fix)
+
+- During broad release audit, found and fixed a hunter cast fallback bug in `HandleSpellcastSucceeded`: the fallback start time now uses `now` instead of `now - CAST_WINDOW`, so missed-start-event recovery shows a full cast window instead of instantly completing.
+
+## Active Context Update (2026-04-30 - release hardening haste fallbacks)
+
+- Added ranged-haste-aware fallback scaling in `SuperSwingTimer_State.lua` so hunter ranged timers can still resync if `UnitRangedDamage()` temporarily fails to return a usable speed.
+- Added explicit `GetRangedHaste` fallback handling in ranged state helpers.
+- Added `GetSpellHaste` fallback handling in `SuperSwingTimer_Weaving.lua` so shaman weave spell-haste math remains available when `UnitSpellHaste("player")` is unavailable.
+
+## Active Context Update (2026-04-30 - hunter cast-start window and player-only speed events)
+
+- Hunter hidden cast-window timing was refined again: the fixed `ns.CAST_WINDOW` bar now anchors to cast/shot start timing instead of end-of-cycle alignment, which keeps the cast bar focused on the actual move-safe hidden cast period.
+- `UNIT_ATTACK_SPEED` and `UNIT_RANGEDDAMAGE` sync handlers now filter to `unit == "player"` before forcing timer resync, reducing unnecessary event work.
+
+## Active Context Update (2026-04-30 - hunter cast-window separation and swing-start sync)
+
+- Hunter cast-bar timing is now fully separated from ranged swing duration: the cast bar uses a fixed `ns.CAST_WINDOW` window only, instead of inheriting full ranged cooldown duration.
+- Hunter cast-window start alignment now prefers end-of-cast timing, so the bar reflects the hidden Auto Shot move-safe window more accurately.
+- Swing starts now trigger an immediate speed resync (melee/ranged) to reduce first-frame timer drift and tighten white-swing/ranged alignment.
+
+## Active Context Update (2026-04-30 - final state and class-module polish)
+
+- Repaired `SuperSwingTimer_State.lua` after rejection by removing a duplicated `ResetTimer` definition so the start/stop/restart paths all flow through one canonical timer reset implementation.
+- Exported `ns.ClearHunterCastState` and now clear hunter cast state on world/combat reset paths, which prevents stale hunter cast-bar state from leaking across state resets.
+- Hardened hunter cast-bar detection so `UnitCastingInfo` spell-name payloads can still resolve hunter cast spells when spell IDs are absent in Classic-era payloads.
+- Fixed shaman weave color stability by cloning spell-family colors before applying unsafe alpha, preventing accidental mutation of shared constants.
+- Re-polished ret paladin seal-twist visuals so the end-of-swing strike marker stays visible for active twist families and the reseal marker remains GCD-aware.
+
 ## Active Context Update (2026-04-29 - final release polish pass)
+
+- The hunter Auto Shot / Multi-Shot cast bar now uses the shared `ns.CAST_WINDOW` timing instead of a duplicate 0.5s constant, and it has a `UnitCastingInfo` fallback so the dedicated cast bar can still recover if the live hunter cast state is briefly missing.
+- Warrior queue tinting now scans only numeric queued-spell IDs so Heroic Strike and Cleave can light up and clear reliably without string-key false positives, while Slam still uses the pause/extend path.
+- The unlocked drag hitbox is wider now so the bars are easier to grab and move during setup.
+- The README was expanded into a more professional project page with at-a-glance tables, a timing-model table, a texture-source table, and a note to prefer tables/images over Mermaid on CurseForge-facing pages.
 
 - The hunter Auto Shot / Multi-Shot bar now uses a separate active-state path, so Auto Shot keeps its cooldown preview alive instead of being cleared immediately by the generic stop event.
 - `/sst` now has a temporary Test Bars action plus a clearer `Lock / Unlock Bars` control, which makes moving the frames much easier when the preview is visible.
@@ -130,7 +173,7 @@
 
 ## Current focus
 
-1. UI validation in-game for the Blizzard options panel, texture preview dropdown, and class-color toggle behavior.
+1. In-game validation for the hunter cast bar, warrior queue tinting, and the easier bar drag target.
 2. Any follow-up polish for the weave marker spacing, icon choice, or tooltip copy after client testing.
 3. Memory-bank persistence and production-ready planning notes.
 

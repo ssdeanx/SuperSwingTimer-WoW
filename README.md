@@ -4,10 +4,24 @@ Melee and ranged swing timer for World of Warcraft Classic and TBC.
 
 Super Swing Timer tracks white-hit swing timers across main hand, off hand, and ranged attacks. It is tuned for Classic/TBC mechanics such as next-melee-attack abilities, dual-wield desync, parry haste, extra-attack suppression, haste rescaling, druid form resets, ret paladin seal-breakpoint timing, and shaman weave breakpoints.
 
+## At a glance
+
+| Area | What it covers |
+| --- | --- |
+| Hunter | Auto Shot cooldown sync, a separate 0.5s Auto Shot / Multi-Shot cast window, movement-safe green/red feedback, and a dedicated cast bar anchored under the ranged timer |
+| Warrior | Heroic Strike and Cleave queue tints, Slam pause/extend timing, and next-melee queue cancellation support |
+| Paladin | Aura-aware seal breakpoint logic with an end-marker and a reseal marker for twist timing |
+| Shaman | Lightning Bolt / Chain Lightning / Healing Wave / Lesser Healing Wave / Chain Heal weave markers with per-family toggles |
+| UI | Collapsible config sections, texture browsers, class-color palettes, border/background controls, lock/unlock drag support, and the Test Bars preview |
+
+> CurseForge pages are easiest to read when they stick to standard Markdown tables, lists, inline code, and screenshots.
+> This README avoids relying on Mermaid diagrams so the same content stays portable across CurseForge and GitHub.
+> If you want diagrams, render them to PNG or SVG and embed the image instead of depending on a live diagram renderer.
+
 ## Key features
 
 - All melee classes: Warrior, Rogue, Paladin, Shaman, Druid, and Hunter
-- Hunter auto shot with `GetSpellCooldown(75)` + ranged-speed sync, a latency-aware 0.5s cast window, movement safety feedback that turns green when you stop before the breakpoint, a black threshold line showing when the cast window begins, and a dedicated 10px Auto Shot / Multi-Shot cast bar beneath the ranged timer
+- Hunter auto shot with `GetSpellCooldown(75)` + ranged-speed sync for the ranged timer, plus ranged-haste-aware fallback resync when `UnitRangedDamage()` is temporarily unavailable, a separate latency-aware 0.5s Auto Shot / Multi-Shot cast window, movement safety feedback that turns green when you stop before the breakpoint, a black threshold line showing when the cast window begins, and a dedicated 10px Auto Shot / Multi-Shot cast bar beneath the ranged timer
 - Dual-wield tracking with independent MH and OH timers
 - NMA detection for Heroic Strike, Cleave, Maul, and Raptor Strike
 - Warrior queue colors for Heroic Strike, Cleave, and Slam so the MH bar clearly shows which special is queued
@@ -18,10 +32,28 @@ Super Swing Timer tracks white-hit swing timers across main hand, off hand, and 
 - Ret Paladin seal breakpoint line that shows the actual strike-edge end marker plus a latency-aware reseal point on twist seals, with the full seal list from `docs/spellIds.md` covered by aura-name fallback and the breakpoint lines clamped above the bar texture
 - Shaman weave assist for Lightning Bolt, Chain Lightning, Healing Wave, Lesser Healing Wave, and Chain Heal breakpoints, with color-coded family markers that stay above the MH bar texture and can be disabled individually
 - Default MH / OH / ranged bar colors now follow your class color until you pick a custom color
-- Customizable bars, separate MH/OH and ranged textures, glow/opaque indicator mode, compact spark settings with a 4px default spark width, alpha-enabled color pickers, configurable bar background tint and opacity, adjustable bar border color and thickness, visibility, lock state, and the new Test Bars preview via `/sst`, `/super`, or `/superswingtimer`
+- Customizable bars, separate MH/OH and ranged textures, glow/opaque indicator mode, compact spark settings with a 4px default spark width, alpha-enabled color pickers, configurable bar background tint and opacity, adjustable bar border color and thickness, widened drag hitboxes for easier bar movement, visibility, lock state, and the new Test Bars preview via `/sst`, `/super`, or `/superswingtimer`
 - Toggle MH / OH / ranged bars plus the shaman weave helper and its family controls from the config panel or Blizzard's Interface Options → AddOns list
 - Collapse or expand the major config sections so the `/sst` panel stays easier to scan while you tune textures, colors, timing, and weave settings, with stable row groups that keep the panel rendering cleanly
 - Texture picker: bar and ranged texture rows now stay focused on bar-style textures from Blizzard, SharedMedia, WeakAuras, and installed addon media packs, while the spark and shaman weave spark rows open a dedicated thumbnail browser seeded with the WeakAuras `Square_FullWhite` preset surfaced as `Normal`.
+
+## Timing model
+
+| Situation | What you see | Why it matters |
+| --- | --- | --- |
+| Auto Shot / Multi-Shot | A dedicated 0.5s hunter cast bar under the ranged timer, derived from the end of the ranged cycle hidden cast window, plus the ranged cooldown bar itself | Shows the stop-to-fire window near cycle end so you can hold still to fire, then move after the shot without clipping the next cycle |
+| Heroic Strike / Cleave | MH bar tint changes to show the queued next-melee attack | Shows the queued state and helps you cancel or preserve rage before the hit lands |
+| Slam | MH bar pauses and resumes instead of behaving like a next-melee queue ability | Preserves Slam's unique pause/extend mechanic |
+| Shaman weave | Small breakpoint markers stay above the MH bar fill | Makes the cast breakpoint readable without covering the swing bar |
+
+## Texture sources
+
+| Source | Used for | Notes |
+| --- | --- | --- |
+| Blizzard | Bar textures | Built-in skins are always available |
+| SharedMedia | Bar / ranged textures | Any installed SharedMedia pack shows up automatically |
+| WeakAuras media | Spark and weave thumbnail browsers | `Square_FullWhite` is surfaced as `Normal` in the picker |
+| Installed addon packs | Extra texture catalogs | Bar-style textures are auto-discovered when the pack exposes them |
 
 ## Installation
 
@@ -34,7 +66,7 @@ Super Swing Timer tracks white-hit swing timers across main hand, off hand, and 
 
 ## Usage
 
-Bars appear automatically in combat. The ranged bar for Hunters also appears when auto-shot mode starts, and the smaller Auto Shot / Multi-Shot cast bar appears beneath it while those shots are active.
+Bars appear automatically in combat. The ranged bar for Hunters also appears when auto-shot mode starts, and the smaller Auto Shot / Multi-Shot cast bar appears beneath it only for the fixed hidden cast window (`ns.CAST_WINDOW`), not for the full ranged cooldown cycle.
 
 | Bar | Default | Meaning |
 | --- | --- | --- |
@@ -55,7 +87,7 @@ The main commands are `/sst`, `/super`, and `/superswingtimer`. `/swang` remains
 | Warrior | MH + OH | Heroic Strike, Cleave, and Slam handling |
 | Rogue | MH + OH | Dual-wield tracking |
 | Paladin | MH | Seal breakpoint line |
-| Enhancement Shaman | MH + OH | Weave assist for LB, CL, HW, LHW, and CH breakpoints |
+| Enhancement Shaman | MH + OH | Weave assist for LB, CL, HW, LHW, and CH breakpoints with spell-haste fallback support (`UnitSpellHaste` → `GetSpellHaste`) |
 | Feral Druid | MH | Form label and form reset support |
 | Mage / Priest / Warlock | None | No auto-attack bars |
 

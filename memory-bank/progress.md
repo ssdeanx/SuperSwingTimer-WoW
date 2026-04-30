@@ -1,6 +1,56 @@
 # Progress
 
+## Progress Update (2026-04-30 - final reset-state bug polish)
+
+- Added hunter cast-state cleanup to ranged reset paths (`ResetTimer("ranged")`) so hidden cast-bar state cannot persist after ranged stop/reset transitions.
+- Synced changelog/AGENTS/memory context for this final hook/event state hardening fix.
+
+## Progress Update (2026-04-30 - hunter stop-to-fire window hardening)
+
+- Reworked hunter cast-bar display logic so it can derive from the end-of-ranged-cycle hidden cast window (`windowEnd - ns.CAST_WINDOW`) instead of relying only on cast events.
+- Hardened hunter `HandleSpellcastSucceeded` fallback to avoid creating synthetic post-shot cast windows when no active cast is detected.
+- Synced changelog/README/AGENTS/memory context to the refined hunter stop-to-fire semantics.
+
+## Progress Update (2026-04-30 - broad audit and hunter fallback correction)
+
+- Ran a broader smell/audit pass using the project API reference list (`docs/urls.md`) and external API checks for `GetRangedHaste`, `UnitSpellHaste`, and `UnitRangedDamage` signatures.
+- Found and fixed one concrete bug: hunter cast fallback in `HandleSpellcastSucceeded` now seeds start time with `now` (not `now - CAST_WINDOW`) so the cast bar does not auto-complete instantly when start events are missed.
+
+## Progress Update (2026-04-30 - release hardening haste fallback pass)
+
+- Added hunter ranged-speed fallback estimation driven by `GetRangedHaste`/`GetHaste` when `UnitRangedDamage()` is missing, and wired it into ranged timer rescaling.
+- Added shaman weave spell-haste fallback from `UnitSpellHaste("player")` to `GetSpellHaste()`.
+- Updated changelog with `3.1.16` release-hardening notes and synced AGENTS/memory context.
+
+## Progress Update (2026-04-30 - follow-up polish pass)
+
+- Refined hunter hidden cast-window timing to cast/shot start anchoring while keeping the cast bar fixed to `ns.CAST_WINDOW`.
+- Updated the hunter `UnitCastingInfo` fallback to start-time alignment for cleaner cast-bar behavior.
+- Added player-only guards to `UNIT_ATTACK_SPEED` and `UNIT_RANGEDDAMAGE` event handlers before forcing speed resync.
+- Updated changelog to `3.1.15` for this follow-up polish pass.
+
+## Progress Update (2026-04-30 - hunter cast-window separation and timer-start polish)
+
+- Reworked hunter cast-bar timing so it no longer mirrors full ranged duration and now always uses fixed `ns.CAST_WINDOW` timing.
+- Updated both state and UI hunter timing paths to align cast-window start to end-of-cast data when available.
+- Added immediate speed synchronization on swing start for melee and ranged timers to reduce startup drift.
+- Updated `CHANGELOG.md` with `3.1.14` notes for this timing pass.
+
+## Progress Update (2026-04-30 - state/class timing polish after State.lua rejection)
+
+- Re-validated and patched `SuperSwingTimer_State.lua`: removed the duplicate `ResetTimer` implementation and kept a single canonical idle-reset path.
+- Added/exported `ns.ClearHunterCastState` and invoked it on `PLAYER_ENTERING_WORLD` and `PLAYER_REGEN_ENABLED` reset paths to avoid stale hunter cast state.
+- Hardened hunter cast-bar detection in `SuperSwingTimer_UI.lua` so Classic spellcast payloads that expose spell names but not IDs still resolve hunter cast spells correctly.
+- Fixed shared color mutation in `SuperSwingTimer_Weaving.lua` by copying family colors before applying safe/unsafe alpha changes.
+- Polished `SuperSwingTimer_ClassMods.lua` paladin twist markers so the end-of-swing strike marker remains visible while a separate GCD-aware reseal marker is maintained.
+- Updated `CHANGELOG.md` with a new `3.1.13` entry covering this final polish pass.
+
 ## Progress Update (2026-04-29 - final release polish pass)
+
+- Unified the hunter Auto Shot / Multi-Shot cast bar on `ns.CAST_WINDOW` instead of a second 0.5-second constant, and added a `UnitCastingInfo` fallback so the dedicated cast bar has a cleaner recovery path.
+- Fixed warrior queue tint scanning so only numeric queued-spell IDs are polled, which makes Heroic Strike and Cleave more reliable while Slam keeps its pause/extend behavior.
+- Increased the unlocked drag hit area so the bars are easier to grab and move during setup.
+- Reworked the README into a more professional project page with at-a-glance tables, a timing-model table, a texture-source table, and a markdown note about keeping CurseForge pages table/image friendly instead of relying on Mermaid.
 
 - Switched the hunter Auto Shot / Multi-Shot bar to separate active-state logic so the cooldown preview survives the generic stop event and can expire on its own timing.
 - Added a temporary `/sst` Test Bars action, a clearer `Lock / Unlock Bars` control, and alpha-enabled color swatches for the main bar palette.

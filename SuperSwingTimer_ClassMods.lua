@@ -86,59 +86,49 @@ local function SetupRetPaladin()
 		end
 
 		local now = GetCurrentTime()
-		local swingRemaining = (timer.lastSwing + timer.duration) - now
-		if swingRemaining < 0 then
-			swingRemaining = 0
+
+		local width = math.min(2, barWidth)
+		local endLineX = math.max(barWidth - width, 0)
+
+		local barAnchor = GetOverlayParent(ns.mhBar)
+		sealEndLine:ClearAllPoints()
+		sealEndLine:SetPoint("TOPLEFT", barAnchor, "LEFT", endLineX, 0)
+		sealEndLine:SetPoint("BOTTOMLEFT", barAnchor, "LEFT", endLineX, 0)
+		sealEndLine:SetWidth(width)
+		sealEndLine:Show()
+
+		if not sealResealLine then
+			return
 		end
 
-		local swingElapsed = timer.duration - swingRemaining
-		if swingElapsed < 0 then
-			swingElapsed = 0
-		end
-
-		-- Query GCD in seconds and handle API failures gracefully. The GCD is used as a proxy for the seal twist window, which is generally accurate but may not be perfect in all cases (e.g. if the player has a haste effect that reduces GCD but not swing timer).
-		-- We also add latency to the current time when calculating the GCD remaining, to help compensate for latency in the spellcast that triggers the seal twist.
 		local gcdStart, gcdDuration
 		if GetSpellCooldown then
 			gcdStart, gcdDuration = GetSpellCooldown(GCD_SPELL_ID)
 		end
 		if type(gcdStart) ~= "number" or type(gcdDuration) ~= "number" or gcdDuration <= 0 then
-			sealEndLine:Hide()
-			if sealResealLine then
-				sealResealLine:Hide()
-			end
+			sealResealLine:Hide()
 			return
 		end
 
 		local gcdRemaining = (gcdStart + gcdDuration) - now
-		if gcdRemaining <= 0 then
-			sealEndLine:Hide()
-			if sealResealLine then
-				sealResealLine:Hide()
-			end
+		if gcdRemaining <= 0 or gcdRemaining >= timer.duration then
+			sealResealLine:Hide()
 			return
 		end
 
-		local gcdTick = (swingElapsed + gcdRemaining) / timer.duration
-		if gcdTick > 1 then
-			gcdTick = gcdTick - 1
+		local resealTick = (timer.duration - gcdRemaining) / timer.duration
+		if resealTick < 0 then
+			resealTick = 0
+		elseif resealTick > 1 then
+			resealTick = 1
 		end
-		if gcdTick < 0 then
-			gcdTick = 0
-		end
+		local resealX = math.max(math.min((barWidth * resealTick) - (width * 0.5), barWidth - width), 0)
 
-		local width = math.min(2, barWidth)
-		local lineX = math.max(math.min((barWidth * gcdTick) - (width * 0.5), barWidth - width), 0)
-
-		local barAnchor = GetOverlayParent(ns.mhBar)
-		sealEndLine:ClearAllPoints()
-		sealEndLine:SetPoint("TOPLEFT", barAnchor, "LEFT", lineX, 0)
-		sealEndLine:SetPoint("BOTTOMLEFT", barAnchor, "LEFT", lineX, 0)
-		sealEndLine:SetWidth(width)
-		sealEndLine:Show()
-		if sealResealLine then
-			sealResealLine:Hide()
-		end
+		sealResealLine:ClearAllPoints()
+		sealResealLine:SetPoint("TOPLEFT", barAnchor, "LEFT", resealX, 0)
+		sealResealLine:SetPoint("BOTTOMLEFT", barAnchor, "LEFT", resealX, 0)
+		sealResealLine:SetWidth(width)
+		sealResealLine:Show()
 	end
 
 	-- Seal breakpoint lines: end-of-swing twist marker plus optional reseal marker.
@@ -184,6 +174,28 @@ local function SetupRetPaladin()
 end
 
 local function SetupWarrior()
+	local IsCurrentSpell = rawget(_G, "IsCurrentSpell")
+	if not IsCurrentSpell then
+		local C_Spell = rawget(_G, "C_Spell")
+		if C_Spell and C_Spell.IsCurrentSpell then
+			IsCurrentSpell = C_Spell.IsCurrentSpell
+		end
+	end
+
+	local function FindCurrentQueuedSpell(spellSet)
+		if not IsCurrentSpell or not spellSet then
+			return nil
+		end
+
+		for spellId in pairs(spellSet) do
+			if type(spellId) == "number" and IsCurrentSpell(spellId) then
+				return spellId
+			end
+		end
+
+		return nil
+	end
+
 	local function RestoreMainHandColor()
 		if not ns.mhBar then
 			return
@@ -196,6 +208,34 @@ local function SetupWarrior()
 			ns.mhBar:SetStatusBarColor(0, 0, 0, 1)
 		end
 	end
+
+	local function UpdateWarriorQueueTint()
+		if ns.playerClass ~= "WARRIOR" or not ns.mhBar then
+			return
+		end
+
+		local alpha = (ns.mhBarBaseColor and ns.mhBarBaseColor.a) or 1
+		local queuedSpellId = FindCurrentQueuedSpell(ns.WARRIOR_HEROIC_STRIKE_SPELLS)
+		if queuedSpellId then
+			ns.pendingMeleeQueueSpellId = queuedSpellId
+			ns.mhBar:SetStatusBarColor(1.0, 0.92, 0.20, alpha)
+			return
+		end
+
+		queuedSpellId = FindCurrentQueuedSpell(ns.WARRIOR_CLEAVE_SPELLS)
+		if queuedSpellId then
+			ns.pendingMeleeQueueSpellId = queuedSpellId
+			ns.mhBar:SetStatusBarColor(0.20, 0.80, 0.25, alpha)
+			return
+		end
+
+		if ns.pendingMeleeQueueSpellId then
+			ns.pendingMeleeQueueSpellId = nil
+			RestoreMainHandColor()
+		end
+	end
+
+	ns.UpdateWarriorQueueTint = UpdateWarriorQueueTint
 
 	local function ApplyWarriorQueueTint(spellId)
 		if not ns.mhBar then
@@ -251,6 +291,9 @@ local function SetupWarrior()
 			end
 		end
 		origHandleSpellcast(unit, castGUID, spellId)
+		if ns.UpdateWarriorQueueTint then
+			ns.UpdateWarriorQueueTint()
+		end
 	end
 end
 

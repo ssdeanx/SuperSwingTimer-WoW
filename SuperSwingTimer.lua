@@ -601,8 +601,11 @@ frame:SetScript("OnEvent", function(self, event, ...)
 		end
 
 	elseif event == "UNIT_ATTACK_SPEED" then
-		ns.SyncMeleeTimerSpeed("mh", nil, true)
-		ns.SyncMeleeTimerSpeed("oh", nil, true)
+		local unit = ...
+		if unit == "player" then
+			ns.SyncMeleeTimerSpeed("mh", nil, true)
+			ns.SyncMeleeTimerSpeed("oh", nil, true)
+		end
 
 	elseif event == "UNIT_AURA" then
 		local unit = ...
@@ -611,7 +614,10 @@ frame:SetScript("OnEvent", function(self, event, ...)
 		end
 
 	elseif event == "UNIT_RANGEDDAMAGE" then
-		ns.SyncRangedTimerSpeed(nil, true)
+		local unit = ...
+		if unit == "player" then
+			ns.SyncRangedTimerSpeed(nil, true)
+		end
 
 	elseif event == "SPELL_UPDATE_COOLDOWN" then
 		if ns.playerClass == "HUNTER" and ns.GetAutoShotCooldown then
@@ -669,6 +675,9 @@ frame:SetScript("OnEvent", function(self, event, ...)
 		ns.ResetTimer("mh")
 		ns.ResetTimer("oh")
 		ns.ResetTimer("ranged")
+		if ns.ClearHunterCastState then
+			ns.ClearHunterCastState()
+		end
 		ns.lastStoppedMovingAt = nil
 		ns.extraAttackPending = 0
 		if ns.ClearWeavePreview then

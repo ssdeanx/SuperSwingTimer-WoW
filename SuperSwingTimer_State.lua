@@ -2,16 +2,17 @@ local _, ns = ...
 
 local GetTimePreciseSec = rawget(_G, "GetTimePreciseSec")
 local GetTime = rawget(_G, "GetTime")
-local UnitCastingInfo = rawget(_G, "UnitCastingInfo")
 local UnitAttackSpeed = rawget(_G, "UnitAttackSpeed")
 local UnitRangedDamage = rawget(_G, "UnitRangedDamage")
 local GetSpellCooldown = rawget(_G, "GetSpellCooldown")
 local GetSpellInfo = rawget(_G, "GetSpellInfo")
+local UnitCastingInfo = rawget(_G, "UnitCastingInfo")
 local CombatLogGetCurrentEventInfo = rawget(_G, "CombatLogGetCurrentEventInfo")
 local C_Timer = rawget(_G, "C_Timer")
 local UnitGUID = rawget(_G, "UnitGUID")
 local GetNetStats = rawget(_G, "GetNetStats")
 local GetMeleeHaste = rawget(_G, "GetMeleeHaste") or rawget(_G, "GetHaste")
+local GetRangedHaste = rawget(_G, "GetRangedHaste") or rawget(_G, "GetHaste")
 ns.cachedLatency = ns.cachedLatency or 0
 local RANGED_START_DEDUPE_WINDOW = 0.25
 
@@ -91,6 +92,32 @@ local function GetPlayerMeleeHastePercent()
 	return 0
 end
 
+local function GetPlayerRangedHastePercent()
+	if type(GetRangedHaste) == "function" then
+		return math.max(GetRangedHaste() or 0, 0)
+	end
+
+	return 0
+end
+
+local function EstimateSpeedFromHaste(lastSpeed, lastHastePercent, currentHastePercent)
+	if not lastSpeed or lastSpeed <= 0 then
+		return nil
+	end
+
+	if type(lastHastePercent) ~= "number" or type(currentHastePercent) ~= "number" then
+		return nil
+	end
+
+	local lastMultiplier = 1 + (lastHastePercent / 100)
+	local currentMultiplier = 1 + (currentHastePercent / 100)
+	if lastMultiplier <= 0 or currentMultiplier <= 0 then
+		return nil
+	end
+
+	return lastSpeed * (lastMultiplier / currentMultiplier)
+end
+
 function ns.HasActiveTimers()
 	for _, timer in pairs(ns.timers) do
 		if timer.state == "swinging" then
@@ -117,6 +144,8 @@ local function ClearHunterCastState()
 		ns.hunterCastBar:SetValue(0)
 	end
 end
+
+ns.ClearHunterCastState = ClearHunterCastState
 
 function ns.RefreshUpdateLoop()
 	if ns.SetUpdateEnabled then
@@ -164,6 +193,7 @@ function ns.OnPlayerEnteringWorld()
 	ns.lastStoppedMovingAt = nil
 	ns.druidFormChangeTime = nil
 	ns.RefreshLatencyCache()
+	ClearHunterCastState()
 	if ns.ClearWeavePreview then
 		ns.ClearWeavePreview()
 	end
@@ -222,15 +252,25 @@ function ns.SyncRangedTimerSpeed(now, force)
 	if not force and now < (t.nextSpeedCheckAt or 0) then return end
 	t.nextSpeedCheckAt = now + SPEED_CHECK_INTERVAL
 
+	local currentRangedHaste = GetPlayerRangedHastePercent()
 	local _, autoShotDuration = ns.GetAutoShotCooldown()
 	if autoShotDuration and autoShotDuration > 0 then
 		ns.RescaleTimer("ranged", autoShotDuration)
+		t.hastePercent = currentRangedHaste
 		return
 	end
 
 	local rangedSpeedValue = UnitRangedDamage("player")
 	if rangedSpeedValue and rangedSpeedValue > 0 then
 		ns.RescaleTimer("ranged", rangedSpeedValue)
+		t.hastePercent = currentRangedHaste
+		return
+	end
+
+	local estimatedSpeed = EstimateSpeedFromHaste(t.speed, t.hastePercent, currentRangedHaste)
+	if estimatedSpeed and estimatedSpeed > 0 then
+		ns.RescaleTimer("ranged", estimatedSpeed)
+		t.hastePercent = currentRangedHaste
 	end
 end
 
@@ -244,14 +284,17 @@ function ns.StartSwing(slot, _, startTime)
 	local speed
 
 	if slot == "ranged" then
+		local rangedHastePercent = GetPlayerRangedHastePercent()
 		local autoShotStart, autoShotDuration = ns.GetAutoShotCooldown()
 		if autoShotDuration and autoShotDuration > 0 then
 			speed = autoShotDuration
 			t.lastSwing = (autoShotStart and autoShotStart > 0) and autoShotStart or now
+			t.hastePercent = rangedHastePercent
 		else
 			local s = UnitRangedDamage("player")
 			speed = (s and s > 0) and s or 2.0
 			t.lastSwing = now
+			t.hastePercent = rangedHastePercent
 		end
 	else
 		local mhSpeed, ohSpeed = UnitAttackSpeed("player")
@@ -267,6 +310,12 @@ function ns.StartSwing(slot, _, startTime)
 	t.speed    = speed
 	t.state    = "swinging"
 	t.nextSpeedCheckAt = now
+
+	if slot == "ranged" then
+		ns.SyncRangedTimerSpeed(now, true)
+	else
+		ns.SyncMeleeTimerSpeed(slot, now, true)
+	end
 
 	ns.RefreshUpdateLoop()
 end
@@ -313,35 +362,28 @@ function ns.HandleSpellcastStart(unit, _, spellId)
 	if unit ~= "player" then return end
 	ns.RefreshLatencyCache()
 	local now = GetCurrentTime()
+	local castWindow = math.max(ns.CAST_WINDOW or 0.5, 0.01)
 	local spellIdNumber = tonumber(spellId)
+	local isHunterCastSpell = ns.playerClass == "HUNTER" and ns.IsHunterCastSpell and ns.IsHunterCastSpell(spellId)
+	local isAutoShotSpell = isHunterCastSpell and ns.IsAutoShotSpell and ns.IsAutoShotSpell(spellId)
 	ns.casting = true
 	ns.currentCastSpellId = spellId
-	if ns.playerClass == "HUNTER" and ns.IsHunterCastSpell and ns.IsHunterCastSpell(spellId) then
+	if isHunterCastSpell and not isAutoShotSpell then
 		ns.hunterCastActive = true
 		ns.hunterCastSpellId = spellId
 	end
 	ns.hunterCastStartTime = nil
 	ns.hunterCastDuration = nil
-	if ns.playerClass == "HUNTER" and ns.IsHunterCastSpell and ns.IsHunterCastSpell(spellId) then
-		if ns.IsAutoShotSpell and ns.IsAutoShotSpell(spellId) and ns.GetAutoShotCooldown then
-			local autoStart, autoDuration = ns.GetAutoShotCooldown()
-			if autoDuration and autoDuration > 0 then
-				ns.hunterCastStartTime = autoStart or now
-				ns.hunterCastDuration = autoDuration
-			end
-		elseif type(UnitCastingInfo) == "function" then
-			local _, _, _, startTimeMs, endTimeMs = UnitCastingInfo("player")
-			if startTimeMs and endTimeMs and endTimeMs > startTimeMs then
-				ns.hunterCastStartTime = startTimeMs / 1000
-				ns.hunterCastDuration = (endTimeMs - startTimeMs) / 1000
+	if isHunterCastSpell and not isAutoShotSpell then
+		ns.hunterCastDuration = castWindow
+		if type(UnitCastingInfo) == "function" then
+			local _, _, _, startTimeMs = UnitCastingInfo("player")
+			if startTimeMs and startTimeMs > 0 then
+				ns.hunterCastStartTime = (startTimeMs / 1000) + (ns.cachedLatency or 0)
 			end
 		end
-		if (not ns.hunterCastDuration or ns.hunterCastDuration <= 0) and type(UnitRangedDamage) == "function" then
-			local rangedSpeed = UnitRangedDamage("player")
-			if rangedSpeed and rangedSpeed > 0 then
-				ns.hunterCastStartTime = ns.hunterCastStartTime or now
-				ns.hunterCastDuration = rangedSpeed
-			end
+		if not ns.hunterCastStartTime then
+			ns.hunterCastStartTime = now
 		end
 	end
 	ns.preventSwingReset = ns.preventSwingReset or (ns.NO_RESET_SWING_SPELLS and (ns.NO_RESET_SWING_SPELLS[spellId] or (spellIdNumber and ns.NO_RESET_SWING_SPELLS[spellIdNumber])))
@@ -415,26 +457,11 @@ function ns.HandleSpellcastInterruptedOrFailed(unit, _, spellId)
 	ns.channeling = false
 	ns.channelingSpellId = nil
 	ns.currentCastSpellId = nil
-	if not (ns.playerClass == "HUNTER" and ns.IsAutoShotSpell and ns.IsAutoShotSpell(ns.hunterCastSpellId) and ns.hunterCastActive and ns.hunterCastDuration and ns.hunterCastDuration > 0 and not (ns.IsAutoShotSpell and ns.IsAutoShotSpell(spellId))) then
+	if ns.playerClass == "HUNTER" and ns.hunterCastActive then
 		ClearHunterCastState()
 	end
 	ns.preventSwingReset = false
 	ns.RefreshUpdateLoop()
-end
-
--- Reset a timer slot to idle.
-function ns.ResetTimer(slot)
-	local t = ns.timers[slot]
-	if not t then return end
-	t.state    = "idle"
-	t.lastSwing = 0
-	t.duration  = 0
-	t.nextSpeedCheckAt = 0
-
-	ns.RefreshUpdateLoop()
-	if slot == "ranged" and ns.UpdateCastZoneVisual then
-		ns.UpdateCastZoneVisual()
-	end
 end
 
 -- Apply parry haste to a melee timer when the player parries an incoming attack.
@@ -458,6 +485,28 @@ function ns.ApplyParryHaste(slot)
 	-- Shift lastSwing so the bar reflects the new remaining time
 	t.lastSwing = now + newRemaining - t.duration
 	t.nextSpeedCheckAt = now
+end
+
+-- Reset a timer slot to idle.
+function ns.ResetTimer(slot)
+	local t = ns.timers[slot]
+	if not t then return end
+	t.state = "idle"
+	t.lastSwing = 0
+	t.duration = 0
+	t.speed = 0
+	t.hastePercent = nil
+	t.nextSpeedCheckAt = 0
+
+	ns.RefreshUpdateLoop()
+	if slot == "ranged" then
+		if ns.ClearHunterCastState then
+			ns.ClearHunterCastState()
+		end
+		if ns.UpdateCastZoneVisual then
+			ns.UpdateCastZoneVisual()
+		end
+	end
 end
 
 -- Rescale remaining time proportionally when weapon speed changes mid-swing.
@@ -581,28 +630,23 @@ function ns.HandleSpellcastSucceeded(unit, _, spellId)
 
 	if ns.PAUSE_SWING_SPELLS and (ns.PAUSE_SWING_SPELLS[spellId] or (spellIdNumber and ns.PAUSE_SWING_SPELLS[spellIdNumber])) and ns.pauseSwingTime then
 		ns.AdjustSwingTimesAfterPause(now)
-	elseif ns.IsAutoShotSpell and ns.IsAutoShotSpell(spellId) then
-		-- Auto Shot can be started from either CLEU or spellcast success; the
-		-- ranged start helper dedupes the second event when both arrive.
-		ns.hunterCastActive = true
-		ns.hunterCastSpellId = spellId
-		ns.hunterCastStartTime = nil
-		ns.hunterCastDuration = nil
-		if ns.GetAutoShotCooldown then
-			local autoStart, autoDuration = ns.GetAutoShotCooldown()
-			if autoDuration and autoDuration > 0 then
-				ns.hunterCastStartTime = autoStart or now
-				ns.hunterCastDuration = autoDuration
-			elseif type(UnitRangedDamage) == "function" then
-				local rangedSpeed = UnitRangedDamage("player")
-				if rangedSpeed and rangedSpeed > 0 then
+	elseif ns.playerClass == "HUNTER" and ns.IsHunterCastSpell and ns.IsHunterCastSpell(spellId) then
+		local castWindow = math.max(ns.CAST_WINDOW or 0.5, 0.01)
+		if ns.hunterCastActive and ns.hunterCastSpellId and ns.IsHunterCastSpell(ns.hunterCastSpellId) then
+			ns.hunterCastDuration = castWindow
+			ns.hunterCastStartTime = ns.hunterCastStartTime or now
+		elseif type(UnitCastingInfo) == "function" then
+			local castSpellName, _, _, startTimeMs, _, _, _, castSpellId = UnitCastingInfo("player")
+			if ns.IsHunterCastSpell(castSpellId) or ns.IsHunterCastSpell(castSpellName) then
+				ns.hunterCastActive = true
+				ns.hunterCastSpellId = castSpellId or castSpellName or spellId
+				ns.hunterCastDuration = castWindow
+				if startTimeMs and startTimeMs > 0 then
+					ns.hunterCastStartTime = (startTimeMs / 1000) + (ns.cachedLatency or 0)
+				else
 					ns.hunterCastStartTime = now
-					ns.hunterCastDuration = rangedSpeed
 				end
 			end
-		end
-		if ns.StartRangedSwing(now) and ns.OnRangedSwing then
-			ns.OnRangedSwing()
 		end
 	elseif ns.NMA_LOOKUP[spellId] or (spellIdNumber and ns.NMA_LOOKUP[spellIdNumber]) then
 		ns.pendingMeleeQueueSpellId = spellIdNumber or spellId

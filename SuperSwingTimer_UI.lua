@@ -1,4 +1,4 @@
-﻿local addonName, ns = ...
+﻿local _, ns = ...
 
 local CreateFrame = rawget(_G, "CreateFrame")
 local UIParent = rawget(_G, "UIParent")
@@ -6,7 +6,6 @@ local GetTimePreciseSec = rawget(_G, "GetTimePreciseSec")
 local GetTime = rawget(_G, "GetTime")
 local GetSpellInfo = rawget(_G, "GetSpellInfo")
 local UnitCastingInfo = rawget(_G, "UnitCastingInfo")
-local UnitRangedDamage = rawget(_G, "UnitRangedDamage")
 local UnitAttackSpeed = rawget(_G, "UnitAttackSpeed")
 local UnitChannelInfo = rawget(_G, "UnitChannelInfo")
 
@@ -69,6 +68,22 @@ local function IsHunterCastSpell(spellId)
 	return spellId ~= nil and ns.IsHunterCastSpell and ns.IsHunterCastSpell(spellId)
 end
 
+local function GetHunterHiddenCastWindowFromRangedTimer(now)
+	local t = ns.timers and ns.timers.ranged
+	if not t or t.state ~= "swinging" or not t.duration or t.duration <= 0 then
+		return nil, nil
+	end
+
+	local castWindow = math.max(ns.CAST_WINDOW or 0.5, 0.01)
+	local windowEnd = t.lastSwing + t.duration
+	local windowStart = windowEnd - castWindow
+	if now < windowStart or now > windowEnd then
+		return nil, nil
+	end
+
+	return windowStart, castWindow
+end
+
 local function ShouldShowHunterCastBar()
 	local cfg = ns.classConfig or {}
 	local db = SuperSwingTimerDB or ns.DB_DEFAULTS
@@ -76,7 +91,24 @@ local function ShouldShowHunterCastBar()
 		return false
 	end
 
-	return ns.hunterCastActive == true and IsHunterCastSpell(ns.hunterCastSpellId)
+	if ns.hunterCastActive == true and IsHunterCastSpell(ns.hunterCastSpellId) then
+		return true
+	end
+
+	if type(UnitCastingInfo) == "function" then
+		local castSpellName, _, _, _, _, _, _, castSpellId = UnitCastingInfo("player")
+		if IsHunterCastSpell(castSpellId) or IsHunterCastSpell(castSpellName) then
+			return true
+		end
+	end
+
+	local now = GetCurrentTime()
+	local windowStart = GetHunterHiddenCastWindowFromRangedTimer(now)
+	if windowStart then
+		return true
+	end
+
+	return false
 end
 
 -- ============================================================
@@ -90,7 +122,7 @@ local function CreateBar(frameName, width, height)
 	f:EnableMouse(true)
 	f:RegisterForDrag("LeftButton")
 	f:SetClampedToScreen(true)
-	f:SetHitRectInsets(-8, -8, -8, -8)
+	f:SetHitRectInsets(-40, -40, -40, -40)
 	f:SetStatusBarTexture(ns.GetBarTexture())
 	f:SetStatusBarColor(0, 0, 0, 1)
 	f:SetAlpha(0)
@@ -335,35 +367,37 @@ local function UpdateHunterCastBar()
 	end
 
 	local now = GetCurrentTime()
+	local castWindow = math.max(ns.CAST_WINDOW or 0.5, 0.01)
 	local barWidth = f:GetWidth() or f.barWidth or ns.BAR_WIDTH or 0
 	local elapsedTime
-	local duration
+	local duration = castWindow
 
 	local spellId = ns.hunterCastSpellId or ns.currentCastSpellId
 	local startTime = ns.hunterCastStartTime
-	duration = ns.hunterCastDuration
-	if IsHunterCastSpell(spellId) then
-		if (not duration or duration <= 0) then
-			if ns.IsAutoShotSpell and ns.IsAutoShotSpell(spellId) and ns.GetAutoShotCooldown then
-				local autoStart, autoDuration = ns.GetAutoShotCooldown()
-				if autoDuration and autoDuration > 0 then
-					startTime = autoStart or startTime or now
-					duration = autoDuration
-				end
-			elseif type(UnitCastingInfo) == "function" then
-				local _, _, _, startTimeMs, endTimeMs = UnitCastingInfo("player")
-				if startTimeMs and endTimeMs and endTimeMs > startTimeMs then
-					startTime = startTimeMs / 1000
-					duration = (endTimeMs - startTimeMs) / 1000
-				end
+	local hasLiveCastInfo = false
+	if type(UnitCastingInfo) == "function" then
+		local castSpellName, _, _, startTimeMs, _, _, _, castSpellId = UnitCastingInfo("player")
+		if IsHunterCastSpell(castSpellId) or IsHunterCastSpell(castSpellName) then
+			hasLiveCastInfo = true
+			spellId = castSpellId or castSpellName
+			if startTimeMs and startTimeMs > 0 then
+				startTime = (startTimeMs / 1000) + (ns.cachedLatency or 0)
 			end
 		end
-		if (not duration or duration <= 0) and type(UnitRangedDamage) == "function" then
-			local rangedSpeed = UnitRangedDamage("player")
-			if rangedSpeed and rangedSpeed > 0 then
-				startTime = startTime or now
-				duration = rangedSpeed
-			end
+	end
+	if IsHunterCastSpell(spellId) and (ns.hunterCastActive or hasLiveCastInfo) then
+		if not startTime then
+			startTime = now
+		end
+	end
+
+	if not startTime then
+		local rangedWindowStart, rangedWindowDuration = GetHunterHiddenCastWindowFromRangedTimer(now)
+		if rangedWindowStart and rangedWindowDuration and rangedWindowDuration > 0 then
+			startTime = rangedWindowStart
+			duration = rangedWindowDuration
+			ns.hunterCastActive = true
+			ns.hunterCastSpellId = ns.hunterCastSpellId or ns.AUTO_SHOT_ID
 		end
 	end
 
@@ -1173,6 +1207,7 @@ function ns.OnUpdate(elapsed)
 	UpdateHunterCastBar()
 	if ns.mhBar then UpdateMeleeBar("mh", ns.mhBar) end
 	if ns.ohBar then UpdateMeleeBar("oh", ns.ohBar) end
+	if ns.UpdateWarriorQueueTint then ns.UpdateWarriorQueueTint() end
 end
 
 -- ============================================================

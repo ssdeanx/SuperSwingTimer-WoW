@@ -6,6 +6,7 @@ local GetTime = rawget(_G, "GetTime")
 local GetNetStats = rawget(_G, "GetNetStats")
 local GetSpellInfo = rawget(_G, "GetSpellInfo")
 local UnitSpellHaste = rawget(_G, "UnitSpellHaste")
+local GetSpellHaste = rawget(_G, "GetSpellHaste")
 local UnitCastingInfo = rawget(_G, "UnitCastingInfo")
 local UnitChannelInfo = rawget(_G, "UnitChannelInfo")
 local GetClock = GetTimePreciseSec or GetTime
@@ -21,6 +22,10 @@ end
 local function GetSpellHastePercent()
 	if type(UnitSpellHaste) == "function" then
 		return math_max(UnitSpellHaste("player") or 0, 0)
+	end
+
+	if type(GetSpellHaste) == "function" then
+		return math_max(GetSpellHaste() or 0, 0)
 	end
 
 	return 0
@@ -51,13 +56,18 @@ local function GetNextSwingExpiration()
 end
 
 local function GetSpellFamilyColor(spellInfo, safe)
-	local color
+	local baseColor
 	if spellInfo and spellInfo.abbrev and ns.WEAVE_SPELL_FAMILY_COLORS then
-		color = ns.WEAVE_SPELL_FAMILY_COLORS[spellInfo.abbrev]
+		baseColor = ns.WEAVE_SPELL_FAMILY_COLORS[spellInfo.abbrev]
 	end
-	if not color then
-		color = { r = 0.8, g = 0.8, b = 0.8, a = 1 }
-	end
+	baseColor = baseColor or { r = 0.8, g = 0.8, b = 0.8, a = 1 }
+
+	local color = {
+		r = baseColor.r or 0.8,
+		g = baseColor.g or 0.8,
+		b = baseColor.b or 0.8,
+		a = baseColor.a or 1,
+	}
 
 	if safe == false then
 		color.a = 0.65

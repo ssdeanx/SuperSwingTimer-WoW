@@ -9,7 +9,7 @@ ns.BAR_WIDTH   = 200
 ns.BAR_HEIGHT  = 20
 ns.HUNTER_CAST_BAR_HEIGHT = 10
 ns.HUNTER_CAST_BAR_GAP = 2
-ns.CAST_WINDOW = 0.5    -- hidden ranged cast time in TBC
+ns.CAST_WINDOW = 0.5    -- shared hidden hunter / ranged cast window in TBC
 
 -- ============================================================
 -- Spell IDs
