@@ -1,5 +1,22 @@
 # Active Context
 
+## Active Context Update (2026-04-29 - final release polish pass)
+
+- The hunter Auto Shot / Multi-Shot bar now uses a separate active-state path, so Auto Shot keeps its cooldown preview alive instead of being cleared immediately by the generic stop event.
+- `/sst` now has a temporary Test Bars action plus a clearer `Lock / Unlock Bars` control, which makes moving the frames much easier when the preview is visible.
+- The main bar color swatches now open the color picker with opacity enabled, so class colors and custom colors can keep their alpha while the live update paths stay in sync.
+- The `/sst` docs, changelog, and TOC were updated to match the final release polish pass.
+
+## Active Context Update (2026-04-29 - final hunter cast-bar and collapsible section polish)
+
+- The base spark width is back to 4px, the spark tint now follows the ranged class color by default when class colors are enabled, and the Hunter Auto Shot / Multi-Shot cast bar now uses stored cast timing so it can render reliably instead of depending solely on live `UnitCastingInfo`.
+- The `/sst` collapsible row groups have been stabilized again, and the spark / weave defaults were slimmed to compact bar-height-aligned markers so the glow cannot render as a full-height white block.
+- The Hunter Auto Shot / Multi-Shot cast bar now keeps a separate test-preview path so it can be shown for repositioning while the panel is open, while the live bar itself still uses its separate active-state logic beneath the ranged timer.
+- The Hunter Auto Shot / Multi-Shot cast bar now stays cast-only, so it appears beneath the ranged timer only while a tracked hunter cast is actually in progress.
+- The update loop now stays alive for channeling (`ns.channeling`) so channel-based ranged visuals can keep animating even if no swing timer is active.
+- The `/sst` panel section headers now collapse/expand their row groups, giving the config UI a more WeakAuras-like section workflow while keeping the existing texture / color / slider layout intact.
+- The changelog and UI notes were refreshed so the release docs match the final cast-bar and config polish pass.
+
 ## Active Context Update (2026-04-29 - hunter cast bar and TBC spell IDs)
 
 - Hunter now has a dedicated 10px Auto Shot / Multi-Shot cast bar beneath the ranged timer, and it stays tied to the ranged bar's texture, spark settings, and visibility rules instead of floating independently.

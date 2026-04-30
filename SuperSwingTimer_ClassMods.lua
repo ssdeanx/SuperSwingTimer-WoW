@@ -150,7 +150,7 @@ local function SetupRetPaladin()
 			sealEndLine:SetColorTexture(0, 0, 0, 1)
 			sealEndLine:SetPoint("TOPLEFT", barParent, "LEFT", 0, 0)
 			sealEndLine:SetPoint("BOTTOMLEFT", barParent, "LEFT", 0, 0)
-			sealEndLine:SetWidth(5)
+			sealEndLine:SetWidth(2)
 			if ns.SetTextureLayerAboveBar then
 				ns.SetTextureLayerAboveBar(sealEndLine, ns.GetWeaveTriangleLayer and ns.GetWeaveTriangleLayer() or "OVERLAY", ns.GetBarTextureLayer and ns.GetBarTextureLayer() or "ARTWORK")
 			end
@@ -165,7 +165,7 @@ local function SetupRetPaladin()
 			sealResealLine:SetColorTexture(0, 0, 0, 1)
 			sealResealLine:SetPoint("TOPLEFT", barParent, "LEFT", 0, 0)
 			sealResealLine:SetPoint("BOTTOMLEFT", barParent, "LEFT", 0, 0)
-			sealResealLine:SetWidth(5)
+			sealResealLine:SetWidth(2)
 			if ns.SetTextureLayerAboveBar then
 				ns.SetTextureLayerAboveBar(sealResealLine, ns.GetWeaveTriangleLayer and ns.GetWeaveTriangleLayer() or "OVERLAY", ns.GetBarTextureLayer and ns.GetBarTextureLayer() or "ARTWORK")
 			end
@@ -184,24 +184,71 @@ local function SetupRetPaladin()
 end
 
 local function SetupWarrior()
-	-- Slam pending indicator: yellow bar tint while the MH timer
-	-- resets and starts fresh. Restores to base color on next swing.
-	ns.OnMeleeSwing = function(slot)
-		if slot == "mh" and ns.mhBar then
-			local c = ns.mhBarBaseColor
-			if c then
-				ns.mhBar:SetStatusBarColor(c.r, c.g, c.b, c.a)
-			else
-				ns.mhBar:SetStatusBarColor(0, 0, 0, 1)
-			end
+	local function RestoreMainHandColor()
+		if not ns.mhBar then
+			return
+		end
+
+		local c = ns.mhBarBaseColor or (ns.GetBarColor and ns.GetBarColor("mh"))
+		if c then
+			ns.mhBar:SetStatusBarColor(c.r or 0, c.g or 0, c.b or 0, c.a or 1)
+		else
+			ns.mhBar:SetStatusBarColor(0, 0, 0, 1)
 		end
 	end
 
-	-- Hook slam cast to show yellow tint
+	local function ApplyWarriorQueueTint(spellId)
+		if not ns.mhBar then
+			return
+		end
+
+		local spellIdNumber = tonumber(spellId)
+		local alpha = (ns.mhBarBaseColor and ns.mhBarBaseColor.a) or 1
+		if ns.WARRIOR_HEROIC_STRIKE_SPELLS and (ns.WARRIOR_HEROIC_STRIKE_SPELLS[spellId] or (spellIdNumber and ns.WARRIOR_HEROIC_STRIKE_SPELLS[spellIdNumber])) then
+			ns.pendingMeleeQueueSpellId = spellIdNumber or spellId
+			ns.mhBar:SetStatusBarColor(1.0, 0.92, 0.20, alpha) -- heroic strike: yellow
+		elseif ns.WARRIOR_CLEAVE_SPELLS and (ns.WARRIOR_CLEAVE_SPELLS[spellId] or (spellIdNumber and ns.WARRIOR_CLEAVE_SPELLS[spellIdNumber])) then
+			ns.pendingMeleeQueueSpellId = spellIdNumber or spellId
+			ns.mhBar:SetStatusBarColor(0.20, 0.80, 0.25, alpha) -- cleave: green
+		end
+	end
+
+	local function ApplyWarriorSlamTint(spellId)
+		if not ns.mhBar then
+			return
+		end
+
+		local spellIdNumber = tonumber(spellId)
+		local alpha = (ns.mhBarBaseColor and ns.mhBarBaseColor.a) or 1
+		if ns.PAUSE_SWING_SPELLS and (ns.PAUSE_SWING_SPELLS[spellId] or (spellIdNumber and ns.PAUSE_SWING_SPELLS[spellIdNumber])) then
+			ns.mhBar:SetStatusBarColor(1.0, 1.0, 1.0, alpha) -- slam: white
+		end
+	end
+
+	-- Queue indicator colors restore to the base MH tint on the next real swing.
+	ns.OnMeleeSwing = function(slot)
+		if slot == "mh" and ns.mhBar then
+			ns.pendingMeleeQueueSpellId = nil
+			RestoreMainHandColor()
+		end
+	end
+
+	ns.ClearWarriorQueueTint = function()
+		ns.pendingMeleeQueueSpellId = nil
+		RestoreMainHandColor()
+	end
+
+	-- Hook warrior queued attacks so each special gets its own tint.
 	local origHandleSpellcast = ns.HandleSpellcastSucceeded
 	ns.HandleSpellcastSucceeded = function(unit, castGUID, spellId)
-		if unit == "player" and ns.PAUSE_SWING_SPELLS and ns.PAUSE_SWING_SPELLS[spellId] and ns.mhBar then
-			ns.mhBar:SetStatusBarColor(0.8, 0.8, 0.1, 1)  -- yellow during pause/extend cast
+		if unit == "player" then
+			if ns.WARRIOR_HEROIC_STRIKE_SPELLS and (ns.WARRIOR_HEROIC_STRIKE_SPELLS[spellId] or (tonumber(spellId) and ns.WARRIOR_HEROIC_STRIKE_SPELLS[tonumber(spellId)])) then
+				ApplyWarriorQueueTint(spellId)
+			elseif ns.WARRIOR_CLEAVE_SPELLS and (ns.WARRIOR_CLEAVE_SPELLS[spellId] or (tonumber(spellId) and ns.WARRIOR_CLEAVE_SPELLS[tonumber(spellId)])) then
+				ApplyWarriorQueueTint(spellId)
+			elseif ns.PAUSE_SWING_SPELLS and (ns.PAUSE_SWING_SPELLS[spellId] or (tonumber(spellId) and ns.PAUSE_SWING_SPELLS[tonumber(spellId)])) then
+				ApplyWarriorSlamTint(spellId)
+			end
 		end
 		origHandleSpellcast(unit, castGUID, spellId)
 	end
@@ -256,13 +303,14 @@ local function SetupEnhShaman()
 		local triangleSize = ns.GetWeaveTriangleSize and ns.GetWeaveTriangleSize() or 14
 		local sparkWidth = ns.GetWeaveSparkWidth and ns.GetWeaveSparkWidth() or 14
 		local sparkHeight = ns.GetWeaveSparkHeight and ns.GetWeaveSparkHeight() or 30
+		local clampedSparkHeight = math.max(1, math.min(sparkHeight, (ns.mhBar and ns.mhBar:GetHeight()) or ns.BAR_HEIGHT or sparkHeight))
 		local sparkAlpha = ns.GetWeaveSparkAlpha and ns.GetWeaveSparkAlpha() or 0.95
 		local triangleAlpha = ns.GetWeaveTriangleAlpha and ns.GetWeaveTriangleAlpha() or 1
 
 		ns.weaveSpark:ClearAllPoints()
 		ns.weaveSpark:SetPoint("CENTER", barAnchor, "LEFT", sparkPos, 0)
 		ns.weaveSpark:SetWidth(sparkWidth)
-		ns.weaveSpark:SetHeight(sparkHeight)
+		ns.weaveSpark:SetHeight(clampedSparkHeight)
 		ns.weaveSpark:SetVertexColor(color.r, color.g, color.b, sparkAlpha)
 		if showSpark then
 			ns.weaveSpark:Show()
@@ -307,7 +355,7 @@ local function SetupEnhShaman()
 		weaveSpark:SetBlendMode(ns.GetIndicatorBlendMode and ns.GetIndicatorBlendMode() or "ADD")
 		weaveSpark:SetAlpha(ns.GetWeaveSparkAlpha and ns.GetWeaveSparkAlpha() or 0.95)
 		weaveSpark:SetWidth(ns.GetWeaveSparkWidth and ns.GetWeaveSparkWidth() or 14)
-		weaveSpark:SetHeight(ns.GetWeaveSparkHeight and ns.GetWeaveSparkHeight() or 30)
+		weaveSpark:SetHeight(math.max(1, math.min((ns.GetWeaveSparkHeight and ns.GetWeaveSparkHeight() or 30), (ns.mhBar and ns.mhBar:GetHeight()) or (ns.BAR_HEIGHT or 30))))
 		weaveSpark:SetPoint("CENTER", barParent, "LEFT", 0, 0)
 
 		local weaveTriangleTop = barParent:CreateTexture(nil, "OVERLAY")

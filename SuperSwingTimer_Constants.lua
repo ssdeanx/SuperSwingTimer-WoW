@@ -15,6 +15,7 @@ ns.CAST_WINDOW = 0.5    -- hidden ranged cast time in TBC
 -- Spell IDs
 -- ============================================================
 ns.AUTO_SHOT_ID = 75
+ns.AUTO_SHOT_NAME = (type(GetSpellInfo) == "function" and GetSpellInfo(ns.AUTO_SHOT_ID)) or "Auto Shot"
 ns.HUNTER_CAST_SPELLS = {
 	[75] = true,     -- Auto Shot
 	[2643] = true,   -- Multi-Shot rank 1
@@ -24,6 +25,38 @@ ns.HUNTER_CAST_SPELLS = {
 	[25294] = true,  -- Multi-Shot rank 5
 	[27021] = true,  -- Multi-Shot rank 6
 }
+
+ns.HUNTER_CAST_SPELL_NAMES = {}
+if type(GetSpellInfo) == "function" then
+	for spellId in pairs(ns.HUNTER_CAST_SPELLS) do
+		local spellName = GetSpellInfo(spellId)
+		if spellName then
+			ns.HUNTER_CAST_SPELL_NAMES[spellName] = true
+		end
+	end
+end
+
+function ns.IsAutoShotSpell(spellValue)
+	if spellValue == nil then
+		return false
+	end
+
+	local spellId = tonumber(spellValue)
+	return spellValue == ns.AUTO_SHOT_ID or spellValue == ns.AUTO_SHOT_NAME or (spellId and spellId == ns.AUTO_SHOT_ID)
+end
+
+function ns.IsHunterCastSpell(spellValue)
+	if spellValue == nil then
+		return false
+	end
+
+	local spellId = tonumber(spellValue)
+	return (
+		ns.HUNTER_CAST_SPELLS[spellValue] == true or
+		(spellId and ns.HUNTER_CAST_SPELLS[spellId] == true) or
+		ns.HUNTER_CAST_SPELL_NAMES[spellValue] == true
+	)
+end
 
 -- Paladin seal spell IDs used for UnitAura-aware breakpoint logic.
 -- The lookup prefers verified TBC/Classic spell IDs and also keeps literal
@@ -152,11 +185,39 @@ local function registerNMAs(ids)
 	end
 end
 
+local function addSpellNamesToLookup(lookup)
+	if type(GetSpellInfo) ~= "function" then
+		return
+	end
+
+	local names = {}
+	for spellId in pairs(lookup) do
+		if type(spellId) == "number" then
+			local spellName = GetSpellInfo(spellId)
+			if spellName then
+				names[#names + 1] = spellName
+			end
+		end
+	end
+
+	for _, spellName in ipairs(names) do
+		lookup[spellName] = true
+	end
+end
+
 -- Heroic Strike (Warrior)
-registerNMAs({ 78, 284, 285, 1608, 11564, 11565, 11566, 11567, 25286, 29707, 30324 })
+ns.WARRIOR_HEROIC_STRIKE_SPELLS = {}
+for _, id in ipairs({ 78, 284, 285, 1608, 11564, 11565, 11566, 11567, 25286, 29707, 30324 }) do
+	ns.WARRIOR_HEROIC_STRIKE_SPELLS[id] = true
+	registerNMAs({ id })
+end
 
 -- Cleave (Warrior)
-registerNMAs({ 845, 7369, 11608, 11609, 20569, 25231 })
+ns.WARRIOR_CLEAVE_SPELLS = {}
+for _, id in ipairs({ 845, 7369, 11608, 11609, 20569, 25231 }) do
+	ns.WARRIOR_CLEAVE_SPELLS[id] = true
+	registerNMAs({ id })
+end
 
 -- Maul (Druid â€” Bear)
 registerNMAs({ 6807, 6808, 6809, 8972, 9745, 9880, 9881, 26996 })
@@ -202,6 +263,14 @@ ns.RESET_RANGED_SWING_SPELLS = {}
 for _, id in ipairs({ 14295, 11925, 11951 }) do
 	ns.RESET_RANGED_SWING_SPELLS[id] = true
 end
+
+addSpellNamesToLookup(ns.NMA_LOOKUP)
+addSpellNamesToLookup(ns.WARRIOR_HEROIC_STRIKE_SPELLS)
+addSpellNamesToLookup(ns.WARRIOR_CLEAVE_SPELLS)
+addSpellNamesToLookup(ns.RESET_SWING_SPELLS)
+addSpellNamesToLookup(ns.NO_RESET_SWING_SPELLS)
+addSpellNamesToLookup(ns.PAUSE_SWING_SPELLS)
+addSpellNamesToLookup(ns.RESET_RANGED_SWING_SPELLS)
 
 -- Druid form aura IDs (trigger MH timer reset on apply)
 ns.DRUID_FORM_IDS = {
@@ -257,7 +326,7 @@ ns.CLASS_CONFIG = {
 -- SavedVariables defaults
 -- ============================================================
 ns.DB_DEFAULTS = {
-	version   = 15,
+	version   = 20,
 	showMH    = true,
 	showOH    = true,
 	showRanged = true,
@@ -280,20 +349,23 @@ ns.DB_DEFAULTS = {
 	sparkTextureLayer = "OVERLAY",
 	weaveSparkTexture = "Interface\\AddOns\\WeakAuras\\Media\\Textures\\target_indicator.tga",
 	weaveSparkTextureLayer = "OVERLAY",
-	weaveSparkWidth = 10,
-	weaveSparkHeight = 24,
+	weaveSparkWidth = 3,
+	weaveSparkHeight = 20,
 	weaveSparkAlpha = 0.95,
 	sparkColor = { r = 1, g = 1, b = 1, a = 1 },
 	weaveTriangleTopTexture = "Interface\\Buttons\\UI-ScrollBar-ScrollDownButton-Arrow",
 	weaveTriangleBottomTexture = "Interface\\Buttons\\UI-ScrollBar-ScrollUpButton-Arrow",
 	weaveTriangleTextureLayer = "OVERLAY",
-	weaveTriangleSize = 10,
+	weaveTriangleSize = 6,
 	weaveTriangleGap = 1,
 	weaveTriangleAlpha = 1,
 	weaveMarkerLayer = "OVERLAY",
-	sparkWidth = 20,
-	sparkHeight = 44,
+	sparkWidth = 4,
+	sparkHeight = 20,
+	barBorderSize = 1,
 	barBackgroundAlpha = 0.5,
+	barBackgroundColor = { r = 0, g = 0, b = 0, a = 0.5 },
+	barBorderColor = { r = 0, g = 0, b = 0, a = 1 },
 	sparkAlpha = 1,
 	minimalMode = false,
 	lockBars = false,
@@ -564,7 +636,17 @@ function ns.GetBarColor(colorKey)
 	local db = rawget(_G, "SuperSwingTimerDB")
 	local useClassColors = not db or db.useClassColors ~= false
 	if useClassColors and (colorKey == "mh" or colorKey == "oh" or colorKey == "ranged") then
-		return ns.GetPlayerClassColor()
+		local classColor = ns.GetPlayerClassColor()
+		local alpha = 1
+		if db and db.colors and db.colors[colorKey] and db.colors[colorKey].a ~= nil then
+			alpha = db.colors[colorKey].a
+		end
+		return {
+			r = classColor.r or 1,
+			g = classColor.g or 1,
+			b = classColor.b or 1,
+			a = alpha,
+		}
 	end
 
 	local colors = db and db.colors
@@ -595,7 +677,8 @@ function ns.SeedLegacyBarColorsFromClass()
 
 	for _, key in ipairs({ "mh", "oh", "ranged" }) do
 		if IsLegacyBlackColor(db.colors[key]) then
-			db.colors[key] = { r = classColor.r, g = classColor.g, b = classColor.b, a = 1 }
+			local existingAlpha = db.colors[key] and db.colors[key].a or 1
+			db.colors[key] = { r = classColor.r, g = classColor.g, b = classColor.b, a = existingAlpha }
 		end
 	end
 end
@@ -715,10 +798,37 @@ end
 
 function ns.GetBarBackgroundAlpha()
 	local db = rawget(_G, "SuperSwingTimerDB")
+	if db and db.barBackgroundColor and db.barBackgroundColor.a ~= nil then
+		return db.barBackgroundColor.a
+	end
 	if db and db.barBackgroundAlpha ~= nil then
 		return db.barBackgroundAlpha
 	end
 	return ns.DB_DEFAULTS.barBackgroundAlpha
+end
+
+function ns.GetBarBackgroundColor()
+	local db = rawget(_G, "SuperSwingTimerDB")
+	if db and db.barBackgroundColor then
+		return db.barBackgroundColor
+	end
+	return ns.DB_DEFAULTS.barBackgroundColor
+end
+
+function ns.GetBarBorderSize()
+	local db = rawget(_G, "SuperSwingTimerDB")
+	if db and db.barBorderSize ~= nil then
+		return db.barBorderSize
+	end
+	return ns.DB_DEFAULTS.barBorderSize
+end
+
+function ns.GetBarBorderColor()
+	local db = rawget(_G, "SuperSwingTimerDB")
+	if db and db.barBorderColor then
+		return db.barBorderColor
+	end
+	return ns.DB_DEFAULTS.barBorderColor
 end
 
 function ns.GetSparkAlpha()

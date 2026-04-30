@@ -10,6 +10,7 @@ Super Swing Timer tracks white-hit swing timers across main hand, off hand, and 
 - Hunter auto shot with `GetSpellCooldown(75)` + ranged-speed sync, a latency-aware 0.5s cast window, movement safety feedback that turns green when you stop before the breakpoint, a black threshold line showing when the cast window begins, and a dedicated 10px Auto Shot / Multi-Shot cast bar beneath the ranged timer
 - Dual-wield tracking with independent MH and OH timers
 - NMA detection for Heroic Strike, Cleave, Maul, and Raptor Strike
+- Warrior queue colors for Heroic Strike, Cleave, and Slam so the MH bar clearly shows which special is queued
 - Haste rescaling when weapon speed changes mid-swing
 - Parry haste handling
 - Extra attack suppression for Sword Spec and Windfury
@@ -17,8 +18,9 @@ Super Swing Timer tracks white-hit swing timers across main hand, off hand, and 
 - Ret Paladin seal breakpoint line that shows the actual strike-edge end marker plus a latency-aware reseal point on twist seals, with the full seal list from `docs/spellIds.md` covered by aura-name fallback and the breakpoint lines clamped above the bar texture
 - Shaman weave assist for Lightning Bolt, Chain Lightning, Healing Wave, Lesser Healing Wave, and Chain Heal breakpoints, with color-coded family markers that stay above the MH bar texture and can be disabled individually
 - Default MH / OH / ranged bar colors now follow your class color until you pick a custom color
-- Customizable bars, separate MH/OH and ranged textures, glow/opaque indicator mode, spark settings, colors, alpha, visibility, and lock state via `/sst`, `/super`, or `/superswingtimer`
+- Customizable bars, separate MH/OH and ranged textures, glow/opaque indicator mode, compact spark settings with a 4px default spark width, alpha-enabled color pickers, configurable bar background tint and opacity, adjustable bar border color and thickness, visibility, lock state, and the new Test Bars preview via `/sst`, `/super`, or `/superswingtimer`
 - Toggle MH / OH / ranged bars plus the shaman weave helper and its family controls from the config panel or Blizzard's Interface Options → AddOns list
+- Collapse or expand the major config sections so the `/sst` panel stays easier to scan while you tune textures, colors, timing, and weave settings, with stable row groups that keep the panel rendering cleanly
 - Texture picker: bar and ranged texture rows now stay focused on bar-style textures from Blizzard, SharedMedia, WeakAuras, and installed addon media packs, while the spark and shaman weave spark rows open a dedicated thumbnail browser seeded with the WeakAuras `Square_FullWhite` preset surfaced as `Normal`.
 
 ## Installation
@@ -73,10 +75,10 @@ Type `/sst`, `/super`, or `/superswingtimer` to open the config panel.
 
 - Show or hide the main-hand, off-hand, and ranged bars
 - Enable or disable the shaman weave assist and individual spell families
-- Adjust bar, ranged, spark, and weave-spark textures; choose from Blizzard, SharedMedia, WeakAuras, and installed addon media packs; tune layers, sizes, alpha, and the tiny upper/lower weave markers that follow spell haste; breakpoint overlays now live on a dedicated overlay frame so they stay above the bar fill without relying on hover-sensitive HIGHLIGHT layering
+- Adjust bar, ranged, spark, and weave-spark textures; choose from Blizzard, SharedMedia, WeakAuras, and installed addon media packs; tune layers, sizes, alpha, and the tiny upper/lower weave markers that follow spell haste; the spark / weave spark defaults are intentionally slim and clamp to the host bar height, and the breakpoint overlays now live on a dedicated overlay frame so they stay above the bar fill without relying on hover-sensitive HIGHLIGHT layering
 - Switch indicator glow between a bright additive style and a more opaque blend
-- Toggle minimal mode and bar locking
-- Change colors for MH, OH, ranged, and the paladin seal breakpoint line, or keep MH / OH / ranged on class colors
+- Toggle minimal mode, lock / unlock bars, tune the bar border size, and run the temporary Test Bars preview
+- Change colors for the bar background, bar border, MH, OH, ranged, and the paladin seal breakpoint line, or keep MH / OH / ranged on class colors while still adjusting opacity from the color picker
 - Labels sit above the controls in `/sst`, the rows are clickable, and hover tooltips explain what each setting does; the right-side checkbox, dropdown, or editable number field is the control for each row
 
 ## Feedback

@@ -6,6 +6,7 @@ local GetTimePreciseSec = rawget(_G, "GetTimePreciseSec")
 local GetTime = rawget(_G, "GetTime")
 local GetSpellInfo = rawget(_G, "GetSpellInfo")
 local UnitCastingInfo = rawget(_G, "UnitCastingInfo")
+local UnitRangedDamage = rawget(_G, "UnitRangedDamage")
 local UnitAttackSpeed = rawget(_G, "UnitAttackSpeed")
 local UnitChannelInfo = rawget(_G, "UnitChannelInfo")
 
@@ -65,7 +66,7 @@ function ns.GetOverlayFrame(frame)
 end
 
 local function IsHunterCastSpell(spellId)
-	return spellId ~= nil and ns.HUNTER_CAST_SPELLS and ns.HUNTER_CAST_SPELLS[spellId] == true
+	return spellId ~= nil and ns.IsHunterCastSpell and ns.IsHunterCastSpell(spellId)
 end
 
 local function ShouldShowHunterCastBar()
@@ -75,12 +76,7 @@ local function ShouldShowHunterCastBar()
 		return false
 	end
 
-	local rangedTimer = ns.timers and ns.timers.ranged
-	if rangedTimer and rangedTimer.state == "swinging" then
-		return true
-	end
-
-	return ns.casting == true and IsHunterCastSpell(ns.currentCastSpellId)
+	return ns.hunterCastActive == true and IsHunterCastSpell(ns.hunterCastSpellId)
 end
 
 -- ============================================================
@@ -94,6 +90,7 @@ local function CreateBar(frameName, width, height)
 	f:EnableMouse(true)
 	f:RegisterForDrag("LeftButton")
 	f:SetClampedToScreen(true)
+	f:SetHitRectInsets(-8, -8, -8, -8)
 	f:SetStatusBarTexture(ns.GetBarTexture())
 	f:SetStatusBarColor(0, 0, 0, 1)
 	f:SetAlpha(0)
@@ -108,33 +105,44 @@ local function CreateBar(frameName, width, height)
 
 	local backgroundTexture = f:CreateTexture(nil, "BACKGROUND")
 	backgroundTexture:SetAllPoints(true)
-	backgroundTexture:SetColorTexture(0, 0, 0, 1)
-	backgroundTexture:SetAlpha(ns.GetBarBackgroundAlpha())
+	local backgroundColor = ns.GetBarBackgroundColor and ns.GetBarBackgroundColor() or (ns.DB_DEFAULTS and ns.DB_DEFAULTS.barBackgroundColor)
+	backgroundColor = backgroundColor or { r = 0, g = 0, b = 0, a = 0.5 }
+	backgroundTexture:SetColorTexture(backgroundColor.r or 0, backgroundColor.g or 0, backgroundColor.b or 0, 1)
+	backgroundTexture:SetAlpha(backgroundColor.a ~= nil and backgroundColor.a or (ns.GetBarBackgroundAlpha() or 1))
 
 	-- Border: 4 thin edges so the fill remains visible
+	local borderColor = ns.GetBarBorderColor and ns.GetBarBorderColor() or (ns.DB_DEFAULTS and ns.DB_DEFAULTS.barBorderColor)
+	borderColor = borderColor or { r = 0, g = 0, b = 0, a = 1 }
 	local borderTop = f:CreateTexture(nil, "OVERLAY")
-	borderTop:SetColorTexture(0, 0, 0, 1)
+	borderTop:SetColorTexture(borderColor.r or 0, borderColor.g or 0, borderColor.b or 0, borderColor.a or 1)
 	borderTop:SetPoint("TOPLEFT", -1, 1)
 	borderTop:SetPoint("TOPRIGHT", 1, 1)
 	borderTop:SetHeight(1)
 
 	local borderBottom = f:CreateTexture(nil, "OVERLAY")
-	borderBottom:SetColorTexture(0, 0, 0, 1)
+	borderBottom:SetColorTexture(borderColor.r or 0, borderColor.g or 0, borderColor.b or 0, borderColor.a or 1)
 	borderBottom:SetPoint("BOTTOMLEFT", -1, -1)
 	borderBottom:SetPoint("BOTTOMRIGHT", 1, -1)
 	borderBottom:SetHeight(1)
 
 	local borderLeft = f:CreateTexture(nil, "OVERLAY")
-	borderLeft:SetColorTexture(0, 0, 0, 1)
+	borderLeft:SetColorTexture(borderColor.r or 0, borderColor.g or 0, borderColor.b or 0, borderColor.a or 1)
 	borderLeft:SetPoint("TOPLEFT", -1, 1)
 	borderLeft:SetPoint("BOTTOMLEFT", -1, -1)
 	borderLeft:SetWidth(1)
 
 	local borderRight = f:CreateTexture(nil, "OVERLAY")
-	borderRight:SetColorTexture(0, 0, 0, 1)
+	borderRight:SetColorTexture(borderColor.r or 0, borderColor.g or 0, borderColor.b or 0, borderColor.a or 1)
 	borderRight:SetPoint("TOPRIGHT", 1, 1)
 	borderRight:SetPoint("BOTTOMRIGHT", 1, -1)
 	borderRight:SetWidth(1)
+
+	f.borderTextures = {
+		top = borderTop,
+		bottom = borderBottom,
+		left = borderLeft,
+		right = borderRight,
+	}
 
 	local sparkTexture = overlayFrame:CreateTexture(nil, "OVERLAY")
 	sparkTexture:SetTexture(ns.GetSparkTexture())
@@ -145,7 +153,8 @@ local function CreateBar(frameName, width, height)
 	end
 	sparkTexture:SetBlendMode(ns.GetIndicatorBlendMode())
 	sparkTexture:SetWidth(ns.GetSparkWidth())
-	sparkTexture:SetHeight(ns.GetSparkHeight())
+	local sparkHeight = math.max(1, math.min(ns.GetSparkHeight(), f:GetHeight() or ns.BAR_HEIGHT or ns.GetSparkHeight()))
+	sparkTexture:SetHeight(sparkHeight)
 	local sparkColor = ns.GetSparkColor() or ns.DB_DEFAULTS.sparkColor
 	if sparkColor then
 		sparkTexture:SetVertexColor(sparkColor.r or 1, sparkColor.g or 1, sparkColor.b or 1, sparkColor.a or 1)
@@ -188,7 +197,7 @@ local function CreateRangedBar()
 	-- Opaque marker showing where the bar will switch into the cast window.
 	local castThresholdMarker = overlayFrame:CreateTexture(nil, "OVERLAY")
 	castThresholdMarker:SetColorTexture(0, 0, 0, 1)
-	castThresholdMarker:SetWidth(5)
+	castThresholdMarker:SetWidth(3)
 	castThresholdMarker:SetPoint("TOPLEFT")
 	castThresholdMarker:SetPoint("BOTTOMLEFT")
 	if ns.SetTextureLayerAboveBar then
@@ -294,7 +303,7 @@ local function UpdateCastZoneVisual(castWindow, isSafeStop)
 		end
 
 		if f.castThresholdMarker then
-			local markerWidth = math.min(5, barWidth)
+			local markerWidth = math.min(3, barWidth)
 			local markerLeft = math.max(barWidth - width - (markerWidth * 0.5), 0)
 			local markerAnchor = ns.GetOverlayFrame and ns.GetOverlayFrame(f) or f
 			f.castThresholdMarker:ClearAllPoints()
@@ -327,30 +336,52 @@ local function UpdateHunterCastBar()
 
 	local now = GetCurrentTime()
 	local barWidth = f:GetWidth() or f.barWidth or ns.BAR_WIDTH or 0
-	local elapsedTime = nil
-	local duration = nil
+	local elapsedTime
+	local duration
 
-	local spellId = ns.currentCastSpellId
-	if ns.casting and IsHunterCastSpell(spellId) and UnitCastingInfo then
-		local _, _, _, startTimeMs, endTimeMs = UnitCastingInfo("player")
-		if startTimeMs and endTimeMs and endTimeMs > startTimeMs then
-			duration = (endTimeMs - startTimeMs) / 1000
-			elapsedTime = now - (startTimeMs / 1000)
+	local spellId = ns.hunterCastSpellId or ns.currentCastSpellId
+	local startTime = ns.hunterCastStartTime
+	duration = ns.hunterCastDuration
+	if IsHunterCastSpell(spellId) then
+		if (not duration or duration <= 0) then
+			if ns.IsAutoShotSpell and ns.IsAutoShotSpell(spellId) and ns.GetAutoShotCooldown then
+				local autoStart, autoDuration = ns.GetAutoShotCooldown()
+				if autoDuration and autoDuration > 0 then
+					startTime = autoStart or startTime or now
+					duration = autoDuration
+				end
+			elseif type(UnitCastingInfo) == "function" then
+				local _, _, _, startTimeMs, endTimeMs = UnitCastingInfo("player")
+				if startTimeMs and endTimeMs and endTimeMs > startTimeMs then
+					startTime = startTimeMs / 1000
+					duration = (endTimeMs - startTimeMs) / 1000
+				end
+			end
+		end
+		if (not duration or duration <= 0) and type(UnitRangedDamage) == "function" then
+			local rangedSpeed = UnitRangedDamage("player")
+			if rangedSpeed and rangedSpeed > 0 then
+				startTime = startTime or now
+				duration = rangedSpeed
+			end
 		end
 	end
 
-	if not duration or duration <= 0 then
-		local rangedTimer = ns.timers and ns.timers.ranged
-		if rangedTimer and rangedTimer.state == "swinging" and rangedTimer.duration and rangedTimer.duration > 0 then
-			duration = rangedTimer.duration
-			elapsedTime = now - rangedTimer.lastSwing
-		end
+	if startTime and duration and duration > 0 then
+		ns.hunterCastStartTime = startTime
+		ns.hunterCastDuration = duration
+		elapsedTime = now - startTime
 	end
 
 	if not duration or duration <= 0 then
 		f:SetAlpha(0)
 		f:SetMinMaxValues(0, 1)
 		f:SetValue(0)
+		ns.hunterCastActive = false
+		ns.hunterCastSpellId = nil
+		ns.hunterCastStartTime = nil
+		ns.hunterCastDuration = nil
+		ns.RefreshUpdateLoop()
 		return
 	end
 
@@ -360,6 +391,14 @@ local function UpdateHunterCastBar()
 		elapsedTime = 0
 	elseif elapsedTime > duration then
 		elapsedTime = duration
+	end
+
+	if elapsedTime >= duration then
+		ns.hunterCastActive = false
+		ns.hunterCastSpellId = nil
+		ns.hunterCastStartTime = nil
+		ns.hunterCastDuration = nil
+		ns.RefreshUpdateLoop()
 	end
 
 	f:SetAlpha(1)
@@ -511,10 +550,11 @@ local function UpdateRangedBar(elapsed)
 	-- Movement clipping in cast window
 	local cooldownEnd = t.lastSwing + t.duration - rangedWindowLead
 	if now >= cooldownEnd then
+		local barAlpha = (ns.rangedBarBaseColor and ns.rangedBarBaseColor.a) or 1
 		if safeStop then
-			f:SetStatusBarColor(0.2, 0.78, 0.25, 1)  -- green: stopped before the breakpoint
+			f:SetStatusBarColor(0.2, 0.78, 0.25, barAlpha)  -- green: stopped before the breakpoint
 		else
-			f:SetStatusBarColor(1, 0, 0, 1)  -- red: cast window
+			f:SetStatusBarColor(1, 0, 0, barAlpha)  -- red: cast window
 		end
 		if ns.isMoving then
 			-- Pin timer at cast-window boundary
@@ -523,7 +563,7 @@ local function UpdateRangedBar(elapsed)
 	else
 		local c = ns.rangedBarBaseColor
 		if c then
-			f:SetStatusBarColor(c.r, c.g, c.b, c.a)
+			f:SetStatusBarColor(c.r, c.g, c.b, c.a or 1)
 		else
 			f:SetStatusBarColor(0, 0, 0, 1)
 		end
@@ -617,6 +657,37 @@ function ns.ApplyBarSize(width, height)
 	end
 end
 
+function ns.ApplyBarBorderSize(borderSize)
+	borderSize = math.floor(tonumber(borderSize) or ns.DB_DEFAULTS.barBorderSize or 1)
+	if borderSize < 0 then
+		borderSize = 0
+	end
+
+	SuperSwingTimerDB.barBorderSize = borderSize
+
+	for _, bar in ipairs({ ns.mhBar, ns.ohBar, ns.rangedBar, ns.hunterCastBar }) do
+		local borderTextures = bar and bar.borderTextures or nil
+		if borderTextures then
+			local showBorder = borderSize > 0
+			for _, texture in pairs(borderTextures) do
+				if texture then
+					if showBorder then
+						texture:Show()
+					else
+						texture:Hide()
+					end
+				end
+			end
+			if showBorder then
+				borderTextures.top:SetHeight(borderSize)
+				borderTextures.bottom:SetHeight(borderSize)
+				borderTextures.left:SetWidth(borderSize)
+				borderTextures.right:SetWidth(borderSize)
+			end
+		end
+	end
+end
+
 function ns.ApplyBarTexture(texturePath, layer)
 	if not texturePath or texturePath == "" then
 		texturePath = ns.DB_DEFAULTS.barTexture
@@ -689,13 +760,68 @@ function ns.ApplyBarTextureLayer(layer)
 	end
 end
 
-function ns.ApplyBarBackgroundAlpha(alpha)
-	alpha = tonumber(alpha) or ns.DB_DEFAULTS.barBackgroundAlpha
-	if alpha < 0 then alpha = 0 elseif alpha > 1 then alpha = 1 end
+function ns.ApplyBarBackgroundColor(color)
+	color = color or ns.GetBarBackgroundColor() or ns.DB_DEFAULTS.barBackgroundColor
+	local r = tonumber(color and color.r)
+	local g = tonumber(color and color.g)
+	local b = tonumber(color and color.b)
+	local alpha = tonumber(color and color.a)
+	if r == nil then r = 0 end
+	if g == nil then g = 0 end
+	if b == nil then b = 0 end
+	if alpha == nil then
+		alpha = ns.GetBarBackgroundAlpha() or ns.DB_DEFAULTS.barBackgroundAlpha or 1
+	elseif alpha < 0 then
+		alpha = 0
+	elseif alpha > 1 then
+		alpha = 1
+	end
+
+	SuperSwingTimerDB.barBackgroundColor = { r = r, g = g, b = b, a = alpha }
 	SuperSwingTimerDB.barBackgroundAlpha = alpha
 	for _, bar in ipairs({ ns.mhBar, ns.ohBar, ns.rangedBar, ns.hunterCastBar }) do
 		if bar and bar.backgroundTexture then
+			bar.backgroundTexture:SetColorTexture(r, g, b, 1)
 			bar.backgroundTexture:SetAlpha(alpha)
+		end
+	end
+end
+
+function ns.ApplyBarBackgroundAlpha(alpha)
+	alpha = tonumber(alpha) or ns.DB_DEFAULTS.barBackgroundAlpha
+	if alpha < 0 then alpha = 0 elseif alpha > 1 then alpha = 1 end
+	local color = ns.GetBarBackgroundColor and ns.GetBarBackgroundColor() or ns.DB_DEFAULTS.barBackgroundColor
+	color = color or { r = 0, g = 0, b = 0, a = 1 }
+	color = { r = color.r or 0, g = color.g or 0, b = color.b or 0, a = alpha }
+	ns.ApplyBarBackgroundColor(color)
+end
+
+function ns.ApplyBarBorderColor(color)
+	color = color or ns.GetBarBorderColor() or ns.DB_DEFAULTS.barBorderColor
+	local r = tonumber(color and color.r)
+	local g = tonumber(color and color.g)
+	local b = tonumber(color and color.b)
+	local alpha = tonumber(color and color.a)
+	if r == nil then r = 0 end
+	if g == nil then g = 0 end
+	if b == nil then b = 0 end
+	if alpha == nil then
+		alpha = 1
+	elseif alpha < 0 then
+		alpha = 0
+	elseif alpha > 1 then
+		alpha = 1
+	end
+
+	SuperSwingTimerDB.barBorderColor = { r = r, g = g, b = b, a = alpha }
+	for _, bar in ipairs({ ns.mhBar, ns.ohBar, ns.rangedBar, ns.hunterCastBar }) do
+		local borderTextures = bar and bar.borderTextures or nil
+		if borderTextures then
+			for _, texture in pairs(borderTextures) do
+				if texture then
+					texture:SetColorTexture(r, g, b, alpha)
+				end
+			end
 		end
 	end
 end
@@ -711,6 +837,13 @@ function ns.ApplySparkSettings(texturePath, width, height, layer, alpha, color)
 	height = height or ns.DB_DEFAULTS.sparkHeight
 	local currentColor = ns.GetSparkColor() or ns.DB_DEFAULTS.sparkColor
 	color = color or currentColor
+	local useClassColors = not (SuperSwingTimerDB and SuperSwingTimerDB.useClassColors == false)
+	if useClassColors and color and (color.r == 1 or color.r == nil) and (color.g == 1 or color.g == nil) and (color.b == 1 or color.b == nil) then
+		local classColor = ns.GetBarColor and ns.GetBarColor("ranged") or nil
+		if classColor then
+			color = classColor
+		end
+	end
 	local r = tonumber(color and color.r) or (currentColor and currentColor.r) or 1
 	local g = tonumber(color and color.g) or (currentColor and currentColor.g) or 1
 	local b = tonumber(color and color.b) or (currentColor and currentColor.b) or 1
@@ -743,7 +876,8 @@ function ns.ApplySparkSettings(texturePath, width, height, layer, alpha, color)
 			end
 			bar.sparkTexture:SetBlendMode(ns.GetIndicatorBlendMode())
 			bar.sparkTexture:SetWidth(width)
-			bar.sparkTexture:SetHeight(height)
+			local targetHeight = math.max(1, math.min(height, bar:GetHeight() or height))
+			bar.sparkTexture:SetHeight(targetHeight)
 			bar.sparkTexture:SetVertexColor(r, g, b, alpha)
 			bar.sparkTexture:SetAlpha(1)
 		end
@@ -869,7 +1003,8 @@ function ns.ApplyWeaveSparkSettings(texturePath, width, height, layer, alpha)
 			end
 			texture:SetBlendMode(ns.GetIndicatorBlendMode())
 			texture:SetWidth(width)
-			texture:SetHeight(height)
+			local targetHeight = math.max(1, math.min(height, (ns.mhBar and ns.mhBar:GetHeight()) or height))
+			texture:SetHeight(targetHeight)
 			texture:SetAlpha(alpha)
 		end
 	end
@@ -997,27 +1132,26 @@ function ns.ApplyBarColors()
 	local colors = SuperSwingTimerDB and SuperSwingTimerDB.colors
 	if not colors then return end
 
-	-- Bars always use alpha=1; the seal breakpoint line is also kept opaque by default.
 	local mhColor = ns.GetBarColor and ns.GetBarColor("mh") or colors.mh
 	if ns.mhBar and mhColor then
 		local c = mhColor
-		ns.mhBar:SetStatusBarColor(c.r, c.g, c.b, 1)
-		ns.mhBarBaseColor = { r = c.r, g = c.g, b = c.b, a = 1 }
+		ns.mhBar:SetStatusBarColor(c.r, c.g, c.b, c.a or 1)
+		ns.mhBarBaseColor = { r = c.r, g = c.g, b = c.b, a = c.a or 1 }
 	end
 	local ohColor = ns.GetBarColor and ns.GetBarColor("oh") or colors.oh
 	if ns.ohBar and ohColor then
 		local c = ohColor
-		ns.ohBar:SetStatusBarColor(c.r, c.g, c.b, 1)
+		ns.ohBar:SetStatusBarColor(c.r, c.g, c.b, c.a or 1)
 	end
 	local rangedColor = ns.GetBarColor and ns.GetBarColor("ranged") or colors.ranged
 	if rangedColor then
 		local c = rangedColor
-		ns.rangedBarBaseColor = { r = c.r, g = c.g, b = c.b, a = 1 }
+		ns.rangedBarBaseColor = { r = c.r, g = c.g, b = c.b, a = c.a or 1 }
 		if ns.rangedBar then
-			ns.rangedBar:SetStatusBarColor(c.r, c.g, c.b, 1)
+			ns.rangedBar:SetStatusBarColor(c.r, c.g, c.b, c.a or 1)
 		end
 		if ns.hunterCastBar then
-			ns.hunterCastBar:SetStatusBarColor(c.r, c.g, c.b, 1)
+			ns.hunterCastBar:SetStatusBarColor(c.r, c.g, c.b, c.a or 1)
 		end
 	end
 	if (ns.sealTwistBreakpoint or ns.sealTwistZone) and colors.sealTwist then
@@ -1084,6 +1218,7 @@ function ns.InitBars()
 	ns.ApplySparkSettings(ns.GetSparkTexture(), ns.GetSparkWidth(), ns.GetSparkHeight())
 	ns.ApplySparkTextureLayer(ns.GetSparkTextureLayer())
 	ns.ApplyBarBackgroundAlpha(ns.GetBarBackgroundAlpha())
+	ns.ApplyBarBorderSize(ns.GetBarBorderSize())
 	ns.ApplySparkColor(ns.GetSparkColor())
 	ns.ApplyMinimalMode(ns.IsMinimalMode())
 	ns.ApplyVisibility()

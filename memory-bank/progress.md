@@ -1,5 +1,22 @@
 # Progress
 
+## Progress Update (2026-04-29 - final release polish pass)
+
+- Switched the hunter Auto Shot / Multi-Shot bar to separate active-state logic so the cooldown preview survives the generic stop event and can expire on its own timing.
+- Added a temporary `/sst` Test Bars action, a clearer `Lock / Unlock Bars` control, and alpha-enabled color swatches for the main bar palette.
+- Bumped the addon metadata to `v3.1.10` and refreshed the changelog, README, UI notes, and memory bank to match the final polish pass.
+
+## Progress Update (2026-04-29 - final hunter cast-bar and collapsible section polish)
+
+- Restored the base spark width to 4px and aligned the default spark tint with the ranged class color when class colors are enabled.
+- Added stored hunter cast timing so the Auto Shot / Multi-Shot cast bar can render even when the live casting API is sparse.
+- Restored the `/sst` panel so its collapsible sections use stable row groups again, which keeps the config content visible and functional.
+- Slimmed the spark and weave defaults to compact bar-height-aligned markers so the glow no longer balloons into a huge white block, and added a hunter cast-bar test preview so the frame can be repositioned more easily.
+- Tightened the Hunter cast bar so it is cast-only and only appears while Auto Shot or Multi-Shot is actively being cast.
+- Kept the update loop alive for channeling by treating `ns.channeling` as an active-timer state, which preserves ranged channel animations even without a swing timer.
+- Added collapsible `/sst` section headers for the main config groups to make the panel easier to scan and closer to the WeakAuras-style section workflow.
+- Synced `docs/UI.md`, `CHANGELOG.md`, and the memory bank with the final release polish pass.
+
 ## Progress Update (2026-04-29 - hunter cast bar and TBC spell IDs)
 
 - Added a dedicated Hunter Auto Shot / Multi-Shot cast bar beneath the ranged timer and wired it to the ranged bar's texture, spark settings, and visibility rules.

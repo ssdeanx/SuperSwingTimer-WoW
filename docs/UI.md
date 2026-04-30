@@ -6,7 +6,7 @@ This document captures the UI direction for `/sst`.
 
 - Use a scrollable custom panel instead of a flat, fixed-height stack.
 - Keep the footer actions fixed outside the scrolling area so Reset and Close stay visible.
-- Group options into visible sections: Visibility, Appearance, Behavior, Colors, and Shaman Weave Assist.
+- Group options into visible, collapsible sections with stable row groups: Visibility, Appearance, Behavior, Colors, and Shaman Weave Assist.
 
 ## Layout patterns to keep
 
@@ -23,14 +23,18 @@ This document captures the UI direction for `/sst`.
   - weave marker layer
   - any new overlay layers later
 - Keep visual cues on a dedicated overlay frame above the bar fill so breakpoint markers never depend on hover-sensitive HIGHLIGHT ordering.
+- Keep the hunter Auto Shot / Multi-Shot cast bar separate from the ranged swing bar, with a small previewable bar that can be shown during `/sst` testing even when it is not actively casting.
 - Add weave-assist presentation options:
   - show / hide weave overlay
   - tiny upper / lower marker pair that follows the spell-haste-adjusted safe swing point
-  - marker size, gap, alpha, and layer controls
+  - marker size, gap, alpha, and layer controls, with compact spark defaults that stay bar-height aligned instead of becoming a full-height glow
   - color selection by spell family
   - per-family enable / disable toggles for Lightning Bolt, Chain Lightning, Healing Wave, Lesser Healing Wave, and Chain Heal
-- Texture selection should use compact preview dropdown rows for the MH/OH and ranged bars, but those dropdowns should stay focused on bar-style textures from Blizzard, SharedMedia, WeakAuras, and installed addon packs. The spark row and the shaman weave spark row should open a dedicated thumbnail browser seeded with the Normal `Square_FullWhite` preset, and the collapsed rows should summarize the current texture and the active bar texture.
+- Texture selection should use compact preview dropdown rows for the MH/OH and ranged bars, but those dropdowns should stay focused on bar-style textures from Blizzard, SharedMedia, WeakAuras, and installed addon packs. The spark row and the shaman weave spark row should open a dedicated thumbnail browser seeded with the Normal `Square_FullWhite` preset, and the collapsed rows should summarize the current texture and the active bar texture while the spark previews clamp to the host bar height.
 - Make the row controls obvious: toggles use the right-side checkbox, selector settings use the right-side dropdown, and sliders expose a right-side editable numeric field.
+- Include a `Lock / Unlock Bars` control plus a temporary `Test Bars` action so players can preview and reposition the bars without fighting the normal combat visibility rules.
+- Make the unlocked bars easy to grab by giving them a slightly larger drag hit area, and expose a bar border size control so the frame outline can be tuned instead of being fixed at a single pixel thickness.
+- Let every main bar color swatch open the color picker with opacity support so the class-color palette can still be tuned with alpha.
 - Add hover tooltips to explain what each row changes so the panel remains understandable without memorizing the labels.
 - Keep the panel responsive and straightforward to scan.
 

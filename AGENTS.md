@@ -75,6 +75,16 @@ Use these links first when checking Classic addon UI behavior, widgets, frames, 
 
 ## Current progress
 
+- The final release polish pass is in progress: the hunter Auto Shot / Multi-Shot bar now has separate active-state logic, `/sst` gained a temporary Test Bars action plus a clearer `Lock / Unlock Bars` control, and the main color swatches now allow opacity selection.
+
+- The base spark width is back to 4px, the spark tint now follows the ranged class color when class colors are enabled, and the Hunter Auto Shot / Multi-Shot cast bar uses stored cast timing so it renders reliably again.
+
+- The `/sst` panel has stable collapsible section rows again, and the spark / weave defaults were slimmed down so the glow now stays bar-height aligned instead of rendering as a huge white block.
+- The Hunter Auto Shot / Multi-Shot cast bar remains cast-only and sits directly beneath the ranged timer without forcing a persistent preview state.
+
+- The `/sst` panel now uses collapsible section headers for the major groups, and the Hunter Auto Shot / Multi-Shot cast bar is cast-only so it appears beneath the ranged timer only during real hunter casts.
+- The channeling update loop now stays alive while `ns.channeling` is active, which keeps ranged channel visuals animating even when no swing timer is currently swinging.
+
 - Hunter now has a dedicated 10px Auto Shot / Multi-Shot cast bar beneath the ranged timer, tied to the ranged texture, spark settings, and visibility rules instead of floating independently.
 - The hunter spellcast handlers were corrected to consume Classic's 3-argument `UNIT_SPELLCAST_*` payloads so the cast state and swing-reset logic can read the live spell ID.
 - The TBC Multi-Shot ranks and Slam ranks 5-6 were synced into the addon tables and `docs/swingtimer.md`, and the TOC / changelog were bumped to `v3.1.7`.

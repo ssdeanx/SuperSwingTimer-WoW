@@ -4,6 +4,7 @@ local UIParent = rawget(_G, "UIParent")
 local InCombatLockdown = rawget(_G, "InCombatLockdown")
 local ColorPickerFrame = rawget(_G, "ColorPickerFrame")
 local GameTooltip = rawget(_G, "GameTooltip")
+local C_Timer = rawget(_G, "C_Timer")
 local UIDropDownMenu_AddButton = rawget(_G, "UIDropDownMenu_AddButton")
 local UIDropDownMenu_CreateInfo = rawget(_G, "UIDropDownMenu_CreateInfo")
 local UIDropDownMenu_Initialize = rawget(_G, "UIDropDownMenu_Initialize")
@@ -135,11 +136,23 @@ local function GetTextureSummaryText(texturePath)
 	return string.format("%s | Bar: %s", sparkLabel, barLabel)
 end
 
+local function SetRowsShown(rows, shown)
+	if not rows then
+		return
+	end
+
+	for _, row in ipairs(rows) do
+		if row then
+			row:SetShown(shown)
+		end
+	end
+end
+
 -- ============================================================
 -- Bar preview: show bars while config panel is open
 -- ============================================================
 local function ShowBarPreview()
-	local bars = { ns.mhBar, ns.ohBar, ns.rangedBar }
+	local bars = { ns.mhBar, ns.ohBar, ns.rangedBar, ns.hunterCastBar }
 	for _, bar in ipairs(bars) do
 		if bar then
 			bar:SetAlpha(1)
@@ -156,20 +169,50 @@ local function ShowBarPreview()
 		ns.GetSparkTextureLayer(),
 		ns.GetSparkAlpha()
 	)
-	ns.ApplyBarBackgroundAlpha(ns.GetBarBackgroundAlpha())
+	ns.ApplyBarBackgroundColor(ns.GetBarBackgroundColor())
+	ns.ApplyBarBorderColor(ns.GetBarBorderColor())
+	ns.ApplyBarBorderSize(ns.GetBarBorderSize())
 	ns.ApplyMinimalMode(ns.IsMinimalMode())
 	ns.ApplyBarColors()
 	ns.ApplyIndicatorBlendMode(ns.GetIndicatorBlendMode())
 	ns.ApplyVisibility()
+	if ns.hunterCastBar then
+		ns.hunterCastBar:SetAlpha(1)
+		ns.hunterCastBar:SetMinMaxValues(0, 1)
+		ns.hunterCastBar:SetValue(1)
+	end
 end
 
 local function HideBarPreview()
+	if ns.barTestActive then
+		return
+	end
 	-- Only hide if not in combat (combat show/hide handles itself)
 	if not InCombatLockdown or not InCombatLockdown() then
-		local bars = { ns.mhBar, ns.ohBar, ns.rangedBar }
+		local bars = { ns.mhBar, ns.ohBar, ns.rangedBar, ns.hunterCastBar }
 		for _, bar in ipairs(bars) do
 			if bar then bar:SetAlpha(0) end
 		end
+	end
+end
+
+local function StartBarTestPreview(duration)
+	duration = tonumber(duration) or 8
+	ns.barTestActive = true
+	if ns.barTestTimer and ns.barTestTimer.Cancel then
+		ns.barTestTimer:Cancel()
+		ns.barTestTimer = nil
+	end
+	ShowBarPreview()
+	if panel and panel.Hide then
+		panel:Hide()
+	end
+	if C_Timer and C_Timer.NewTimer then
+		ns.barTestTimer = C_Timer.NewTimer(duration, function()
+			ns.barTestActive = false
+			ns.barTestTimer = nil
+			HideBarPreview()
+		end)
 	end
 end
 
@@ -949,26 +992,99 @@ local function CreateToggleRow(parent, label, yOffset, getValue, applyValue)
 	return row
 end
 
-local function CreateSectionHeader(parent, label, yOffset)
+local function CreateActionRow(parent, label, buttonText, yOffset, onClick, tooltipText)
 	local row = CreateFrame("Frame", nil, parent)
 	row:SetPoint("TOPLEFT", parent, "TOPLEFT", 20, yOffset)
 	row:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -20, yOffset)
-	row:SetHeight(18)
+	row:SetHeight(40)
+	row:EnableMouse(true)
+	row.hover = AddRowHoverHighlight(row)
 
-	local bg = row:CreateTexture(nil, "BACKGROUND")
-	bg:SetColorTexture(0.08, 0.08, 0.08, 0.55)
-	bg:SetPoint("TOPLEFT", row, "TOPLEFT", -4, 2)
-	bg:SetPoint("BOTTOMRIGHT", row, "BOTTOMRIGHT", 4, -2)
-
-	local text = row:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-	text:SetPoint("LEFT", row, "LEFT", 0, 0)
+	local text = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+	text:SetPoint("TOPLEFT", row, "TOPLEFT", 0, 0)
 	text:SetText(label)
 
+	local btn = CreateFrame("Button", nil, row, "UIPanelButtonTemplate")
+	btn:SetSize(120, 22)
+	btn:SetPoint("BOTTOMRIGHT", row, "BOTTOMRIGHT", 0, 0)
+	btn:SetText(buttonText or label)
+	btn:SetScript("OnClick", function()
+		if onClick then
+			onClick()
+		end
+	end)
+	text:SetPoint("RIGHT", btn, "LEFT", -8, 0)
+
+	row:SetScript("OnMouseUp", function(_, mouseButton)
+		if mouseButton == "LeftButton" then
+			btn:Click()
+		end
+	end)
+	AddControlTooltip(row, label, tooltipText or string.format("Click to %s.", string.lower(buttonText or label)))
+
+	row.button = btn
+	row.refresh = function() end
+	return row
+end
+
+local function CreateSectionHeader(parent, label, yOffset, options)
+	local row = CreateFrame("Button", nil, parent, "BackdropTemplate")
+	row:SetPoint("TOPLEFT", parent, "TOPLEFT", 20, yOffset)
+	row:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -20, yOffset)
+	row:SetHeight(24)
+	row:EnableMouse(true)
+	row:RegisterForClicks("LeftButtonUp")
+	row:Show()
+	row.options = options or {}
+	row.rows = row.options.rows
+
+	local bg = row:CreateTexture(nil, "BACKGROUND")
+	bg:SetColorTexture(0.07, 0.07, 0.07, 0.82)
+	bg:SetPoint("TOPLEFT", row, "TOPLEFT", -6, 3)
+	bg:SetPoint("BOTTOMRIGHT", row, "BOTTOMRIGHT", 6, -3)
+
+	local hover = AddRowHoverHighlight(row, 0.05)
+	row.hover = hover
+
+	local arrow = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightLarge")
+	arrow:SetPoint("LEFT", row, "LEFT", 2, 0)
+	arrow:SetText("-")
+	row.arrow = arrow
+
+	local text = row:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+	text:SetPoint("LEFT", arrow, "RIGHT", 6, 0)
+	text:SetText(label)
+	row.text = text
+
 	local line = row:CreateTexture(nil, "ARTWORK")
-	line:SetColorTexture(0.35, 0.35, 0.35, 0.7)
+	line:SetColorTexture(0.38, 0.38, 0.38, 0.78)
 	line:SetPoint("BOTTOMLEFT", row, "BOTTOMLEFT", 0, -2)
 	line:SetPoint("BOTTOMRIGHT", row, "BOTTOMRIGHT", 0, -2)
-	line:SetHeight(1)
+	line:SetHeight(2)
+
+	row.refresh = function()
+		local collapsed = row.options and row.options.getCollapsed and row.options.getCollapsed() or false
+		if row.arrow then
+			row.arrow:SetText(collapsed and "+" or "-")
+		end
+		if row.rows then
+			SetRowsShown(row.rows, not collapsed)
+		end
+	end
+
+	if row.options and row.options.rows then
+		row:SetScript("OnClick", function(self)
+			local collapsed = self.options and self.options.getCollapsed and self.options.getCollapsed() or false
+			collapsed = not collapsed
+			if self.options and self.options.setCollapsed then
+				self.options.setCollapsed(collapsed)
+			end
+			SetRowsShown(self.rows, not collapsed)
+			if self.arrow then
+				self.arrow:SetText(collapsed and "+" or "-")
+			end
+		end)
+	end
 
 	return row
 end
@@ -1107,8 +1223,27 @@ local function CreatePanel()
 	f.scrollFrame = scrollFrame
 	f.content = content
 
+	local sectionCollapsed = {
+		barVisibility = false,
+		mhOh = false,
+		shaman = false,
+		general = false,
+		colors = false,
+		weaveFamilies = false,
+	}
+	local barVisibilityRows = {}
+	local mhOhRows = {}
+	local shamanRows = {}
+	local generalRows = {}
+	local colorRowsSection = {}
+	local weaveFamiliesRows = {}
+
 	-- Sliders / selectors
-	CreateSectionHeader(content, "Bar Visibility", -10)
+	local barVisibilityHeader = CreateSectionHeader(content, "Bar Visibility", -10, {
+		rows = barVisibilityRows,
+		getCollapsed = function() return sectionCollapsed.barVisibility end,
+		setCollapsed = function(collapsed) sectionCollapsed.barVisibility = collapsed end,
+	})
 
 	local showMHRow = CreateToggleRow(
 		content,
@@ -1154,10 +1289,24 @@ local function CreatePanel()
 		end
 	)
 
-	CreateSectionHeader(content, "MH/OH Bar Appearance", -174)
+	local mhOhHeader = CreateSectionHeader(content, "MH/OH Bar Appearance", -174, {
+		rows = mhOhRows,
+		getCollapsed = function() return sectionCollapsed.mhOh end,
+		setCollapsed = function(collapsed) sectionCollapsed.mhOh = collapsed end,
+	})
 
 	if ns.playerClass ~= "SHAMAN" then
 		showWeaveRow:Hide()
+	end
+	barVisibilityRows[1] = showMHRow
+	barVisibilityRows[2] = showOHRow
+	barVisibilityRows[3] = showRangedRow
+	if ns.playerClass == "SHAMAN" then
+		barVisibilityRows[4] = showWeaveRow
+	end
+	SetRowsShown(barVisibilityRows, not sectionCollapsed.barVisibility)
+	if barVisibilityHeader.refresh then
+		barVisibilityHeader.refresh()
 	end
 
 	local widthSlider = CreateSlider(content, "Bar Width", 100, 400, 10, ShiftY(-50))
@@ -1221,7 +1370,7 @@ local function CreatePanel()
 					SuperSwingTimerDB.sparkWidth or ns.DB_DEFAULTS.sparkWidth,
 					SuperSwingTimerDB.sparkHeight or ns.DB_DEFAULTS.sparkHeight,
 					SuperSwingTimerDB.sparkTextureLayer or ns.DB_DEFAULTS.sparkTextureLayer,
-					SuperSwingTimerDB.sparkAlpha or ns.DB_DEFAULTS.sparkAlpha,
+					SuperSwingTimerDB.sparkAlpha ~= nil and SuperSwingTimerDB.sparkAlpha or ns.DB_DEFAULTS.sparkAlpha,
 					SuperSwingTimerDB.sparkColor or ns.GetSparkColor()
 				)
 			end,
@@ -1238,7 +1387,7 @@ local function CreatePanel()
 	)
 
 	local sparkAlphaSlider = CreateSlider(content, "Spark Alpha", 0, 1, 0.05, ShiftY(-425))
-	sparkAlphaSlider:SetValue(SuperSwingTimerDB.sparkAlpha or ns.DB_DEFAULTS.sparkAlpha)
+	sparkAlphaSlider:SetValue(SuperSwingTimerDB.sparkAlpha ~= nil and SuperSwingTimerDB.sparkAlpha or ns.DB_DEFAULTS.sparkAlpha)
 	SyncSliderDisplay(sparkAlphaSlider, sparkAlphaSlider:GetValue())
 
 	local sparkColorRow = CreateColorButton(
@@ -1275,22 +1424,40 @@ local function CreatePanel()
 		function(layer) ns.ApplySparkTextureLayer(layer) end
 	)
 
-	local sparkWidthSlider = CreateSlider(content, "Spark Width", 8, 60, 1, ShiftY(-350))
+	local sparkWidthSlider = CreateSlider(content, "Spark Width", 2, 60, 1, ShiftY(-350))
 	sparkWidthSlider:SetValue(SuperSwingTimerDB.sparkWidth or ns.DB_DEFAULTS.sparkWidth)
 	SyncSliderDisplay(sparkWidthSlider, sparkWidthSlider:GetValue())
 
-	local sparkHeightSlider = CreateSlider(content, "Spark Height", 12, 90, 1, ShiftY(-400))
+	local sparkHeightSlider = CreateSlider(content, "Spark Height", 2, 90, 1, ShiftY(-400))
 	sparkHeightSlider:SetValue(SuperSwingTimerDB.sparkHeight or ns.DB_DEFAULTS.sparkHeight)
 	SyncSliderDisplay(sparkHeightSlider, sparkHeightSlider:GetValue())
 
-	local backgroundAlphaSlider = CreateSlider(content, "Bar Background Alpha", 0, 1, 0.05, ShiftY(-450))
-	backgroundAlphaSlider:SetValue(SuperSwingTimerDB.barBackgroundAlpha or ns.DB_DEFAULTS.barBackgroundAlpha)
+	local backgroundColorRow = CreateColorButton(
+		content,
+		"Bar Background Color",
+		"barBackground",
+		ShiftY(-450),
+		{
+			allowAlpha = false,
+			getColor = function()
+				return SuperSwingTimerDB.barBackgroundColor or ns.DB_DEFAULTS.barBackgroundColor
+			end,
+			applyColor = function(r, g, b)
+				local alpha = SuperSwingTimerDB.barBackgroundAlpha ~= nil and SuperSwingTimerDB.barBackgroundAlpha or ns.DB_DEFAULTS.barBackgroundAlpha
+				ns.ApplyBarBackgroundColor({ r = r, g = g, b = b, a = alpha })
+			end,
+			tooltipText = "Pick the bar background tint. Use the alpha slider below to control opacity.",
+		}
+	)
+
+	local backgroundAlphaSlider = CreateSlider(content, "Bar Background Alpha", 0, 1, 0.05, ShiftY(-500))
+	backgroundAlphaSlider:SetValue(SuperSwingTimerDB.barBackgroundAlpha ~= nil and SuperSwingTimerDB.barBackgroundAlpha or ns.DB_DEFAULTS.barBackgroundAlpha)
 	SyncSliderDisplay(backgroundAlphaSlider, backgroundAlphaSlider:GetValue())
 
 	local indicatorBlendModeRow = CreateCycleRow(
 		content,
 		"Indicator Glow Mode",
-		ShiftY(-500),
+		ShiftY(-550),
 		INDICATOR_BLEND_OPTIONS,
 		function() return SuperSwingTimerDB.indicatorBlendMode or ns.DB_DEFAULTS.indicatorBlendMode end,
 		function(blendMode)
@@ -1298,16 +1465,66 @@ local function CreatePanel()
 		end
 	)
 
-	CreateSectionHeader(content, "Shaman Weave Assist", -539)
+	local barBorderColorRow = CreateColorButton(
+		content,
+		"Bar Border Color",
+		"barBorder",
+		ShiftY(-600),
+		{
+			allowAlpha = true,
+			getColor = function()
+				return SuperSwingTimerDB.barBorderColor or ns.DB_DEFAULTS.barBorderColor
+			end,
+			applyColor = function(r, g, b, a)
+				ns.ApplyBarBorderColor({ r = r, g = g, b = b, a = a })
+			end,
+			tooltipText = "Pick the bar border tint and opacity with the color wheel.",
+		}
+	)
+
+	local barBorderSlider = CreateSlider(content, "Bar Border Size", 0, 6, 1, ShiftY(-650))
+	barBorderSlider:SetValue(SuperSwingTimerDB.barBorderSize ~= nil and SuperSwingTimerDB.barBorderSize or ns.DB_DEFAULTS.barBorderSize)
+	SyncSliderDisplay(barBorderSlider, barBorderSlider:GetValue())
+	barBorderSlider:SetScript("OnValueChanged", function(self, value)
+		value = math.floor(value + 0.5)
+		SyncSliderDisplay(self, value)
+		ns.ApplyBarBorderSize(value)
+	end)
+	mhOhRows[1] = widthSlider
+	mhOhRows[2] = heightSlider
+	mhOhRows[3] = barTextureRow
+	mhOhRows[4] = barLayerRow
+	mhOhRows[5] = rangedTextureRow
+	mhOhRows[6] = sparkTextureRow
+	mhOhRows[7] = sparkAlphaSlider
+	mhOhRows[8] = sparkColorRow
+	mhOhRows[9] = sparkLayerRow
+	mhOhRows[10] = sparkWidthSlider
+	mhOhRows[11] = sparkHeightSlider
+	mhOhRows[12] = backgroundColorRow
+	mhOhRows[13] = backgroundAlphaSlider
+	mhOhRows[14] = indicatorBlendModeRow
+	mhOhRows[15] = barBorderColorRow
+	mhOhRows[16] = barBorderSlider
+	SetRowsShown(mhOhRows, not sectionCollapsed.mhOh)
+	if mhOhHeader.refresh then
+		mhOhHeader.refresh()
+	end
+
+	local shamanHeader = CreateSectionHeader(content, "Shaman Weave Assist", -700, {
+		rows = shamanRows,
+		getCollapsed = function() return sectionCollapsed.shaman end,
+		setCollapsed = function(collapsed) sectionCollapsed.shaman = collapsed end,
+	})
 
 	local weaveSparkTextureRow = CreateTexturePathRow(
 		content,
 		"Cast Breakpoint Spark Texture",
-		ShiftY(-545),
+		ShiftY(-705),
 		{
 			mode = "browser",
 			label = "Cast Breakpoint Spark Texture",
-			yOffset = ShiftY(-545),
+			yOffset = ShiftY(-705),
 			defaultTexture = ns.DB_DEFAULTS.weaveSparkTexture,
 			getTexture = function() return SuperSwingTimerDB.weaveSparkTexture or ns.DB_DEFAULTS.weaveSparkTexture end,
 			applyTexture = function(texturePath)
@@ -1316,7 +1533,7 @@ local function CreatePanel()
 					SuperSwingTimerDB.weaveSparkWidth or ns.DB_DEFAULTS.weaveSparkWidth,
 					SuperSwingTimerDB.weaveSparkHeight or ns.DB_DEFAULTS.weaveSparkHeight,
 					SuperSwingTimerDB.weaveSparkTextureLayer or ns.DB_DEFAULTS.weaveSparkTextureLayer,
-					SuperSwingTimerDB.weaveSparkAlpha or ns.DB_DEFAULTS.weaveSparkAlpha
+					SuperSwingTimerDB.weaveSparkAlpha ~= nil and SuperSwingTimerDB.weaveSparkAlpha or ns.DB_DEFAULTS.weaveSparkAlpha
 				)
 			end,
 			browserDefaultCategory = "WeakAuras",
@@ -1334,37 +1551,37 @@ local function CreatePanel()
 	local weaveSparkLayerRow = CreateCycleRow(
 		content,
 		"Cast Breakpoint Layer",
-		ShiftY(-580),
+		ShiftY(-740),
 		ns.TEXTURE_LAYER_OPTIONS,
 		function() return SuperSwingTimerDB.weaveSparkTextureLayer or ns.DB_DEFAULTS.weaveSparkTextureLayer end,
 		function(layer) ns.ApplyWeaveSparkTextureLayer(layer) end
 	)
 
-	local weaveSparkWidthSlider = CreateSlider(content, "Cast Spark Width", 6, 60, 1, ShiftY(-615))
+	local weaveSparkWidthSlider = CreateSlider(content, "Cast Spark Width", 2, 60, 1, ShiftY(-775))
 	weaveSparkWidthSlider:SetValue(SuperSwingTimerDB.weaveSparkWidth or ns.DB_DEFAULTS.weaveSparkWidth)
 	SyncSliderDisplay(weaveSparkWidthSlider, weaveSparkWidthSlider:GetValue())
 
-	local weaveSparkHeightSlider = CreateSlider(content, "Cast Spark Height", 8, 100, 1, ShiftY(-665))
+	local weaveSparkHeightSlider = CreateSlider(content, "Cast Spark Height", 2, 100, 1, ShiftY(-825))
 	weaveSparkHeightSlider:SetValue(SuperSwingTimerDB.weaveSparkHeight or ns.DB_DEFAULTS.weaveSparkHeight)
 	SyncSliderDisplay(weaveSparkHeightSlider, weaveSparkHeightSlider:GetValue())
 
-	local weaveSparkAlphaSlider = CreateSlider(content, "Cast Spark Alpha", 0, 1, 0.05, ShiftY(-715))
-	weaveSparkAlphaSlider:SetValue(SuperSwingTimerDB.weaveSparkAlpha or ns.DB_DEFAULTS.weaveSparkAlpha)
+	local weaveSparkAlphaSlider = CreateSlider(content, "Cast Spark Alpha", 0, 1, 0.05, ShiftY(-875))
+	weaveSparkAlphaSlider:SetValue(SuperSwingTimerDB.weaveSparkAlpha ~= nil and SuperSwingTimerDB.weaveSparkAlpha or ns.DB_DEFAULTS.weaveSparkAlpha)
 	SyncSliderDisplay(weaveSparkAlphaSlider, weaveSparkAlphaSlider:GetValue())
 
 	local weaveTriangleTopRow = CreateTexturePathRow(
 		content,
 		"Upper Marker Texture",
-		ShiftY(-765),
+		ShiftY(-925),
 		function() return SuperSwingTimerDB.weaveTriangleTopTexture or ns.DB_DEFAULTS.weaveTriangleTopTexture end,
 		function(texturePath)
 			ns.ApplyWeaveTriangleSettings(
 				texturePath,
 				SuperSwingTimerDB.weaveTriangleBottomTexture or ns.DB_DEFAULTS.weaveTriangleBottomTexture,
 				SuperSwingTimerDB.weaveTriangleSize or ns.DB_DEFAULTS.weaveTriangleSize,
-				SuperSwingTimerDB.weaveTriangleGap or ns.DB_DEFAULTS.weaveTriangleGap,
+				SuperSwingTimerDB.weaveTriangleGap ~= nil and SuperSwingTimerDB.weaveTriangleGap or ns.DB_DEFAULTS.weaveTriangleGap,
 				SuperSwingTimerDB.weaveTriangleTextureLayer or ns.DB_DEFAULTS.weaveTriangleTextureLayer,
-				SuperSwingTimerDB.weaveTriangleAlpha or ns.DB_DEFAULTS.weaveTriangleAlpha
+				SuperSwingTimerDB.weaveTriangleAlpha ~= nil and SuperSwingTimerDB.weaveTriangleAlpha or ns.DB_DEFAULTS.weaveTriangleAlpha
 			)
 		end
 	)
@@ -1372,16 +1589,16 @@ local function CreatePanel()
 	local weaveTriangleBottomRow = CreateTexturePathRow(
 		content,
 		"Lower Marker Texture",
-		ShiftY(-800),
+		ShiftY(-960),
 		function() return SuperSwingTimerDB.weaveTriangleBottomTexture or ns.DB_DEFAULTS.weaveTriangleBottomTexture end,
 		function(texturePath)
 			ns.ApplyWeaveTriangleSettings(
 				SuperSwingTimerDB.weaveTriangleTopTexture or ns.DB_DEFAULTS.weaveTriangleTopTexture,
 				texturePath,
 				SuperSwingTimerDB.weaveTriangleSize or ns.DB_DEFAULTS.weaveTriangleSize,
-				SuperSwingTimerDB.weaveTriangleGap or ns.DB_DEFAULTS.weaveTriangleGap,
+				SuperSwingTimerDB.weaveTriangleGap ~= nil and SuperSwingTimerDB.weaveTriangleGap or ns.DB_DEFAULTS.weaveTriangleGap,
 				SuperSwingTimerDB.weaveTriangleTextureLayer or ns.DB_DEFAULTS.weaveTriangleTextureLayer,
-				SuperSwingTimerDB.weaveTriangleAlpha or ns.DB_DEFAULTS.weaveTriangleAlpha
+				SuperSwingTimerDB.weaveTriangleAlpha ~= nil and SuperSwingTimerDB.weaveTriangleAlpha or ns.DB_DEFAULTS.weaveTriangleAlpha
 			)
 		end
 	)
@@ -1389,7 +1606,7 @@ local function CreatePanel()
 	local weaveTriangleLayerRow = CreateCycleRow(
 		content,
 		"Marker Layer",
-		ShiftY(-835),
+		ShiftY(-995),
 		ns.TEXTURE_LAYER_OPTIONS,
 		function() return SuperSwingTimerDB.weaveTriangleTextureLayer or ns.DB_DEFAULTS.weaveTriangleTextureLayer end,
 		function(layer)
@@ -1397,42 +1614,78 @@ local function CreatePanel()
 				SuperSwingTimerDB.weaveTriangleTopTexture or ns.DB_DEFAULTS.weaveTriangleTopTexture,
 				SuperSwingTimerDB.weaveTriangleBottomTexture or ns.DB_DEFAULTS.weaveTriangleBottomTexture,
 				SuperSwingTimerDB.weaveTriangleSize or ns.DB_DEFAULTS.weaveTriangleSize,
-				SuperSwingTimerDB.weaveTriangleGap or ns.DB_DEFAULTS.weaveTriangleGap,
+				SuperSwingTimerDB.weaveTriangleGap ~= nil and SuperSwingTimerDB.weaveTriangleGap or ns.DB_DEFAULTS.weaveTriangleGap,
 				layer,
-				SuperSwingTimerDB.weaveTriangleAlpha or ns.DB_DEFAULTS.weaveTriangleAlpha
+				SuperSwingTimerDB.weaveTriangleAlpha ~= nil and SuperSwingTimerDB.weaveTriangleAlpha or ns.DB_DEFAULTS.weaveTriangleAlpha
 			)
 		end
 	)
 
-	local weaveTriangleSizeSlider = CreateSlider(content, "Marker Size", 6, 24, 1, ShiftY(-870))
+	local weaveTriangleSizeSlider = CreateSlider(content, "Marker Size", 6, 24, 1, ShiftY(-1030))
 	weaveTriangleSizeSlider:SetValue(SuperSwingTimerDB.weaveTriangleSize or ns.DB_DEFAULTS.weaveTriangleSize)
 	SyncSliderDisplay(weaveTriangleSizeSlider, weaveTriangleSizeSlider:GetValue())
 
-	local weaveTriangleGapSlider = CreateSlider(content, "Marker Gap", 0, 6, 1, ShiftY(-920))
-	weaveTriangleGapSlider:SetValue(SuperSwingTimerDB.weaveTriangleGap or ns.DB_DEFAULTS.weaveTriangleGap)
+	local weaveTriangleGapSlider = CreateSlider(content, "Marker Gap", 0, 6, 1, ShiftY(-1080))
+	weaveTriangleGapSlider:SetValue(SuperSwingTimerDB.weaveTriangleGap ~= nil and SuperSwingTimerDB.weaveTriangleGap or ns.DB_DEFAULTS.weaveTriangleGap)
 	SyncSliderDisplay(weaveTriangleGapSlider, weaveTriangleGapSlider:GetValue())
 
-	local weaveTriangleAlphaSlider = CreateSlider(content, "Marker Alpha", 0, 1, 0.05, ShiftY(-970))
-	weaveTriangleAlphaSlider:SetValue(SuperSwingTimerDB.weaveTriangleAlpha or ns.DB_DEFAULTS.weaveTriangleAlpha)
+	local weaveTriangleAlphaSlider = CreateSlider(content, "Marker Alpha", 0, 1, 0.05, ShiftY(-1130))
+	weaveTriangleAlphaSlider:SetValue(SuperSwingTimerDB.weaveTriangleAlpha ~= nil and SuperSwingTimerDB.weaveTriangleAlpha or ns.DB_DEFAULTS.weaveTriangleAlpha)
 	SyncSliderDisplay(weaveTriangleAlphaSlider, weaveTriangleAlphaSlider:GetValue())
+	shamanRows[1] = weaveSparkTextureRow
+	shamanRows[2] = weaveSparkLayerRow
+	shamanRows[3] = weaveSparkWidthSlider
+	shamanRows[4] = weaveSparkHeightSlider
+	shamanRows[5] = weaveSparkAlphaSlider
+	shamanRows[6] = weaveTriangleTopRow
+	shamanRows[7] = weaveTriangleBottomRow
+	shamanRows[8] = weaveTriangleLayerRow
+	shamanRows[9] = weaveTriangleSizeSlider
+	shamanRows[10] = weaveTriangleGapSlider
+	shamanRows[11] = weaveTriangleAlphaSlider
+	SetRowsShown(shamanRows, not sectionCollapsed.shaman)
+	if shamanHeader.refresh then
+		shamanHeader.refresh()
+	end
 
-	CreateSectionHeader(content, "General Behavior", -1130)
+	local generalHeader = CreateSectionHeader(content, "General Behavior", -1290, {
+		rows = generalRows,
+		getCollapsed = function() return sectionCollapsed.general end,
+		setCollapsed = function(collapsed) sectionCollapsed.general = collapsed end,
+	})
 
 	local minimalModeRow = CreateToggleRow(
 		content,
 		"Minimal Mode",
-		ShiftY(-1145),
+		ShiftY(-1305),
 		function() return SuperSwingTimerDB.minimalMode == true end,
 		function(enabled) ns.ApplyMinimalMode(enabled) end
 	)
 
 	local lockBarsRow = CreateToggleRow(
 		content,
-		"Lock Bars",
-		ShiftY(-1175),
+		"Lock / Unlock Bars",
+		ShiftY(-1335),
 		function() return SuperSwingTimerDB.lockBars == true end,
 		function(enabled) SuperSwingTimerDB.lockBars = enabled end
 	)
+	local testBarsRow = CreateActionRow(
+		content,
+		"Test Bars",
+		"Preview 8s",
+		ShiftY(-1365),
+		function()
+			StartBarTestPreview(8)
+		end,
+		"Temporarily show the bars for eight seconds so you can reposition them when unlocked."
+	)
+	generalRows[1] = minimalModeRow
+	generalRows[2] = lockBarsRow
+	generalRows[3] = testBarsRow
+	SetRowsShown(generalRows, not sectionCollapsed.general)
+	if generalHeader.refresh then
+		generalHeader.refresh()
+	end
 
 	widthSlider:SetScript("OnValueChanged", function(self, value)
 		value = math.floor(value + 0.5)
@@ -1454,7 +1707,7 @@ local function CreatePanel()
 			value,
 			sparkHeightSlider:GetValue(),
 			SuperSwingTimerDB.sparkTextureLayer or ns.DB_DEFAULTS.sparkTextureLayer,
-			SuperSwingTimerDB.sparkAlpha or ns.DB_DEFAULTS.sparkAlpha
+			SuperSwingTimerDB.sparkAlpha ~= nil and SuperSwingTimerDB.sparkAlpha or ns.DB_DEFAULTS.sparkAlpha
 		)
 	end)
 
@@ -1466,7 +1719,7 @@ local function CreatePanel()
 			sparkWidthSlider:GetValue(),
 			value,
 			SuperSwingTimerDB.sparkTextureLayer or ns.DB_DEFAULTS.sparkTextureLayer,
-			SuperSwingTimerDB.sparkAlpha or ns.DB_DEFAULTS.sparkAlpha
+			SuperSwingTimerDB.sparkAlpha ~= nil and SuperSwingTimerDB.sparkAlpha or ns.DB_DEFAULTS.sparkAlpha
 		)
 	end)
 
@@ -1490,7 +1743,7 @@ local function CreatePanel()
 			value,
 			weaveSparkHeightSlider:GetValue(),
 			SuperSwingTimerDB.weaveSparkTextureLayer or ns.DB_DEFAULTS.weaveSparkTextureLayer,
-			SuperSwingTimerDB.weaveSparkAlpha or ns.DB_DEFAULTS.weaveSparkAlpha
+			SuperSwingTimerDB.weaveSparkAlpha ~= nil and SuperSwingTimerDB.weaveSparkAlpha or ns.DB_DEFAULTS.weaveSparkAlpha
 		)
 	end)
 
@@ -1502,7 +1755,7 @@ local function CreatePanel()
 			weaveSparkWidthSlider:GetValue(),
 			value,
 			SuperSwingTimerDB.weaveSparkTextureLayer or ns.DB_DEFAULTS.weaveSparkTextureLayer,
-			SuperSwingTimerDB.weaveSparkAlpha or ns.DB_DEFAULTS.weaveSparkAlpha
+			SuperSwingTimerDB.weaveSparkAlpha ~= nil and SuperSwingTimerDB.weaveSparkAlpha or ns.DB_DEFAULTS.weaveSparkAlpha
 		)
 	end)
 
@@ -1521,7 +1774,7 @@ local function CreatePanel()
 			value,
 			weaveTriangleGapSlider:GetValue(),
 			SuperSwingTimerDB.weaveTriangleTextureLayer or ns.DB_DEFAULTS.weaveTriangleTextureLayer,
-			SuperSwingTimerDB.weaveTriangleAlpha or ns.DB_DEFAULTS.weaveTriangleAlpha
+			SuperSwingTimerDB.weaveTriangleAlpha ~= nil and SuperSwingTimerDB.weaveTriangleAlpha or ns.DB_DEFAULTS.weaveTriangleAlpha
 		)
 	end)
 
@@ -1534,7 +1787,7 @@ local function CreatePanel()
 			weaveTriangleSizeSlider:GetValue(),
 			value,
 			SuperSwingTimerDB.weaveTriangleTextureLayer or ns.DB_DEFAULTS.weaveTriangleTextureLayer,
-			SuperSwingTimerDB.weaveTriangleAlpha or ns.DB_DEFAULTS.weaveTriangleAlpha
+			SuperSwingTimerDB.weaveTriangleAlpha ~= nil and SuperSwingTimerDB.weaveTriangleAlpha or ns.DB_DEFAULTS.weaveTriangleAlpha
 		)
 	end)
 
@@ -1552,12 +1805,16 @@ local function CreatePanel()
 	end)
 
 	-- Color buttons
-	CreateSectionHeader(content, "Bar Colors", -1210)
+	local colorHeader = CreateSectionHeader(content, "Bar Colors", -1370, {
+		rows = colorRowsSection,
+		getCollapsed = function() return sectionCollapsed.colors end,
+		setCollapsed = function(collapsed) sectionCollapsed.colors = collapsed end,
+	})
 
 	local useClassColorsRow = CreateToggleRow(
 		content,
 		"Use Class Colors",
-		ShiftY(-1238),
+		ShiftY(-1398),
 		function() return SuperSwingTimerDB.useClassColors ~= false end,
 		function(enabled)
 			SuperSwingTimerDB.useClassColors = enabled
@@ -1580,32 +1837,47 @@ local function CreatePanel()
 		end
 	)
 
-	local yStart = ShiftY(-1270)
+	local yStart = ShiftY(-1430)
 	local spacing = -28
 
-	local mhRow     = CreateColorButton(content, "Main Hand Color",  "mh",     yStart)
-	local ohRow     = CreateColorButton(content, "Off Hand Color",   "oh",     yStart + spacing)
-	local rangedRow = CreateColorButton(content, "Ranged Color",     "ranged", yStart + spacing * 2)
-	local sealRow   = CreateColorButton(content, "Seal Breakpoint Line", "sealTwist", yStart + spacing * 3)
+	local mhRow     = CreateColorButton(content, "Main Hand Color",  "mh",     yStart, { allowAlpha = true })
+	local ohRow     = CreateColorButton(content, "Off Hand Color",   "oh",     yStart + spacing, { allowAlpha = true })
+	local rangedRow = CreateColorButton(content, "Ranged Color",     "ranged", yStart + spacing * 2, { allowAlpha = true })
+	local sealRow   = CreateColorButton(content, "Seal Breakpoint Line", "sealTwist", yStart + spacing * 3, { allowAlpha = true })
 
 	-- Seal-twist row only visible for Paladins
 	if ns.playerClass ~= "PALADIN" then
 		sealRow:Hide()
 	end
+	colorRowsSection[1] = useClassColorsRow
+	colorRowsSection[2] = mhRow
+	colorRowsSection[3] = ohRow
+	colorRowsSection[4] = rangedRow
+	if ns.playerClass == "PALADIN" then
+		colorRowsSection[5] = sealRow
+	end
+	SetRowsShown(colorRowsSection, not sectionCollapsed.colors)
+	if colorHeader.refresh then
+		colorHeader.refresh()
+	end
 
-	local weaveFamiliesHeader = CreateSectionHeader(content, "Weave Families", -1520)
+	local weaveFamiliesHeader = CreateSectionHeader(content, "Weave Families", -1680, {
+		rows = weaveFamiliesRows,
+		getCollapsed = function() return sectionCollapsed.weaveFamilies end,
+		setCollapsed = function(collapsed) sectionCollapsed.weaveFamilies = collapsed end,
+	})
 	local weaveFamiliesDescription = CreateDescriptionText(
 		content,
 		"Each family below is color-coded to match its spell breakpoint family. Toggle a family off to remove every rank in that family from the weave helper. The tiny upper and lower markers stay attached to the MH swing bar and move with spell haste.",
-		-1548
+		-1708
 	)
 
 	local weaveFamilyRows = {
-		CreateWeaveFamilyRow(content, "LB",  "Lightning Bolt",        -1590),
-		CreateWeaveFamilyRow(content, "CL",  "Chain Lightning",       -1618),
-		CreateWeaveFamilyRow(content, "HW",  "Healing Wave",          -1646),
-		CreateWeaveFamilyRow(content, "LHW", "Lesser Healing Wave",   -1674),
-		CreateWeaveFamilyRow(content, "CH",  "Chain Heal",            -1702),
+		CreateWeaveFamilyRow(content, "LB",  "Lightning Bolt",        -1750),
+		CreateWeaveFamilyRow(content, "CL",  "Chain Lightning",       -1778),
+		CreateWeaveFamilyRow(content, "HW",  "Healing Wave",          -1806),
+		CreateWeaveFamilyRow(content, "LHW", "Lesser Healing Wave",   -1834),
+		CreateWeaveFamilyRow(content, "CH",  "Chain Heal",            -1862),
 	}
 
 	if ns.playerClass ~= "SHAMAN" then
@@ -1613,6 +1885,15 @@ local function CreatePanel()
 		weaveFamiliesDescription:Hide()
 		for _, row in ipairs(weaveFamilyRows) do
 			row:Hide()
+		end
+	else
+		weaveFamiliesRows[1] = weaveFamiliesDescription
+		for index, row in ipairs(weaveFamilyRows) do
+			weaveFamiliesRows[index + 1] = row
+		end
+		SetRowsShown(weaveFamiliesRows, not sectionCollapsed.weaveFamilies)
+		if weaveFamiliesHeader.refresh then
+			weaveFamiliesHeader.refresh()
 		end
 	end
 
@@ -1730,6 +2011,7 @@ local function CreatePanel()
 	f.weaveSparkHeightSlider = weaveSparkHeightSlider
 	f.weaveSparkAlphaSlider = weaveSparkAlphaSlider
 	f.sparkColorRow = sparkColorRow
+	f.backgroundColorRow = backgroundColorRow
 	f.weaveTriangleTopRow = weaveTriangleTopRow
 	f.weaveTriangleBottomRow = weaveTriangleBottomRow
 	f.weaveTriangleLayerRow = weaveTriangleLayerRow
@@ -1747,6 +2029,8 @@ local function CreatePanel()
 	f.sparkWidthSlider = sparkWidthSlider
 	f.sparkHeightSlider = sparkHeightSlider
 	f.backgroundAlphaSlider = backgroundAlphaSlider
+	f.barBorderColorRow = barBorderColorRow
+	f.barBorderSlider = barBorderSlider
 	f.indicatorBlendModeRow = indicatorBlendModeRow
 	f.minimalModeRow = minimalModeRow
 	f.lockBarsRow = lockBarsRow
@@ -1802,6 +2086,9 @@ function ns.ToggleConfig()
 		if panel.sparkColorRow and panel.sparkColorRow.refresh then
 			panel.sparkColorRow.refresh()
 		end
+		if panel.backgroundColorRow and panel.backgroundColorRow.refresh then
+			panel.backgroundColorRow.refresh()
+		end
 		if panel.sparkLayerRow and panel.sparkLayerRow.refresh then
 			panel.sparkLayerRow.refresh()
 		end
@@ -1832,13 +2119,16 @@ function ns.ToggleConfig()
 		end
 		panel.sparkWidthSlider:SetValue(SuperSwingTimerDB.sparkWidth or ns.DB_DEFAULTS.sparkWidth)
 		panel.sparkHeightSlider:SetValue(SuperSwingTimerDB.sparkHeight or ns.DB_DEFAULTS.sparkHeight)
-		panel.backgroundAlphaSlider:SetValue(SuperSwingTimerDB.barBackgroundAlpha or ns.DB_DEFAULTS.barBackgroundAlpha)
+		panel.backgroundAlphaSlider:SetValue(SuperSwingTimerDB.barBackgroundAlpha ~= nil and SuperSwingTimerDB.barBackgroundAlpha or ns.DB_DEFAULTS.barBackgroundAlpha)
+		if panel.barBorderSlider then
+			panel.barBorderSlider:SetValue(SuperSwingTimerDB.barBorderSize ~= nil and SuperSwingTimerDB.barBorderSize or ns.DB_DEFAULTS.barBorderSize)
+		end
 		panel.weaveSparkWidthSlider:SetValue(SuperSwingTimerDB.weaveSparkWidth or ns.DB_DEFAULTS.weaveSparkWidth)
 		panel.weaveSparkHeightSlider:SetValue(SuperSwingTimerDB.weaveSparkHeight or ns.DB_DEFAULTS.weaveSparkHeight)
-		panel.weaveSparkAlphaSlider:SetValue(SuperSwingTimerDB.weaveSparkAlpha or ns.DB_DEFAULTS.weaveSparkAlpha)
+		panel.weaveSparkAlphaSlider:SetValue(SuperSwingTimerDB.weaveSparkAlpha ~= nil and SuperSwingTimerDB.weaveSparkAlpha or ns.DB_DEFAULTS.weaveSparkAlpha)
 		panel.weaveTriangleSizeSlider:SetValue(SuperSwingTimerDB.weaveTriangleSize or ns.DB_DEFAULTS.weaveTriangleSize)
-		panel.weaveTriangleGapSlider:SetValue(SuperSwingTimerDB.weaveTriangleGap or ns.DB_DEFAULTS.weaveTriangleGap)
-		panel.weaveTriangleAlphaSlider:SetValue(SuperSwingTimerDB.weaveTriangleAlpha or ns.DB_DEFAULTS.weaveTriangleAlpha)
+		panel.weaveTriangleGapSlider:SetValue(SuperSwingTimerDB.weaveTriangleGap ~= nil and SuperSwingTimerDB.weaveTriangleGap or ns.DB_DEFAULTS.weaveTriangleGap)
+		panel.weaveTriangleAlphaSlider:SetValue(SuperSwingTimerDB.weaveTriangleAlpha ~= nil and SuperSwingTimerDB.weaveTriangleAlpha or ns.DB_DEFAULTS.weaveTriangleAlpha)
 		if panel.minimalModeRow and panel.minimalModeRow.refresh then
 			panel.minimalModeRow.refresh()
 		end
@@ -1850,6 +2140,9 @@ function ns.ToggleConfig()
 		end
 		if panel.sparkColorRow and panel.sparkColorRow.refresh then
 			panel.sparkColorRow.refresh()
+		end
+		if panel.backgroundColorRow and panel.backgroundColorRow.refresh then
+			panel.backgroundColorRow.refresh()
 		end
 		if panel.showMHRow and panel.showMHRow.refresh then
 			panel.showMHRow.refresh()
@@ -1876,6 +2169,9 @@ function ns.ToggleConfig()
 			if c then
 				row.swatch:SetColorTexture(c.r, c.g, c.b, c.a)
 			end
+		end
+		if panel.barBorderColorRow and panel.barBorderColorRow.refresh then
+			panel.barBorderColorRow.refresh()
 		end
 		if panel.scrollFrame then
 			panel.scrollFrame:SetVerticalScroll(0)
@@ -1908,6 +2204,18 @@ function ns.ResetConfigDefaults()
 	SuperSwingTimerDB.sparkWidth = ns.DB_DEFAULTS.sparkWidth
 	SuperSwingTimerDB.sparkHeight = ns.DB_DEFAULTS.sparkHeight
 	SuperSwingTimerDB.barBackgroundAlpha = ns.DB_DEFAULTS.barBackgroundAlpha
+	SuperSwingTimerDB.barBackgroundColor = {
+		r = ns.DB_DEFAULTS.barBackgroundColor.r,
+		g = ns.DB_DEFAULTS.barBackgroundColor.g,
+		b = ns.DB_DEFAULTS.barBackgroundColor.b,
+		a = ns.DB_DEFAULTS.barBackgroundColor.a,
+	}
+	SuperSwingTimerDB.barBorderColor = {
+		r = ns.DB_DEFAULTS.barBorderColor.r,
+		g = ns.DB_DEFAULTS.barBorderColor.g,
+		b = ns.DB_DEFAULTS.barBorderColor.b,
+		a = ns.DB_DEFAULTS.barBorderColor.a,
+	}
 	SuperSwingTimerDB.sparkAlpha = ns.DB_DEFAULTS.sparkAlpha
 	SuperSwingTimerDB.sparkColor = {
 		r = ns.DB_DEFAULTS.sparkColor.r,
@@ -1952,7 +2260,9 @@ function ns.ResetConfigDefaults()
 		ns.DB_DEFAULTS.weaveTriangleAlpha
 	)
 	ns.ApplyWeaveMarkerLayer(ns.DB_DEFAULTS.weaveMarkerLayer)
-	ns.ApplyBarBackgroundAlpha(ns.DB_DEFAULTS.barBackgroundAlpha)
+	ns.ApplyBarBackgroundColor(ns.DB_DEFAULTS.barBackgroundColor)
+	ns.ApplyBarBorderColor(ns.DB_DEFAULTS.barBorderColor)
+	ns.ApplyBarBorderSize(ns.DB_DEFAULTS.barBorderSize)
 	ns.ApplySparkColor(ns.DB_DEFAULTS.sparkColor)
 	ns.ApplyMinimalMode(ns.DB_DEFAULTS.minimalMode)
 	ns.ApplyBarColors()
@@ -1972,8 +2282,11 @@ function ns.ResetConfigDefaults()
 	if panel and panel.sparkColorRow and panel.sparkColorRow.refresh then
 		panel.sparkColorRow.refresh()
 	end
-	if panel and panel.sparkColorRow and panel.sparkColorRow.refresh then
-		panel.sparkColorRow.refresh()
+	if panel and panel.backgroundColorRow and panel.backgroundColorRow.refresh then
+		panel.backgroundColorRow.refresh()
+	end
+	if panel and panel.barBorderColorRow and panel.barBorderColorRow.refresh then
+		panel.barBorderColorRow.refresh()
 	end
 	if panel and panel.sparkLayerRow and panel.sparkLayerRow.refresh then
 		panel.sparkLayerRow.refresh()
@@ -2005,6 +2318,9 @@ function ns.ResetConfigDefaults()
 	end
 	if panel and panel.lockBarsRow and panel.lockBarsRow.refresh then
 		panel.lockBarsRow.refresh()
+	end
+	if panel and panel.barBorderSlider then
+		panel.barBorderSlider:SetValue(ns.DB_DEFAULTS.barBorderSize)
 	end
 	if panel and panel.indicatorBlendModeRow and panel.indicatorBlendModeRow.refresh then
 		panel.indicatorBlendModeRow.refresh()

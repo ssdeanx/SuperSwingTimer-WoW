@@ -30,6 +30,8 @@ end
 -- ============================================================
 ns.isMoving        = false
 ns.lastStoppedMovingAt = nil
+ns.barTestActive = false
+ns.barTestTimer = nil
 ns.playerClass     = nil
 ns.classConfig     = nil
 ns.druidFormChangeTime = nil
@@ -105,7 +107,20 @@ local function MigrateDB()
 			weaveMarkerLayer = ns.DB_DEFAULTS.weaveMarkerLayer,
 			sparkWidth = ns.DB_DEFAULTS.sparkWidth,
 			sparkHeight = ns.DB_DEFAULTS.sparkHeight,
+			barBorderSize = ns.DB_DEFAULTS.barBorderSize,
 			barBackgroundAlpha = ns.DB_DEFAULTS.barBackgroundAlpha,
+			barBackgroundColor = {
+				r = ns.DB_DEFAULTS.barBackgroundColor.r,
+				g = ns.DB_DEFAULTS.barBackgroundColor.g,
+				b = ns.DB_DEFAULTS.barBackgroundColor.b,
+				a = ns.DB_DEFAULTS.barBackgroundColor.a,
+			},
+			barBorderColor = {
+				r = ns.DB_DEFAULTS.barBorderColor.r,
+				g = ns.DB_DEFAULTS.barBorderColor.g,
+				b = ns.DB_DEFAULTS.barBorderColor.b,
+				a = ns.DB_DEFAULTS.barBorderColor.a,
+			},
 			sparkAlpha = ns.DB_DEFAULTS.sparkAlpha,
 			sparkColor = {
 				r = ns.DB_DEFAULTS.sparkColor.r,
@@ -322,6 +337,64 @@ local function MigrateDB()
 		SuperSwingTimerDB.sparkAlpha = SuperSwingTimerDB.sparkColor.a or SuperSwingTimerDB.sparkAlpha or ns.DB_DEFAULTS.sparkAlpha
 		SuperSwingTimerDB.version = 15
 	end
+
+	-- v15 -> v16: compact spark sizes and thinner weave markers for the final release polish.
+	if (SuperSwingTimerDB.version or 0) < 16 then
+		local function UpgradeThinDefault(currentValue, oldDefault, newDefault)
+			if currentValue == nil or currentValue == oldDefault then
+				return newDefault
+			end
+			return currentValue
+		end
+
+		SuperSwingTimerDB.sparkWidth = UpgradeThinDefault(SuperSwingTimerDB.sparkWidth, 20, ns.DB_DEFAULTS.sparkWidth)
+		SuperSwingTimerDB.sparkHeight = UpgradeThinDefault(SuperSwingTimerDB.sparkHeight, 44, ns.DB_DEFAULTS.sparkHeight)
+		SuperSwingTimerDB.weaveSparkWidth = UpgradeThinDefault(SuperSwingTimerDB.weaveSparkWidth, 10, ns.DB_DEFAULTS.weaveSparkWidth)
+		SuperSwingTimerDB.weaveSparkHeight = UpgradeThinDefault(SuperSwingTimerDB.weaveSparkHeight, 24, ns.DB_DEFAULTS.weaveSparkHeight)
+		SuperSwingTimerDB.weaveTriangleSize = UpgradeThinDefault(SuperSwingTimerDB.weaveTriangleSize, 10, ns.DB_DEFAULTS.weaveTriangleSize)
+
+		SuperSwingTimerDB.version = 16
+	end
+
+	-- v16 -> v17: bring the base spark width back up to 4px for the final polish pass.
+	if (SuperSwingTimerDB.version or 0) < 17 then
+		if SuperSwingTimerDB.sparkWidth == nil or SuperSwingTimerDB.sparkWidth == 3 then
+			SuperSwingTimerDB.sparkWidth = ns.DB_DEFAULTS.sparkWidth
+		end
+		SuperSwingTimerDB.version = 17
+	end
+
+	-- v17 -> v18: keep the spark width at the 4px final-release default for installs
+	-- that were already on the prior release before the width correction landed.
+	if (SuperSwingTimerDB.version or 0) < 18 then
+		if SuperSwingTimerDB.sparkWidth == nil or SuperSwingTimerDB.sparkWidth == 3 then
+			SuperSwingTimerDB.sparkWidth = ns.DB_DEFAULTS.sparkWidth
+		end
+		SuperSwingTimerDB.version = 18
+	end
+
+	-- v18 -> v19: persist the configurable border size for the final UI polish pass.
+	if (SuperSwingTimerDB.version or 0) < 19 then
+		SuperSwingTimerDB.barBorderSize = SuperSwingTimerDB.barBorderSize or ns.DB_DEFAULTS.barBorderSize
+		SuperSwingTimerDB.version = 19
+	end
+
+	-- v19 -> v20: add configurable bar background and border colors.
+	if (SuperSwingTimerDB.version or 0) < 20 then
+		SuperSwingTimerDB.barBackgroundColor = SuperSwingTimerDB.barBackgroundColor or {
+			r = ns.DB_DEFAULTS.barBackgroundColor.r,
+			g = ns.DB_DEFAULTS.barBackgroundColor.g,
+			b = ns.DB_DEFAULTS.barBackgroundColor.b,
+			a = SuperSwingTimerDB.barBackgroundAlpha ~= nil and SuperSwingTimerDB.barBackgroundAlpha or ns.DB_DEFAULTS.barBackgroundColor.a,
+		}
+		SuperSwingTimerDB.barBorderColor = SuperSwingTimerDB.barBorderColor or {
+			r = ns.DB_DEFAULTS.barBorderColor.r,
+			g = ns.DB_DEFAULTS.barBorderColor.g,
+			b = ns.DB_DEFAULTS.barBorderColor.b,
+			a = ns.DB_DEFAULTS.barBorderColor.a,
+		}
+		SuperSwingTimerDB.version = 20
+	end
 end
 
 -- ============================================================
@@ -351,6 +424,9 @@ local function OnAddonLoaded()
 
 	-- Apply DB colors after bars + class mods are set up
 	ns.ApplyBarColors()
+	ns.ApplyBarBackgroundColor(SuperSwingTimerDB.barBackgroundColor or ns.DB_DEFAULTS.barBackgroundColor)
+	ns.ApplyBarBorderColor(SuperSwingTimerDB.barBorderColor or ns.DB_DEFAULTS.barBorderColor)
+	ns.ApplyBarBorderSize(SuperSwingTimerDB.barBorderSize or ns.DB_DEFAULTS.barBorderSize)
 
 	-- Create config panel (hidden)
 	ns.InitConfig()

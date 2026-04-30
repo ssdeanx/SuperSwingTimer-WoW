@@ -2,6 +2,7 @@ local _, ns = ...
 
 local GetTimePreciseSec = rawget(_G, "GetTimePreciseSec")
 local GetTime = rawget(_G, "GetTime")
+local UnitCastingInfo = rawget(_G, "UnitCastingInfo")
 local UnitAttackSpeed = rawget(_G, "UnitAttackSpeed")
 local UnitRangedDamage = rawget(_G, "UnitRangedDamage")
 local GetSpellCooldown = rawget(_G, "GetSpellCooldown")
@@ -36,8 +37,13 @@ ns.casting = false
 ns.channeling = false
 ns.channelingSpellId = nil
 ns.currentCastSpellId = nil
+ns.hunterCastActive = false
+ns.hunterCastSpellId = nil
+ns.hunterCastStartTime = nil
+ns.hunterCastDuration = nil
 ns.preventSwingReset = false
 ns.pauseSwingTime = nil
+ns.pendingMeleeQueueSpellId = nil
 
 -- ============================================================
 -- State helpers
@@ -91,10 +97,25 @@ function ns.HasActiveTimers()
 			return true
 		end
 	end
-	if ns.playerClass == "HUNTER" and ns.casting and ns.currentCastSpellId and ns.HUNTER_CAST_SPELLS and ns.HUNTER_CAST_SPELLS[ns.currentCastSpellId] then
+	if ns.channeling then
+		return true
+	end
+	if ns.playerClass == "HUNTER" and ns.hunterCastActive and ns.hunterCastSpellId and ns.IsHunterCastSpell and ns.IsHunterCastSpell(ns.hunterCastSpellId) then
 		return true
 	end
 	return false
+end
+
+local function ClearHunterCastState()
+	ns.hunterCastActive = false
+	ns.hunterCastSpellId = nil
+	ns.hunterCastStartTime = nil
+	ns.hunterCastDuration = nil
+	if ns.hunterCastBar then
+		ns.hunterCastBar:SetAlpha(0)
+		ns.hunterCastBar:SetMinMaxValues(0, 1)
+		ns.hunterCastBar:SetValue(0)
+	end
 end
 
 function ns.RefreshUpdateLoop()
@@ -291,10 +312,40 @@ end
 function ns.HandleSpellcastStart(unit, _, spellId)
 	if unit ~= "player" then return end
 	ns.RefreshLatencyCache()
+	local now = GetCurrentTime()
+	local spellIdNumber = tonumber(spellId)
 	ns.casting = true
 	ns.currentCastSpellId = spellId
-	ns.preventSwingReset = ns.preventSwingReset or (ns.NO_RESET_SWING_SPELLS and ns.NO_RESET_SWING_SPELLS[spellId])
-	if ns.PAUSE_SWING_SPELLS and ns.PAUSE_SWING_SPELLS[spellId] and not ns.pauseSwingTime then
+	if ns.playerClass == "HUNTER" and ns.IsHunterCastSpell and ns.IsHunterCastSpell(spellId) then
+		ns.hunterCastActive = true
+		ns.hunterCastSpellId = spellId
+	end
+	ns.hunterCastStartTime = nil
+	ns.hunterCastDuration = nil
+	if ns.playerClass == "HUNTER" and ns.IsHunterCastSpell and ns.IsHunterCastSpell(spellId) then
+		if ns.IsAutoShotSpell and ns.IsAutoShotSpell(spellId) and ns.GetAutoShotCooldown then
+			local autoStart, autoDuration = ns.GetAutoShotCooldown()
+			if autoDuration and autoDuration > 0 then
+				ns.hunterCastStartTime = autoStart or now
+				ns.hunterCastDuration = autoDuration
+			end
+		elseif type(UnitCastingInfo) == "function" then
+			local _, _, _, startTimeMs, endTimeMs = UnitCastingInfo("player")
+			if startTimeMs and endTimeMs and endTimeMs > startTimeMs then
+				ns.hunterCastStartTime = startTimeMs / 1000
+				ns.hunterCastDuration = (endTimeMs - startTimeMs) / 1000
+			end
+		end
+		if (not ns.hunterCastDuration or ns.hunterCastDuration <= 0) and type(UnitRangedDamage) == "function" then
+			local rangedSpeed = UnitRangedDamage("player")
+			if rangedSpeed and rangedSpeed > 0 then
+				ns.hunterCastStartTime = ns.hunterCastStartTime or now
+				ns.hunterCastDuration = rangedSpeed
+			end
+		end
+	end
+	ns.preventSwingReset = ns.preventSwingReset or (ns.NO_RESET_SWING_SPELLS and (ns.NO_RESET_SWING_SPELLS[spellId] or (spellIdNumber and ns.NO_RESET_SWING_SPELLS[spellIdNumber])))
+	if ns.PAUSE_SWING_SPELLS and (ns.PAUSE_SWING_SPELLS[spellId] or (spellIdNumber and ns.PAUSE_SWING_SPELLS[spellIdNumber])) and not ns.pauseSwingTime then
 		ns.pauseSwingTime = GetCurrentTime()
 	end
 	ns.RefreshUpdateLoop()
@@ -303,11 +354,16 @@ end
 function ns.HandleSpellcastChannelStart(unit, _, spellId)
 	if unit ~= "player" then return end
 	ns.RefreshLatencyCache()
+	local spellIdNumber = tonumber(spellId)
 	ns.casting = true
 	ns.channeling = true
 	ns.channelingSpellId = spellId
 	ns.currentCastSpellId = spellId
-	ns.preventSwingReset = ns.NO_RESET_SWING_SPELLS and ns.NO_RESET_SWING_SPELLS[spellId]
+	if ns.playerClass == "HUNTER" and ns.IsHunterCastSpell and ns.IsHunterCastSpell(spellId) then
+		ns.hunterCastActive = true
+		ns.hunterCastSpellId = spellId
+	end
+	ns.preventSwingReset = ns.NO_RESET_SWING_SPELLS and (ns.NO_RESET_SWING_SPELLS[spellId] or (spellIdNumber and ns.NO_RESET_SWING_SPELLS[spellIdNumber]))
 	ns.RefreshUpdateLoop()
 end
 
@@ -317,6 +373,9 @@ function ns.HandleSpellcastStop(unit)
 	ns.channeling = false
 	ns.channelingSpellId = nil
 	ns.currentCastSpellId = nil
+	if not (ns.playerClass == "HUNTER" and ns.hunterCastActive and ns.hunterCastSpellId and ns.IsHunterCastSpell and ns.IsHunterCastSpell(ns.hunterCastSpellId) and ns.hunterCastDuration and ns.hunterCastDuration > 0) then
+		ClearHunterCastState()
+	end
 	ns.preventSwingReset = false
 	ns.RefreshUpdateLoop()
 end
@@ -327,6 +386,9 @@ function ns.HandleSpellcastChannelStop(unit)
 	ns.channeling = false
 	ns.channelingSpellId = nil
 	ns.currentCastSpellId = nil
+	if not (ns.playerClass == "HUNTER" and ns.hunterCastActive and ns.hunterCastSpellId and ns.IsHunterCastSpell and ns.IsHunterCastSpell(ns.hunterCastSpellId) and ns.hunterCastDuration and ns.hunterCastDuration > 0) then
+		ClearHunterCastState()
+	end
 	ns.preventSwingReset = false
 	ns.RefreshUpdateLoop()
 end
@@ -335,13 +397,27 @@ function ns.HandleSpellcastInterruptedOrFailed(unit, _, spellId)
 	if unit ~= "player" then return end
 	ns.RefreshLatencyCache()
 	local now = GetCurrentTime()
-	if ns.PAUSE_SWING_SPELLS and ns.PAUSE_SWING_SPELLS[spellId] and ns.pauseSwingTime then
+	local spellIdNumber = tonumber(spellId)
+	local isQueuedMeleeSpecial = ns.NMA_LOOKUP and (ns.NMA_LOOKUP[spellId] or (spellIdNumber and ns.NMA_LOOKUP[spellIdNumber]))
+	if ns.PAUSE_SWING_SPELLS and (ns.PAUSE_SWING_SPELLS[spellId] or (spellIdNumber and ns.PAUSE_SWING_SPELLS[spellIdNumber])) and ns.pauseSwingTime then
 		ns.AdjustSwingTimesAfterPause(now)
+	end
+	if ns.pendingMeleeQueueSpellId and (isQueuedMeleeSpecial or not spellId) then
+		if ns.ClearWarriorQueueTint then
+			ns.ClearWarriorQueueTint()
+		else
+			ns.pendingMeleeQueueSpellId = nil
+		end
+	elseif ns.pendingMeleeQueueSpellId == spellId or (spellIdNumber and ns.pendingMeleeQueueSpellId == spellIdNumber) then
+		ns.pendingMeleeQueueSpellId = nil
 	end
 	ns.casting = false
 	ns.channeling = false
 	ns.channelingSpellId = nil
 	ns.currentCastSpellId = nil
+	if not (ns.playerClass == "HUNTER" and ns.IsAutoShotSpell and ns.IsAutoShotSpell(ns.hunterCastSpellId) and ns.hunterCastActive and ns.hunterCastDuration and ns.hunterCastDuration > 0 and not (ns.IsAutoShotSpell and ns.IsAutoShotSpell(spellId))) then
+		ClearHunterCastState()
+	end
 	ns.preventSwingReset = false
 	ns.RefreshUpdateLoop()
 end
@@ -447,7 +523,7 @@ function ns.HandleCLEU()
 
 		elseif subEvent == "SPELL_CAST_SUCCESS" then
 			local spellId = cleuArg12
-			if spellId == ns.AUTO_SHOT_ID then
+			if ns.IsAutoShotSpell and ns.IsAutoShotSpell(spellId) then
 				-- Ranged: use the same latency-aware clock as melee, but allow
 				-- spellcast fallback to recover if CLEU arrives late or out of order.
 				if ns.StartRangedSwing(GetCurrentTime()) and ns.OnRangedSwing then
@@ -461,7 +537,11 @@ function ns.HandleCLEU()
 
 		elseif (subEvent == "SPELL_DAMAGE" or subEvent == "SPELL_MISSED") and sourceGUID == currentPlayerGUID then
 			local spellId = cleuArg12
-			if ns.RESET_RANGED_SWING_SPELLS and ns.RESET_RANGED_SWING_SPELLS[spellId] then
+			local spellIdNumber = tonumber(spellId)
+			if ns.NMA_LOOKUP and (ns.NMA_LOOKUP[spellId] or (spellIdNumber and ns.NMA_LOOKUP[spellIdNumber])) then
+				ns.StartSwing("mh", nil, GetCurrentTime())
+				if ns.OnMeleeSwing then ns.OnMeleeSwing("mh") end
+			elseif ns.RESET_RANGED_SWING_SPELLS and ns.RESET_RANGED_SWING_SPELLS[spellId] then
 				if ns.StartRangedSwing(GetCurrentTime()) and ns.OnRangedSwing then
 					ns.OnRangedSwing()
 				end
@@ -491,25 +571,42 @@ end
 -- ============================================================
 -- UNIT_SPELLCAST_SUCCEEDED handler
 -- ============================================================
--- NMA detection via UNIT_SPELLCAST_SUCCEEDED (belt-and-suspenders with CLEU).
--- Slam detection: pause/extend path that preserves the remaining swing.
+-- Slam detection still uses the pause/extend path, while queued melee specials
+-- keep their tint until the combat-log hit restarts the MH swing.
 function ns.HandleSpellcastSucceeded(unit, _, spellId)
 	if unit ~= "player" then return end
 	ns.RefreshLatencyCache()
 	local now = GetCurrentTime()
+	local spellIdNumber = tonumber(spellId)
 
-	if ns.PAUSE_SWING_SPELLS and ns.PAUSE_SWING_SPELLS[spellId] and ns.pauseSwingTime then
+	if ns.PAUSE_SWING_SPELLS and (ns.PAUSE_SWING_SPELLS[spellId] or (spellIdNumber and ns.PAUSE_SWING_SPELLS[spellIdNumber])) and ns.pauseSwingTime then
 		ns.AdjustSwingTimesAfterPause(now)
-	elseif spellId == ns.AUTO_SHOT_ID then
+	elseif ns.IsAutoShotSpell and ns.IsAutoShotSpell(spellId) then
 		-- Auto Shot can be started from either CLEU or spellcast success; the
 		-- ranged start helper dedupes the second event when both arrive.
+		ns.hunterCastActive = true
+		ns.hunterCastSpellId = spellId
+		ns.hunterCastStartTime = nil
+		ns.hunterCastDuration = nil
+		if ns.GetAutoShotCooldown then
+			local autoStart, autoDuration = ns.GetAutoShotCooldown()
+			if autoDuration and autoDuration > 0 then
+				ns.hunterCastStartTime = autoStart or now
+				ns.hunterCastDuration = autoDuration
+			elseif type(UnitRangedDamage) == "function" then
+				local rangedSpeed = UnitRangedDamage("player")
+				if rangedSpeed and rangedSpeed > 0 then
+					ns.hunterCastStartTime = now
+					ns.hunterCastDuration = rangedSpeed
+				end
+			end
+		end
 		if ns.StartRangedSwing(now) and ns.OnRangedSwing then
 			ns.OnRangedSwing()
 		end
-	elseif ns.NMA_LOOKUP[spellId] then
-		ns.StartSwing("mh", nil, now)
-		if ns.OnMeleeSwing then ns.OnMeleeSwing("mh") end
-	elseif ns.RESET_SWING_SPELLS and ns.RESET_SWING_SPELLS[spellId] then
+	elseif ns.NMA_LOOKUP[spellId] or (spellIdNumber and ns.NMA_LOOKUP[spellIdNumber]) then
+		ns.pendingMeleeQueueSpellId = spellIdNumber or spellId
+	elseif ns.RESET_SWING_SPELLS and (ns.RESET_SWING_SPELLS[spellId] or (spellIdNumber and ns.RESET_SWING_SPELLS[spellIdNumber])) then
 		ns.StartSwing("mh", nil, now)
 		ns.StartSwing("oh", nil, now)
 		if ns.StartRangedSwing(now) and ns.OnRangedSwing then

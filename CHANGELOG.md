@@ -1,10 +1,43 @@
 ﻿# Super Swing Timer Changelog
 
+## 3.1.12 - 2026-04-29
+
+- Separated the bar background tint from the fill color so the background now has its own color swatch plus alpha control.
+- Added a configurable bar border color swatch to go with the border-size slider, and kept the border rendering tied to the live bars during preview and reset.
+- Kept the warrior next-melee queue split cleanly from Slam so Heroic Strike / Cleave can cancel back to the MH base color while Slam still uses the pause/extend path.
+- Relaxed the hunter cast-bar stop handling so the Auto Shot / Multi-Shot cast bar can remain visible for its actual duration instead of clearing immediately on the stop event.
+
+## 3.1.11 - 2026-04-29
+
+- Reworked the hunter Auto Shot / Multi-Shot cast-bar checks so they use shared spell-name lookups and keep the cast bar attached beneath the ranged timer when those shots fire.
+- Split the warrior queue tints so Heroic Strike stays yellow, Cleave turns green, and Slam uses a white queue tint while the actual MH timer reset now lands on the combat-log hit.
+- Added an adjustable bar border size control and widened the draggable hit area so unlocked bars are easier to move during the final polish pass.
+
+## 3.1.10 - 2026-04-29
+
+- Restored the hunter Auto Shot / Multi-Shot cast bar as a separate active-state preview so Auto Shot no longer drops out on the generic stop event.
+- Added a `/sst` Test Bars action that temporarily previews the bars for repositioning, plus a clearer `Lock / Unlock Bars` control for moving frames.
+- Enabled alpha selection on the main color swatches so class colors and custom colors can keep their opacity all the way through the live bar updates.
+- Kept the base spark width at 4px and preserved the spark / class-color tint behavior during the final polish pass.
+
+## 3.1.9 - 2026-04-29
+
+- Restored the hunter Auto Shot / Multi-Shot bar with stored cast timing so it no longer depends only on live `UnitCastingInfo` reads.
+- Bumped the base spark width back to 4px and kept the spark tint aligned with the ranged class color when class colors are enabled.
+- Synced the docs and release notes to match the final polish pass.
+
+## 3.1.8 - 2026-04-29
+
+- Restored the `/sst` collapsible section layout with stable row groups so the config panel renders cleanly again.
+- Slimmed the spark / weave defaults to compact bar-height-aligned markers and clamped the hunter, melee, paladin, and shaman overlays so they cannot balloon into full-height white bars.
+- Kept the Hunter Auto Shot / Multi-Shot cast bar cast-only and positioned directly beneath the ranged timer.
+
 ## 3.1.7 - 2026-04-29
 
 - Added a dedicated 10px Hunter Auto Shot / Multi-Shot cast bar beneath the ranged timer and kept it synced to the ranged texture, spark settings, and visibility rules.
 - Corrected the TBC Multi-Shot and Slam rank spell IDs in the addon tables and swing-timer reference docs so the no-reset and pause logic stays aligned.
 - Fixed the spellcast event handling to use Classic's 3-argument `UNIT_SPELLCAST_*` payloads so the hunter cast state and swing-reset logic read the live spell ID correctly.
+- Polished the `/sst` panel with collapsible section headers and kept the Hunter cast bar cast-only so it appears only during actual Auto Shot / Multi-Shot casts.
 
 ## 3.1.6 - 2026-04-29
 
