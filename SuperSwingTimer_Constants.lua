@@ -345,7 +345,7 @@ ns.CLASS_CONFIG = {
 -- SavedVariables defaults
 -- ============================================================
 ns.DB_DEFAULTS = {
-	version                    = 21,
+	version                    = 22,
 	showMH                     = true,
 	showOH                     = true,
 	showRanged                 = true,
@@ -678,6 +678,38 @@ function ns.GetBarColor(colorKey)
 end
 
 
+
+function ns.SeedLegacyBarColorsFromClass()
+	local db = rawget(_G, "SuperSwingTimerDB")
+	if not db or db.useClassColors == false then
+		return
+	end
+
+	local color = ns.GetPlayerClassColor()
+	if not color then
+		return
+	end
+
+	db.colors = db.colors or {}
+	db.colors.mh = {
+		r = color.r,
+		g = color.g,
+		b = color.b,
+		a = db.colors.mh and db.colors.mh.a or 1,
+	}
+	db.colors.oh = {
+		r = color.r,
+		g = color.g,
+		b = color.b,
+		a = db.colors.oh and db.colors.oh.a or 1,
+	}
+	db.colors.ranged = {
+		r = color.r,
+		g = color.g,
+		b = color.b,
+		a = db.colors.ranged and db.colors.ranged.a or 1,
+	}
+end
 
 function ns.GetIndicatorBlendMode()
 	local db = rawget(_G, "SuperSwingTimerDB")

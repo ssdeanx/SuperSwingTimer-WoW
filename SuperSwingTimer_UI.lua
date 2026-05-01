@@ -871,16 +871,18 @@ function ns.ApplySparkSettings(texturePath, width, height, layer, alpha, color)
 	height = height or ns.DB_DEFAULTS.sparkHeight
 	local currentColor = ns.GetSparkColor() or ns.DB_DEFAULTS.sparkColor
 	color = color or currentColor
-	local useClassColors = not (SuperSwingTimerDB and SuperSwingTimerDB.useClassColors == false)
-	if useClassColors and color and (color.r == 1 or color.r == nil) and (color.g == 1 or color.g == nil) and (color.b == 1 or color.b == nil) then
+	local r, g, b = tonumber(color and color.r) or (currentColor and currentColor.r) or 1,
+		tonumber(color and color.g) or (currentColor and currentColor.g) or 1,
+		tonumber(color and color.b) or (currentColor and currentColor.b) or 1
+
+	local useClassColors = SuperSwingTimerDB and SuperSwingTimerDB.useClassColors == true
+	if useClassColors and r == 1 and g == 1 and b == 1 then
 		local classColor = ns.GetBarColor and ns.GetBarColor("ranged") or nil
 		if classColor then
-			color = classColor
+			r, g, b = classColor.r or 1, classColor.g or 1, classColor.b or 1
 		end
 	end
-	local r = tonumber(color and color.r) or (currentColor and currentColor.r) or 1
-	local g = tonumber(color and color.g) or (currentColor and currentColor.g) or 1
-	local b = tonumber(color and color.b) or (currentColor and currentColor.b) or 1
+
 	alpha = tonumber(alpha)
 	if alpha == nil then
 		alpha = tonumber(color and color.a)
@@ -898,7 +900,10 @@ function ns.ApplySparkSettings(texturePath, width, height, layer, alpha, color)
 	SuperSwingTimerDB.sparkWidth = width
 	SuperSwingTimerDB.sparkHeight = height
 	SuperSwingTimerDB.sparkAlpha = alpha
-	SuperSwingTimerDB.sparkColor = { r = r, g = g, b = b, a = alpha }
+	-- Only persist color to DB if it's NOT a runtime class-color override of white
+	if not (useClassColors and r ~= 1) then
+		SuperSwingTimerDB.sparkColor = { r = r, g = g, b = b, a = alpha }
+	end
 
 	for _, bar in ipairs({ ns.mhBar, ns.ohBar, ns.rangedBar, ns.hunterCastBar }) do
 		if bar and bar.sparkTexture then
@@ -1196,6 +1201,13 @@ function ns.ApplyBarColors()
 	if ns.sealTwistResealBreakpoint and colors.sealTwist then
 		local c = colors.sealTwist
 		ns.sealTwistResealBreakpoint:SetColorTexture(c.r, c.g, c.b, c.a or 1)
+	end
+
+	if ns.UpdateWarriorQueueTint then
+		ns.UpdateWarriorQueueTint()
+	end
+	if ns.ApplySparkColor then
+		ns.ApplySparkColor()
 	end
 end
 

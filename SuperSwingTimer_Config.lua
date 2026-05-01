@@ -1317,10 +1317,36 @@ local function CreatePanel()
 		setCollapsed = function(collapsed) sectionCollapsed.barVisibility = collapsed end,
 	})
 
+	local useClassColorsRow = CreateToggleRow(
+		content,
+		"Use Class Colors",
+		-50,
+		function() return SuperSwingTimerDB.useClassColors == true end,
+		function(enabled)
+			SuperSwingTimerDB.useClassColors = enabled
+			if enabled then
+				ns.SeedLegacyBarColorsFromClass()
+			end
+			ns.ApplyBarColors()
+			if f.useClassColorsRow and f.useClassColorsRow.refresh then
+				f.useClassColorsRow.refresh()
+			end
+			if f.colorRows then
+				for _, colorRow in ipairs(f.colorRows) do
+					local key = colorRow.button.colorKey
+					local effective = ns.GetBarColor(key)
+					if effective then
+						colorRow.swatch:SetColorTexture(effective.r, effective.g, effective.b, effective.a)
+					end
+				end
+			end
+		end
+	)
+
 	local showMHRow = CreateToggleRow(
 		content,
 		"Show Main Hand",
-		-50,
+		-78,
 		function() return SuperSwingTimerDB.showMH ~= false end,
 		function(enabled)
 			SuperSwingTimerDB.showMH = enabled
@@ -1331,7 +1357,7 @@ local function CreatePanel()
 	local showOHRow = CreateToggleRow(
 		content,
 		"Show Off Hand",
-		-78,
+		-106,
 		function() return SuperSwingTimerDB.showOH ~= false end,
 		function(enabled)
 			SuperSwingTimerDB.showOH = enabled
@@ -1342,7 +1368,7 @@ local function CreatePanel()
 	local showRangedRow = CreateToggleRow(
 		content,
 		"Show Ranged",
-		-106,
+		-134,
 		function() return SuperSwingTimerDB.showRanged ~= false end,
 		function(enabled)
 			SuperSwingTimerDB.showRanged = enabled
@@ -1353,7 +1379,7 @@ local function CreatePanel()
 	local showWeaveRow = CreateToggleRow(
 		content,
 		"Shaman Weave Assist",
-		-134,
+		-162,
 		function() return SuperSwingTimerDB.showWeaveAssist ~= false end,
 		function(enabled)
 			SuperSwingTimerDB.showWeaveAssist = enabled
@@ -1361,7 +1387,7 @@ local function CreatePanel()
 		end
 	)
 
-	local mhOhHeader = CreateSectionHeader(content, "MH/OH Bar Appearance", -174, {
+	local mhOhHeader = CreateSectionHeader(content, "MH/OH Bar Appearance", -202, {
 		rows = mhOhRows,
 		getCollapsed = function() return sectionCollapsed.mhOh end,
 		setCollapsed = function(collapsed) sectionCollapsed.mhOh = collapsed end,
@@ -1370,11 +1396,12 @@ local function CreatePanel()
 	if ns.playerClass ~= "SHAMAN" then
 		showWeaveRow:Hide()
 	end
-	barVisibilityRows[1] = showMHRow
-	barVisibilityRows[2] = showOHRow
-	barVisibilityRows[3] = showRangedRow
+	barVisibilityRows[1] = useClassColorsRow
+	barVisibilityRows[2] = showMHRow
+	barVisibilityRows[3] = showOHRow
+	barVisibilityRows[4] = showRangedRow
 	if ns.playerClass == "SHAMAN" then
-		barVisibilityRows[4] = showWeaveRow
+		barVisibilityRows[5] = showWeaveRow
 	end
 	SetRowsShown(barVisibilityRows, not sectionCollapsed.barVisibility)
 	if barVisibilityHeader.refresh then
@@ -1589,7 +1616,7 @@ local function CreatePanel()
 		mhOhHeader.refresh()
 	end
 
-	local shamanHeader = CreateSectionHeader(content, "Shaman Weave Assist", -700, {
+	local shamanHeader = CreateSectionHeader(content, "Shaman Weave Assist", -728, {
 		rows = shamanRows,
 		getCollapsed = function() return sectionCollapsed.shaman end,
 		setCollapsed = function(collapsed) sectionCollapsed.shaman = collapsed end,
@@ -1737,7 +1764,7 @@ local function CreatePanel()
 		shamanHeader.refresh()
 	end
 
-	local generalHeader = CreateSectionHeader(content, "General Behavior", -1290, {
+	local generalHeader = CreateSectionHeader(content, "General Behavior", -1318, {
 		rows = generalRows,
 		getCollapsed = function() return sectionCollapsed.general end,
 		setCollapsed = function(collapsed) sectionCollapsed.general = collapsed end,
@@ -1898,39 +1925,13 @@ local function CreatePanel()
 	end)
 
 	-- Color buttons
-	local colorHeader       = CreateSectionHeader(content, "Bar Colors", -1370, {
+	local colorHeader       = CreateSectionHeader(content, "Bar Colors", -1398, {
 		rows = colorRowsSection,
 		getCollapsed = function() return sectionCollapsed.colors end,
 		setCollapsed = function(collapsed) sectionCollapsed.colors = collapsed end,
 	})
 
-	local useClassColorsRow = CreateToggleRow(
-		content,
-		"Use Class Colors",
-		ShiftY(-1398),
-		function() return SuperSwingTimerDB.useClassColors == true end,
-		function(enabled)
-			SuperSwingTimerDB.useClassColors = enabled
-			if enabled then
-				ns.SeedLegacyBarColorsFromClass()
-			end
-			ns.ApplyBarColors()
-			if f.useClassColorsRow and f.useClassColorsRow.refresh then
-				f.useClassColorsRow.refresh()
-			end
-			if f.colorRows then
-				for _, colorRow in ipairs(f.colorRows) do
-					local key = colorRow.button.colorKey
-					local effective = ns.GetBarColor(key)
-					if effective then
-						colorRow.swatch:SetColorTexture(effective.r, effective.g, effective.b, effective.a)
-					end
-				end
-			end
-		end
-	)
-
-	local yStart            = ShiftY(-1430)
+	local yStart            = ShiftY(-1398)
 	local spacing           = -28
 
 	local mhRow             = CreateColorButton(content, "Main Hand Color", "mh", yStart, { allowAlpha = true })
@@ -1944,10 +1945,10 @@ local function CreatePanel()
 	if ns.playerClass ~= "PALADIN" then
 		sealRow:Hide()
 	end
-	colorRowsSection[1] = useClassColorsRow
-	colorRowsSection[2] = mhRow
-	colorRowsSection[3] = ohRow
-	colorRowsSection[4] = rangedRow
+	colorRowsSection[1] = mhRow
+	colorRowsSection[2] = ohRow
+	colorRowsSection[3] = rangedRow
+	colorRowsSection[4] = sealRow
 	if ns.playerClass == "PALADIN" then
 		colorRowsSection[5] = sealRow
 	end
@@ -1956,7 +1957,7 @@ local function CreatePanel()
 		colorHeader.refresh()
 	end
 
-	local weaveFamiliesHeader = CreateSectionHeader(content, "Weave Families", -1680, {
+	local weaveFamiliesHeader = CreateSectionHeader(content, "Weave Families", -1708, {
 		rows = weaveFamiliesRows,
 		getCollapsed = function() return sectionCollapsed.weaveFamilies end,
 		setCollapsed = function(collapsed) sectionCollapsed.weaveFamilies = collapsed end,
@@ -1964,7 +1965,7 @@ local function CreatePanel()
 	local weaveFamiliesDescription = CreateDescriptionText(
 		content,
 		"Each family below is color-coded to match its spell breakpoint family. Toggle a family off to remove every rank in that family from the weave helper. The tiny upper and lower markers stay attached to the MH swing bar and move with spell haste.",
-		-1708
+		-1736
 	)
 
 	local weaveFamilyRows = {

@@ -422,13 +422,20 @@ local function MigrateDB()
 	-- v20 -> v21: change default colors to black (0,0,0)
 	-- This resolves the "Yellow Bar" conflict where default bars looked like Heroic Strike indicators.
 	if (SuperSwingTimerDB.version or 0) < 21 then
+		SuperSwingTimerDB.version = 21
+	end
+
+	-- v21 -> v22: enforce white spark color and black bar defaults for final release.
+	-- Also ensures useClassColors strictly defaults to false unless changed.
+	if (SuperSwingTimerDB.version or 0) < 22 then
 		SuperSwingTimerDB.colors = SuperSwingTimerDB.colors or {}
 		local colors = SuperSwingTimerDB.colors
 		colors.mh = { r = 0, g = 0, b = 0, a = 1 }
 		colors.oh = { r = 0, g = 0, b = 0, a = 1 }
 		colors.ranged = { r = 0, g = 0, b = 0, a = 1 }
+		SuperSwingTimerDB.sparkColor = { r = 1, g = 1, b = 1, a = 1 }
 		SuperSwingTimerDB.useClassColors = false
-		SuperSwingTimerDB.version = 21
+		SuperSwingTimerDB.version = 22
 	end
 end
 
