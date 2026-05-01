@@ -1,35 +1,54 @@
-local addonName, ns = ...
-local GetSpellInfo = rawget(_G, "GetSpellInfo")
-local GetAddOnInfo = rawget(_G, "GetAddOnInfo")
+local _, ns        = ...
+---@diagnostic disable: undefined-field
+local GetSpellInfo         = rawget(_G, "GetSpellInfo")
+local GetAddOnInfo         = rawget(_G, "GetAddOnInfo")
+local C_Spell              = rawget(_G, "C_Spell")
+
+-- Authoritative GetSpellInfo wrapper for Classic/TBC Anniversary (1.15+)
+function ns.GetSpellInfo(spellIdentifier)
+	if not spellIdentifier then return nil end
+	local g = _G.GetSpellInfo
+	if g then
+		return g(spellIdentifier)
+	end
+	local c = _G.C_Spell
+	if c and c.GetSpellInfo then
+		local info = c.GetSpellInfo(spellIdentifier)
+		if info then
+			return info.name, nil, info.iconID, info.castTime, info.minRange, info.maxRange, info.spellID
+		end
+	end
+	return nil
+end
 
 -- ============================================================
 -- UI constants
 -- ============================================================
-ns.BAR_WIDTH   = 200
-ns.BAR_HEIGHT  = 20
-ns.HUNTER_CAST_BAR_HEIGHT = 10
-ns.HUNTER_CAST_BAR_GAP = 2
-ns.CAST_WINDOW = 0.5    -- shared hidden hunter / ranged cast window in TBC
+ns.BAR_WIDTH               = 200
+ns.BAR_HEIGHT              = 20
+ns.HUNTER_CAST_BAR_HEIGHT  = 10
+ns.HUNTER_CAST_BAR_GAP     = 2
+ns.CAST_WINDOW             = 0.5 -- shared hidden hunter / ranged cast window in TBC
 
 -- ============================================================
 -- Spell IDs
 -- ============================================================
-ns.AUTO_SHOT_ID = 75
-ns.AUTO_SHOT_NAME = (type(GetSpellInfo) == "function" and GetSpellInfo(ns.AUTO_SHOT_ID)) or "Auto Shot"
-ns.HUNTER_CAST_SPELLS = {
-	[75] = true,     -- Auto Shot
-	[2643] = true,   -- Multi-Shot rank 1
-	[14288] = true,  -- Multi-Shot rank 2
-	[14289] = true,  -- Multi-Shot rank 3
-	[14290] = true,  -- Multi-Shot rank 4
-	[25294] = true,  -- Multi-Shot rank 5
-	[27021] = true,  -- Multi-Shot rank 6
+ns.AUTO_SHOT_ID            = 75
+ns.AUTO_SHOT_NAME          = ns.GetSpellInfo(ns.AUTO_SHOT_ID) or "Auto Shot"
+ns.HUNTER_CAST_SPELLS      = {
+	[75] = true, -- Auto Shot
+	[2643] = true, -- Multi-Shot rank 1
+	[14288] = true, -- Multi-Shot rank 2
+	[14289] = true, -- Multi-Shot rank 3
+	[14290] = true, -- Multi-Shot rank 4
+	[25294] = true, -- Multi-Shot rank 5
+	[27021] = true, -- Multi-Shot rank 6
 }
 
 ns.HUNTER_CAST_SPELL_NAMES = {}
-if type(GetSpellInfo) == "function" then
+if true then
 	for spellId in pairs(ns.HUNTER_CAST_SPELLS) do
-		local spellName = GetSpellInfo(spellId)
+		local spellName = ns.GetSpellInfo(spellId)
 		if spellName then
 			ns.HUNTER_CAST_SPELL_NAMES[spellName] = true
 		end
@@ -274,9 +293,9 @@ addSpellNamesToLookup(ns.RESET_RANGED_SWING_SPELLS)
 
 -- Druid form aura IDs (trigger MH timer reset on apply)
 ns.DRUID_FORM_IDS = {
-	[768]  = "Cat",       -- Cat Form
-	[5487] = "Bear",      -- Bear Form
-	[9634] = "DireBear",  -- Dire Bear Form
+	[768]  = "Cat",   -- Cat Form
+	[5487] = "Bear",  -- Bear Form
+	[9634] = "DireBear", -- Dire Bear Form
 }
 
 -- Shaman weaving spell groups.
@@ -303,7 +322,7 @@ ns.WEAVE_SPELL_GROUPS = {
 		ids = { 331, 332, 547, 913, 939, 959, 8005, 10395, 10396, 25357, 25391, 25396 },
 	},
 	{ abbrev = "LHW", label = "Lesser Healing Wave", ids = { 8004, 8008, 8010, 10466, 10467, 10468, 25420 } },
-	{ abbrev = "CH",  label = "Chain Heal",         ids = { 1064, 10622, 10623, 25422, 25423 } },
+	{ abbrev = "CH",  label = "Chain Heal",          ids = { 1064, 10622, 10623, 25422, 25423 } },
 }
 
 -- ============================================================
@@ -311,12 +330,12 @@ ns.WEAVE_SPELL_GROUPS = {
 -- ============================================================
 -- Determines which bars to create and which events to register.
 ns.CLASS_CONFIG = {
-	HUNTER  = { ranged = true,  melee = true,  dualWield = false, hunterCastBar = true },
-	WARRIOR = { ranged = false, melee = true,  dualWield = true  },
-	ROGUE   = { ranged = false, melee = true,  dualWield = true  },
-	PALADIN = { ranged = false, melee = true,  dualWield = false },
-	SHAMAN  = { ranged = false, melee = true,  dualWield = true  },
-	DRUID   = { ranged = false, melee = true,  dualWield = false },
+	HUNTER  = { ranged = true, melee = true, dualWield = false, hunterCastBar = true },
+	WARRIOR = { ranged = false, melee = true, dualWield = true },
+	ROGUE   = { ranged = false, melee = true, dualWield = true },
+	PALADIN = { ranged = false, melee = true, dualWield = false },
+	SHAMAN  = { ranged = false, melee = true, dualWield = true },
+	DRUID   = { ranged = false, melee = true, dualWield = false },
 	MAGE    = { ranged = false, melee = false, dualWield = false },
 	PRIEST  = { ranged = false, melee = false, dualWield = false },
 	WARLOCK = { ranged = false, melee = false, dualWield = false },
@@ -326,13 +345,13 @@ ns.CLASS_CONFIG = {
 -- SavedVariables defaults
 -- ============================================================
 ns.DB_DEFAULTS = {
-	version   = 20,
-	showMH    = true,
-	showOH    = true,
-	showRanged = true,
-	showWeaveAssist = true,
-	useClassColors = false,
-	weaveSpellFamilies = {
+	version                    = 21,
+	showMH                     = true,
+	showOH                     = true,
+	showRanged                 = true,
+	showWeaveAssist            = true,
+	useClassColors             = false,
+	weaveSpellFamilies         = {
 
 		LB  = true,
 		CL  = true,
@@ -340,43 +359,43 @@ ns.DB_DEFAULTS = {
 		LHW = true,
 		CH  = true,
 	},
-	indicatorBlendMode = "ADD",
-	barWidth  = 200,
-	barHeight = 20,
-	barTexture = "Interface\\TargetingFrame\\UI-StatusBar",
-	rangedBarTexture = "Interface\\TargetingFrame\\UI-StatusBar",
-	barTextureLayer = "ARTWORK",
-	sparkTexture = "Interface\\AddOns\\WeakAuras\\Media\\Textures\\Square_FullWhite",
-	sparkTextureLayer = "OVERLAY",
-	weaveSparkTexture = "Interface\\AddOns\\WeakAuras\\Media\\Textures\\target_indicator.tga",
-	weaveSparkTextureLayer = "OVERLAY",
-	weaveSparkWidth = 3,
-	weaveSparkHeight = 20,
-	weaveSparkAlpha = 0.95,
-	sparkColor = { r = 1, g = 1, b = 1, a = 1 },
-	weaveTriangleTopTexture = "Interface\\Buttons\\UI-ScrollBar-ScrollDownButton-Arrow",
+	indicatorBlendMode         = "ADD",
+	barWidth                   = 200,
+	barHeight                  = 20,
+	barTexture                 = "Interface\\TargetingFrame\\UI-StatusBar",
+	rangedBarTexture           = "Interface\\TargetingFrame\\UI-StatusBar",
+	barTextureLayer            = "ARTWORK",
+	sparkTexture               = "Interface\\AddOns\\WeakAuras\\Media\\Textures\\Square_FullWhite",
+	sparkTextureLayer          = "OVERLAY",
+	weaveSparkTexture          = "Interface\\AddOns\\WeakAuras\\Media\\Textures\\target_indicator.tga",
+	weaveSparkTextureLayer     = "OVERLAY",
+	weaveSparkWidth            = 3,
+	weaveSparkHeight           = 20,
+	weaveSparkAlpha            = 0.95,
+	sparkColor                 = { r = 1, g = 1, b = 1, a = 1 },
+	weaveTriangleTopTexture    = "Interface\\Buttons\\UI-ScrollBar-ScrollDownButton-Arrow",
 	weaveTriangleBottomTexture = "Interface\\Buttons\\UI-ScrollBar-ScrollUpButton-Arrow",
-	weaveTriangleTextureLayer = "OVERLAY",
-	weaveTriangleSize = 6,
-	weaveTriangleGap = 1,
-	weaveTriangleAlpha = 1,
-	weaveMarkerLayer = "OVERLAY",
-	sparkWidth = 4,
-	sparkHeight = 20,
-	barBorderSize = 1,
-	barBackgroundAlpha = 0.5,
-	barBackgroundColor = { r = 0, g = 0, b = 0, a = 0.5 },
-	barBorderColor = { r = 0, g = 0, b = 0, a = 1 },
-	sparkAlpha = 1,
-	minimalMode = false,
-	lockBars = false,
-	colors = {
-		mh        = { r = 0, g = 0, b = 0, a = 1   },
-		oh        = { r = 0, g = 0, b = 0, a = 1   },
-		ranged    = { r = 0, g = 0, b = 0, a = 1   },
+	weaveTriangleTextureLayer  = "OVERLAY",
+	weaveTriangleSize          = 6,
+	weaveTriangleGap           = 1,
+	weaveTriangleAlpha         = 1,
+	weaveMarkerLayer           = "OVERLAY",
+	sparkWidth                 = 4,
+	sparkHeight                = 20,
+	barBorderSize              = 1,
+	barBackgroundAlpha         = 0.5,
+	barBackgroundColor         = { r = 0, g = 0, b = 0, a = 0.5 },
+	barBorderColor             = { r = 0, g = 0, b = 0, a = 1 },
+	sparkAlpha                 = 1,
+	minimalMode                = false,
+	lockBars                   = false,
+	colors                     = {
+		mh        = { r = 0, g = 0, b = 0, a = 1 },
+		oh        = { r = 0, g = 0, b = 0, a = 1 },
+		ranged    = { r = 0, g = 0, b = 0, a = 1 },
 		sealTwist = { r = 0, g = 0, b = 0, a = 1 },
 	},
-	positions = {
+	positions                  = {
 		mh     = { point = "CENTER", relativePoint = "CENTER", x = 0, y = -120 },
 		oh     = { point = "CENTER", relativePoint = "CENTER", x = 0, y = -145 },
 		ranged = { point = "CENTER", relativePoint = "CENTER", x = 0, y = -100 },
@@ -387,8 +406,8 @@ ns.TEXTURE_LAYER_OPTIONS = {
 	{ label = "Background", value = "BACKGROUND" },
 	{ label = "Border",     value = "BORDER" },
 	{ label = "Artwork",    value = "ARTWORK" },
-	{ label = "Overlay",     value = "OVERLAY" },
-	{ label = "Highlight",   value = "HIGHLIGHT" },
+	{ label = "Overlay",    value = "OVERLAY" },
+	{ label = "Highlight",  value = "HIGHLIGHT" },
 }
 
 local function IsAddOnInstalled(addonKey)
@@ -460,27 +479,27 @@ function ns.BuildTextureLibrary()
 	if weakAurasInstalled then
 		local weakAurasShapeTextures = {
 			{ label = "Square Full White", path = "Interface\\AddOns\\WeakAuras\\Media\\Textures\\Square_FullWhite" },
-			{ label = "Target Indicator", path = "Interface\\AddOns\\WeakAuras\\Media\\Textures\\target_indicator.tga" },
+			{ label = "Target Indicator",  path = "Interface\\AddOns\\WeakAuras\\Media\\Textures\\target_indicator.tga" },
 			{
 				label = "Target Indicator Glow",
 				path = "Interface\\AddOns\\WeakAuras\\Media\\Textures\\target_indicator_glow.tga",
 			},
-			{ label = "Triangle", path = "Interface\\AddOns\\WeakAuras\\Media\\Textures\\triangle.tga" },
+			{ label = "Triangle",        path = "Interface\\AddOns\\WeakAuras\\Media\\Textures\\triangle.tga" },
 			{ label = "Triangle Border", path = "Interface\\AddOns\\WeakAuras\\Media\\Textures\\triangle-border.tga" },
-			{ label = "Triangle 45", path = "Interface\\AddOns\\WeakAuras\\Media\\Textures\\Triangle45.tga" },
+			{ label = "Triangle 45",     path = "Interface\\AddOns\\WeakAuras\\Media\\Textures\\Triangle45.tga" },
 			{
 				label = "Square Alpha Gradient",
 				path = "Interface\\AddOns\\WeakAuras\\Media\\Textures\\Square_AlphaGradient.tga",
 			},
-			{ label = "Square White", path = "Interface\\AddOns\\WeakAuras\\Media\\Textures\\Square_White.tga" },
-			{ label = "Square White Border", path = "Interface\\AddOns\\WeakAuras\\Media\\Textures\\Square_White_Border.tga" },
-			{ label = "Square Smooth", path = "Interface\\AddOns\\WeakAuras\\Media\\Textures\\Square_Smooth.tga" },
+			{ label = "Square White",         path = "Interface\\AddOns\\WeakAuras\\Media\\Textures\\Square_White.tga" },
+			{ label = "Square White Border",  path = "Interface\\AddOns\\WeakAuras\\Media\\Textures\\Square_White_Border.tga" },
+			{ label = "Square Smooth",        path = "Interface\\AddOns\\WeakAuras\\Media\\Textures\\Square_Smooth.tga" },
 			{ label = "Square Smooth Border", path = "Interface\\AddOns\\WeakAuras\\Media\\Textures\\Square_Smooth_Border.tga" },
 			{
 				label = "Square Smooth Border 2",
 				path = "Interface\\AddOns\\WeakAuras\\Media\\Textures\\Square_Smooth_Border2.tga",
 			},
-			{ label = "Square Squirrel", path = "Interface\\AddOns\\WeakAuras\\Media\\Textures\\Square_Squirrel.tga" },
+			{ label = "Square Squirrel",      path = "Interface\\AddOns\\WeakAuras\\Media\\Textures\\Square_Squirrel.tga" },
 			{
 				label = "Square Squirrel Border",
 				path = "Interface\\AddOns\\WeakAuras\\Media\\Textures\\Square_Squirrel_Border.tga",
@@ -493,24 +512,24 @@ function ns.BuildTextureLibrary()
 				label = "Circle Alpha Gradient Out",
 				path = "Interface\\AddOns\\WeakAuras\\Media\\Textures\\Circle_AlphaGradient_Out.tga",
 			},
-			{ label = "Circle Smooth", path = "Interface\\AddOns\\WeakAuras\\Media\\Textures\\Circle_Smooth.tga" },
-			{ label = "Circle Smooth 2", path = "Interface\\AddOns\\WeakAuras\\Media\\Textures\\Circle_Smooth2.tga" },
+			{ label = "Circle Smooth",        path = "Interface\\AddOns\\WeakAuras\\Media\\Textures\\Circle_Smooth.tga" },
+			{ label = "Circle Smooth 2",      path = "Interface\\AddOns\\WeakAuras\\Media\\Textures\\Circle_Smooth2.tga" },
 			{ label = "Circle Smooth Border", path = "Interface\\AddOns\\WeakAuras\\Media\\Textures\\Circle_Smooth_Border.tga" },
-			{ label = "Circle Squirrel", path = "Interface\\AddOns\\WeakAuras\\Media\\Textures\\Circle_Squirrel.tga" },
+			{ label = "Circle Squirrel",      path = "Interface\\AddOns\\WeakAuras\\Media\\Textures\\Circle_Squirrel.tga" },
 			{
 				label = "Circle Squirrel Border",
 				path = "Interface\\AddOns\\WeakAuras\\Media\\Textures\\Circle_Squirrel_Border.tga",
 			},
-			{ label = "Circle White", path = "Interface\\AddOns\\WeakAuras\\Media\\Textures\\Circle_White.tga" },
+			{ label = "Circle White",        path = "Interface\\AddOns\\WeakAuras\\Media\\Textures\\Circle_White.tga" },
 			{ label = "Circle White Border", path = "Interface\\AddOns\\WeakAuras\\Media\\Textures\\Circle_White_Border.tga" },
-			{ label = "Ring 10px", path = "Interface\\AddOns\\WeakAuras\\Media\\Textures\\Ring_10px.tga" },
-			{ label = "Ring 20px", path = "Interface\\AddOns\\WeakAuras\\Media\\Textures\\Ring_20px.tga" },
-			{ label = "Ring 30px", path = "Interface\\AddOns\\WeakAuras\\Media\\Textures\\Ring_30px.tga" },
-			{ label = "Ring 40px", path = "Interface\\AddOns\\WeakAuras\\Media\\Textures\\Ring_40px.tga" },
-			{ label = "Trapezoid", path = "Interface\\AddOns\\WeakAuras\\Media\\Textures\\Trapezoid.tga" },
-			{ label = "Striped Texture", path = "Interface\\AddOns\\WeakAuras\\Media\\Textures\\StripedTexture.tga" },
-			{ label = "Arrows Target", path = "Interface\\AddOns\\WeakAuras\\Media\\Textures\\arrows_target.tga" },
-			{ label = "Targeting Mark", path = "Interface\\AddOns\\WeakAuras\\Media\\Textures\\targeting-mark.tga" },
+			{ label = "Ring 10px",           path = "Interface\\AddOns\\WeakAuras\\Media\\Textures\\Ring_10px.tga" },
+			{ label = "Ring 20px",           path = "Interface\\AddOns\\WeakAuras\\Media\\Textures\\Ring_20px.tga" },
+			{ label = "Ring 30px",           path = "Interface\\AddOns\\WeakAuras\\Media\\Textures\\Ring_30px.tga" },
+			{ label = "Ring 40px",           path = "Interface\\AddOns\\WeakAuras\\Media\\Textures\\Ring_40px.tga" },
+			{ label = "Trapezoid",           path = "Interface\\AddOns\\WeakAuras\\Media\\Textures\\Trapezoid.tga" },
+			{ label = "Striped Texture",     path = "Interface\\AddOns\\WeakAuras\\Media\\Textures\\StripedTexture.tga" },
+			{ label = "Arrows Target",       path = "Interface\\AddOns\\WeakAuras\\Media\\Textures\\arrows_target.tga" },
+			{ label = "Targeting Mark",      path = "Interface\\AddOns\\WeakAuras\\Media\\Textures\\targeting-mark.tga" },
 		}
 
 		for _, texture in ipairs(weakAurasShapeTextures) do
@@ -518,7 +537,7 @@ function ns.BuildTextureLibrary()
 		end
 
 		local weakAurasBarTextures = {
-			{ label = "Statusbar Clean", path = "Interface\\AddOns\\WeakAuras\\Media\\Textures\\Statusbar_Clean.blp" },
+			{ label = "Statusbar Clean",   path = "Interface\\AddOns\\WeakAuras\\Media\\Textures\\Statusbar_Clean.blp" },
 			{ label = "Statusbar Stripes", path = "Interface\\AddOns\\WeakAuras\\Media\\Textures\\Statusbar_Stripes.blp" },
 			{
 				label = "Statusbar Stripes Thick",
@@ -528,8 +547,8 @@ function ns.BuildTextureLibrary()
 				label = "Statusbar Stripes Thin",
 				path = "Interface\\AddOns\\WeakAuras\\Media\\Textures\\Statusbar_Stripes_Thin.blp",
 			},
-			{ label = "Rainbow Bar", path = "Interface\\AddOns\\WeakAuras\\Media\\Textures\\rainbowbar.tga" },
-			{ label = "Striped Bar", path = "Interface\\AddOns\\WeakAuras\\Media\\Textures\\stripe-bar.tga" },
+			{ label = "Rainbow Bar",         path = "Interface\\AddOns\\WeakAuras\\Media\\Textures\\rainbowbar.tga" },
+			{ label = "Striped Bar",         path = "Interface\\AddOns\\WeakAuras\\Media\\Textures\\stripe-bar.tga" },
 			{ label = "Striped Rainbow Bar", path = "Interface\\AddOns\\WeakAuras\\Media\\Textures\\stripe-rainbow-bar.tga" },
 		}
 
@@ -635,7 +654,7 @@ end
 
 function ns.GetBarColor(colorKey)
 	local db = rawget(_G, "SuperSwingTimerDB")
-	local useClassColors = not db or db.useClassColors ~= false
+	local useClassColors = db and db.useClassColors == true
 	if useClassColors and (colorKey == "mh" or colorKey == "oh" or colorKey == "ranged") then
 		local classColor = ns.GetPlayerClassColor()
 		local alpha = 1
@@ -658,31 +677,7 @@ function ns.GetBarColor(colorKey)
 	return ns.DB_DEFAULTS.colors and ns.DB_DEFAULTS.colors[colorKey] or nil
 end
 
-function ns.SeedLegacyBarColorsFromClass()
-	local db = rawget(_G, "SuperSwingTimerDB")
-	if not db then
-		return
-	end
 
-	db.colors = db.colors or {}
-	local classColor = ns.GetPlayerClassColor()
-
-	local function IsLegacyBlackColor(color)
-		return not color or (
-			math.abs((color.r or 0) - 0) < 0.001 and
-			math.abs((color.g or 0) - 0) < 0.001 and
-			math.abs((color.b or 0) - 0) < 0.001 and
-			((color.a == nil) or math.abs((color.a or 1) - 1) < 0.001)
-		)
-	end
-
-	for _, key in ipairs({ "mh", "oh", "ranged" }) do
-		if IsLegacyBlackColor(db.colors[key]) then
-			local existingAlpha = db.colors[key] and db.colors[key].a or 1
-			db.colors[key] = { r = classColor.r, g = classColor.g, b = classColor.b, a = existingAlpha }
-		end
-	end
-end
 
 function ns.GetIndicatorBlendMode()
 	local db = rawget(_G, "SuperSwingTimerDB")
@@ -948,4 +943,3 @@ function ns.GetWeaveTriangleAlpha()
 	end
 	return ns.DB_DEFAULTS.weaveTriangleAlpha
 end
-

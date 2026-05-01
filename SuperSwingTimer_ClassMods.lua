@@ -1,4 +1,5 @@
-﻿local addonName, ns = ...
+local _, ns = ...
+---@diagnostic disable: undefined-field
 local UnitAura = rawget(_G, "UnitAura")
 local GetTimePreciseSec = rawget(_G, "GetTimePreciseSec")
 local GetTime = rawget(_G, "GetTime")
@@ -187,9 +188,22 @@ local function SetupWarrior()
 			return nil
 		end
 
-		for spellId in pairs(spellSet) do
-			if type(spellId) == "number" and IsCurrentSpell(spellId) then
-				return spellId
+		-- Priority 1: Check by name (most reliable for Heroic Strike/Cleave in TBC)
+		-- We use rank 1 IDs to get the localized names
+		local heroicName = ns.GetSpellInfo(78)
+		local cleaveName = ns.GetSpellInfo(845)
+
+		if heroicName and spellSet == ns.WARRIOR_HEROIC_STRIKE_SPELLS and IsCurrentSpell(heroicName) then
+			return heroicName
+		end
+		if cleaveName and spellSet == ns.WARRIOR_CLEAVE_SPELLS and IsCurrentSpell(cleaveName) then
+			return cleaveName
+		end
+
+		-- Priority 2: Fallback to ID iteration if needed (for other abilities)
+		for key in pairs(spellSet) do
+			if type(key) == "number" and IsCurrentSpell(key) then
+				return key
 			end
 		end
 
@@ -237,30 +251,31 @@ local function SetupWarrior()
 
 	ns.UpdateWarriorQueueTint = UpdateWarriorQueueTint
 
-	local function ApplyWarriorQueueTint(spellId)
+	local function ApplyWarriorQueueTint(spellName)
 		if not ns.mhBar then
 			return
 		end
 
-		local spellIdNumber = tonumber(spellId)
 		local alpha = (ns.mhBarBaseColor and ns.mhBarBaseColor.a) or 1
-		if ns.WARRIOR_HEROIC_STRIKE_SPELLS and (ns.WARRIOR_HEROIC_STRIKE_SPELLS[spellId] or (spellIdNumber and ns.WARRIOR_HEROIC_STRIKE_SPELLS[spellIdNumber])) then
-			ns.pendingMeleeQueueSpellId = spellIdNumber or spellId
+		-- Lookup tables have spell names added by addSpellNamesToLookup() at load time
+		if ns.WARRIOR_HEROIC_STRIKE_SPELLS and ns.WARRIOR_HEROIC_STRIKE_SPELLS[spellName] then
+			ns.pendingMeleeQueueSpellId = spellName
 			ns.mhBar:SetStatusBarColor(1.0, 0.92, 0.20, alpha) -- heroic strike: yellow
-		elseif ns.WARRIOR_CLEAVE_SPELLS and (ns.WARRIOR_CLEAVE_SPELLS[spellId] or (spellIdNumber and ns.WARRIOR_CLEAVE_SPELLS[spellIdNumber])) then
-			ns.pendingMeleeQueueSpellId = spellIdNumber or spellId
+		elseif ns.WARRIOR_CLEAVE_SPELLS and ns.WARRIOR_CLEAVE_SPELLS[spellName] then
+			ns.pendingMeleeQueueSpellId = spellName
 			ns.mhBar:SetStatusBarColor(0.20, 0.80, 0.25, alpha) -- cleave: green
+		else
+			RestoreMainHandColor()
 		end
 	end
 
-	local function ApplyWarriorSlamTint(spellId)
+	local function ApplyWarriorSlamTint(spellName)
 		if not ns.mhBar then
 			return
 		end
 
-		local spellIdNumber = tonumber(spellId)
 		local alpha = (ns.mhBarBaseColor and ns.mhBarBaseColor.a) or 1
-		if ns.PAUSE_SWING_SPELLS and (ns.PAUSE_SWING_SPELLS[spellId] or (spellIdNumber and ns.PAUSE_SWING_SPELLS[spellIdNumber])) then
+		if ns.PAUSE_SWING_SPELLS and ns.PAUSE_SWING_SPELLS[spellName] then
 			ns.mhBar:SetStatusBarColor(1.0, 1.0, 1.0, alpha) -- slam: white
 		end
 	end
@@ -280,17 +295,21 @@ local function SetupWarrior()
 
 	-- Hook warrior queued attacks so each special gets its own tint.
 	local origHandleSpellcast = ns.HandleSpellcastSucceeded
-	ns.HandleSpellcastSucceeded = function(unit, castGUID, spellId)
+	ns.HandleSpellcastSucceeded = function(unit, spellName, spellRank)
+		-- Classic TBC: args are (unit, spellName, spellRank)
 		if unit == "player" then
-			if ns.WARRIOR_HEROIC_STRIKE_SPELLS and (ns.WARRIOR_HEROIC_STRIKE_SPELLS[spellId] or (tonumber(spellId) and ns.WARRIOR_HEROIC_STRIKE_SPELLS[tonumber(spellId)])) then
-				ApplyWarriorQueueTint(spellId)
-			elseif ns.WARRIOR_CLEAVE_SPELLS and (ns.WARRIOR_CLEAVE_SPELLS[spellId] or (tonumber(spellId) and ns.WARRIOR_CLEAVE_SPELLS[tonumber(spellId)])) then
-				ApplyWarriorQueueTint(spellId)
-			elseif ns.PAUSE_SWING_SPELLS and (ns.PAUSE_SWING_SPELLS[spellId] or (tonumber(spellId) and ns.PAUSE_SWING_SPELLS[tonumber(spellId)])) then
-				ApplyWarriorSlamTint(spellId)
+			-- Lookup tables have spell names added by addSpellNamesToLookup() at load time
+			if ns.WARRIOR_HEROIC_STRIKE_SPELLS and ns.WARRIOR_HEROIC_STRIKE_SPELLS[spellName] then
+				ApplyWarriorQueueTint(spellName)
+			elseif ns.WARRIOR_CLEAVE_SPELLS and ns.WARRIOR_CLEAVE_SPELLS[spellName] then
+				ApplyWarriorQueueTint(spellName)
+			elseif ns.PAUSE_SWING_SPELLS and ns.PAUSE_SWING_SPELLS[spellName] then
+				ApplyWarriorSlamTint(spellName)
 			end
 		end
-		origHandleSpellcast(unit, castGUID, spellId)
+		if origHandleSpellcast then
+			origHandleSpellcast(unit, spellName, spellRank)
+		end
 		if ns.UpdateWarriorQueueTint then
 			ns.UpdateWarriorQueueTint()
 		end

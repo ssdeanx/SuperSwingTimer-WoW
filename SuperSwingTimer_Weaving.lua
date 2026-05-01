@@ -1,4 +1,4 @@
-local addonName, ns = ...
+local _, ns = ...
 
 local math_max = math.max
 local GetTimePreciseSec = rawget(_G, "GetTimePreciseSec")
@@ -98,6 +98,7 @@ function ns.RebuildWeaveSpellCatalog()
 
 	state.trackedSpellCatalog = {}
 	state.trackedSpellLookup = {}
+	state.trackedSpellNameLookup = {}  -- name → spellInfo for Classic TBC events
 	state.defaultSpellId = nil
 
 	for _, group in ipairs(ns.WEAVE_SPELL_GROUPS or {}) do
@@ -113,6 +114,10 @@ function ns.RebuildWeaveSpellCatalog()
 		if familyEnabled and info then
 			state.trackedSpellCatalog[#state.trackedSpellCatalog + 1] = info
 			state.trackedSpellLookup[info.spellId] = info
+			-- Also index by localized spell name for Classic events that deliver names not IDs
+			if info.spellName then
+				state.trackedSpellNameLookup[info.spellName] = info
+			end
 			if not state.defaultSpellId then
 				state.defaultSpellId = info.spellId
 			end
@@ -146,13 +151,14 @@ function ns.RefreshWeavingState()
 	end
 end
 
-local function GetTrackedSpellInfo(spellId)
+local function GetTrackedSpellInfo(spellValue)
 	local state = ns.weaveState
-	if not state or not spellId then
+	if not state or not spellValue then
 		return nil
 	end
-
-	return state.trackedSpellLookup[spellId]
+	-- Try numeric ID first (CLEU path), then localized name (Classic spellcast events)
+	return state.trackedSpellLookup[spellValue]
+		or (state.trackedSpellNameLookup and state.trackedSpellNameLookup[spellValue])
 end
 
 local function GetDefaultSpellInfo()
@@ -266,7 +272,9 @@ function ns.GetWeaveDisplayInfo()
 	return BuildDisplayInfo(spellInfo)
 end
 
-function ns.HandleWeavingSpellcast(event, unit, _, spellId)
+function ns.HandleWeavingSpellcast(event, unit, spellName, spellRank)
+	-- Classic TBC: UNIT_SPELLCAST_* fires (unit, spellName, spellRank) -- no castGUID/spellId
+	-- GetTrackedSpellInfo handles both numeric IDs (CLEU) and spell names (spellcast events)
 	if unit ~= "player" then
 		return
 	end
@@ -276,12 +284,12 @@ function ns.HandleWeavingSpellcast(event, unit, _, spellId)
 		return
 	end
 
-	local spellInfo = GetTrackedSpellInfo(spellId)
+	local spellInfo = GetTrackedSpellInfo(spellName)
 	if event == "UNIT_SPELLCAST_START" or event == "UNIT_SPELLCAST_DELAYED" or event == "UNIT_SPELLCAST_CHANNEL_START" then
 		if spellInfo then
 			state.isCasting = true
-			state.currentSpellId = spellId
-			state.lastSpellId = spellId
+			state.currentSpellId = spellInfo.spellId
+			state.lastSpellId = spellInfo.spellId
 		else
 			state.isCasting = false
 			state.currentSpellId = nil
@@ -289,15 +297,15 @@ function ns.HandleWeavingSpellcast(event, unit, _, spellId)
 	elseif event == "UNIT_SPELLCAST_SUCCEEDED" then
 		if spellInfo then
 			state.isCasting = false
-			state.currentSpellId = spellId
-			state.lastSpellId = spellId
+			state.currentSpellId = spellInfo.spellId
+			state.lastSpellId = spellInfo.spellId
 		end
 	elseif event == "UNIT_SPELLCAST_STOP" or event == "UNIT_SPELLCAST_INTERRUPTED" or event == "UNIT_SPELLCAST_FAILED" or event == "UNIT_SPELLCAST_CHANNEL_STOP" then
 		state.isCasting = false
 		if spellInfo then
-			state.lastSpellId = spellId
+			state.lastSpellId = spellInfo.spellId
 		end
-		if state.currentSpellId == spellId then
+		if state.currentSpellId == (spellInfo and spellInfo.spellId) then
 			state.currentSpellId = nil
 		end
 	end

@@ -1,5 +1,11 @@
 # Active Context
 
+## Active Context Update (2026-05-01 - TBC Anniversary Compatibility & Hunter Sync)
+
+- Achieved full TBC Classic Anniversary (1.15.x) engine support by implementing a robust `ns.GetSpellInfo` wrapper and safe-accessing Blizzard UI globals via `_G`.
+- Synchronized the dedicated Hunter cast bar with the ranged timer's latency-aware "red zone," providing perfect visual alignment for move-safety feedback.
+- Optimized the configuration UI with 20-item paging and texture previews, and enforced high-visibility defaults (Class Colors: OFF).
+
 ## Active Context Update (2026-04-30 - hunter ranged reset-state hardening)
 
 - `ResetTimer("ranged")` now also clears hunter cast state, preventing stale hidden-cast bar remnants when ranged cycling is explicitly stopped/reset.

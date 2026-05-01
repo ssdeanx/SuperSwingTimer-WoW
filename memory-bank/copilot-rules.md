@@ -1,5 +1,11 @@
 # Rules for Copilot
 
+## Core Principle: No Guessing
+
+- **MANDATORY**: Always search for and verify the actual Blizzard API behavior before editing or implementing changes.
+- Use `warcraft.wiki.gg` (TBC/Classic sections) and the `Gethe/wow-ui-source` repository (Blizzard_APIDocumentation) as the source of truth.
+- Do not assume modern (Retail) API signatures work in TBC Classic Anniversary (2.5.5 or 1.15.8).
+
 ## Load order
 
 - Always read `memory-bank/projectBrief.md`, `memory-bank/activeContext.md`, and this file before starting a new task.
@@ -16,6 +22,7 @@
 
 - Verify Classic-era API behavior before assuming modern Blizzard functionality.
 - Prefer timing-safe patterns that account for latency and precise time when available.
+- Always handle API fallbacks (e.g., `C_Spell.GetSpellInfo` vs `GetSpellInfo`) to support TBC Anniversary 1.15+ clients.
 - Avoid introducing Retail-only assumptions into the addon.
 
 ## Memory-bank guidance

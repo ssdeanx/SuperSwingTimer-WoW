@@ -1,8 +1,8 @@
 # Super Swing Timer
 
-Melee and ranged swing timer for World of Warcraft Classic and TBC.
+Melee and ranged swing timer for World of Warcraft Classic and TBC (including Anniversary Edition).
 
-Super Swing Timer tracks white-hit swing timers across main hand, off hand, and ranged attacks. It is tuned for Classic/TBC mechanics such as next-melee-attack abilities, dual-wield desync, parry haste, extra-attack suppression, haste rescaling, druid form resets, ret paladin seal-breakpoint timing, and shaman weave breakpoints.
+Super Swing Timer tracks white-hit swing timers across main hand, off hand, and ranged attacks. It is tuned for Classic/TBC mechanics such as next-melee-attack abilities, dual-wield desync, parry haste, extra-attack suppression, haste rescaling, druid form resets, ret paladin seal-breakpoint timing, and shaman weave breakpoints. Version v3.1.17 adds full support for the TBC Classic Anniversary 1.15+ engine with optimized API wrappers and synchronized Hunter Auto Shot timing.
 
 ## At a glance
 

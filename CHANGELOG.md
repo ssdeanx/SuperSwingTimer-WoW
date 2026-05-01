@@ -1,4 +1,15 @@
-﻿# Super Swing Timer Changelog
+# Super Swing Timer Changelog
+
+## 3.1.17 - 2026-05-01
+
+- Added TBC Classic Anniversary (1.15.x) compatibility by implementing a robust `ns.GetSpellInfo` wrapper that supports both legacy `GetSpellInfo` and modern `C_Spell.GetSpellInfo`.
+- Fixed the "Undefined global" and "Undefined field" errors in the IDE and game by safe-accessing Blizzard UI globals (`UIDropDownMenu`, `C_Spell`, etc.) via `_G`.
+- Synchronized the Hunter Auto Shot cast bar with the ranged timer's latency-aware "red zone." The cast bar now starts exactly when the ranged cycle hits the hidden-cast window.
+- Improved the configuration panel's texture dropdown:
+  - Implemented 20-item paging for better menu height on all screen resolutions.
+  - Added visual texture previews (icons) next to each texture name in the list.
+  - Increased the font size to `GameFontNormal` for better readability.
+- Hardened default settings: Class Colors are now OFF by default to ensure maximum visual clarity for Rogue and Warrior ability indicators.
 
 ## 3.1.16 - 2026-04-30
 

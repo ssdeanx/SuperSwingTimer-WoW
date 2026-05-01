@@ -1,5 +1,13 @@
 # Progress
 
+## Progress Update (2026-05-01 - TBC Anniversary Compatibility & Hunter Sync)
+
+- Achieved full TBC Classic Anniversary (1.15.x) engine support by implementing a robust `ns.GetSpellInfo` wrapper and safe-accessing Blizzard UI globals via `_G`.
+- Synchronized the dedicated Hunter cast bar with the ranged timer's latency-aware "red zone."
+- Optimized the configuration UI with 20-item paging and texture previews.
+- Hardened default settings: Class Colors: OFF for better visibility.
+- Updated all project documentation and bumped version to v3.1.17.
+
 ## Progress Update (2026-04-30 - final reset-state bug polish)
 
 - Added hunter cast-state cleanup to ranged reset paths (`ResetTimer("ranged")`) so hidden cast-bar state cannot persist after ranged stop/reset transitions.

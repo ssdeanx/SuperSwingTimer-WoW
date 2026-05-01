@@ -1,4 +1,4 @@
-﻿# AGENTS.md - Super Swing Timer
+# AGENTS.md - Super Swing Timer
 
 ## Project overview
 
@@ -74,6 +74,10 @@ Use these links first when checking Classic addon UI behavior, widgets, frames, 
 - <https://github.com/Gethe/wow-ui-source/tree/live/Interface/AddOns/Blizzard_APIDocumentationGenerated>
 
 ## Current progress
+
+- Release hardening pass (2026-05-01): achieved full TBC Classic Anniversary (1.15.x) compatibility by implementing a robust `ns.GetSpellInfo` wrapper and safe-accessing Blizzard UI globals (`UIDropDownMenu`, `C_Spell`) via `_G`, eliminating all linting and runtime errors.
+- Hunter Auto Shot Sync (2026-05-01): synchronized the dedicated hunter cast bar with the ranged timer's latency-aware "red zone," ensuring the move-safety feedback and cast window are perfectly aligned for pixel-perfect shot timing.
+- Config UI Polish (2026-05-01): optimized the texture selection dropdown with 20-item paging, visual texture previews, and increased font readability, while enforcing visual-safe defaults (Class Colors: OFF) for maximum clarity in high-intensity combat.
 
 - Release hardening pass (2026-04-30): hunter ranged state now supports `GetRangedHaste`-based fallback scaling when `UnitRangedDamage()` is briefly unavailable, and shaman weaving haste math now falls back from `UnitSpellHaste("player")` to `GetSpellHaste()` when needed.
 - Broad audit follow-up (2026-04-30): fixed a hunter cast fallback bug where `HandleSpellcastSucceeded` could seed `hunterCastStartTime` as `now - CAST_WINDOW`, which could instantly complete the cast bar if the start event was missed.

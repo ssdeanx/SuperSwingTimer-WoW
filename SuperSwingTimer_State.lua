@@ -1,4 +1,5 @@
 local _, ns = ...
+---@diagnostic disable: undefined-field
 
 local GetTimePreciseSec = rawget(_G, "GetTimePreciseSec")
 local GetTime = rawget(_G, "GetTime")
@@ -71,8 +72,8 @@ function ns.GetAutoShotCooldown()
 	end
 
 	local startTime, duration, enabled = GetSpellCooldown(ns.AUTO_SHOT_ID)
-	if (not duration or duration <= 0) and type(GetSpellInfo) == "function" then
-		local autoShotName = GetSpellInfo(ns.AUTO_SHOT_ID)
+	if (not duration or duration <= 0) and ns.GetSpellInfo then
+		local autoShotName = ns.GetSpellInfo(ns.AUTO_SHOT_ID)
 		if autoShotName then
 			startTime, duration, enabled = GetSpellCooldown(autoShotName)
 		end
@@ -358,19 +359,19 @@ function ns.AdjustSwingTimesAfterPause(now)
 	end
 end
 
-function ns.HandleSpellcastStart(unit, _, spellId)
+function ns.HandleSpellcastStart(unit, spellName, spellRank)
+	-- Classic TBC: UNIT_SPELLCAST_START fires (unit, spellName, spellRank) -- no castGUID/spellId
 	if unit ~= "player" then return end
 	ns.RefreshLatencyCache()
 	local now = GetCurrentTime()
 	local castWindow = math.max(ns.CAST_WINDOW or 0.5, 0.01)
-	local spellIdNumber = tonumber(spellId)
-	local isHunterCastSpell = ns.playerClass == "HUNTER" and ns.IsHunterCastSpell and ns.IsHunterCastSpell(spellId)
-	local isAutoShotSpell = isHunterCastSpell and ns.IsAutoShotSpell and ns.IsAutoShotSpell(spellId)
+	local isHunterCastSpell = ns.playerClass == "HUNTER" and ns.IsHunterCastSpell and ns.IsHunterCastSpell(spellName)
+	local isAutoShotSpell = isHunterCastSpell and ns.IsAutoShotSpell and ns.IsAutoShotSpell(spellName)
 	ns.casting = true
-	ns.currentCastSpellId = spellId
+	ns.currentCastSpellId = spellName
 	if isHunterCastSpell and not isAutoShotSpell then
 		ns.hunterCastActive = true
-		ns.hunterCastSpellId = spellId
+		ns.hunterCastSpellId = spellName
 	end
 	ns.hunterCastStartTime = nil
 	ns.hunterCastDuration = nil
@@ -386,26 +387,28 @@ function ns.HandleSpellcastStart(unit, _, spellId)
 			ns.hunterCastStartTime = now
 		end
 	end
-	ns.preventSwingReset = ns.preventSwingReset or (ns.NO_RESET_SWING_SPELLS and (ns.NO_RESET_SWING_SPELLS[spellId] or (spellIdNumber and ns.NO_RESET_SWING_SPELLS[spellIdNumber])))
-	if ns.PAUSE_SWING_SPELLS and (ns.PAUSE_SWING_SPELLS[spellId] or (spellIdNumber and ns.PAUSE_SWING_SPELLS[spellIdNumber])) and not ns.pauseSwingTime then
+	-- Lookup tables have spell names added by addSpellNamesToLookup() at load time
+	ns.preventSwingReset = ns.preventSwingReset or (ns.NO_RESET_SWING_SPELLS and ns.NO_RESET_SWING_SPELLS[spellName])
+	if ns.PAUSE_SWING_SPELLS and ns.PAUSE_SWING_SPELLS[spellName] and not ns.pauseSwingTime then
 		ns.pauseSwingTime = GetCurrentTime()
 	end
 	ns.RefreshUpdateLoop()
 end
 
-function ns.HandleSpellcastChannelStart(unit, _, spellId)
+function ns.HandleSpellcastChannelStart(unit, spellName, spellRank)
+	-- Classic TBC: UNIT_SPELLCAST_CHANNEL_START fires (unit, spellName, spellRank) -- no castGUID/spellId
 	if unit ~= "player" then return end
 	ns.RefreshLatencyCache()
-	local spellIdNumber = tonumber(spellId)
 	ns.casting = true
 	ns.channeling = true
-	ns.channelingSpellId = spellId
-	ns.currentCastSpellId = spellId
-	if ns.playerClass == "HUNTER" and ns.IsHunterCastSpell and ns.IsHunterCastSpell(spellId) then
+	ns.channelingSpellId = spellName
+	ns.currentCastSpellId = spellName
+	if ns.playerClass == "HUNTER" and ns.IsHunterCastSpell and ns.IsHunterCastSpell(spellName) then
 		ns.hunterCastActive = true
-		ns.hunterCastSpellId = spellId
+		ns.hunterCastSpellId = spellName
 	end
-	ns.preventSwingReset = ns.NO_RESET_SWING_SPELLS and (ns.NO_RESET_SWING_SPELLS[spellId] or (spellIdNumber and ns.NO_RESET_SWING_SPELLS[spellIdNumber]))
+	-- Lookup tables have spell names added by addSpellNamesToLookup() at load time
+	ns.preventSwingReset = ns.NO_RESET_SWING_SPELLS and ns.NO_RESET_SWING_SPELLS[spellName]
 	ns.RefreshUpdateLoop()
 end
 
@@ -435,22 +438,23 @@ function ns.HandleSpellcastChannelStop(unit)
 	ns.RefreshUpdateLoop()
 end
 
-function ns.HandleSpellcastInterruptedOrFailed(unit, _, spellId)
+function ns.HandleSpellcastInterruptedOrFailed(unit, spellName, spellRank)
+	-- Classic TBC: UNIT_SPELLCAST_INTERRUPTED/FAILED fires (unit, spellName, spellRank)
 	if unit ~= "player" then return end
 	ns.RefreshLatencyCache()
 	local now = GetCurrentTime()
-	local spellIdNumber = tonumber(spellId)
-	local isQueuedMeleeSpecial = ns.NMA_LOOKUP and (ns.NMA_LOOKUP[spellId] or (spellIdNumber and ns.NMA_LOOKUP[spellIdNumber]))
-	if ns.PAUSE_SWING_SPELLS and (ns.PAUSE_SWING_SPELLS[spellId] or (spellIdNumber and ns.PAUSE_SWING_SPELLS[spellIdNumber])) and ns.pauseSwingTime then
+	-- Lookup tables have spell names added by addSpellNamesToLookup() at load time
+	local isQueuedMeleeSpecial = ns.NMA_LOOKUP and ns.NMA_LOOKUP[spellName]
+	if ns.PAUSE_SWING_SPELLS and ns.PAUSE_SWING_SPELLS[spellName] and ns.pauseSwingTime then
 		ns.AdjustSwingTimesAfterPause(now)
 	end
-	if ns.pendingMeleeQueueSpellId and (isQueuedMeleeSpecial or not spellId) then
+	if ns.pendingMeleeQueueSpellId and (isQueuedMeleeSpecial or not spellName) then
 		if ns.ClearWarriorQueueTint then
 			ns.ClearWarriorQueueTint()
 		else
 			ns.pendingMeleeQueueSpellId = nil
 		end
-	elseif ns.pendingMeleeQueueSpellId == spellId or (spellIdNumber and ns.pendingMeleeQueueSpellId == spellIdNumber) then
+	elseif ns.pendingMeleeQueueSpellId == spellName then
 		ns.pendingMeleeQueueSpellId = nil
 	end
 	ns.casting = false
@@ -622,15 +626,16 @@ end
 -- ============================================================
 -- Slam detection still uses the pause/extend path, while queued melee specials
 -- keep their tint until the combat-log hit restarts the MH swing.
-function ns.HandleSpellcastSucceeded(unit, _, spellId)
+function ns.HandleSpellcastSucceeded(unit, spellName, spellRank)
+	-- Classic TBC: UNIT_SPELLCAST_SUCCEEDED fires (unit, spellName, spellRank) -- no castGUID/spellId
 	if unit ~= "player" then return end
 	ns.RefreshLatencyCache()
 	local now = GetCurrentTime()
-	local spellIdNumber = tonumber(spellId)
+	-- Lookup tables have spell names added by addSpellNamesToLookup() at load time
 
-	if ns.PAUSE_SWING_SPELLS and (ns.PAUSE_SWING_SPELLS[spellId] or (spellIdNumber and ns.PAUSE_SWING_SPELLS[spellIdNumber])) and ns.pauseSwingTime then
+	if ns.PAUSE_SWING_SPELLS and ns.PAUSE_SWING_SPELLS[spellName] and ns.pauseSwingTime then
 		ns.AdjustSwingTimesAfterPause(now)
-	elseif ns.playerClass == "HUNTER" and ns.IsHunterCastSpell and ns.IsHunterCastSpell(spellId) then
+	elseif ns.playerClass == "HUNTER" and ns.IsHunterCastSpell and ns.IsHunterCastSpell(spellName) then
 		local castWindow = math.max(ns.CAST_WINDOW or 0.5, 0.01)
 		if ns.hunterCastActive and ns.hunterCastSpellId and ns.IsHunterCastSpell(ns.hunterCastSpellId) then
 			ns.hunterCastDuration = castWindow
@@ -639,7 +644,7 @@ function ns.HandleSpellcastSucceeded(unit, _, spellId)
 			local castSpellName, _, _, startTimeMs, _, _, _, castSpellId = UnitCastingInfo("player")
 			if ns.IsHunterCastSpell(castSpellId) or ns.IsHunterCastSpell(castSpellName) then
 				ns.hunterCastActive = true
-				ns.hunterCastSpellId = castSpellId or castSpellName or spellId
+				ns.hunterCastSpellId = castSpellId or castSpellName or spellName
 				ns.hunterCastDuration = castWindow
 				if startTimeMs and startTimeMs > 0 then
 					ns.hunterCastStartTime = (startTimeMs / 1000) + (ns.cachedLatency or 0)
@@ -648,9 +653,11 @@ function ns.HandleSpellcastSucceeded(unit, _, spellId)
 				end
 			end
 		end
-	elseif ns.NMA_LOOKUP[spellId] or (spellIdNumber and ns.NMA_LOOKUP[spellIdNumber]) then
-		ns.pendingMeleeQueueSpellId = spellIdNumber or spellId
-	elseif ns.RESET_SWING_SPELLS and (ns.RESET_SWING_SPELLS[spellId] or (spellIdNumber and ns.RESET_SWING_SPELLS[spellIdNumber])) then
+	elseif ns.NMA_LOOKUP[spellName] then
+		-- NMA queued specials (Heroic Strike, Cleave, Maul, Raptor Strike)
+		-- track by name so the next MH swing CLEU can clear the tint
+		ns.pendingMeleeQueueSpellId = spellName
+	elseif ns.RESET_SWING_SPELLS and ns.RESET_SWING_SPELLS[spellName] then
 		ns.StartSwing("mh", nil, now)
 		ns.StartSwing("oh", nil, now)
 		if ns.StartRangedSwing(now) and ns.OnRangedSwing then

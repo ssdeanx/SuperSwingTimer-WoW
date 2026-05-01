@@ -1,4 +1,4 @@
-﻿local _, ns = ...
+local _, ns = ...
 
 local CreateFrame = rawget(_G, "CreateFrame")
 local UIParent = rawget(_G, "UIParent")
@@ -74,7 +74,7 @@ local function GetHunterHiddenCastWindowFromRangedTimer(now)
 		return nil, nil
 	end
 
-	local castWindow = math.max(ns.CAST_WINDOW or 0.5, 0.01)
+	local castWindow = math.max(GetRangedCastWindow() or 0.5, 0.01)
 	local windowEnd = t.lastSwing + t.duration
 	local windowStart = windowEnd - castWindow
 	if now < windowStart or now > windowEnd then
@@ -533,8 +533,8 @@ local function UpdateRangedBar(elapsed)
 
 	if ns.channeling and UnitChannelInfo then
 		local channelName, _, _, startTimeMs, endTimeMs = UnitChannelInfo("player")
-		if not channelName and ns.channelingSpellId and GetSpellInfo then
-			channelName = GetSpellInfo(ns.channelingSpellId)
+		if not channelName and ns.channelingSpellId and ns.GetSpellInfo then
+			channelName = ns.GetSpellInfo(ns.channelingSpellId)
 		end
 		channelName = channelName or "Channel"
 		if channelName and startTimeMs and endTimeMs and endTimeMs > startTimeMs then

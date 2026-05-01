@@ -1,4 +1,4 @@
-﻿local addonName, ns = ...
+local addonName, ns = ...
 local CreateFrame = rawget(_G, "CreateFrame")
 local UIParent = rawget(_G, "UIParent")
 local SlashCmdList = rawget(_G, "SlashCmdList")
@@ -28,12 +28,12 @@ end
 -- ============================================================
 -- Runtime globals
 -- ============================================================
-ns.isMoving        = false
+ns.isMoving            = false
 ns.lastStoppedMovingAt = nil
-ns.barTestActive = false
-ns.barTestTimer = nil
-ns.playerClass     = nil
-ns.classConfig     = nil
+ns.barTestActive       = false
+ns.barTestTimer        = nil
+ns.playerClass         = nil
+ns.classConfig         = nil
 ns.druidFormChangeTime = nil
 
 -- ============================================================
@@ -51,89 +51,89 @@ local function MigrateDB()
 			SwangThangDB = nil
 		elseif legacyHunterDB then
 			SuperSwingTimerDB = {
-			version   = 2,
-			showMH    = true,
-			showOH    = true,
-			positions = {
-				mh     = ns.DB_DEFAULTS.positions.mh,
-				oh     = ns.DB_DEFAULTS.positions.oh,
-				ranged = {
-					point        = legacyHunterDB.point        or "CENTER",
-					relativePoint = legacyHunterDB.relativePoint or "CENTER",
-					x            = legacyHunterDB.x            or 0,
-					y            = legacyHunterDB.y            or -100,
+				version   = 2,
+				showMH    = true,
+				showOH    = true,
+				positions = {
+					mh     = ns.DB_DEFAULTS.positions.mh,
+					oh     = ns.DB_DEFAULTS.positions.oh,
+					ranged = {
+						point         = legacyHunterDB.point or "CENTER",
+						relativePoint = legacyHunterDB.relativePoint or "CENTER",
+						x             = legacyHunterDB.x or 0,
+						y             = legacyHunterDB.y or -100,
+					},
 				},
-			},
 			}
-			HunterTimerDB = nil  -- clear legacy SavedVariable
+			HunterTimerDB = nil -- clear legacy SavedVariable
 		end
 	end
 
 	-- Fresh install
 	if not SuperSwingTimerDB then
 		SuperSwingTimerDB = {
-			version   = ns.DB_DEFAULTS.version,
-			showMH    = ns.DB_DEFAULTS.showMH,
-			showOH    = ns.DB_DEFAULTS.showOH,
-			showRanged = ns.DB_DEFAULTS.showRanged,
-			showWeaveAssist = ns.DB_DEFAULTS.showWeaveAssist,
-			useClassColors = ns.DB_DEFAULTS.useClassColors,
-			indicatorBlendMode = ns.DB_DEFAULTS.indicatorBlendMode,
-			weaveSpellFamilies = {
+			version                    = 21,
+			showMH                     = ns.DB_DEFAULTS.showMH,
+			showOH                     = ns.DB_DEFAULTS.showOH,
+			showRanged                 = ns.DB_DEFAULTS.showRanged,
+			showWeaveAssist            = ns.DB_DEFAULTS.showWeaveAssist,
+			useClassColors             = ns.DB_DEFAULTS.useClassColors,
+			indicatorBlendMode         = ns.DB_DEFAULTS.indicatorBlendMode,
+			weaveSpellFamilies         = {
 				LB  = ns.DB_DEFAULTS.weaveSpellFamilies.LB,
 				CL  = ns.DB_DEFAULTS.weaveSpellFamilies.CL,
 				HW  = ns.DB_DEFAULTS.weaveSpellFamilies.HW,
 				LHW = ns.DB_DEFAULTS.weaveSpellFamilies.LHW,
 				CH  = ns.DB_DEFAULTS.weaveSpellFamilies.CH,
 			},
-			barWidth  = ns.DB_DEFAULTS.barWidth,
-			barHeight = ns.DB_DEFAULTS.barHeight,
-			barTexture = ns.DB_DEFAULTS.barTexture,
-			barTextureLayer = ns.DB_DEFAULTS.barTextureLayer,
-			rangedBarTexture = ns.DB_DEFAULTS.rangedBarTexture,
-			sparkTexture = ns.DB_DEFAULTS.sparkTexture,
-			sparkTextureLayer = ns.DB_DEFAULTS.sparkTextureLayer,
-			weaveSparkTexture = ns.DB_DEFAULTS.weaveSparkTexture,
-			weaveSparkTextureLayer = ns.DB_DEFAULTS.weaveSparkTextureLayer,
-			weaveSparkWidth = ns.DB_DEFAULTS.weaveSparkWidth,
-			weaveSparkHeight = ns.DB_DEFAULTS.weaveSparkHeight,
-			weaveSparkAlpha = ns.DB_DEFAULTS.weaveSparkAlpha,
-			weaveTriangleTopTexture = ns.DB_DEFAULTS.weaveTriangleTopTexture,
+			barWidth                   = ns.DB_DEFAULTS.barWidth,
+			barHeight                  = ns.DB_DEFAULTS.barHeight,
+			barTexture                 = ns.DB_DEFAULTS.barTexture,
+			barTextureLayer            = ns.DB_DEFAULTS.barTextureLayer,
+			rangedBarTexture           = ns.DB_DEFAULTS.rangedBarTexture,
+			sparkTexture               = ns.DB_DEFAULTS.sparkTexture,
+			sparkTextureLayer          = ns.DB_DEFAULTS.sparkTextureLayer,
+			weaveSparkTexture          = ns.DB_DEFAULTS.weaveSparkTexture,
+			weaveSparkTextureLayer     = ns.DB_DEFAULTS.weaveSparkTextureLayer,
+			weaveSparkWidth            = ns.DB_DEFAULTS.weaveSparkWidth,
+			weaveSparkHeight           = ns.DB_DEFAULTS.weaveSparkHeight,
+			weaveSparkAlpha            = ns.DB_DEFAULTS.weaveSparkAlpha,
+			weaveTriangleTopTexture    = ns.DB_DEFAULTS.weaveTriangleTopTexture,
 			weaveTriangleBottomTexture = ns.DB_DEFAULTS.weaveTriangleBottomTexture,
-			weaveTriangleTextureLayer = ns.DB_DEFAULTS.weaveTriangleTextureLayer,
-			weaveTriangleSize = ns.DB_DEFAULTS.weaveTriangleSize,
-			weaveTriangleGap = ns.DB_DEFAULTS.weaveTriangleGap,
-			weaveTriangleAlpha = ns.DB_DEFAULTS.weaveTriangleAlpha,
-			weaveMarkerLayer = ns.DB_DEFAULTS.weaveMarkerLayer,
-			sparkWidth = ns.DB_DEFAULTS.sparkWidth,
-			sparkHeight = ns.DB_DEFAULTS.sparkHeight,
-			barBorderSize = ns.DB_DEFAULTS.barBorderSize,
-			barBackgroundAlpha = ns.DB_DEFAULTS.barBackgroundAlpha,
-			barBackgroundColor = {
+			weaveTriangleTextureLayer  = ns.DB_DEFAULTS.weaveTriangleTextureLayer,
+			weaveTriangleSize          = ns.DB_DEFAULTS.weaveTriangleSize,
+			weaveTriangleGap           = ns.DB_DEFAULTS.weaveTriangleGap,
+			weaveTriangleAlpha         = ns.DB_DEFAULTS.weaveTriangleAlpha,
+			weaveMarkerLayer           = ns.DB_DEFAULTS.weaveMarkerLayer,
+			sparkWidth                 = ns.DB_DEFAULTS.sparkWidth,
+			sparkHeight                = ns.DB_DEFAULTS.sparkHeight,
+			barBorderSize              = ns.DB_DEFAULTS.barBorderSize,
+			barBackgroundAlpha         = ns.DB_DEFAULTS.barBackgroundAlpha,
+			barBackgroundColor         = {
 				r = ns.DB_DEFAULTS.barBackgroundColor.r,
 				g = ns.DB_DEFAULTS.barBackgroundColor.g,
 				b = ns.DB_DEFAULTS.barBackgroundColor.b,
 				a = ns.DB_DEFAULTS.barBackgroundColor.a,
 			},
-			barBorderColor = {
+			barBorderColor             = {
 				r = ns.DB_DEFAULTS.barBorderColor.r,
 				g = ns.DB_DEFAULTS.barBorderColor.g,
 				b = ns.DB_DEFAULTS.barBorderColor.b,
 				a = ns.DB_DEFAULTS.barBorderColor.a,
 			},
-			sparkAlpha = ns.DB_DEFAULTS.sparkAlpha,
-			sparkColor = {
+			sparkAlpha                 = ns.DB_DEFAULTS.sparkAlpha,
+			sparkColor                 = {
 				r = ns.DB_DEFAULTS.sparkColor.r,
 				g = ns.DB_DEFAULTS.sparkColor.g,
 				b = ns.DB_DEFAULTS.sparkColor.b,
 				a = ns.DB_DEFAULTS.sparkColor.a,
 			},
-			minimalMode = ns.DB_DEFAULTS.minimalMode,
-			lockBars = ns.DB_DEFAULTS.lockBars,
-			colors    = {},
-			positions = {
-				mh     = { point = ns.DB_DEFAULTS.positions.mh.point,     relativePoint = ns.DB_DEFAULTS.positions.mh.relativePoint,     x = ns.DB_DEFAULTS.positions.mh.x,     y = ns.DB_DEFAULTS.positions.mh.y     },
-				oh     = { point = ns.DB_DEFAULTS.positions.oh.point,     relativePoint = ns.DB_DEFAULTS.positions.oh.relativePoint,     x = ns.DB_DEFAULTS.positions.oh.x,     y = ns.DB_DEFAULTS.positions.oh.y     },
+			minimalMode                = ns.DB_DEFAULTS.minimalMode,
+			lockBars                   = ns.DB_DEFAULTS.lockBars,
+			colors                     = {},
+			positions                  = {
+				mh     = { point = ns.DB_DEFAULTS.positions.mh.point, relativePoint = ns.DB_DEFAULTS.positions.mh.relativePoint, x = ns.DB_DEFAULTS.positions.mh.x, y = ns.DB_DEFAULTS.positions.mh.y },
+				oh     = { point = ns.DB_DEFAULTS.positions.oh.point, relativePoint = ns.DB_DEFAULTS.positions.oh.relativePoint, x = ns.DB_DEFAULTS.positions.oh.x, y = ns.DB_DEFAULTS.positions.oh.y },
 				ranged = { point = ns.DB_DEFAULTS.positions.ranged.point, relativePoint = ns.DB_DEFAULTS.positions.ranged.relativePoint, x = ns.DB_DEFAULTS.positions.ranged.x, y = ns.DB_DEFAULTS.positions.ranged.y },
 			},
 		}
@@ -146,13 +146,17 @@ local function MigrateDB()
 	SuperSwingTimerDB.version = SuperSwingTimerDB.version or 10
 
 	local function IsVisibleDefaultColor(color)
-		return color and math.abs((color.r or 0) - 0.25) < 0.001 and math.abs((color.g or 0) - 0.72) < 0.001 and math.abs((color.b or 0) - 1.00) < 0.001
+		return color and math.abs((color.r or 0) - 0.25) < 0.001 and math.abs((color.g or 0) - 0.72) < 0.001 and
+		math.abs((color.b or 0) - 1.00) < 0.001
 	end
-	SuperSwingTimerDB.showMH  = (SuperSwingTimerDB.showMH  ~= false)
-	SuperSwingTimerDB.showOH  = (SuperSwingTimerDB.showOH  ~= false)
-	SuperSwingTimerDB.showRanged = (SuperSwingTimerDB.showRanged ~= false)
-	SuperSwingTimerDB.showWeaveAssist = (SuperSwingTimerDB.showWeaveAssist ~= false)
-	SuperSwingTimerDB.useClassColors = (SuperSwingTimerDB.useClassColors ~= false)
+	SuperSwingTimerDB.showMH             = (SuperSwingTimerDB.showMH ~= false)
+	SuperSwingTimerDB.showOH             = (SuperSwingTimerDB.showOH ~= false)
+	SuperSwingTimerDB.showRanged         = (SuperSwingTimerDB.showRanged ~= false)
+	SuperSwingTimerDB.showWeaveAssist    = (SuperSwingTimerDB.showWeaveAssist ~= false)
+	-- useClassColors strictly defaults to false unless explicitly true in the DB
+	if SuperSwingTimerDB.useClassColors == nil then
+		SuperSwingTimerDB.useClassColors = false
+	end
 	SuperSwingTimerDB.indicatorBlendMode = SuperSwingTimerDB.indicatorBlendMode or ns.DB_DEFAULTS.indicatorBlendMode
 	SuperSwingTimerDB.weaveSpellFamilies = SuperSwingTimerDB.weaveSpellFamilies or {}
 	for key, def in pairs(ns.DB_DEFAULTS.weaveSpellFamilies) do
@@ -164,7 +168,8 @@ local function MigrateDB()
 	SuperSwingTimerDB.positions = SuperSwingTimerDB.positions or {}
 	for slot, def in pairs(ns.DB_DEFAULTS.positions) do
 		if not SuperSwingTimerDB.positions[slot] then
-			SuperSwingTimerDB.positions[slot] = { point = def.point, relativePoint = def.relativePoint, x = def.x, y = def.y }
+			SuperSwingTimerDB.positions[slot] = { point = def.point, relativePoint = def.relativePoint, x = def.x, y =
+			def.y }
 		end
 	end
 	SuperSwingTimerDB.sparkColor = SuperSwingTimerDB.sparkColor or {
@@ -176,13 +181,14 @@ local function MigrateDB()
 	if SuperSwingTimerDB.sparkColor.a == nil then
 		SuperSwingTimerDB.sparkColor.a = SuperSwingTimerDB.sparkAlpha or ns.DB_DEFAULTS.sparkColor.a
 	end
-	SuperSwingTimerDB.sparkAlpha = SuperSwingTimerDB.sparkColor.a or SuperSwingTimerDB.sparkAlpha or ns.DB_DEFAULTS.sparkAlpha
+	SuperSwingTimerDB.sparkAlpha = SuperSwingTimerDB.sparkColor.a or SuperSwingTimerDB.sparkAlpha or
+	ns.DB_DEFAULTS.sparkAlpha
 
 	-- v2 â†’ v3: bar dimensions + colors
 	if (SuperSwingTimerDB.version or 0) < 3 then
-		SuperSwingTimerDB.barWidth  = SuperSwingTimerDB.barWidth  or ns.DB_DEFAULTS.barWidth
+		SuperSwingTimerDB.barWidth  = SuperSwingTimerDB.barWidth or ns.DB_DEFAULTS.barWidth
 		SuperSwingTimerDB.barHeight = SuperSwingTimerDB.barHeight or ns.DB_DEFAULTS.barHeight
-		SuperSwingTimerDB.colors    = SuperSwingTimerDB.colors    or {}
+		SuperSwingTimerDB.colors    = SuperSwingTimerDB.colors or {}
 		for key, def in pairs(ns.DB_DEFAULTS.colors) do
 			if not SuperSwingTimerDB.colors[key] then
 				SuperSwingTimerDB.colors[key] = { r = def.r, g = def.g, b = def.b, a = def.a }
@@ -199,19 +205,21 @@ local function MigrateDB()
 
 	-- v5 â†’ v6: spark texture and sizing
 	if (SuperSwingTimerDB.version or 0) < 6 then
-		SuperSwingTimerDB.sparkTexture = SuperSwingTimerDB.sparkTexture or ns.DB_DEFAULTS.sparkTexture
+		SuperSwingTimerDB.sparkTexture     = SuperSwingTimerDB.sparkTexture or ns.DB_DEFAULTS.sparkTexture
 		SuperSwingTimerDB.weaveMarkerLayer = SuperSwingTimerDB.weaveMarkerLayer or ns.DB_DEFAULTS.weaveMarkerLayer
-		SuperSwingTimerDB.sparkWidth   = SuperSwingTimerDB.sparkWidth   or ns.DB_DEFAULTS.sparkWidth
-		SuperSwingTimerDB.sparkHeight  = SuperSwingTimerDB.sparkHeight  or ns.DB_DEFAULTS.sparkHeight
-		SuperSwingTimerDB.version = 6
+		SuperSwingTimerDB.sparkWidth       = SuperSwingTimerDB.sparkWidth or ns.DB_DEFAULTS.sparkWidth
+		SuperSwingTimerDB.sparkHeight      = SuperSwingTimerDB.sparkHeight or ns.DB_DEFAULTS.sparkHeight
+		SuperSwingTimerDB.version          = 6
 	end
 
 	-- v6 â†’ v7: texture layers, alpha controls, and UI quality-of-life settings
 	if (SuperSwingTimerDB.version or 0) < 7 then
 		SuperSwingTimerDB.barTextureLayer = SuperSwingTimerDB.barTextureLayer or ns.DB_DEFAULTS.barTextureLayer
 		SuperSwingTimerDB.sparkTextureLayer = SuperSwingTimerDB.sparkTextureLayer or ns.DB_DEFAULTS.sparkTextureLayer
-		SuperSwingTimerDB.barBackgroundAlpha = SuperSwingTimerDB.barBackgroundAlpha ~= nil and SuperSwingTimerDB.barBackgroundAlpha or ns.DB_DEFAULTS.barBackgroundAlpha
-		SuperSwingTimerDB.sparkAlpha = SuperSwingTimerDB.sparkAlpha ~= nil and SuperSwingTimerDB.sparkAlpha or ns.DB_DEFAULTS.sparkAlpha
+		SuperSwingTimerDB.barBackgroundAlpha = SuperSwingTimerDB.barBackgroundAlpha ~= nil and
+		SuperSwingTimerDB.barBackgroundAlpha or ns.DB_DEFAULTS.barBackgroundAlpha
+		SuperSwingTimerDB.sparkAlpha = SuperSwingTimerDB.sparkAlpha ~= nil and SuperSwingTimerDB.sparkAlpha or
+		ns.DB_DEFAULTS.sparkAlpha
 		SuperSwingTimerDB.minimalMode = SuperSwingTimerDB.minimalMode == true
 		SuperSwingTimerDB.lockBars = SuperSwingTimerDB.lockBars == true
 		SuperSwingTimerDB.version = 7
@@ -220,16 +228,22 @@ local function MigrateDB()
 	-- v7 â†’ v8: weave spark and dual triangle marker settings
 	if (SuperSwingTimerDB.version or 0) < 8 then
 		SuperSwingTimerDB.weaveSparkTexture = SuperSwingTimerDB.weaveSparkTexture or ns.DB_DEFAULTS.weaveSparkTexture
-		SuperSwingTimerDB.weaveSparkTextureLayer = SuperSwingTimerDB.weaveSparkTextureLayer or ns.DB_DEFAULTS.weaveSparkTextureLayer
+		SuperSwingTimerDB.weaveSparkTextureLayer = SuperSwingTimerDB.weaveSparkTextureLayer or
+		ns.DB_DEFAULTS.weaveSparkTextureLayer
 		SuperSwingTimerDB.weaveSparkWidth = SuperSwingTimerDB.weaveSparkWidth or ns.DB_DEFAULTS.weaveSparkWidth
 		SuperSwingTimerDB.weaveSparkHeight = SuperSwingTimerDB.weaveSparkHeight or ns.DB_DEFAULTS.weaveSparkHeight
-		SuperSwingTimerDB.weaveSparkAlpha = SuperSwingTimerDB.weaveSparkAlpha ~= nil and SuperSwingTimerDB.weaveSparkAlpha or ns.DB_DEFAULTS.weaveSparkAlpha
-		SuperSwingTimerDB.weaveTriangleTopTexture = SuperSwingTimerDB.weaveTriangleTopTexture or ns.DB_DEFAULTS.weaveTriangleTopTexture
-		SuperSwingTimerDB.weaveTriangleBottomTexture = SuperSwingTimerDB.weaveTriangleBottomTexture or ns.DB_DEFAULTS.weaveTriangleBottomTexture
-		SuperSwingTimerDB.weaveTriangleTextureLayer = SuperSwingTimerDB.weaveTriangleTextureLayer or ns.DB_DEFAULTS.weaveTriangleTextureLayer
+		SuperSwingTimerDB.weaveSparkAlpha = SuperSwingTimerDB.weaveSparkAlpha ~= nil and
+		SuperSwingTimerDB.weaveSparkAlpha or ns.DB_DEFAULTS.weaveSparkAlpha
+		SuperSwingTimerDB.weaveTriangleTopTexture = SuperSwingTimerDB.weaveTriangleTopTexture or
+		ns.DB_DEFAULTS.weaveTriangleTopTexture
+		SuperSwingTimerDB.weaveTriangleBottomTexture = SuperSwingTimerDB.weaveTriangleBottomTexture or
+		ns.DB_DEFAULTS.weaveTriangleBottomTexture
+		SuperSwingTimerDB.weaveTriangleTextureLayer = SuperSwingTimerDB.weaveTriangleTextureLayer or
+		ns.DB_DEFAULTS.weaveTriangleTextureLayer
 		SuperSwingTimerDB.weaveTriangleSize = SuperSwingTimerDB.weaveTriangleSize or ns.DB_DEFAULTS.weaveTriangleSize
 		SuperSwingTimerDB.weaveTriangleGap = SuperSwingTimerDB.weaveTriangleGap or ns.DB_DEFAULTS.weaveTriangleGap
-		SuperSwingTimerDB.weaveTriangleAlpha = SuperSwingTimerDB.weaveTriangleAlpha ~= nil and SuperSwingTimerDB.weaveTriangleAlpha or ns.DB_DEFAULTS.weaveTriangleAlpha
+		SuperSwingTimerDB.weaveTriangleAlpha = SuperSwingTimerDB.weaveTriangleAlpha ~= nil and
+		SuperSwingTimerDB.weaveTriangleAlpha or ns.DB_DEFAULTS.weaveTriangleAlpha
 		SuperSwingTimerDB.version = 8
 	end
 
@@ -245,7 +259,7 @@ local function MigrateDB()
 		SuperSwingTimerDB.version = 9
 	end
 
-	-- v9 â†’ v10: restore the original black bar palette unless the user already custom-tuned colors
+	-- v9 -> v10: restore the original dark gray bar palette unless the user already custom-tuned colors
 	if (SuperSwingTimerDB.version or 0) < 10 then
 		SuperSwingTimerDB.colors = SuperSwingTimerDB.colors or {}
 		local colors = SuperSwingTimerDB.colors
@@ -270,10 +284,14 @@ local function MigrateDB()
 			return currentValue
 		end
 
-		SuperSwingTimerDB.weaveSparkWidth = UpgradeWeaveDefault(SuperSwingTimerDB.weaveSparkWidth, 14, ns.DB_DEFAULTS.weaveSparkWidth)
-		SuperSwingTimerDB.weaveSparkHeight = UpgradeWeaveDefault(SuperSwingTimerDB.weaveSparkHeight, 30, ns.DB_DEFAULTS.weaveSparkHeight)
-		SuperSwingTimerDB.weaveTriangleSize = UpgradeWeaveDefault(SuperSwingTimerDB.weaveTriangleSize, 14, ns.DB_DEFAULTS.weaveTriangleSize)
-		SuperSwingTimerDB.weaveTriangleGap = UpgradeWeaveDefault(SuperSwingTimerDB.weaveTriangleGap, 2, ns.DB_DEFAULTS.weaveTriangleGap)
+		SuperSwingTimerDB.weaveSparkWidth = UpgradeWeaveDefault(SuperSwingTimerDB.weaveSparkWidth, 14,
+			ns.DB_DEFAULTS.weaveSparkWidth)
+		SuperSwingTimerDB.weaveSparkHeight = UpgradeWeaveDefault(SuperSwingTimerDB.weaveSparkHeight, 30,
+			ns.DB_DEFAULTS.weaveSparkHeight)
+		SuperSwingTimerDB.weaveTriangleSize = UpgradeWeaveDefault(SuperSwingTimerDB.weaveTriangleSize, 14,
+			ns.DB_DEFAULTS.weaveTriangleSize)
+		SuperSwingTimerDB.weaveTriangleGap = UpgradeWeaveDefault(SuperSwingTimerDB.weaveTriangleGap, 2,
+			ns.DB_DEFAULTS.weaveTriangleGap)
 
 		SuperSwingTimerDB.weaveSpellFamilies = SuperSwingTimerDB.weaveSpellFamilies or {}
 		for key, def in pairs(ns.DB_DEFAULTS.weaveSpellFamilies) do
@@ -334,7 +352,8 @@ local function MigrateDB()
 		elseif SuperSwingTimerDB.sparkColor.a == nil then
 			SuperSwingTimerDB.sparkColor.a = SuperSwingTimerDB.sparkAlpha or ns.DB_DEFAULTS.sparkColor.a
 		end
-		SuperSwingTimerDB.sparkAlpha = SuperSwingTimerDB.sparkColor.a or SuperSwingTimerDB.sparkAlpha or ns.DB_DEFAULTS.sparkAlpha
+		SuperSwingTimerDB.sparkAlpha = SuperSwingTimerDB.sparkColor.a or SuperSwingTimerDB.sparkAlpha or
+		ns.DB_DEFAULTS.sparkAlpha
 		SuperSwingTimerDB.version = 15
 	end
 
@@ -349,9 +368,12 @@ local function MigrateDB()
 
 		SuperSwingTimerDB.sparkWidth = UpgradeThinDefault(SuperSwingTimerDB.sparkWidth, 20, ns.DB_DEFAULTS.sparkWidth)
 		SuperSwingTimerDB.sparkHeight = UpgradeThinDefault(SuperSwingTimerDB.sparkHeight, 44, ns.DB_DEFAULTS.sparkHeight)
-		SuperSwingTimerDB.weaveSparkWidth = UpgradeThinDefault(SuperSwingTimerDB.weaveSparkWidth, 10, ns.DB_DEFAULTS.weaveSparkWidth)
-		SuperSwingTimerDB.weaveSparkHeight = UpgradeThinDefault(SuperSwingTimerDB.weaveSparkHeight, 24, ns.DB_DEFAULTS.weaveSparkHeight)
-		SuperSwingTimerDB.weaveTriangleSize = UpgradeThinDefault(SuperSwingTimerDB.weaveTriangleSize, 10, ns.DB_DEFAULTS.weaveTriangleSize)
+		SuperSwingTimerDB.weaveSparkWidth = UpgradeThinDefault(SuperSwingTimerDB.weaveSparkWidth, 10,
+			ns.DB_DEFAULTS.weaveSparkWidth)
+		SuperSwingTimerDB.weaveSparkHeight = UpgradeThinDefault(SuperSwingTimerDB.weaveSparkHeight, 24,
+			ns.DB_DEFAULTS.weaveSparkHeight)
+		SuperSwingTimerDB.weaveTriangleSize = UpgradeThinDefault(SuperSwingTimerDB.weaveTriangleSize, 10,
+			ns.DB_DEFAULTS.weaveTriangleSize)
 
 		SuperSwingTimerDB.version = 16
 	end
@@ -385,7 +407,8 @@ local function MigrateDB()
 			r = ns.DB_DEFAULTS.barBackgroundColor.r,
 			g = ns.DB_DEFAULTS.barBackgroundColor.g,
 			b = ns.DB_DEFAULTS.barBackgroundColor.b,
-			a = SuperSwingTimerDB.barBackgroundAlpha ~= nil and SuperSwingTimerDB.barBackgroundAlpha or ns.DB_DEFAULTS.barBackgroundColor.a,
+			a = SuperSwingTimerDB.barBackgroundAlpha ~= nil and SuperSwingTimerDB.barBackgroundAlpha or
+			ns.DB_DEFAULTS.barBackgroundColor.a,
 		}
 		SuperSwingTimerDB.barBorderColor = SuperSwingTimerDB.barBorderColor or {
 			r = ns.DB_DEFAULTS.barBorderColor.r,
@@ -394,6 +417,18 @@ local function MigrateDB()
 			a = ns.DB_DEFAULTS.barBorderColor.a,
 		}
 		SuperSwingTimerDB.version = 20
+	end
+
+	-- v20 -> v21: change default colors to black (0,0,0)
+	-- This resolves the "Yellow Bar" conflict where default bars looked like Heroic Strike indicators.
+	if (SuperSwingTimerDB.version or 0) < 21 then
+		SuperSwingTimerDB.colors = SuperSwingTimerDB.colors or {}
+		local colors = SuperSwingTimerDB.colors
+		colors.mh = { r = 0, g = 0, b = 0, a = 1 }
+		colors.oh = { r = 0, g = 0, b = 0, a = 1 }
+		colors.ranged = { r = 0, g = 0, b = 0, a = 1 }
+		SuperSwingTimerDB.useClassColors = false
+		SuperSwingTimerDB.version = 21
 	end
 end
 
@@ -404,8 +439,8 @@ local function OnAddonLoaded()
 	MigrateDB()
 
 	-- Apply DB dimensions to runtime constants
-	ns.BAR_WIDTH  = SuperSwingTimerDB.barWidth  or ns.DB_DEFAULTS.barWidth
-	ns.BAR_HEIGHT = SuperSwingTimerDB.barHeight or ns.DB_DEFAULTS.barHeight
+	ns.BAR_WIDTH   = SuperSwingTimerDB.barWidth or ns.DB_DEFAULTS.barWidth
+	ns.BAR_HEIGHT  = SuperSwingTimerDB.barHeight or ns.DB_DEFAULTS.barHeight
 
 	-- Detect class once
 	local _, class = UnitClass("player")
@@ -414,8 +449,6 @@ local function OnAddonLoaded()
 	if ns.InitWeaving then
 		ns.InitWeaving()
 	end
-	ns.SeedLegacyBarColorsFromClass()
-
 	-- Class-specific mods first (registers callbacks before bars are created)
 	ns.InitClassMods()
 
@@ -529,16 +562,13 @@ frame:SetScript("OnEvent", function(self, event, ...)
 			OnAddonLoaded()
 			RegisterEvents()
 		end
-
 	elseif event == "COMBAT_LOG_EVENT_UNFILTERED" then
 		ns.HandleCLEU()
-
 	elseif event == "UNIT_SPELLCAST_SUCCEEDED" then
 		ns.HandleSpellcastSucceeded(...)
 		if ns.playerClass == "SHAMAN" and ns.HandleWeavingSpellcast then
 			ns.HandleWeavingSpellcast(event, ...)
 		end
-
 	elseif event == "UNIT_SPELLCAST_START" then
 		if ns.HandleSpellcastStart then
 			ns.HandleSpellcastStart(...)
@@ -546,7 +576,6 @@ frame:SetScript("OnEvent", function(self, event, ...)
 		if ns.playerClass == "SHAMAN" and ns.HandleWeavingSpellcast then
 			ns.HandleWeavingSpellcast(event, ...)
 		end
-
 	elseif event == "UNIT_SPELLCAST_CHANNEL_START" then
 		if ns.HandleSpellcastChannelStart then
 			ns.HandleSpellcastChannelStart(...)
@@ -554,7 +583,6 @@ frame:SetScript("OnEvent", function(self, event, ...)
 		if ns.playerClass == "SHAMAN" and ns.HandleWeavingSpellcast then
 			ns.HandleWeavingSpellcast(event, ...)
 		end
-
 	elseif event == "UNIT_SPELLCAST_STOP" then
 		if ns.HandleSpellcastStop then
 			ns.HandleSpellcastStop(...)
@@ -562,7 +590,6 @@ frame:SetScript("OnEvent", function(self, event, ...)
 		if ns.playerClass == "SHAMAN" and ns.HandleWeavingSpellcast then
 			ns.HandleWeavingSpellcast(event, ...)
 		end
-
 	elseif event == "UNIT_SPELLCAST_CHANNEL_STOP" then
 		if ns.HandleSpellcastChannelStop then
 			ns.HandleSpellcastChannelStop(...)
@@ -570,7 +597,6 @@ frame:SetScript("OnEvent", function(self, event, ...)
 		if ns.playerClass == "SHAMAN" and ns.HandleWeavingSpellcast then
 			ns.HandleWeavingSpellcast(event, ...)
 		end
-
 	elseif event == "UNIT_SPELLCAST_INTERRUPTED" or event == "UNIT_SPELLCAST_FAILED" then
 		if ns.HandleSpellcastInterruptedOrFailed then
 			ns.HandleSpellcastInterruptedOrFailed(...)
@@ -578,18 +604,15 @@ frame:SetScript("OnEvent", function(self, event, ...)
 		if ns.playerClass == "SHAMAN" and ns.HandleWeavingSpellcast then
 			ns.HandleWeavingSpellcast(event, ...)
 		end
-
 	elseif event == "UNIT_SPELLCAST_DELAYED" then
 		if ns.playerClass == "SHAMAN" and ns.HandleWeavingSpellcast then
 			ns.HandleWeavingSpellcast(event, ...)
 		end
-
 	elseif event == "PLAYER_STARTED_MOVING" then
 		ns.isMoving = true
 		if ns.UpdateCastZoneVisual then
 			ns.UpdateCastZoneVisual()
 		end
-
 	elseif event == "PLAYER_STOPPED_MOVING" then
 		ns.isMoving = false
 		if ns.RefreshLatencyCache then
@@ -599,26 +622,22 @@ frame:SetScript("OnEvent", function(self, event, ...)
 		if ns.UpdateCastZoneVisual then
 			ns.UpdateCastZoneVisual()
 		end
-
 	elseif event == "UNIT_ATTACK_SPEED" then
 		local unit = ...
 		if unit == "player" then
 			ns.SyncMeleeTimerSpeed("mh", nil, true)
 			ns.SyncMeleeTimerSpeed("oh", nil, true)
 		end
-
 	elseif event == "UNIT_AURA" then
 		local unit = ...
 		if unit == "player" then
 			ns.SanityCheckTimers()
 		end
-
 	elseif event == "UNIT_RANGEDDAMAGE" then
 		local unit = ...
 		if unit == "player" then
 			ns.SyncRangedTimerSpeed(nil, true)
 		end
-
 	elseif event == "SPELL_UPDATE_COOLDOWN" then
 		if ns.playerClass == "HUNTER" and ns.GetAutoShotCooldown then
 			local _, autoShotDuration = ns.GetAutoShotCooldown()
@@ -630,27 +649,22 @@ frame:SetScript("OnEvent", function(self, event, ...)
 				end
 			end
 		end
-
 	elseif event == "UNIT_INVENTORY_CHANGED" then
 		ns.UpdateOHBar()
 		ns.SanityCheckTimers()
-
 	elseif event == "PLAYER_EQUIPMENT_CHANGED" then
 		ns.UpdateOHBar()
 		ns.SanityCheckTimers(true)
-
 	elseif event == "PLAYER_ENTERING_WORLD" then
 		local isInitialLogin, isReloadingUi = ...
 		ns.OnPlayerEnteringWorld(isInitialLogin, isReloadingUi)
 		if ns.ClearWeavePreview then
 			ns.ClearWeavePreview()
 		end
-
 	elseif event == "SPELLS_CHANGED" then
 		if ns.playerClass == "SHAMAN" and ns.RebuildWeaveSpellCatalog then
 			ns.RebuildWeaveSpellCatalog()
 		end
-
 	elseif event == "START_AUTOREPEAT_SPELL" then
 		-- Hunter starts auto-shooting
 		if ns.playerClass == "HUNTER" and ns.GetAutoShotCooldown then
@@ -660,15 +674,12 @@ frame:SetScript("OnEvent", function(self, event, ...)
 			end
 		end
 		if ns.rangedBar then ns.rangedBar:SetAlpha(1) end
-
 	elseif event == "STOP_AUTOREPEAT_SPELL" then
 		ns.ResetTimer("ranged")
 		if ns.rangedBar then ns.rangedBar:SetAlpha(0) end
-
 	elseif event == "PLAYER_REGEN_DISABLED" then
 		ns.ShowBars()
 		ns.StartSanityTicker()
-
 	elseif event == "PLAYER_REGEN_ENABLED" then
 		ns.StopSanityTicker()
 		ns.HideBars()
@@ -683,7 +694,6 @@ frame:SetScript("OnEvent", function(self, event, ...)
 		if ns.ClearWeavePreview then
 			ns.ClearWeavePreview()
 		end
-
 	elseif event == "UPDATE_SHAPESHIFT_FORM" then
 		-- Druid form label update handled via classmod callback
 		if ns.OnDruidFormChange then
@@ -697,4 +707,3 @@ frame:SetScript("OnEvent", function(self, event, ...)
 end)
 
 ns.SetUpdateEnabled(ns.HasActiveTimers())
-
