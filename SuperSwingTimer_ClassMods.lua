@@ -462,6 +462,110 @@ local function SetupEnhShaman()
 end
 
 local function SetupDruid()
+	local IsCurrentSpell = rawget(_G, "IsCurrentSpell")
+	if not IsCurrentSpell then
+		local C_Spell = rawget(_G, "C_Spell")
+		if C_Spell and C_Spell.IsCurrentSpell then
+			IsCurrentSpell = C_Spell.IsCurrentSpell
+		end
+	end
+
+	local function FindCurrentQueuedSpell(spellSet)
+		if not IsCurrentSpell or not spellSet then
+			return nil
+		end
+
+		local maulName = ns.GetSpellInfo(6807)
+		if maulName and spellSet == ns.DRUID_MAUL_SPELLS and IsCurrentSpell(maulName) then
+			return maulName
+		end
+
+		for key in pairs(spellSet) do
+			if type(key) == "number" and IsCurrentSpell(key) then
+				return key
+			end
+		end
+
+		return nil
+	end
+
+	local function RestoreMainHandColor()
+		if not ns.mhBar then
+			return
+		end
+
+		local c = ns.mhBarBaseColor or (ns.GetBarColor and ns.GetBarColor("mh"))
+		if c then
+			ns.mhBar:SetStatusBarColor(c.r or 0, c.g or 0, c.b or 0, c.a or 1)
+		else
+			ns.mhBar:SetStatusBarColor(0, 0, 0, 1)
+		end
+	end
+
+	local function UpdateDruidQueueTint()
+		if ns.playerClass ~= "DRUID" or not ns.mhBar then
+			return
+		end
+
+		local alpha = (ns.mhBarBaseColor and ns.mhBarBaseColor.a) or 1
+		local queuedSpellId = FindCurrentQueuedSpell(ns.DRUID_MAUL_SPELLS)
+		if queuedSpellId then
+			ns.pendingMeleeQueueSpellId = queuedSpellId
+			ns.mhBar:SetStatusBarColor(1.0, 0.92, 0.20, alpha) -- Maul: yellow
+			return
+		end
+
+		if ns.pendingMeleeQueueSpellId then
+			ns.pendingMeleeQueueSpellId = nil
+			RestoreMainHandColor()
+		end
+	end
+
+	ns.UpdateDruidQueueTint = UpdateDruidQueueTint
+
+	local function ApplyDruidQueueTint(spellName)
+		if not ns.mhBar then
+			return
+		end
+
+		local alpha = (ns.mhBarBaseColor and ns.mhBarBaseColor.a) or 1
+		if ns.DRUID_MAUL_SPELLS and ns.DRUID_MAUL_SPELLS[spellName] then
+			ns.pendingMeleeQueueSpellId = spellName
+			ns.mhBar:SetStatusBarColor(1.0, 0.92, 0.20, alpha) -- Maul: yellow
+		else
+			RestoreMainHandColor()
+		end
+	end
+
+	-- Queue indicator colors restore to the base MH tint on the next real swing.
+	ns.OnMeleeSwing = function(slot)
+		if slot == "mh" and ns.mhBar then
+			ns.pendingMeleeQueueSpellId = nil
+			RestoreMainHandColor()
+		end
+	end
+
+	ns.ClearDruidQueueTint = function()
+		ns.pendingMeleeQueueSpellId = nil
+		RestoreMainHandColor()
+	end
+
+	-- Hook druid queued attacks (Maul)
+	local origHandleSpellcast = ns.HandleSpellcastSucceeded
+	ns.HandleSpellcastSucceeded = function(unit, spellName, spellRank)
+		if unit == "player" then
+			if ns.DRUID_MAUL_SPELLS and ns.DRUID_MAUL_SPELLS[spellName] then
+				ApplyDruidQueueTint(spellName)
+			end
+		end
+		if origHandleSpellcast then
+			origHandleSpellcast(unit, spellName, spellRank)
+		end
+		if ns.UpdateDruidQueueTint then
+			ns.UpdateDruidQueueTint()
+		end
+	end
+
 	-- Show current form in the MH bar label.
 	ns.OnDruidFormChange = function(formSpellId)
 		if not ns.mhBar then return end
@@ -473,6 +577,7 @@ local function SetupDruid()
 		end
 		ns.mhBar.labelText:SetText(label)
 	end
+
 	ns.OnBarsCreated = function()
 		-- Set initial label from current shapeshift form
 		local getShapeshiftForm = rawget(_G, "GetShapeshiftForm")

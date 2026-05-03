@@ -24,8 +24,8 @@ end
 -- ============================================================
 -- UI constants
 -- ============================================================
-ns.BAR_WIDTH               = 200
-ns.BAR_HEIGHT              = 20
+ns.BAR_WIDTH               = 240
+ns.BAR_HEIGHT              = 18
 ns.HUNTER_CAST_BAR_HEIGHT  = 10
 ns.HUNTER_CAST_BAR_GAP     = 2
 ns.CAST_WINDOW             = 0.5 -- shared hidden hunter / ranged cast window in TBC
@@ -238,8 +238,12 @@ for _, id in ipairs({ 845, 7369, 11608, 11609, 20569, 25231 }) do
 	registerNMAs({ id })
 end
 
--- Maul (Druid â€” Bear)
-registerNMAs({ 6807, 6808, 6809, 8972, 9745, 9880, 9881, 26996 })
+-- Maul (Druid — Bear)
+ns.DRUID_MAUL_SPELLS = {}
+for _, id in ipairs({ 6807, 6808, 6809, 8972, 9745, 9880, 9881, 26996, 48479, 48480 }) do
+	ns.DRUID_MAUL_SPELLS[id] = true
+	registerNMAs({ id })
+end
 
 -- Raptor Strike (Hunter)
 registerNMAs({ 2973, 14260, 14261, 14262, 14263, 14264, 14265, 14266, 27014 })
@@ -286,6 +290,7 @@ end
 addSpellNamesToLookup(ns.NMA_LOOKUP)
 addSpellNamesToLookup(ns.WARRIOR_HEROIC_STRIKE_SPELLS)
 addSpellNamesToLookup(ns.WARRIOR_CLEAVE_SPELLS)
+addSpellNamesToLookup(ns.DRUID_MAUL_SPELLS)
 addSpellNamesToLookup(ns.RESET_SWING_SPELLS)
 addSpellNamesToLookup(ns.NO_RESET_SWING_SPELLS)
 addSpellNamesToLookup(ns.PAUSE_SWING_SPELLS)

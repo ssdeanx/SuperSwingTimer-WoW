@@ -1,4 +1,10 @@
 # Super Swing Timer Changelog
+  
+## 3.1.18 - 2026-05-02
+  
+- Added next-melee-attack (NMA) queue tinting for Druid Maul. The Main Hand bar now turns yellow when Maul is queued, matching the Warrior Heroic Strike behavior.
+- Registered additional Maul spell IDs for TBC Classic Anniversary compatibility.
+- Wired Druid queue tint updates into the main UI loop and color restoration logic.
 
 ## 3.1.17 - 2026-05-01
 

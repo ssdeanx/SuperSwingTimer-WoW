@@ -1206,6 +1206,9 @@ function ns.ApplyBarColors()
 	if ns.UpdateWarriorQueueTint then
 		ns.UpdateWarriorQueueTint()
 	end
+	if ns.UpdateDruidQueueTint then
+		ns.UpdateDruidQueueTint()
+	end
 	if ns.ApplySparkColor then
 		ns.ApplySparkColor()
 	end
@@ -1220,6 +1223,7 @@ function ns.OnUpdate(elapsed)
 	if ns.mhBar then UpdateMeleeBar("mh", ns.mhBar) end
 	if ns.ohBar then UpdateMeleeBar("oh", ns.ohBar) end
 	if ns.UpdateWarriorQueueTint then ns.UpdateWarriorQueueTint() end
+	if ns.UpdateDruidQueueTint then ns.UpdateDruidQueueTint() end
 end
 
 -- ============================================================

@@ -2,3 +2,10 @@ log.txt
 .omg/state/learn-watch.json
 .geminiignore
 .kilo/agent-manager.json
+
+*.log
+*.tmp
+*.bak
+*.swp
+*undefined/
+

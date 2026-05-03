@@ -2,7 +2,7 @@
 
 Melee and ranged swing timer for World of Warcraft Classic and TBC (including Anniversary Edition).
 
-Super Swing Timer tracks white-hit swing timers across main hand, off hand, and ranged attacks. It is tuned for Classic/TBC mechanics such as next-melee-attack abilities, dual-wield desync, parry haste, extra-attack suppression, haste rescaling, druid form resets, ret paladin seal-breakpoint timing, and shaman weave breakpoints. Version v3.1.17 adds full support for the TBC Classic Anniversary 1.15+ engine with optimized API wrappers and synchronized Hunter Auto Shot timing.
+Super Swing Timer tracks white-hit swing timers across main hand, off hand, and ranged attacks. It is tuned for Classic/TBC mechanics such as next-melee-attack abilities, dual-wield desync, parry haste, extra-attack suppression, haste rescaling, druid form resets, ret paladin seal-breakpoint timing, and shaman weave breakpoints. Version v3.1.18 adds full support for the TBC Classic Anniversary 1.15+ engine with optimized API wrappers, synchronized Hunter Auto Shot timing, and yellow queue tinting for Druid Maul.
 
 ## At a glance
 
@@ -24,7 +24,7 @@ Super Swing Timer tracks white-hit swing timers across main hand, off hand, and 
 - Hunter auto shot with `GetSpellCooldown(75)` + ranged-speed sync for the ranged timer, plus ranged-haste-aware fallback resync when `UnitRangedDamage()` is temporarily unavailable, a separate latency-aware 0.5s Auto Shot / Multi-Shot cast window, movement safety feedback that turns green when you stop before the breakpoint, a black threshold line showing when the cast window begins, and a dedicated 10px Auto Shot / Multi-Shot cast bar beneath the ranged timer
 - Dual-wield tracking with independent MH and OH timers
 - NMA detection for Heroic Strike, Cleave, Maul, and Raptor Strike
-- Warrior queue colors for Heroic Strike, Cleave, and Slam so the MH bar clearly shows which special is queued
+- Warrior and Druid queue colors for Heroic Strike, Cleave, and Maul so the MH bar clearly shows which special is queued
 - Haste rescaling when weapon speed changes mid-swing
 - Parry haste handling
 - Extra attack suppression for Sword Spec and Windfury
@@ -42,7 +42,7 @@ Super Swing Timer tracks white-hit swing timers across main hand, off hand, and 
 | Situation | What you see | Why it matters |
 | --- | --- | --- |
 | Auto Shot / Multi-Shot | A dedicated 0.5s hunter cast bar under the ranged timer, derived from the end of the ranged cycle hidden cast window, plus the ranged cooldown bar itself | Shows the stop-to-fire window near cycle end so you can hold still to fire, then move after the shot without clipping the next cycle |
-| Heroic Strike / Cleave | MH bar tint changes to show the queued next-melee attack | Shows the queued state and helps you cancel or preserve rage before the hit lands |
+| Heroic Strike / Cleave / Maul | MH bar tint changes to show the queued next-melee attack | Shows the queued state and helps you cancel or preserve rage before the hit lands |
 | Slam | MH bar pauses and resumes instead of behaving like a next-melee queue ability | Preserves Slam's unique pause/extend mechanic |
 | Shaman weave | Small breakpoint markers stay above the MH bar fill | Makes the cast breakpoint readable without covering the swing bar |
 
@@ -88,7 +88,7 @@ The main commands are `/sst`, `/super`, and `/superswingtimer`. `/swang` remains
 | Rogue | MH + OH | Dual-wield tracking |
 | Paladin | MH | Seal breakpoint line |
 | Enhancement Shaman | MH + OH | Weave assist for LB, CL, HW, LHW, and CH breakpoints with spell-haste fallback support (`UnitSpellHaste` → `GetSpellHaste`) |
-| Feral Druid | MH | Form label and form reset support |
+| Feral Druid | MH | Form label, form reset support, and Maul queue tinting |
 | Mage / Priest / Warlock | None | No auto-attack bars |
 
 ## Configuration
