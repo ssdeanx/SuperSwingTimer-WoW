@@ -1,8 +1,6 @@
 local _, ns        = ...
 ---@diagnostic disable: undefined-field
-local GetSpellInfo         = rawget(_G, "GetSpellInfo")
 local GetAddOnInfo         = rawget(_G, "GetAddOnInfo")
-local C_Spell              = rawget(_G, "C_Spell")
 
 -- Authoritative GetSpellInfo wrapper for Classic/TBC Anniversary (1.15+)
 function ns.GetSpellInfo(spellIdentifier)
@@ -34,7 +32,7 @@ ns.CAST_WINDOW             = 0.5 -- shared hidden hunter / ranged cast window in
 -- Spell IDs
 -- ============================================================
 ns.AUTO_SHOT_ID            = 75
-ns.AUTO_SHOT_NAME          = ns.GetSpellInfo(ns.AUTO_SHOT_ID) or "Auto Shot"
+ns.AUTO_SHOT_NAME          = ns.GetSpellInfo(ns.AUTO_SHOT_ID) or "Auto Shot" or "Shoot"
 ns.HUNTER_CAST_SPELLS      = {
 	[75] = true, -- Auto Shot
 	[2643] = true, -- Multi-Shot rank 1
@@ -161,7 +159,7 @@ for _, familyKey in ipairs(ns.PALADIN_SEAL_FAMILY_ORDER) do
 			if not ns.PALADIN_SEAL_NAME_LOOKUP[spellName] then
 				ns.PALADIN_SEAL_NAME_LOOKUP[spellName] = familyKey
 			end
-			local localizedName = GetSpellInfo and GetSpellInfo(spellName)
+			local localizedName = ns.GetSpellInfo and ns.GetSpellInfo(spellName)
 			if localizedName and not ns.PALADIN_SEAL_NAME_LOOKUP[localizedName] then
 				ns.PALADIN_SEAL_NAME_LOOKUP[localizedName] = familyKey
 			end
@@ -172,7 +170,7 @@ for _, familyKey in ipairs(ns.PALADIN_SEAL_FAMILY_ORDER) do
 				ns.PALADIN_SEAL_LOOKUP[spellId] = familyKey
 			end
 
-			local spellName = GetSpellInfo and GetSpellInfo(spellId)
+			local spellName = ns.GetSpellInfo and ns.GetSpellInfo(spellId)
 			if spellName and not ns.PALADIN_SEAL_NAME_LOOKUP[spellName] then
 				ns.PALADIN_SEAL_NAME_LOOKUP[spellName] = familyKey
 			end
@@ -194,25 +192,18 @@ function ns.GetPaladinSealFamilyByAuraName(auraName)
 	return ns.PALADIN_SEAL_NAME_LOOKUP and ns.PALADIN_SEAL_NAME_LOOKUP[auraName] or nil
 end
 
--- Next-Melee-Attack (NMA) abilities: queue on the MH swing, fire
--- as SPELL_DAMAGE (not SWING_DAMAGE), reset MH timer on land.
--- OH is unaffected by NMAs.
-ns.NMA_LOOKUP = {}
-local function registerNMAs(ids)
-	for _, id in ipairs(ids) do
-		ns.NMA_LOOKUP[id] = true
-	end
-end
+-- Next-Melee-Attack abilities stay separated by class. Landed-hit reset
+-- detection is handled in the state module against the active class table.
 
 local function addSpellNamesToLookup(lookup)
-	if type(GetSpellInfo) ~= "function" then
+	if type(ns.GetSpellInfo) ~= "function" then
 		return
 	end
 
 	local names = {}
 	for spellId in pairs(lookup) do
 		if type(spellId) == "number" then
-			local spellName = GetSpellInfo(spellId)
+			local spellName = ns.GetSpellInfo(spellId)
 			if spellName then
 				names[#names + 1] = spellName
 			end
@@ -228,25 +219,25 @@ end
 ns.WARRIOR_HEROIC_STRIKE_SPELLS = {}
 for _, id in ipairs({ 78, 284, 285, 1608, 11564, 11565, 11566, 11567, 25286, 29707, 30324 }) do
 	ns.WARRIOR_HEROIC_STRIKE_SPELLS[id] = true
-	registerNMAs({ id })
 end
 
 -- Cleave (Warrior)
 ns.WARRIOR_CLEAVE_SPELLS = {}
 for _, id in ipairs({ 845, 7369, 11608, 11609, 20569, 25231 }) do
 	ns.WARRIOR_CLEAVE_SPELLS[id] = true
-	registerNMAs({ id })
 end
 
 -- Maul (Druid — Bear)
 ns.DRUID_MAUL_SPELLS = {}
 for _, id in ipairs({ 6807, 6808, 6809, 8972, 9745, 9880, 9881, 26996, 48479, 48480 }) do
 	ns.DRUID_MAUL_SPELLS[id] = true
-	registerNMAs({ id })
 end
 
 -- Raptor Strike (Hunter)
-registerNMAs({ 2973, 14260, 14261, 14262, 14263, 14264, 14265, 14266, 27014 })
+ns.HUNTER_RAPTOR_STRIKE_SPELLS = {}
+for _, id in ipairs({ 2973, 14260, 14261, 14262, 14263, 14264, 14265, 14266, 27014 }) do
+	ns.HUNTER_RAPTOR_STRIKE_SPELLS[id] = true
+end
 
 -- Spell-ID rules adapted from the reference swingtimer library.
 -- RESET_SWING_SPELLS: casts that should reset melee/ranged swing flow.
@@ -287,10 +278,10 @@ for _, id in ipairs({ 14295, 11925, 11951 }) do
 	ns.RESET_RANGED_SWING_SPELLS[id] = true
 end
 
-addSpellNamesToLookup(ns.NMA_LOOKUP)
 addSpellNamesToLookup(ns.WARRIOR_HEROIC_STRIKE_SPELLS)
 addSpellNamesToLookup(ns.WARRIOR_CLEAVE_SPELLS)
 addSpellNamesToLookup(ns.DRUID_MAUL_SPELLS)
+addSpellNamesToLookup(ns.HUNTER_RAPTOR_STRIKE_SPELLS)
 addSpellNamesToLookup(ns.RESET_SWING_SPELLS)
 addSpellNamesToLookup(ns.NO_RESET_SWING_SPELLS)
 addSpellNamesToLookup(ns.PAUSE_SWING_SPELLS)
@@ -350,7 +341,7 @@ ns.CLASS_CONFIG = {
 -- SavedVariables defaults
 -- ============================================================
 ns.DB_DEFAULTS = {
-	version                    = 22,
+	version                    = 24,
 	showMH                     = true,
 	showOH                     = true,
 	showRanged                 = true,
@@ -683,38 +674,6 @@ function ns.GetBarColor(colorKey)
 end
 
 
-
-function ns.SeedLegacyBarColorsFromClass()
-	local db = rawget(_G, "SuperSwingTimerDB")
-	if not db or db.useClassColors == false then
-		return
-	end
-
-	local color = ns.GetPlayerClassColor()
-	if not color then
-		return
-	end
-
-	db.colors = db.colors or {}
-	db.colors.mh = {
-		r = color.r,
-		g = color.g,
-		b = color.b,
-		a = db.colors.mh and db.colors.mh.a or 1,
-	}
-	db.colors.oh = {
-		r = color.r,
-		g = color.g,
-		b = color.b,
-		a = db.colors.oh and db.colors.oh.a or 1,
-	}
-	db.colors.ranged = {
-		r = color.r,
-		g = color.g,
-		b = color.b,
-		a = db.colors.ranged and db.colors.ranged.a or 1,
-	}
-end
 
 function ns.GetIndicatorBlendMode()
 	local db = rawget(_G, "SuperSwingTimerDB")

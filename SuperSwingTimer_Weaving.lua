@@ -4,7 +4,6 @@ local math_max = math.max
 local GetTimePreciseSec = rawget(_G, "GetTimePreciseSec")
 local GetTime = rawget(_G, "GetTime")
 local GetNetStats = rawget(_G, "GetNetStats")
-local GetSpellInfo = rawget(_G, "GetSpellInfo")
 local UnitSpellHaste = rawget(_G, "UnitSpellHaste")
 local GetSpellHaste = rawget(_G, "GetSpellHaste")
 local UnitCastingInfo = rawget(_G, "UnitCastingInfo")
@@ -33,7 +32,12 @@ end
 
 local function ResolveSpellInfo(group)
 	for _, spellId in ipairs(group.ids) do
-		local spellName, _, _, castTime = GetSpellInfo(spellId)
+		local spellName, castTime
+		if ns.GetSpellInfo then
+			local spellInfo = { ns.GetSpellInfo(spellId) }
+			spellName = spellInfo[1]
+			castTime = spellInfo[4]
+		end
 		if spellName and castTime and castTime > 0 then
 			return {
 				spellId = spellId,
@@ -272,9 +276,9 @@ function ns.GetWeaveDisplayInfo()
 	return BuildDisplayInfo(spellInfo)
 end
 
-function ns.HandleWeavingSpellcast(event, unit, spellName, spellRank)
-	-- Classic TBC: UNIT_SPELLCAST_* fires (unit, spellName, spellRank) -- no castGUID/spellId
-	-- GetTrackedSpellInfo handles both numeric IDs (CLEU) and spell names (spellcast events)
+function ns.HandleWeavingSpellcast(event, unit, castGUIDOrSpellName, spellId)
+	-- Classic/BCC spellcast events prefer castGUID + spellID, but keep support for
+	-- older spellName payloads by falling back when no spellID is present.
 	if unit ~= "player" then
 		return
 	end
@@ -284,7 +288,8 @@ function ns.HandleWeavingSpellcast(event, unit, spellName, spellRank)
 		return
 	end
 
-	local spellInfo = GetTrackedSpellInfo(spellName)
+	local spellToken = spellId ~= nil and spellId or castGUIDOrSpellName
+	local spellInfo = GetTrackedSpellInfo(spellToken)
 	if event == "UNIT_SPELLCAST_START" or event == "UNIT_SPELLCAST_DELAYED" or event == "UNIT_SPELLCAST_CHANNEL_START" then
 		if spellInfo then
 			state.isCasting = true

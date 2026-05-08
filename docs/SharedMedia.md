@@ -1,6 +1,6 @@
 # Shared Media
 
-Bar and ranged texture rows use compact preview dropdowns that stay focused on bar-style textures, while the spark row and the shaman weave spark row open dedicated thumbnail browsers. The browsers treat the WeakAuras `Square_FullWhite` texture as the default `Normal` spark preset and include Blizzard, SharedMedia, WeakAuras, and supported addon-pack sources when they are installed.
+Bar and ranged texture rows now use a scrolling full-preview list that keeps the texture stretched behind the label for each row, while the spark row and the shaman weave spark row open dedicated thumbnail browsers. The bar-texture list stays focused on bar-style media and pulls from Blizzard fallbacks, WeakAuras bar textures, and LibSharedMedia statusbar registrations from installed media packs. The browsers treat the WeakAuras `Square_FullWhite` texture as the default `Normal` spark preset and include Blizzard, SharedMedia, WeakAuras, and supported addon-pack sources when they are installed.
 
 ## WeakAuras shape presets used by the spark / weave pickers
 
@@ -14,9 +14,9 @@ Interface\AddOns\WeakAuras\Media\Textures\triangle.tga        -- alternate weave
 
 ## Blizzard fallback textures
 
-These Blizzard textures are always available even when `LibSharedMedia-3.0` is not installed, and they are grouped in the same dropdown with a `[{category}] {label}` prefix.
+These Blizzard textures are always available even when `LibSharedMedia-3.0` is not installed, and they are grouped in the same scrolling bar-texture list or spark browser alongside any LibSharedMedia registrations.
 
-The addon cannot walk arbitrary folders at runtime, so the browser is built from registered media plus curated addon presets rather than a live filesystem scan.
+The addon cannot walk arbitrary folders at runtime, so the browser is built from registered media plus curated addon presets rather than a live filesystem scan. In practice that means the picker can show all installed LibSharedMedia statusbar registrations—including SharedMedia-Blizzard style entries when that pack is installed—without guessing at arbitrary unregistered file paths.
 
 ```lua
 -- STATUSBAR / BAR FALLBACKS

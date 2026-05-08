@@ -5,6 +5,10 @@ local GetTimePreciseSec = rawget(_G, "GetTimePreciseSec")
 local GetTime = rawget(_G, "GetTime")
 local GetSpellCooldown = rawget(_G, "GetSpellCooldown")
 local GCD_SPELL_ID = 61304 -- Spell ID used to query the GCD for seal twist timing.
+local WARRIOR_HEROIC_STRIKE_TINT = { r = 1.0, g = 0.92, b = 0.20 }
+local WARRIOR_CLEAVE_TINT = { r = 0.20, g = 0.80, b = 0.25 }
+local DRUID_MAUL_TINT = { r = 1.0, g = 0.78, b = 0.10 }
+local HUNTER_RAPTOR_TINT = { r = 0.55, g = 1.00, b = 0.55 }
 
 local function GetCurrentTime()
 	if GetTimePreciseSec then
@@ -112,12 +116,16 @@ local function SetupRetPaladin()
 		end
 
 		local gcdRemaining = (gcdStart + gcdDuration) - now
-		if gcdRemaining <= 0 or gcdRemaining >= timer.duration then
+		if gcdRemaining <= 0 then
 			sealResealLine:Hide()
 			return
 		end
 
-		local resealTick = (timer.duration - gcdRemaining) / timer.duration
+		local swingElapsed = math.max(0, now - (timer.lastSwing or now))
+		local resealTick = (swingElapsed + gcdRemaining) / timer.duration
+		while resealTick > 1 do
+			resealTick = resealTick - 1
+		end
 		if resealTick < 0 then
 			resealTick = 0
 		elseif resealTick > 1 then
@@ -231,51 +239,50 @@ local function SetupWarrior()
 		local alpha = (ns.mhBarBaseColor and ns.mhBarBaseColor.a) or 1
 		local queuedSpellId = FindCurrentQueuedSpell(ns.WARRIOR_HEROIC_STRIKE_SPELLS)
 		if queuedSpellId then
-			ns.pendingMeleeQueueSpellId = queuedSpellId
-			ns.mhBar:SetStatusBarColor(1.0, 0.92, 0.20, alpha)
+			ns.warriorQueuedMeleeSpell = queuedSpellId
+			ns.mhBar:SetStatusBarColor(WARRIOR_HEROIC_STRIKE_TINT.r, WARRIOR_HEROIC_STRIKE_TINT.g, WARRIOR_HEROIC_STRIKE_TINT.b, alpha)
 			return
 		end
 
 		queuedSpellId = FindCurrentQueuedSpell(ns.WARRIOR_CLEAVE_SPELLS)
 		if queuedSpellId then
-			ns.pendingMeleeQueueSpellId = queuedSpellId
-			ns.mhBar:SetStatusBarColor(0.20, 0.80, 0.25, alpha)
+			ns.warriorQueuedMeleeSpell = queuedSpellId
+			ns.mhBar:SetStatusBarColor(WARRIOR_CLEAVE_TINT.r, WARRIOR_CLEAVE_TINT.g, WARRIOR_CLEAVE_TINT.b, alpha)
 			return
 		end
 
-		if ns.pendingMeleeQueueSpellId then
-			ns.pendingMeleeQueueSpellId = nil
+		if ns.warriorQueuedMeleeSpell then
+			ns.warriorQueuedMeleeSpell = nil
 			RestoreMainHandColor()
 		end
 	end
 
 	ns.UpdateWarriorQueueTint = UpdateWarriorQueueTint
 
-	local function ApplyWarriorQueueTint(spellName)
+	local function ApplyWarriorQueueTint(spellValue)
 		if not ns.mhBar then
 			return
 		end
 
 		local alpha = (ns.mhBarBaseColor and ns.mhBarBaseColor.a) or 1
-		-- Lookup tables have spell names added by addSpellNamesToLookup() at load time
-		if ns.WARRIOR_HEROIC_STRIKE_SPELLS and ns.WARRIOR_HEROIC_STRIKE_SPELLS[spellName] then
-			ns.pendingMeleeQueueSpellId = spellName
-			ns.mhBar:SetStatusBarColor(1.0, 0.92, 0.20, alpha) -- heroic strike: yellow
-		elseif ns.WARRIOR_CLEAVE_SPELLS and ns.WARRIOR_CLEAVE_SPELLS[spellName] then
-			ns.pendingMeleeQueueSpellId = spellName
-			ns.mhBar:SetStatusBarColor(0.20, 0.80, 0.25, alpha) -- cleave: green
+		if ns.WARRIOR_HEROIC_STRIKE_SPELLS and ns.WARRIOR_HEROIC_STRIKE_SPELLS[spellValue] then
+			ns.warriorQueuedMeleeSpell = spellValue
+			ns.mhBar:SetStatusBarColor(WARRIOR_HEROIC_STRIKE_TINT.r, WARRIOR_HEROIC_STRIKE_TINT.g, WARRIOR_HEROIC_STRIKE_TINT.b, alpha) -- Heroic Strike: yellow
+		elseif ns.WARRIOR_CLEAVE_SPELLS and ns.WARRIOR_CLEAVE_SPELLS[spellValue] then
+			ns.warriorQueuedMeleeSpell = spellValue
+			ns.mhBar:SetStatusBarColor(WARRIOR_CLEAVE_TINT.r, WARRIOR_CLEAVE_TINT.g, WARRIOR_CLEAVE_TINT.b, alpha) -- Cleave: green
 		else
 			RestoreMainHandColor()
 		end
 	end
 
-	local function ApplyWarriorSlamTint(spellName)
+	local function ApplyWarriorSlamTint(spellValue)
 		if not ns.mhBar then
 			return
 		end
 
 		local alpha = (ns.mhBarBaseColor and ns.mhBarBaseColor.a) or 1
-		if ns.PAUSE_SWING_SPELLS and ns.PAUSE_SWING_SPELLS[spellName] then
+		if ns.PAUSE_SWING_SPELLS and ns.PAUSE_SWING_SPELLS[spellValue] then
 			ns.mhBar:SetStatusBarColor(1.0, 1.0, 1.0, alpha) -- slam: white
 		end
 	end
@@ -283,32 +290,31 @@ local function SetupWarrior()
 	-- Queue indicator colors restore to the base MH tint on the next real swing.
 	ns.OnMeleeSwing = function(slot)
 		if slot == "mh" and ns.mhBar then
-			ns.pendingMeleeQueueSpellId = nil
+			ns.warriorQueuedMeleeSpell = nil
 			RestoreMainHandColor()
 		end
 	end
 
 	ns.ClearWarriorQueueTint = function()
-		ns.pendingMeleeQueueSpellId = nil
+		ns.warriorQueuedMeleeSpell = nil
 		RestoreMainHandColor()
 	end
 
 	-- Hook warrior queued attacks so each special gets its own tint.
 	local origHandleSpellcast = ns.HandleSpellcastSucceeded
-	ns.HandleSpellcastSucceeded = function(unit, spellName, spellRank)
-		-- Classic TBC: args are (unit, spellName, spellRank)
+	ns.HandleSpellcastSucceeded = function(unit, castGUIDOrSpellName, spellId)
+		local spellToken = spellId ~= nil and spellId or castGUIDOrSpellName
 		if unit == "player" then
-			-- Lookup tables have spell names added by addSpellNamesToLookup() at load time
-			if ns.WARRIOR_HEROIC_STRIKE_SPELLS and ns.WARRIOR_HEROIC_STRIKE_SPELLS[spellName] then
-				ApplyWarriorQueueTint(spellName)
-			elseif ns.WARRIOR_CLEAVE_SPELLS and ns.WARRIOR_CLEAVE_SPELLS[spellName] then
-				ApplyWarriorQueueTint(spellName)
-			elseif ns.PAUSE_SWING_SPELLS and ns.PAUSE_SWING_SPELLS[spellName] then
-				ApplyWarriorSlamTint(spellName)
+			if ns.WARRIOR_HEROIC_STRIKE_SPELLS and ns.WARRIOR_HEROIC_STRIKE_SPELLS[spellToken] then
+				ApplyWarriorQueueTint(spellToken)
+			elseif ns.WARRIOR_CLEAVE_SPELLS and ns.WARRIOR_CLEAVE_SPELLS[spellToken] then
+				ApplyWarriorQueueTint(spellToken)
+			elseif ns.PAUSE_SWING_SPELLS and ns.PAUSE_SWING_SPELLS[spellToken] then
+				ApplyWarriorSlamTint(spellToken)
 			end
 		end
 		if origHandleSpellcast then
-			origHandleSpellcast(unit, spellName, spellRank)
+			origHandleSpellcast(unit, castGUIDOrSpellName, spellId)
 		end
 		if ns.UpdateWarriorQueueTint then
 			ns.UpdateWarriorQueueTint()
@@ -319,6 +325,14 @@ end
 local function SetupEnhShaman()
 	local function UpdateWeaveVisuals()
 		if not ns.weaveSpark or not ns.weaveTriangleTop or not ns.weaveTriangleBottom then
+			return
+		end
+
+		local db = SuperSwingTimerDB or ns.DB_DEFAULTS
+		if (db and db.showWeaveAssist == false) or (ns.IsMinimalMode and ns.IsMinimalMode()) then
+			ns.weaveSpark:Hide()
+			ns.weaveTriangleTop:Hide()
+			ns.weaveTriangleBottom:Hide()
 			return
 		end
 
@@ -510,28 +524,28 @@ local function SetupDruid()
 		local alpha = (ns.mhBarBaseColor and ns.mhBarBaseColor.a) or 1
 		local queuedSpellId = FindCurrentQueuedSpell(ns.DRUID_MAUL_SPELLS)
 		if queuedSpellId then
-			ns.pendingMeleeQueueSpellId = queuedSpellId
-			ns.mhBar:SetStatusBarColor(1.0, 0.92, 0.20, alpha) -- Maul: yellow
+			ns.druidQueuedMeleeSpell = queuedSpellId
+			ns.mhBar:SetStatusBarColor(DRUID_MAUL_TINT.r, DRUID_MAUL_TINT.g, DRUID_MAUL_TINT.b, alpha) -- Maul: bear yellow
 			return
 		end
 
-		if ns.pendingMeleeQueueSpellId then
-			ns.pendingMeleeQueueSpellId = nil
+		if ns.druidQueuedMeleeSpell then
+			ns.druidQueuedMeleeSpell = nil
 			RestoreMainHandColor()
 		end
 	end
 
 	ns.UpdateDruidQueueTint = UpdateDruidQueueTint
 
-	local function ApplyDruidQueueTint(spellName)
+	local function ApplyDruidQueueTint(spellValue)
 		if not ns.mhBar then
 			return
 		end
 
 		local alpha = (ns.mhBarBaseColor and ns.mhBarBaseColor.a) or 1
-		if ns.DRUID_MAUL_SPELLS and ns.DRUID_MAUL_SPELLS[spellName] then
-			ns.pendingMeleeQueueSpellId = spellName
-			ns.mhBar:SetStatusBarColor(1.0, 0.92, 0.20, alpha) -- Maul: yellow
+		if ns.DRUID_MAUL_SPELLS and ns.DRUID_MAUL_SPELLS[spellValue] then
+			ns.druidQueuedMeleeSpell = spellValue
+			ns.mhBar:SetStatusBarColor(DRUID_MAUL_TINT.r, DRUID_MAUL_TINT.g, DRUID_MAUL_TINT.b, alpha) -- Maul: bear yellow
 		else
 			RestoreMainHandColor()
 		end
@@ -540,26 +554,27 @@ local function SetupDruid()
 	-- Queue indicator colors restore to the base MH tint on the next real swing.
 	ns.OnMeleeSwing = function(slot)
 		if slot == "mh" and ns.mhBar then
-			ns.pendingMeleeQueueSpellId = nil
+			ns.druidQueuedMeleeSpell = nil
 			RestoreMainHandColor()
 		end
 	end
 
 	ns.ClearDruidQueueTint = function()
-		ns.pendingMeleeQueueSpellId = nil
+		ns.druidQueuedMeleeSpell = nil
 		RestoreMainHandColor()
 	end
 
 	-- Hook druid queued attacks (Maul)
 	local origHandleSpellcast = ns.HandleSpellcastSucceeded
-	ns.HandleSpellcastSucceeded = function(unit, spellName, spellRank)
+	ns.HandleSpellcastSucceeded = function(unit, castGUIDOrSpellName, spellId)
+		local spellToken = spellId ~= nil and spellId or castGUIDOrSpellName
 		if unit == "player" then
-			if ns.DRUID_MAUL_SPELLS and ns.DRUID_MAUL_SPELLS[spellName] then
-				ApplyDruidQueueTint(spellName)
+			if ns.DRUID_MAUL_SPELLS and ns.DRUID_MAUL_SPELLS[spellToken] then
+				ApplyDruidQueueTint(spellToken)
 			end
 		end
 		if origHandleSpellcast then
-			origHandleSpellcast(unit, spellName, spellRank)
+			origHandleSpellcast(unit, castGUIDOrSpellName, spellId)
 		end
 		if ns.UpdateDruidQueueTint then
 			ns.UpdateDruidQueueTint()
@@ -588,21 +603,138 @@ local function SetupDruid()
 	end
 end
 
+local function SetupHunter()
+	local IsCurrentSpell = rawget(_G, "IsCurrentSpell")
+	if not IsCurrentSpell then
+		local C_Spell = rawget(_G, "C_Spell")
+		if C_Spell and C_Spell.IsCurrentSpell then
+			IsCurrentSpell = C_Spell.IsCurrentSpell
+		end
+	end
+
+	local function FindCurrentQueuedSpell(spellSet)
+		if not IsCurrentSpell or not spellSet then
+			return nil
+		end
+
+		for key in pairs(spellSet) do
+			if type(key) == "number" and IsCurrentSpell(key) then
+				return key
+			end
+		end
+
+		return nil
+	end
+
+	local function RestoreMainHandColor()
+		if not ns.mhBar then
+			return
+		end
+
+		local c = ns.mhBarBaseColor or (ns.GetBarColor and ns.GetBarColor("mh"))
+		if c then
+			ns.mhBar:SetStatusBarColor(c.r or 0, c.g or 0, c.b or 0, c.a or 1)
+		else
+			ns.mhBar:SetStatusBarColor(0, 0, 0, 1)
+		end
+	end
+
+	local function UpdateHunterQueueTint()
+		if ns.playerClass ~= "HUNTER" or not ns.mhBar then
+			return
+		end
+
+		local alpha = (ns.mhBarBaseColor and ns.mhBarBaseColor.a) or 1
+		local queuedSpellId = FindCurrentQueuedSpell(ns.HUNTER_RAPTOR_STRIKE_SPELLS)
+		if queuedSpellId then
+			ns.hunterQueuedMeleeSpell = queuedSpellId
+			ns.mhBar:SetStatusBarColor(HUNTER_RAPTOR_TINT.r, HUNTER_RAPTOR_TINT.g, HUNTER_RAPTOR_TINT.b, alpha)
+			return
+		end
+
+		if ns.hunterQueuedMeleeSpell then
+			ns.hunterQueuedMeleeSpell = nil
+			RestoreMainHandColor()
+		end
+	end
+
+	ns.UpdateHunterQueueTint = UpdateHunterQueueTint
+
+	local function ApplyHunterQueueTint(spellValue)
+		if not ns.mhBar then
+			return
+		end
+
+		local alpha = (ns.mhBarBaseColor and ns.mhBarBaseColor.a) or 1
+		if ns.HUNTER_RAPTOR_STRIKE_SPELLS and ns.HUNTER_RAPTOR_STRIKE_SPELLS[spellValue] then
+			ns.hunterQueuedMeleeSpell = spellValue
+			ns.mhBar:SetStatusBarColor(HUNTER_RAPTOR_TINT.r, HUNTER_RAPTOR_TINT.g, HUNTER_RAPTOR_TINT.b, alpha)
+		else
+			RestoreMainHandColor()
+		end
+	end
+
+	-- Queue indicator colors restore to the base MH tint on the next real swing.
+	ns.OnMeleeSwing = function(slot)
+		if slot == "mh" and ns.mhBar then
+			ns.hunterQueuedMeleeSpell = nil
+			RestoreMainHandColor()
+		end
+	end
+
+	ns.ClearHunterQueueTint = function()
+		ns.hunterQueuedMeleeSpell = nil
+		RestoreMainHandColor()
+	end
+
+	-- Hook hunter queued attacks so Raptor Strike owns its own next-attack tint.
+	local origHandleSpellcast = ns.HandleSpellcastSucceeded
+	ns.HandleSpellcastSucceeded = function(unit, castGUIDOrSpellName, spellId)
+		local spellToken = spellId ~= nil and spellId or castGUIDOrSpellName
+		if unit == "player" then
+			if ns.HUNTER_RAPTOR_STRIKE_SPELLS and ns.HUNTER_RAPTOR_STRIKE_SPELLS[spellToken] then
+				ApplyHunterQueueTint(spellToken)
+			end
+		end
+		if origHandleSpellcast then
+			origHandleSpellcast(unit, castGUIDOrSpellName, spellId)
+		end
+		if ns.UpdateHunterQueueTint then
+			ns.UpdateHunterQueueTint()
+		end
+	end
+end
+
 -- ============================================================
 -- Dispatch: pick class mods for the current class
 -- ============================================================
 function ns.InitClassMods()
+	ns.OnBarsCreated = nil
+	ns.OnDruidFormChange = nil
+	ns.OnMeleeSwing = nil
+	ns.OnRangedSwing = nil
+	ns.UpdateWarriorQueueTint = nil
+	ns.ClearWarriorQueueTint = nil
+	ns.UpdateDruidQueueTint = nil
+	ns.ClearDruidQueueTint = nil
+	ns.UpdateHunterQueueTint = nil
+	ns.ClearHunterQueueTint = nil
+	ns.warriorQueuedMeleeSpell = nil
+	ns.druidQueuedMeleeSpell = nil
+	ns.hunterQueuedMeleeSpell = nil
 	local class = ns.playerClass
 	if class == "PALADIN" then
 		SetupRetPaladin()
 	elseif class == "WARRIOR" then
 		SetupWarrior()
+	elseif class == "HUNTER" then
+		SetupHunter()
 	elseif class == "SHAMAN" then
 		SetupEnhShaman()
 	elseif class == "DRUID" then
 		SetupDruid()
 	end
-	-- HUNTER, ROGUE: no special overlays beyond dual bars
+	-- ROGUE: no special overlays beyond dual bars
 	-- Pure casters: no bars created, no mods needed
 end
 

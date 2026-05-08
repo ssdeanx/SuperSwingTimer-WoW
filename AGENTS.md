@@ -75,6 +75,24 @@ Use these links first when checking Classic addon UI behavior, widgets, frames, 
 
 ## Current progress
 
+- Config texture picker follow-up (2026-05-05): MH/OH and ranged textures now open a scrolling full-preview bar list instead of the nested paged UIDropDownMenu path, so each texture fills its row behind the label while Blizzard fallbacks and LibSharedMedia statusbar packs stay in one fixed-height scrollable picker.
+- Spellcast payload correction (2026-05-05): BCC Anniversary `UNIT_SPELLCAST_*` handling is back on the `unit, castGUID, spellID` payload path in state, class queue hooks, and shaman weaving, which restores spell-driven timer/reset/pause behavior that broke when the handlers were switched to spell-name parsing.
+- Final release-prep pass (2026-05-05): the live timer model stays on latency-adjusted `GetTimePreciseSec()` / `GetTime()`, primes the precise clock once, and keeps MH/OH/ranged swing anchors, queued next-attack landed resets, parry haste, and druid form resets on that existing live clock after the experimental CLEU remap proved too aggressive.
+- Config polish follow-up (2026-05-05): the MH/OH `Bar Width` row now sits below its section header so adjusting width no longer also toggles the collapsible section, and the other setup/dragging polish from this session remains intact.
+- Next-attack isolation follow-up (2026-05-05): Warrior Heroic Strike / Cleave, Druid Maul, and Hunter Raptor Strike now keep fully class-local queued state plus class-local landed-hit reset detection, so the old shared next-attack lookup path is gone.
+- Druid Maul tint follow-up (2026-05-05): Maul now uses its own bear-yellow tint instead of sharing Warrior Heroic Strike's yellow, which makes Warrior vs Druid queued MH feedback visually distinct.
+- Spark scope follow-up (2026-05-05): queued next-attack tint still only touches the MH status-bar fill; the spark remains on the separate spark-color path in the UI module.
+
+- Visual-correctness follow-up (2026-05-04): `Use Class Colors` no longer overwrites the stored manual MH/OH/ranged colors, so toggling it off restores the real saved colors instead of leaving the bars class-tinted.
+- Spark follow-up (2026-05-04): the main swing spark now renders with a color-preserving blend mode, so a white/manual spark stays visually white instead of picking up warmth from the colored bar fill.
+
+- Final production polish pass (2026-05-04): narrowed the hunter work back to cast-bar-only stabilization so the core Auto Shot ranged timer keeps its existing live behavior, while the red-zone hidden-window cast bar stays locked and no longer bounces near cycle end.
+- Class/system correctness follow-up (2026-05-04): ret paladin reseal timing now uses swing-elapsed-plus-GCD math, shaman weave spell-name resolution now flows through `ns.GetSpellInfo`, weave overlays now respect Minimal Mode / weave visibility, off-hand handling now reuses the named OH bar safely across equipment swaps, and Reset Defaults / Test Bars / drag handling were hardened for real in-game setup.
+
+- Release follow-up (2026-05-04): the shared spark tint is manual/default again and no longer follows `Use Class Colors` or queued MH fill tints, so Heroic Strike / Cleave / Maul keep the spark readable.
+- Hunter hidden-window stabilization (2026-05-04): the dedicated Auto Shot cast bar now locks to a stable end-of-cycle hidden-window anchor instead of re-seeding itself from the movement-pinned ranged timer every frame, and Auto Shot no longer persists separate cast-state fallback outside that hidden-window path, which removes the end-of-swing bounce and reduces random activations.
+- Queue cleanup follow-up (2026-05-04): interrupted / failed Maul now restores the druid queue tint through the druid clear path instead of relying only on the warrior cleanup path.
+
 - Release hardening pass (2026-05-01): achieved full TBC Classic Anniversary (1.15.x) compatibility by implementing a robust `ns.GetSpellInfo` wrapper and safe-accessing Blizzard UI globals (`UIDropDownMenu`, `C_Spell`) via `_G`, eliminating all linting and runtime errors.
 - Hunter Auto Shot Sync (2026-05-01): synchronized the dedicated hunter cast bar with the ranged timer's latency-aware "red zone," ensuring the move-safety feedback and cast window are perfectly aligned for pixel-perfect shot timing.
 - Config UI Polish (2026-05-01): optimized the texture selection dropdown with 20-item paging, visual texture previews, and increased font readability, while enforcing visual-safe defaults (Class Colors: OFF) for maximum clarity in high-intensity combat.

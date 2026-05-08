@@ -1,5 +1,59 @@
 # Progress
 
+## Progress Update (2026-05-05 - bar texture picker final UI polish)
+
+- Replaced the compact MH/OH and ranged texture dropdowns with a scrolling full-preview bar-texture picker that keeps each texture visible behind its label and removes the old paged submenu path.
+- Kept the list focused on bar media only by using Blizzard fallback textures plus LibSharedMedia-registered statusbars from installed media packs, while leaving the spark and weave-spark pickers on the thumbnail browser.
+- Synced the README/UI/SharedMedia notes and the combined 3.1.26 changelog entry to the new picker behavior.
+
+## Progress Update (2026-05-05 - final release prep timing and UI pass)
+
+- Restored BCC Anniversary `UNIT_SPELLCAST_*` handling to the `unit, castGUID, spellID` payload path across `SuperSwingTimer_State.lua`, `SuperSwingTimer_ClassMods.lua`, and `SuperSwingTimer_Weaving.lua`, which should bring spell-driven timer reset/pause/queue behavior back after the bad spell-name regression.
+- Kept the live timer model on latency-adjusted `GetTimePreciseSec()` / `GetTime()`, primed the precise clock once, and restored MH/OH/ranged starts, queued next-attack landed resets, parry haste, and druid form resets to that existing live clock after the CLEU remap caused early-leading timers.
+- Preserved Hunter's core ranged behavior while keeping the hidden cast bar locked to the same end-of-cycle stop-to-fire window as the red/green ranged feedback.
+- Fixed the MH/OH config spacing so the `Bar Width` slider no longer overlaps the section header collapse toggle.
+
+## Progress Update (2026-05-05 - class-local next-attack refactor)
+
+- Removed the shared queued next-attack state and split Warrior Heroic Strike / Cleave, Druid Maul, and Hunter Raptor Strike onto fully class-local queue state.
+- Removed the shared next-attack landed-hit lookup path and now reset MH only from the active class spell tables.
+- Changed Druid Maul to a distinct bear-yellow tint so it no longer visually matches Warrior Heroic Strike, while keeping queued tint scoped to the MH fill only.
+
+## Progress Update (2026-05-04 - stale account-wide class-color cleanup)
+
+- Added a one-time migration that resets stale class-colored MH/OH/ranged manual palettes back to black when class colors are off and all three bars still exactly match one WoW class color.
+- Added matching spark-color cleanup so stale class-colored spark values are restored to white in that same broken-save scenario.
+- This specifically addresses old druid-colored SavedVariables bleeding into Warrior on account-wide saves.
+
+## Progress Update (2026-05-04 - warrior/druid queue tint split)
+
+- Split queued-melee tint ownership so Warrior Heroic Strike / Cleave and druid Maul no longer share one generic pending queue state.
+- Removed the generic NMA pending-tint write from the shared spellcast-success path and kept queued-tint ownership inside the class-mod layer where it belongs.
+- Added safer queued-tint cleanup on world/combat reset and interruption paths.
+
+## Progress Update (2026-05-04 - class-color and spark visual fix)
+
+- Fixed the class-color toggle so enabling it no longer overwrites the stored MH/OH/ranged manual colors.
+- Turning class colors off now restores the saved manual bar colors, and older saved bar/spark colors that still match the class color can be cleaned back to defaults.
+- Changed the main swing spark to a color-preserving blend mode so white/manual spark colors stay visually accurate instead of warming from the bar fill underneath.
+
+## Progress Update (2026-05-04 - final production polish and corrective pass)
+
+- Rechecked current Classic/TBC API and addon patterns with live web/GitHub search before patching the remaining class and UI issues.
+- Narrowed the hunter work back to the Auto Shot cast-bar fix only: kept the hidden-window stabilization and visual-only red-zone clamp, but restored the broader ranged start/restart behavior so the live ranged timer keeps its prior path.
+- Corrected ret paladin reseal marker math to use swing elapsed + remaining GCD time.
+- Routed shaman weave spell resolution through `ns.GetSpellInfo` and stopped weave overlays from reappearing while Minimal Mode or the weave toggle is off.
+- Hardened UI/setup behavior by reusing the OH frame across equipment changes, adding real drag handlers to the anchor bars, forcing Test Bars / config preview visible after `ApplyVisibility()`, and restoring saved positions during Reset Defaults.
+- Updated README, CHANGELOG, TOC metadata, API/UI notes, AGENTS, and memory-bank context to match the final code behavior.
+
+## Progress Update (2026-05-04 - spark tint follow-up and hunter cast-bar stabilization)
+
+- Fixed the shared spark-color path so `Use Class Colors` no longer recolors the spark; Heroic Strike, Cleave, and Maul remain MH-fill-only queue tints.
+- Stabilized the Hunter Auto Shot hidden cast bar by locking it to one hidden-window anchor per ranged cycle instead of re-deriving it from the movement-pinned ranged timer every frame.
+- Stopped the UI/state hunter fallback paths from writing persistent synthetic Auto Shot cast state outside the hidden-window path, which should reduce random cast-bar activations.
+- Hardened interrupted / failed Maul cleanup by falling back to the druid queue-tint clear path when appropriate.
+- Updated README, CHANGELOG, TOC metadata, API/UI notes, AGENTS, and memory-bank context to match the live code behavior.
+
 ## Progress Update (2026-05-01 - TBC Anniversary Compatibility & Hunter Sync)
 
 - Achieved full TBC Classic Anniversary (1.15.x) engine support by implementing a robust `ns.GetSpellInfo` wrapper and safe-accessing Blizzard UI globals via `_G`.

@@ -149,17 +149,71 @@ local function SetRowsShown(rows, shown)
 	end
 end
 
+local BAR_COLOR_KEYS = { "mh", "oh", "ranged" }
+
+local function CopyColor(color, fallback)
+	local source = color or fallback or { r = 1, g = 1, b = 1, a = 1 }
+	return {
+		r = source.r or 1,
+		g = source.g or 1,
+		b = source.b or 1,
+		a = source.a ~= nil and source.a or 1,
+	}
+end
+
+local function SavePreClassColorState()
+	if not SuperSwingTimerDB then
+		return
+	end
+
+	SuperSwingTimerDB.colors = SuperSwingTimerDB.colors or {}
+	SuperSwingTimerDB.preClassColors = {}
+	for _, key in ipairs(BAR_COLOR_KEYS) do
+		local current = SuperSwingTimerDB.colors[key] or (ns.DB_DEFAULTS.colors and ns.DB_DEFAULTS.colors[key])
+		SuperSwingTimerDB.preClassColors[key] = CopyColor(current, ns.DB_DEFAULTS.colors and ns.DB_DEFAULTS.colors[key])
+	end
+
+	local sparkColor = SuperSwingTimerDB.sparkColor or ns.GetSparkColor() or ns.DB_DEFAULTS.sparkColor
+	SuperSwingTimerDB.preClassSparkColor = CopyColor(sparkColor, ns.DB_DEFAULTS.sparkColor)
+end
+
+local function RestoreColorsAfterClassToggleDisabled()
+	if not SuperSwingTimerDB then
+		return
+	end
+
+	SuperSwingTimerDB.colors = SuperSwingTimerDB.colors or {}
+
+	local restoredFromBackup = false
+	if SuperSwingTimerDB.preClassColors then
+		for _, key in ipairs(BAR_COLOR_KEYS) do
+			local saved = SuperSwingTimerDB.preClassColors[key]
+			if saved then
+				SuperSwingTimerDB.colors[key] = CopyColor(saved, ns.DB_DEFAULTS.colors and ns.DB_DEFAULTS.colors[key])
+				restoredFromBackup = true
+			end
+		end
+	end
+
+	if SuperSwingTimerDB.preClassSparkColor then
+		SuperSwingTimerDB.sparkColor = CopyColor(SuperSwingTimerDB.preClassSparkColor, ns.DB_DEFAULTS.sparkColor)
+		restoredFromBackup = true
+	end
+
+	SuperSwingTimerDB.preClassColors = nil
+	SuperSwingTimerDB.preClassSparkColor = nil
+
+	if restoredFromBackup then
+		return
+	end
+end
+
 -- ============================================================
 -- Bar preview: show bars while config panel is open
 -- ============================================================
 local function ShowBarPreview()
-	local bars = { ns.mhBar, ns.ohBar, ns.rangedBar, ns.hunterCastBar }
-	for _, bar in ipairs(bars) do
-		if bar then
-			bar:SetAlpha(1)
-			bar:SetMinMaxValues(0, 1)
-			bar:SetValue(1)
-		end
+	if ns.UpdateOHBar then
+		ns.UpdateOHBar()
 	end
 	ns.ApplyBarTexture(ns.GetBarTexture(), ns.GetBarTextureLayer())
 	ns.ApplyRangedBarTexture(ns.GetRangedBarTexture(), ns.GetBarTextureLayer())
@@ -177,10 +231,13 @@ local function ShowBarPreview()
 	ns.ApplyBarColors()
 	ns.ApplyIndicatorBlendMode(ns.GetIndicatorBlendMode())
 	ns.ApplyVisibility()
-	if ns.hunterCastBar then
-		ns.hunterCastBar:SetAlpha(1)
-		ns.hunterCastBar:SetMinMaxValues(0, 1)
-		ns.hunterCastBar:SetValue(1)
+	local bars = { ns.mhBar, ns.ohBar, ns.rangedBar, ns.hunterCastBar }
+	for _, bar in ipairs(bars) do
+		if bar then
+			bar:SetAlpha(1)
+			bar:SetMinMaxValues(0, 1)
+			bar:SetValue(1)
+		end
 	end
 end
 
@@ -462,6 +519,188 @@ end
 
 local textureBrowserFrame
 
+local function HideTextureBrowserGrid(frame)
+	for _, button in ipairs(frame.buttons or {}) do
+		button:Hide()
+	end
+	if frame.listScrollFrame then
+		frame.listScrollFrame:Hide()
+	end
+end
+
+local function CreateTextureBrowserListRow(parent)
+	local button = CreateFrame("Button", nil, parent, "BackdropTemplate")
+	button:SetHeight(26)
+	button:SetBackdrop({
+		bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
+		edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+		tile = true,
+		tileSize = 4,
+		edgeSize = 8,
+		insets = { left = 1, right = 1, top = 1, bottom = 1 },
+	})
+	button:SetBackdropColor(0.08, 0.08, 0.08, 0.94)
+	button:SetBackdropBorderColor(0.30, 0.30, 0.30, 1)
+
+	local preview = button:CreateTexture(nil, "BACKGROUND")
+	preview:SetPoint("TOPLEFT", button, "TOPLEFT", 2, -2)
+	preview:SetPoint("BOTTOMRIGHT", button, "BOTTOMRIGHT", -2, 2)
+	preview:SetTexCoord(0.02, 0.98, 0.15, 0.85)
+	button.preview = preview
+
+	local shade = button:CreateTexture(nil, "BORDER")
+	shade:SetAllPoints(preview)
+	shade:SetColorTexture(0, 0, 0, 0.28)
+	button.shade = shade
+
+	local label = button:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+	label:SetPoint("LEFT", button, "LEFT", 8, 0)
+	label:SetPoint("RIGHT", button, "RIGHT", -8, 0)
+	label:SetJustifyH("LEFT")
+	label:SetText("")
+	if label.SetShadowOffset then
+		label:SetShadowOffset(1, -1)
+		label:SetShadowColor(0, 0, 0, 1)
+	end
+	button.label = label
+
+	button:SetScript("OnEnter", function(self)
+		if not self.entry then
+			return
+		end
+
+		if self.SetBackdropBorderColor then
+			self:SetBackdropBorderColor(0.82, 0.82, 0.82, 1)
+		end
+
+		if GameTooltip then
+			GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+			GameTooltip:SetText(self.displayLabel or self.entry.label or self.entry.path or "", 1, 1, 1)
+			if self.displayCategory and self.displayCategory ~= "" then
+				GameTooltip:AddLine(self.displayCategory, 0.82, 0.82, 0.82)
+			end
+			if self.displayPath and self.displayPath ~= "" then
+				GameTooltip:AddLine(self.displayPath, 0.72, 0.72, 0.72, true)
+			end
+			GameTooltip:Show()
+		end
+	end)
+
+	button:SetScript("OnLeave", function(self)
+		if GameTooltip then
+			GameTooltip:Hide()
+		end
+		local owner = self.ownerFrame
+		if owner and owner.Refresh then
+			owner:Refresh()
+		end
+	end)
+
+	button:SetScript("OnClick", function(self)
+		if self.entry and self.ownerFrame then
+			self.ownerFrame.pendingTexture = self.entry.path
+			if self.ownerFrame.Refresh then
+				self.ownerFrame:Refresh()
+			end
+		end
+	end)
+
+	return button
+end
+
+local function EnsureTextureBrowserList(frame)
+	if frame.listScrollFrame then
+		return
+	end
+
+	local scrollFrame = CreateFrame("ScrollFrame", nil, frame, "UIPanelScrollFrameTemplate")
+	scrollFrame:SetPoint("TOPLEFT", frame, "TOPLEFT", 16, -80)
+	scrollFrame:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -34, 46)
+	scrollFrame:EnableMouseWheel(true)
+	scrollFrame:SetClipsChildren(true)
+	scrollFrame:SetScript("OnMouseWheel", function(self, delta)
+		local current = self:GetVerticalScroll() or 0
+		local step = 32
+		local child = self:GetScrollChild()
+		local range = 0
+		if child then
+			local maxRange = (child:GetHeight() or 0) - (self:GetHeight() or 0)
+			range = math.max(maxRange, 0)
+		end
+		local nextScroll = math.max(0, math.min(current - (delta * step), range))
+		self:SetVerticalScroll(nextScroll)
+	end)
+
+	local content = CreateFrame("Frame", nil, scrollFrame)
+	content:SetSize(1, 1)
+	scrollFrame:SetScrollChild(content)
+
+	frame.listScrollFrame = scrollFrame
+	frame.listContent = content
+	frame.listRows = {}
+	frame.listRowSpacing = 2
+	frame.listRowHeight = 26
+	frame.listWidthOffset = 12
+	frame.listScrollFrame:Hide()
+end
+
+local function RefreshTextureBrowserList(frame, filtered)
+	EnsureTextureBrowserList(frame)
+	frame.listScrollFrame:Show()
+
+	local content = frame.listContent
+	local rowHeight = frame.listRowHeight or 26
+	local rowSpacing = frame.listRowSpacing or 2
+	local rowStride = rowHeight + rowSpacing
+	local contentHeight = math.max(#filtered * rowStride, 1)
+	local width = math.max((frame.listScrollFrame:GetWidth() or (frame:GetWidth() - 52)) - (frame.listWidthOffset or 12), 300)
+	content:SetWidth(width)
+	content:SetHeight(contentHeight)
+
+	for index, entry in ipairs(filtered) do
+		local row = frame.listRows[index]
+		if not row then
+			row = CreateTextureBrowserListRow(content)
+			row.ownerFrame = frame
+			frame.listRows[index] = row
+		end
+
+		row:ClearAllPoints()
+		row:SetPoint("TOPLEFT", content, "TOPLEFT", 0, -((index - 1) * rowStride))
+		row:SetPoint("TOPRIGHT", content, "TOPRIGHT", 0, -((index - 1) * rowStride))
+		row:SetHeight(rowHeight)
+		row:Show()
+		row.entry = entry
+		row.displayLabel = (ns.GetTextureDisplayText and ns.GetTextureDisplayText(entry.path)) or entry.label or entry.path
+		row.displayCategory = (ns.GetTextureBrowserDisplayCategory and ns.GetTextureBrowserDisplayCategory(entry)) or entry.category or ""
+		row.displayPath = entry.path
+		row.preview:SetTexture(entry.path)
+		row.label:SetText(row.displayLabel or "")
+
+		local selected = frame.pendingTexture and entry.path == frame.pendingTexture
+		if row.SetBackdropBorderColor then
+			if selected then
+				row:SetBackdropBorderColor(0.95, 0.78, 0.20, 1)
+				row:SetBackdropColor(0.14, 0.11, 0.05, 0.95)
+			else
+				row:SetBackdropBorderColor(0.30, 0.30, 0.30, 1)
+				row:SetBackdropColor(0.08, 0.08, 0.08, 0.94)
+			end
+		end
+		if row.shade then
+			row.shade:SetColorTexture(0, 0, 0, selected and 0.14 or 0.28)
+		end
+	end
+
+	for index = #filtered + 1, #(frame.listRows or {}) do
+		local row = frame.listRows[index]
+		if row then
+			row:Hide()
+			row.entry = nil
+		end
+	end
+end
+
 local function RefreshTextureBrowser(frame)
 	if not frame then
 		return
@@ -502,6 +741,24 @@ local function RefreshTextureBrowser(frame)
 	end
 
 	frame.filteredChoices = filtered
+	if frame.layoutMode == "barList" then
+		HideTextureBrowserGrid(frame)
+		RefreshTextureBrowserList(frame, filtered)
+		if frame.noResultsText then
+			frame.noResultsText:ClearAllPoints()
+			frame.noResultsText:SetPoint("CENTER", frame.listScrollFrame or frame, "CENTER", 0, 0)
+			frame.noResultsText:SetShown(#filtered == 0)
+		end
+		return
+	end
+
+	if frame.listScrollFrame then
+		frame.listScrollFrame:Hide()
+	end
+	if frame.noResultsText then
+		frame.noResultsText:ClearAllPoints()
+		frame.noResultsText:SetPoint("CENTER", frame, "CENTER", 0, -12)
+	end
 	for index, button in ipairs(frame.buttons or {}) do
 		local entry = filtered[index]
 		if entry then
@@ -546,6 +803,7 @@ local function CreateTextureBrowserFrame()
 	frame:SetSize(660, 580)
 	frame:SetPoint("CENTER")
 	frame:SetFrameStrata("DIALOG")
+	frame:SetClampedToScreen(true)
 	frame:SetMovable(true)
 	frame:EnableMouse(true)
 	frame:RegisterForDrag("LeftButton")
@@ -571,6 +829,7 @@ local function CreateTextureBrowserFrame()
 	local close = CreateFrame("Button", nil, frame, "UIPanelCloseButton")
 	close:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -3, -3)
 	frame.closeButton = close
+	frame.layoutMode = "grid"
 
 	local categoryLabel = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
 	categoryLabel:SetPoint("TOPLEFT", frame, "TOPLEFT", 18, -34)
@@ -730,6 +989,7 @@ local function OpenTextureBrowser(initialTexture, applyTexture, options)
 	end
 
 	local frame = textureBrowserFrame
+	frame.layoutMode = (options and options.layoutMode) or "grid"
 	frame.applyTexture = applyTexture
 	frame.allowedCategories = (options and options.allowedCategories) or {
 		WeakAuras = true,
@@ -737,18 +997,33 @@ local function OpenTextureBrowser(initialTexture, applyTexture, options)
 		Blizzard = true,
 		Platynator = true,
 	}
-	frame.textureChoices = GetTextureBrowserEntries(frame.allowedCategories)
-	frame.currentCategory = (options and options.defaultCategory) or "WeakAuras"
+	frame.allowedUsages = options and options.allowedUsages or nil
+	frame.textureChoices = GetTextureBrowserEntries(frame.allowedCategories, frame.allowedUsages)
+	frame.currentCategory = (options and options.defaultCategory) or (frame.layoutMode == "barList" and "All" or "WeakAuras")
 	local browserDefaultTexture = (options and options.defaultTexture) or ns.DB_DEFAULTS.sparkTexture
 	frame.pendingTexture = NormalizeTexturePath(initialTexture, browserDefaultTexture)
 	frame.searchBox:SetText("")
+	if frame.layoutMode == "barList" then
+		frame:SetSize(500, 560)
+	else
+		frame:SetSize(660, 580)
+	end
+	frame:ClearAllPoints()
+	if options and options.anchorFrame then
+		frame:SetPoint("TOPLEFT", options.anchorFrame, "BOTTOMLEFT", 0, -4)
+	else
+		frame:SetPoint("CENTER")
+	end
 	if frame.titleText then
-		frame.titleText:SetText((options and options.title) or "Spark Texture Picker")
+		frame.titleText:SetText((options and options.title) or (frame.layoutMode == "barList" and "Bar Texture Picker" or "Spark Texture Picker"))
 	end
 	if UIDropDownMenu_SetText then
 		UIDropDownMenu_SetText(frame.categoryDropdown, GetTextureBrowserCategoryLabel(frame.currentCategory))
 	end
 	RefreshTextureBrowser(frame)
+	if frame.layoutMode == "barList" and frame.listScrollFrame then
+		frame.listScrollFrame:SetVerticalScroll(0)
+	end
 	frame:Show()
 	frame:Raise()
 end
@@ -777,8 +1052,12 @@ local function CreateTexturePathRow(parent, label, yOffset, getTexture, applyTex
 	local function Refresh()
 		local path = getTexture()
 		row.currentTexture = path
+		local displayText = ns.GetTextureDisplayText and ns.GetTextureDisplayText(path) or path or ""
 		if row.preview then
 			row.preview:SetTexture(path)
+		end
+		if row.previewLabel then
+			row.previewLabel:SetText(displayText)
 		end
 		if row.dropdown and UIDropDownMenu_SetText then
 			UIDropDownMenu_SetText(row.dropdown, GetTextureSummaryText(path))
@@ -848,6 +1127,96 @@ local function CreateTexturePathRow(parent, label, yOffset, getTexture, applyTex
 			label
 		)
 		AddControlTooltip(row, label, browserTooltip)
+		row.refresh = Refresh
+		Refresh()
+		return row
+	end
+
+	if options.mode == "barList" then
+		local defaultTexture = options.defaultTexture or getTexture() or ns.DB_DEFAULTS.barTexture
+
+		local pickerButton = CreateFrame("Button", nil, row, "BackdropTemplate")
+		pickerButton:SetPoint("BOTTOMRIGHT", row, "BOTTOMRIGHT", 0, 0)
+		pickerButton:SetSize(320, 24)
+		pickerButton:SetBackdrop({
+			bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
+			edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+			tile = true,
+			tileSize = 4,
+			edgeSize = 8,
+			insets = { left = 1, right = 1, top = 1, bottom = 1 },
+		})
+		pickerButton:SetBackdropColor(0.08, 0.08, 0.08, 0.94)
+		pickerButton:SetBackdropBorderColor(0.30, 0.30, 0.30, 1)
+		row.pickerButton = pickerButton
+
+		local preview = pickerButton:CreateTexture(nil, "BACKGROUND")
+		preview:SetPoint("TOPLEFT", pickerButton, "TOPLEFT", 2, -2)
+		preview:SetPoint("BOTTOMRIGHT", pickerButton, "BOTTOMRIGHT", -2, 2)
+		preview:SetTexCoord(0.02, 0.98, 0.15, 0.85)
+		row.preview = preview
+
+		local previewShade = pickerButton:CreateTexture(nil, "BORDER")
+		previewShade:SetAllPoints(preview)
+		previewShade:SetColorTexture(0, 0, 0, 0.30)
+		row.previewShade = previewShade
+
+		local previewLabel = pickerButton:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+		previewLabel:SetPoint("LEFT", pickerButton, "LEFT", 8, 0)
+		previewLabel:SetPoint("RIGHT", pickerButton, "RIGHT", -24, 0)
+		previewLabel:SetJustifyH("LEFT")
+		if previewLabel.SetShadowOffset then
+			previewLabel:SetShadowOffset(1, -1)
+			previewLabel:SetShadowColor(0, 0, 0, 1)
+		end
+		row.previewLabel = previewLabel
+
+		local arrow = pickerButton:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+		arrow:SetPoint("RIGHT", pickerButton, "RIGHT", -8, 0)
+		arrow:SetText("v")
+		row.previewArrow = arrow
+
+		pickerButton:SetScript("OnEnter", function(self)
+			if self.SetBackdropBorderColor then
+				self:SetBackdropBorderColor(0.80, 0.80, 0.80, 1)
+			end
+		end)
+		pickerButton:SetScript("OnLeave", function(self)
+			if self.SetBackdropBorderColor then
+				self:SetBackdropBorderColor(0.30, 0.30, 0.30, 1)
+			end
+		end)
+		pickerButton:SetScript("OnClick", function(self)
+			OpenTextureBrowser(getTexture(), function(texturePath)
+				applyTexture(NormalizeTexturePath(texturePath, defaultTexture))
+				Refresh()
+				if ns.RefreshTextureRows then
+					ns.RefreshTextureRows()
+				end
+			end, {
+				defaultTexture = defaultTexture,
+				defaultCategory = options.browserDefaultCategory or "All",
+				allowedCategories = options.browserCategories or {
+					WeakAuras = true,
+					SharedMedia = true,
+					Blizzard = true,
+					Platynator = true,
+				},
+				allowedUsages = options.dropdownUsages or { both = true },
+				layoutMode = "barList",
+				title = options.browserTitle or label,
+				anchorFrame = self,
+			})
+		end)
+
+		AddControlTooltip(
+			row,
+			label,
+			options.tooltipText or string.format(
+				"Click the preview bar to open a full scrolling texture list for %s.",
+				label
+			)
+		)
 		row.refresh = Refresh
 		Refresh()
 		return row
@@ -1323,10 +1692,13 @@ local function CreatePanel()
 		-50,
 		function() return SuperSwingTimerDB.useClassColors == true end,
 		function(enabled)
-			SuperSwingTimerDB.useClassColors = enabled
-			if enabled then
-				ns.SeedLegacyBarColorsFromClass()
+			local wasEnabled = SuperSwingTimerDB.useClassColors == true
+			if enabled and not wasEnabled then
+				SavePreClassColorState()
+			elseif not enabled and wasEnabled then
+				RestoreColorsAfterClassToggleDisabled()
 			end
+			SuperSwingTimerDB.useClassColors = enabled
 			ns.ApplyBarColors()
 			if f.useClassColorsRow and f.useClassColorsRow.refresh then
 				f.useClassColorsRow.refresh()
@@ -1408,7 +1780,9 @@ local function CreatePanel()
 		barVisibilityHeader.refresh()
 	end
 
-	local widthSlider = CreateSlider(content, "Bar Width", 100, 400, 10, ShiftY(-50))
+	-- Keep the first MH/OH control clearly below the section header so slider clicks
+	-- cannot also hit the collapse toggle.
+	local widthSlider = CreateSlider(content, "Bar Width", 100, 400, 10, ShiftY(-75))
 	widthSlider:SetValue(SuperSwingTimerDB.barWidth or ns.DB_DEFAULTS.barWidth)
 	SyncSliderDisplay(widthSlider, widthSlider:GetValue())
 
@@ -1421,11 +1795,20 @@ local function CreatePanel()
 		"MH/OH Bar Texture",
 		ShiftY(-145),
 		{
+			mode = "barList",
 			defaultTexture = ns.DB_DEFAULTS.barTexture,
 			getTexture = function() return SuperSwingTimerDB.barTexture or ns.DB_DEFAULTS.barTexture end,
 			applyTexture = function(texturePath)
 				ns.ApplyBarTexture(texturePath, SuperSwingTimerDB.barTextureLayer or ns.DB_DEFAULTS.barTextureLayer)
 			end,
+			browserDefaultCategory = "All",
+			browserTitle = "MH/OH Bar Texture",
+			browserCategories = {
+				WeakAuras = true,
+				SharedMedia = true,
+				Blizzard = true,
+				Platynator = true,
+			},
 			dropdownUsages = { both = true },
 		}
 	)
@@ -1444,12 +1827,21 @@ local function CreatePanel()
 		"Ranged Bar Texture",
 		ShiftY(-200),
 		{
+			mode = "barList",
 			defaultTexture = ns.DB_DEFAULTS.rangedBarTexture,
 			getTexture = function() return SuperSwingTimerDB.rangedBarTexture or ns.DB_DEFAULTS.rangedBarTexture end,
 			applyTexture = function(texturePath)
 				ns.ApplyRangedBarTexture(texturePath, SuperSwingTimerDB.barTextureLayer or ns.DB_DEFAULTS
 				.barTextureLayer)
 			end,
+			browserDefaultCategory = "All",
+			browserTitle = "Ranged Bar Texture",
+			browserCategories = {
+				WeakAuras = true,
+				SharedMedia = true,
+				Blizzard = true,
+				Platynator = true,
+			},
 			dropdownUsages = { both = true },
 		}
 	)
@@ -2283,6 +2675,26 @@ function ns.ToggleConfig()
 end
 
 function ns.ResetConfigDefaults()
+	SuperSwingTimerDB.positions                  = {
+		mh = {
+			point = ns.DB_DEFAULTS.positions.mh.point,
+			relativePoint = ns.DB_DEFAULTS.positions.mh.relativePoint,
+			x = ns.DB_DEFAULTS.positions.mh.x,
+			y = ns.DB_DEFAULTS.positions.mh.y,
+		},
+		oh = {
+			point = ns.DB_DEFAULTS.positions.oh.point,
+			relativePoint = ns.DB_DEFAULTS.positions.oh.relativePoint,
+			x = ns.DB_DEFAULTS.positions.oh.x,
+			y = ns.DB_DEFAULTS.positions.oh.y,
+		},
+		ranged = {
+			point = ns.DB_DEFAULTS.positions.ranged.point,
+			relativePoint = ns.DB_DEFAULTS.positions.ranged.relativePoint,
+			x = ns.DB_DEFAULTS.positions.ranged.x,
+			y = ns.DB_DEFAULTS.positions.ranged.y,
+		},
+	}
 	SuperSwingTimerDB.barWidth                   = ns.DB_DEFAULTS.barWidth
 	SuperSwingTimerDB.barHeight                  = ns.DB_DEFAULTS.barHeight
 	SuperSwingTimerDB.barTexture                 = ns.DB_DEFAULTS.barTexture
@@ -2342,7 +2754,8 @@ function ns.ResetConfigDefaults()
 	for key, def in pairs(ns.DB_DEFAULTS.colors) do
 		SuperSwingTimerDB.colors[key] = { r = def.r, g = def.g, b = def.b, a = def.a }
 	end
-	ns.SeedLegacyBarColorsFromClass()
+	SuperSwingTimerDB.preClassColors             = nil
+	SuperSwingTimerDB.preClassSparkColor         = nil
 	ns.ApplyBarSize(ns.DB_DEFAULTS.barWidth, ns.DB_DEFAULTS.barHeight)
 	ns.ApplyBarTexture(ns.DB_DEFAULTS.barTexture, ns.DB_DEFAULTS.barTextureLayer)
 	ns.ApplyRangedBarTexture(ns.DB_DEFAULTS.rangedBarTexture, ns.DB_DEFAULTS.barTextureLayer)
@@ -2369,6 +2782,12 @@ function ns.ResetConfigDefaults()
 	ns.ApplySparkColor(ns.DB_DEFAULTS.sparkColor)
 	ns.ApplyMinimalMode(ns.DB_DEFAULTS.minimalMode)
 	ns.ApplyBarColors()
+	if ns.UpdateOHBar then
+		ns.UpdateOHBar()
+	end
+	if ns.RestoreAllBarPositions then
+		ns.RestoreAllBarPositions()
+	end
 	ns.ApplyVisibility()
 	if panel and panel.barTextureRow and panel.barTextureRow.refresh then
 		panel.barTextureRow.refresh()

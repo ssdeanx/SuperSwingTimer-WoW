@@ -15,6 +15,9 @@ local function GetCurrentTime()
 	return GetTime() + (ns.cachedLatency or 0)
 end
 
+local LATENCY_REFRESH_INTERVAL = 0.10
+local nextLatencyRefreshAt = 0
+
 -- ============================================================
 -- Bootstrap: event frame, SavedVariables init, dispatch
 -- ============================================================
@@ -72,7 +75,7 @@ local function MigrateDB()
 	-- Fresh install
 	if not SuperSwingTimerDB then
 		SuperSwingTimerDB = {
-			version                    = 21,
+			version                    = 24,
 			showMH                     = ns.DB_DEFAULTS.showMH,
 			showOH                     = ns.DB_DEFAULTS.showOH,
 			showRanged                 = ns.DB_DEFAULTS.showRanged,
@@ -437,6 +440,14 @@ local function MigrateDB()
 		SuperSwingTimerDB.useClassColors = false
 		SuperSwingTimerDB.version = 22
 	end
+
+	-- v22 -> v23: version bump for the final release line.
+	if (SuperSwingTimerDB.version or 0) < 23 then
+		SuperSwingTimerDB.version = 23
+	end
+	if (SuperSwingTimerDB.version or 0) < 24 then
+		SuperSwingTimerDB.version = 24
+	end
 end
 
 -- ============================================================
@@ -544,7 +555,11 @@ end
 
 local function UpdateFrameOnUpdate(self, elapsed)
 	if ns.RefreshLatencyCache then
-		ns.RefreshLatencyCache()
+		local rawNow = GetTimePreciseSec and GetTimePreciseSec() or GetTime()
+		if rawNow >= nextLatencyRefreshAt then
+			ns.RefreshLatencyCache()
+			nextLatencyRefreshAt = rawNow + LATENCY_REFRESH_INTERVAL
+		end
 	end
 	ns.OnUpdate(elapsed)
 end
@@ -554,8 +569,10 @@ function ns.SetUpdateEnabled(enabled)
 		if ns.RefreshLatencyCache then
 			ns.RefreshLatencyCache()
 		end
+		nextLatencyRefreshAt = 0
 		frame:SetScript("OnUpdate", UpdateFrameOnUpdate)
 	else
+		nextLatencyRefreshAt = 0
 		frame:SetScript("OnUpdate", nil)
 	end
 end
@@ -690,6 +707,9 @@ frame:SetScript("OnEvent", function(self, event, ...)
 	elseif event == "PLAYER_REGEN_ENABLED" then
 		ns.StopSanityTicker()
 		ns.HideBars()
+		if ns.ClearPendingMeleeQueueState then
+			ns.ClearPendingMeleeQueueState()
+		end
 		ns.ResetTimer("mh")
 		ns.ResetTimer("oh")
 		ns.ResetTimer("ranged")

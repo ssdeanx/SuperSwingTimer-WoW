@@ -4,7 +4,6 @@ local CreateFrame = rawget(_G, "CreateFrame")
 local UIParent = rawget(_G, "UIParent")
 local GetTimePreciseSec = rawget(_G, "GetTimePreciseSec")
 local GetTime = rawget(_G, "GetTime")
-local GetSpellInfo = rawget(_G, "GetSpellInfo")
 local UnitCastingInfo = rawget(_G, "UnitCastingInfo")
 local UnitAttackSpeed = rawget(_G, "UnitAttackSpeed")
 local UnitChannelInfo = rawget(_G, "UnitChannelInfo")
@@ -14,6 +13,12 @@ local function GetCurrentTime()
 		return GetTimePreciseSec() + (ns.cachedLatency or 0)
 	end
 	return GetTime() + (ns.cachedLatency or 0)
+end
+
+local function GetSparkBlendMode()
+	-- Keep the main swing spark color-preserving so a white/manual spark does
+	-- not visually warm itself from the colored bar fill underneath.
+	return "BLEND"
 end
 
 local function GetRangedCastWindow()
@@ -74,6 +79,23 @@ local function GetHunterHiddenCastWindowFromRangedTimer(now)
 		return nil, nil
 	end
 
+	if t.hiddenCastWindowStart and t.hiddenCastWindowDuration and t.hiddenCastWindowDuration > 0 then
+		local storedWindowStart = t.hiddenCastWindowStart
+		local storedWindowEnd = storedWindowStart + t.hiddenCastWindowDuration
+		if now < storedWindowStart then
+			t.hiddenCastWindowStart = nil
+			t.hiddenCastWindowDuration = nil
+		elseif now <= storedWindowEnd then
+			return storedWindowStart, t.hiddenCastWindowDuration
+		elseif ns.isMoving == true and now >= storedWindowStart then
+			t.hiddenCastWindowStart = now
+			return t.hiddenCastWindowStart, t.hiddenCastWindowDuration
+		else
+			t.hiddenCastWindowStart = nil
+			t.hiddenCastWindowDuration = nil
+		end
+	end
+
 	local castWindow = math.max(GetRangedCastWindow() or 0.5, 0.01)
 	local windowEnd = t.lastSwing + t.duration
 	local windowStart = windowEnd - castWindow
@@ -81,7 +103,38 @@ local function GetHunterHiddenCastWindowFromRangedTimer(now)
 		return nil, nil
 	end
 
+	t.hiddenCastWindowStart = windowStart
+	t.hiddenCastWindowDuration = castWindow
+
 	return windowStart, castWindow
+end
+
+local function IsStoredHunterCastDisplayStateActive(now)
+	if ns.hunterCastActive ~= true or not IsHunterCastSpell(ns.hunterCastSpellId) then
+		return false
+	end
+
+	if ns.IsAutoShotSpell and ns.IsAutoShotSpell(ns.hunterCastSpellId) then
+		return false
+	end
+
+	local startTime = ns.hunterCastStartTime
+	local duration = ns.hunterCastDuration
+	if not startTime or not duration or duration <= 0 then
+		return false
+	end
+
+	if now and now >= (startTime + duration) then
+		if ns.ClearHunterCastState then
+			ns.ClearHunterCastState()
+		end
+		if ns.RefreshUpdateLoop then
+			ns.RefreshUpdateLoop()
+		end
+		return false
+	end
+
+	return true
 end
 
 local function ShouldShowHunterCastBar()
@@ -91,20 +144,28 @@ local function ShouldShowHunterCastBar()
 		return false
 	end
 
-	if ns.hunterCastActive == true and IsHunterCastSpell(ns.hunterCastSpellId) then
+	local now = GetCurrentTime()
+	local rangedWindowStart = GetHunterHiddenCastWindowFromRangedTimer(now)
+
+	if IsStoredHunterCastDisplayStateActive(now) then
 		return true
 	end
 
 	if type(UnitCastingInfo) == "function" then
 		local castSpellName, _, _, _, _, _, _, castSpellId = UnitCastingInfo("player")
-		if IsHunterCastSpell(castSpellId) or IsHunterCastSpell(castSpellName) then
-			return true
+		local liveSpell = castSpellId or castSpellName
+		if IsHunterCastSpell(liveSpell) then
+			if ns.IsAutoShotSpell and ns.IsAutoShotSpell(liveSpell) then
+				if rangedWindowStart then
+					return true
+				end
+			else
+				return true
+			end
 		end
 	end
 
-	local now = GetCurrentTime()
-	local windowStart = GetHunterHiddenCastWindowFromRangedTimer(now)
-	if windowStart then
+	if rangedWindowStart then
 		return true
 	end
 
@@ -122,7 +183,7 @@ local function CreateBar(frameName, width, height)
 	f:EnableMouse(true)
 	f:RegisterForDrag("LeftButton")
 	f:SetClampedToScreen(true)
-	f:SetHitRectInsets(-40, -40, -40, -40)
+	f:SetHitRectInsets(-50, -50, -50, -50)
 	f:SetStatusBarTexture(ns.GetBarTexture())
 	f:SetStatusBarColor(0, 0, 0, 1)
 	f:SetAlpha(0)
@@ -183,7 +244,7 @@ local function CreateBar(frameName, width, height)
 	else
 		sparkTexture:SetDrawLayer(ns.GetSparkTextureLayer())
 	end
-	sparkTexture:SetBlendMode(ns.GetIndicatorBlendMode())
+	sparkTexture:SetBlendMode(GetSparkBlendMode())
 	sparkTexture:SetWidth(ns.GetSparkWidth())
 	local sparkHeight = math.max(1, math.min(ns.GetSparkHeight(), f:GetHeight() or ns.BAR_HEIGHT or ns.GetSparkHeight()))
 	sparkTexture:SetHeight(sparkHeight)
@@ -293,7 +354,10 @@ end
 
 local function CreateOHBar()
 	local mh = ns.mhBar
-	local f = CreateBar("SuperSwingTimerOHBar")
+	local f = ns.ohBar or rawget(_G, "SuperSwingTimerOHBar")
+	if not f then
+		f = CreateBar("SuperSwingTimerOHBar")
+	end
 	local c = ns.GetBarColor and ns.GetBarColor("oh") or (SuperSwingTimerDB and SuperSwingTimerDB.colors and SuperSwingTimerDB.colors.oh)
 	if c then
 		f:SetStatusBarColor(c.r, c.g, c.b, c.a)
@@ -306,6 +370,7 @@ local function CreateOHBar()
 	f:ClearAllPoints()
 	f:SetPoint("TOPLEFT", mh, "BOTTOMLEFT", 0, -2)
 	f:SetPoint("TOPRIGHT", mh, "BOTTOMRIGHT", 0, -2)
+	f:Show()
 	ns.ohBar = f
 	return f
 end
@@ -367,55 +432,76 @@ local function UpdateHunterCastBar()
 	end
 
 	local now = GetCurrentTime()
-	local castWindow = math.max(ns.CAST_WINDOW or 0.5, 0.01)
+	local castWindow = math.max(GetRangedCastWindow() or ns.CAST_WINDOW or 0.5, 0.01)
 	local barWidth = f:GetWidth() or f.barWidth or ns.BAR_WIDTH or 0
 	local elapsedTime
-	local duration = castWindow
+	local duration
+	local rangedWindowStart, rangedWindowDuration = GetHunterHiddenCastWindowFromRangedTimer(now)
+	local usingStoredHunterCast = false
+	local usingLiveHunterCast = false
 
 	local spellId = ns.hunterCastSpellId or ns.currentCastSpellId
-	local startTime = ns.hunterCastStartTime
-	local hasLiveCastInfo = false
+	local startTime = nil
 	if type(UnitCastingInfo) == "function" then
-		local castSpellName, _, _, startTimeMs, _, _, _, castSpellId = UnitCastingInfo("player")
-		if IsHunterCastSpell(castSpellId) or IsHunterCastSpell(castSpellName) then
-			hasLiveCastInfo = true
-			spellId = castSpellId or castSpellName
-			if startTimeMs and startTimeMs > 0 then
-				startTime = (startTimeMs / 1000) + (ns.cachedLatency or 0)
+		local castSpellName, _, _, startTimeMs, endTimeMs, _, _, castSpellId = UnitCastingInfo("player")
+		local liveSpell = castSpellId or castSpellName
+		if IsHunterCastSpell(liveSpell) then
+			local isAutoShotSpell = ns.IsAutoShotSpell and ns.IsAutoShotSpell(liveSpell)
+			spellId = liveSpell
+			if isAutoShotSpell then
+				if rangedWindowStart and rangedWindowDuration and rangedWindowDuration > 0 then
+					usingLiveHunterCast = true
+					startTime = rangedWindowStart
+					duration = rangedWindowDuration
+				end
+			else
+				usingLiveHunterCast = true
+				if startTimeMs and startTimeMs > 0 then
+					startTime = (startTimeMs / 1000) + (ns.cachedLatency or 0)
+				end
+				if startTimeMs and endTimeMs and endTimeMs > startTimeMs then
+					duration = math.max((endTimeMs - startTimeMs) / 1000, 0.01)
+				end
 			end
 		end
 	end
-	if IsHunterCastSpell(spellId) and (ns.hunterCastActive or hasLiveCastInfo) then
-		if not startTime then
-			startTime = now
-		end
+	if usingLiveHunterCast and not startTime then
+		startTime = now
 	end
 
-	if not startTime then
-		local rangedWindowStart, rangedWindowDuration = GetHunterHiddenCastWindowFromRangedTimer(now)
-		if rangedWindowStart and rangedWindowDuration and rangedWindowDuration > 0 then
-			startTime = rangedWindowStart
-			duration = rangedWindowDuration
-			ns.hunterCastActive = true
-			ns.hunterCastSpellId = ns.hunterCastSpellId or ns.AUTO_SHOT_ID
-		end
+	if usingLiveHunterCast and (not duration or duration <= 0) then
+		duration = math.max(ns.hunterCastDuration or castWindow, 0.01)
+	end
+
+	if not startTime and IsStoredHunterCastDisplayStateActive(now) then
+		usingStoredHunterCast = true
+		spellId = ns.hunterCastSpellId
+		startTime = ns.hunterCastStartTime
+		duration = math.max(ns.hunterCastDuration or castWindow, 0.01)
+	end
+
+	if not startTime and rangedWindowStart and rangedWindowDuration and rangedWindowDuration > 0 then
+		spellId = ns.AUTO_SHOT_ID
+		startTime = rangedWindowStart
+		duration = rangedWindowDuration
+	end
+
+	local persistSpellState = spellId and not (ns.IsAutoShotSpell and ns.IsAutoShotSpell(spellId))
+	if usingLiveHunterCast and persistSpellState and startTime and duration and duration > 0 then
+		ns.hunterCastStartTime = startTime
+		ns.hunterCastDuration = duration
+		ns.hunterCastSpellId = spellId
+		ns.hunterCastActive = true
 	end
 
 	if startTime and duration and duration > 0 then
-		ns.hunterCastStartTime = startTime
-		ns.hunterCastDuration = duration
 		elapsedTime = now - startTime
 	end
 
-	if not duration or duration <= 0 then
+	if not startTime or not duration or duration <= 0 then
 		f:SetAlpha(0)
 		f:SetMinMaxValues(0, 1)
 		f:SetValue(0)
-		ns.hunterCastActive = false
-		ns.hunterCastSpellId = nil
-		ns.hunterCastStartTime = nil
-		ns.hunterCastDuration = nil
-		ns.RefreshUpdateLoop()
 		return
 	end
 
@@ -427,12 +513,13 @@ local function UpdateHunterCastBar()
 		elapsedTime = duration
 	end
 
-	if elapsedTime >= duration then
-		ns.hunterCastActive = false
-		ns.hunterCastSpellId = nil
-		ns.hunterCastStartTime = nil
-		ns.hunterCastDuration = nil
-		ns.RefreshUpdateLoop()
+	if elapsedTime >= duration and usingStoredHunterCast then
+		if ns.ClearHunterCastState then
+			ns.ClearHunterCastState()
+		end
+		if ns.RefreshUpdateLoop then
+			ns.RefreshUpdateLoop()
+		end
 	end
 
 	f:SetAlpha(1)
@@ -474,21 +561,62 @@ local function RestorePosition(slot, frame)
 	end
 end
 
+function ns.RestoreAllBarPositions()
+	RestorePosition("ranged", ns.rangedBar)
+	RestorePosition("mh", ns.mhBar)
+
+	if ns.ohBar and ns.mhBar then
+		ns.ohBar:ClearAllPoints()
+		ns.ohBar:SetPoint("TOPLEFT", ns.mhBar, "BOTTOMLEFT", 0, -2)
+		ns.ohBar:SetPoint("TOPRIGHT", ns.mhBar, "BOTTOMRIGHT", 0, -2)
+	end
+
+	if ns.hunterCastBar and ns.rangedBar then
+		ns.hunterCastBar:ClearAllPoints()
+		ns.hunterCastBar:SetPoint("TOPLEFT", ns.rangedBar, "BOTTOMLEFT", 0, -(ns.HUNTER_CAST_BAR_GAP or 2))
+		ns.hunterCastBar:SetPoint("TOPRIGHT", ns.rangedBar, "BOTTOMRIGHT", 0, -(ns.HUNTER_CAST_BAR_GAP or 2))
+	end
+end
+
 -- ============================================================
 -- Drag handling (anchor bar only â€” OH follows MH automatically)
 -- ============================================================
 local function AttachDrag(frame, slot)
-	frame:SetScript("OnMouseDown", function(self, button)
-		if button == "LeftButton" and not self.isMoving and not ns.AreBarsLocked() then
+	local function StartDrag(self)
+		if not self.isMoving and not ns.AreBarsLocked() then
 			self:StartMoving()
 			self.isMoving = true
 		end
-	end)
-	frame:SetScript("OnMouseUp", function(self, button)
-		if button == "LeftButton" and self.isMoving then
+	end
+
+	local function StopDrag(self)
+		if self.isMoving then
 			self:StopMovingOrSizing()
 			self.isMoving = false
 			SavePosition(slot, self)
+		end
+	end
+
+	frame:SetScript("OnDragStart", function(self)
+		StartDrag(self)
+	end)
+	frame:SetScript("OnDragStop", function(self)
+		StopDrag(self)
+	end)
+	frame:SetScript("OnMouseDown", function(self, button)
+		if button == "LeftButton" then
+			StartDrag(self)
+		end
+	end)
+	frame:SetScript("OnMouseUp", function(self, button)
+		if button == "LeftButton" then
+			StopDrag(self)
+		end
+	end)
+	frame:SetScript("OnHide", function(self)
+		if self.isMoving then
+			self:StopMovingOrSizing()
+			self.isMoving = false
 		end
 	end)
 end
@@ -499,6 +627,8 @@ end
 local function ShowBars()
 	local cfg = ns.classConfig
 	local db = SuperSwingTimerDB or ns.DB_DEFAULTS
+	local _, ohSpeed = UnitAttackSpeed("player")
+	local hasOffHand = ohSpeed and ohSpeed > 0
 	if cfg and cfg.ranged and db.showRanged ~= false and ns.rangedBar then
 		ns.rangedBar:SetAlpha(1)
 	end
@@ -508,8 +638,10 @@ local function ShowBars()
 	if cfg and cfg.melee and db.showMH ~= false and ns.mhBar then
 		ns.mhBar:SetAlpha(1)
 	end
-	if cfg and cfg.dualWield and db.showOH ~= false and ns.ohBar then
+	if cfg and cfg.dualWield and db.showOH ~= false and hasOffHand and ns.ohBar then
 		ns.ohBar:SetAlpha(1)
+	elseif ns.ohBar then
+		ns.ohBar:SetAlpha(0)
 	end
 end
 
@@ -583,6 +715,7 @@ local function UpdateRangedBar(elapsed)
 
 	-- Movement clipping in cast window
 	local cooldownEnd = t.lastSwing + t.duration - rangedWindowLead
+	local elapsed_time = now - t.lastSwing
 	if now >= cooldownEnd then
 		local barAlpha = (ns.rangedBarBaseColor and ns.rangedBarBaseColor.a) or 1
 		if safeStop then
@@ -591,8 +724,10 @@ local function UpdateRangedBar(elapsed)
 			f:SetStatusBarColor(1, 0, 0, barAlpha)  -- red: cast window
 		end
 		if ns.isMoving then
-			-- Pin timer at cast-window boundary
-			t.lastSwing = now - (t.duration - rangedWindowLead)
+			local castBoundaryElapsed = math.max(t.duration - rangedWindowLead, 0)
+			if elapsed_time > castBoundaryElapsed then
+				elapsed_time = castBoundaryElapsed
+			end
 		end
 	else
 		local c = ns.rangedBarBaseColor
@@ -603,7 +738,6 @@ local function UpdateRangedBar(elapsed)
 		end
 	end
 
-	local elapsed_time = now - t.lastSwing
 	if elapsed_time < 0 then elapsed_time = 0 end
 	if elapsed_time > t.duration then elapsed_time = t.duration end
 	local remaining = t.duration - elapsed_time
@@ -875,14 +1009,6 @@ function ns.ApplySparkSettings(texturePath, width, height, layer, alpha, color)
 		tonumber(color and color.g) or (currentColor and currentColor.g) or 1,
 		tonumber(color and color.b) or (currentColor and currentColor.b) or 1
 
-	local useClassColors = SuperSwingTimerDB and SuperSwingTimerDB.useClassColors == true
-	if useClassColors and r == 1 and g == 1 and b == 1 then
-		local classColor = ns.GetBarColor and ns.GetBarColor("ranged") or nil
-		if classColor then
-			r, g, b = classColor.r or 1, classColor.g or 1, classColor.b or 1
-		end
-	end
-
 	alpha = tonumber(alpha)
 	if alpha == nil then
 		alpha = tonumber(color and color.a)
@@ -900,10 +1026,8 @@ function ns.ApplySparkSettings(texturePath, width, height, layer, alpha, color)
 	SuperSwingTimerDB.sparkWidth = width
 	SuperSwingTimerDB.sparkHeight = height
 	SuperSwingTimerDB.sparkAlpha = alpha
-	-- Only persist color to DB if it's NOT a runtime class-color override of white
-	if not (useClassColors and r ~= 1) then
-		SuperSwingTimerDB.sparkColor = { r = r, g = g, b = b, a = alpha }
-	end
+	-- Spark tint stays independent from MH/OH/ranged class colors and queued-attack fill tints.
+	SuperSwingTimerDB.sparkColor = { r = r, g = g, b = b, a = alpha }
 
 	for _, bar in ipairs({ ns.mhBar, ns.ohBar, ns.rangedBar, ns.hunterCastBar }) do
 		if bar and bar.sparkTexture then
@@ -913,7 +1037,7 @@ function ns.ApplySparkSettings(texturePath, width, height, layer, alpha, color)
 			else
 				bar.sparkTexture:SetDrawLayer(layer)
 			end
-			bar.sparkTexture:SetBlendMode(ns.GetIndicatorBlendMode())
+			bar.sparkTexture:SetBlendMode(GetSparkBlendMode())
 			bar.sparkTexture:SetWidth(width)
 			local targetHeight = math.max(1, math.min(height, bar:GetHeight() or height))
 			bar.sparkTexture:SetHeight(targetHeight)
@@ -943,7 +1067,7 @@ function ns.ApplyIndicatorBlendMode(blendMode)
 
 	for _, bar in ipairs({ ns.mhBar, ns.ohBar, ns.rangedBar, ns.hunterCastBar }) do
 		if bar and bar.sparkTexture then
-			bar.sparkTexture:SetBlendMode(blendMode)
+			bar.sparkTexture:SetBlendMode(GetSparkBlendMode())
 		end
 	end
 
@@ -1140,8 +1264,10 @@ end
 function ns.ApplyVisibility()
 	local cfg = ns.classConfig or {}
 	local db = SuperSwingTimerDB or ns.DB_DEFAULTS
+	local _, ohSpeed = UnitAttackSpeed("player")
+	local hasOffHand = ohSpeed and ohSpeed > 0
 	local showMH = cfg.melee and db.showMH ~= false
-	local showOH = cfg.dualWield and db.showOH ~= false
+	local showOH = cfg.dualWield and db.showOH ~= false and hasOffHand
 	local showRanged = cfg.ranged and db.showRanged ~= false
 
 	if ns.mhBar then
@@ -1209,6 +1335,9 @@ function ns.ApplyBarColors()
 	if ns.UpdateDruidQueueTint then
 		ns.UpdateDruidQueueTint()
 	end
+	if ns.UpdateHunterQueueTint then
+		ns.UpdateHunterQueueTint()
+	end
 	if ns.ApplySparkColor then
 		ns.ApplySparkColor()
 	end
@@ -1224,6 +1353,7 @@ function ns.OnUpdate(elapsed)
 	if ns.ohBar then UpdateMeleeBar("oh", ns.ohBar) end
 	if ns.UpdateWarriorQueueTint then ns.UpdateWarriorQueueTint() end
 	if ns.UpdateDruidQueueTint then ns.UpdateDruidQueueTint() end
+	if ns.UpdateHunterQueueTint then ns.UpdateHunterQueueTint() end
 end
 
 -- ============================================================
@@ -1283,13 +1413,14 @@ function ns.UpdateOHBar()
 	if not cfg or not cfg.dualWield then return end
 
 	local _, ohSpeed = UnitAttackSpeed("player")
-	if ohSpeed and not ns.ohBar then
+	if ohSpeed and ohSpeed > 0 then
 		CreateOHBar()
-	elseif not ohSpeed and ns.ohBar then
+		if ns.ApplyVisibility then
+			ns.ApplyVisibility()
+		end
+	elseif ns.ohBar then
 		ns.ohBar:Hide()
-		ns.ohBar = nil
-		ns.timers.oh.state = "idle"
-		ns.RefreshUpdateLoop()
+		ns.ResetTimer("oh")
 	end
 end
 

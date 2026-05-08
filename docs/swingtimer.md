@@ -5,10 +5,16 @@ It now mirrors the current addon timing model more closely: start, end, reset, r
 ranged prefers the Auto Shot cooldown when the client exposes it, and melee still uses `UnitAttackSpeed()` plus haste-aware
 rescaling.
 
+The current addon timing model keeps swing timers on a latency-adjusted `GetTimePreciseSec()` clock (with `GetTime()`
+fallback), primes the precise clock before first use, and keeps live swing/parry/reset anchors on that same timer path
+instead of remapping combat-log timestamps onto a second clock domain.
+
 **Features:**
 
 - Accurate main/off hand swing tracking
 - Accurate ranged swing tracking with `GetSpellCooldown(75)` / `GetSpellCooldown("Auto Shot")` fallback behavior
+- Visual red-zone clamping should not rewrite the authoritative ranged swing anchor, and the hunter hidden cast-window helper should stay aligned to that same end-of-cycle stop-to-fire window without changing the core ranged timing path
+- Hunter hidden cast-window helpers should use the same end-of-cycle window as the ranged red/green feedback and keep that window stable for one cycle once it becomes active.
 - Supports both Vanilla and TBC Classic spell IDs
 - Weapon switch detection and handling
 - Parry reaction time adjustment
@@ -16,7 +22,7 @@ rescaling.
 - Bomb/ability handling that pauses/resets swing
 - Explicit start / end / reset / restart handling for each hand
 
-v1.2.4 - Update this number when making changes to the code, and update the CHANGELOG.md with details of the changes.
+v1.2.5 - Update this number when making changes to the code, and update the CHANGELOG.md with details of the changes.
 
 ## WeakAuras trigger map
 
@@ -112,7 +118,7 @@ frame:SetScript("OnUpdate", function()
 end)
 
 local function GetTimePrecise()
-    return GetClock() + cachedLatency
+    return GetClock()
 end
 
 local function GetAutoShotCooldown()
@@ -125,7 +131,7 @@ local function GetAutoShotCooldown()
     end
 
     if enabled == 1 and startTime and duration and duration > 0 then
-        return startTime + cachedLatency, duration
+        return startTime, duration
     end
 
     return nil, nil

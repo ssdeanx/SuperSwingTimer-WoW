@@ -1,5 +1,18 @@
 # Super Swing Timer Changelog
   
+## 3.1.26 - 2026-05-05
+
+- Final release-prep session pass: re-audited the swing timer against current Classic/TBC API behavior and kept the live timer model on latency-adjusted `GetTimePreciseSec()` with `GetTime()` fallback, including priming the precise clock once before the first live timestamp.
+- Restored swing, parry-haste, hunter Auto Shot CLEU, queued next-attack landed-reset, and druid form-reset anchors to the addon's existing latency-aware live clock after the experimental CLEU timestamp normalization caused timers to lead early.
+- Kept Hunter's core ranged timer path intact while stabilizing the dedicated Auto Shot hidden cast bar on the same end-of-cycle stop-to-fire window as the red/green ranged feedback.
+- Split next-melee queue handling fully by class: Warrior Heroic Strike / Cleave, Druid Maul, and Hunter Raptor Strike now keep separate queued state, landed-hit reset detection, interruption cleanup, and tint ownership.
+- Changed Druid Maul to its own bear-yellow and kept queued next-attack tint scoped to the MH bar fill only; the spark remains on its independent manual/default color path.
+- Corrected ret paladin reseal timing to use current swing elapsed plus remaining GCD time, which matches the real twist window much more closely than the older fixed-offset marker.
+- Routed shaman weave spell resolution through `ns.GetSpellInfo`, kept weave overlays respecting Minimal Mode / weave visibility, and preserved the above-bar overlay layering for shaman, hunter, and paladin helpers.
+- Polished setup and config behavior: real drag handlers plus a wider grab area for moving bars, safer OH-frame reuse across equipment changes, Reset Defaults restoring saved positions, Test Bars staying visible after the normal visibility pass, and the MH/OH `Bar Width` slider now sitting below its section header instead of overlapping the collapse toggle.
+- Replaced the compact MH/OH and ranged texture dropdowns with a full-preview scrolling picker that shows each bar texture across the full row, keeps a fixed visible list size with scroll support, and anchors the popup from the texture control instead of paging nested UIDropDownMenu submenus.
+- Kept the bar-texture picker focused on bar media only: it now surfaces the guaranteed built-in Blizzard fallback textures plus all LibSharedMedia-registered statusbar entries from installed media packs such as SharedMedia-Blizzard, while leaving the spark and weave-spark pickers on the dedicated thumbnail-browser path.
+
 ## 3.1.18 - 2026-05-02
   
 - Added next-melee-attack (NMA) queue tinting for Druid Maul. The Main Hand bar now turns yellow when Maul is queued, matching the Warrior Heroic Strike behavior.
