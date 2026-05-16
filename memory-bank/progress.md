@@ -1,5 +1,19 @@
 # Progress
 
+## Progress Update (2026-05-15 - v0.0.4 enemy bar and spark sync)
+
+- Added the new enemy target bar end-to-end: defaults/migration in constants/bootstrap, enemy timer state in `SuperSwingTimer_State.lua`, a draggable/shared-style enemy frame in `SuperSwingTimer_UI.lua`, and `/sst` toggle/color/reset support in `SuperSwingTimer_Config.lua`.
+- Wired enemy tracking to current Classic/TBC-safe APIs and events: `PLAYER_TARGET_CHANGED`, `UnitGUID("target")`, `UnitAttackSpeed("target")`, and hostile target `SWING_DAMAGE` / `SWING_MISSED` via `CombatLogGetCurrentEventInfo()`.
+- Tightened hunter ranged timing by anchoring active Auto Shot live resync back to the cooldown API start when `GetSpellCooldown(75)` is available, instead of only rescaling duration.
+- Moved cached latency off the shared base timer clock so swing motion stays on a `GetTime()`-aligned `GetTimePreciseSec()` / `GetTime()` path while latency remains on predictive windows like Auto Shot safe-stop timing and weave clip math.
+- Added `Auto Shot Safe Color` / `Auto Shot Unsafe Color` UI swatches so hunters can tune the red/green ranged feedback without changing the base ranged bar color; the existing `Enemy Color` swatch continues to drive the current-target enemy bar.
+- Fixed the shared visibility pass so MH/OH/enemy bars stay hidden out of combat during normal play even if config/equipment apply paths call `ns.ApplyVisibility()`.
+- Fixed Test Bars cleanup so preview end now restores `ns.ApplyVisibility()` instead of forcing every bar fully hidden.
+- Improved shaman weave smoothness by keeping the breakpoint marker locked to the full cast-time-plus-latency start point and replacing the old triangle textures with the tracked spell's small icon.
+- Re-audited the remaining timing paths against Warcraft Wiki and kept the final clock split on purpose: the shared swing clock is now raw, while direct `UnitCastingInfo` / `UnitChannelInfo` timestamp reads remain raw and cached latency is applied only where the gameplay model needs prediction.
+- Fixed spark drift by centralizing spark positioning on the actual rendered fill edge and changed the stock spark width default to 3px, with migration logic that only rewrites untouched old 4px defaults.
+- Synced `SuperSwingTimer.toc`, `README.md`, `CHANGELOG.md`, `docs/APIS.md`, `docs/UI.md`, `docs/swingtimer.md`, `AGENTS.md`, and the memory-bank notes to the requested v0.0.4 release update.
+
 ## Progress Update (2026-05-05 - bar texture picker final UI polish)
 
 - Replaced the compact MH/OH and ranged texture dropdowns with a scrolling full-preview bar-texture picker that keeps each texture visible behind its label and removes the old paged submenu path.

@@ -1,5 +1,18 @@
 # Active Context
 
+## Active Context Update (2026-05-15 - v0.0.4 enemy bar and spark sync pass)
+
+- Added a new current-target enemy swing bar path that tracks the selected hostile target through `PLAYER_TARGET_CHANGED`, `UnitGUID("target")`, `UnitAttackSpeed("target")`, and hostile target `SWING_DAMAGE` / `SWING_MISSED` combat-log events while ignoring off-hand enemy hits to keep the single enemy bar readable.
+- The enemy bar now has SavedVariables defaults/migration, its own red default color and saved anchor, a `/sst` visibility toggle, and an `Enemy Color` swatch in the color section.
+- Centralized main-bar spark positioning in the UI module so the spark anchors from the actual rendered status-bar fill edge instead of only bar-width math; the stock spark width is now 3px and older untouched 4px installs migrate down to that default.
+- Timing follow-up: tightened hunter ranged live resync by reusing the active Auto Shot cooldown start anchor from `GetSpellCooldown(75)` during mid-swing sync instead of only rescaling duration, and then moved cached latency off the shared base timer clock so swing motion stays on a `GetTime()`-aligned precise time path while predictive windows still apply latency separately.
+- Weave follow-up: `SuperSwingTimer_Weaving.lua` now carries the tracked spell icon through the weave display info, the shaman class-mod overlay swaps the old triangle markers to those small spell icons, and the breakpoint marker itself stays fixed on the full cast-time-plus-latency start point while the separate weave spark still shows live cast progress.
+- Timing audit follow-up: rechecked the remaining cast/channel timing paths against current Warcraft Wiki docs and kept the final split explicit — swing timers and movement anchors now stay on a `GetTime()`-aligned precise clock, while cached latency is only added to predictive windows such as Auto Shot safe-stop timing and weave clip math.
+- Hunter/UI follow-up: `/sst` now exposes `Auto Shot Safe Color` and `Auto Shot Unsafe Color` swatches so the ranged cast-window feedback can be tuned independently from the base ranged bar color.
+- Visibility follow-up: `SuperSwingTimer_UI.lua` now gates the shared `ApplyVisibility()` path behind combat state for MH/OH/enemy bars, which stops out-of-combat reappearance after config refreshes or OH/equipment apply paths while still allowing Test Bars preview and live ranged visibility.
+- Preview cleanup follow-up: ending Test Bars preview now restores the shared visibility helper instead of force-hiding all bars, which keeps live out-of-combat ranged visibility consistent after preview mode ends.
+- TOC metadata, README, changelog, API/UI notes, AGENTS, and memory-bank progress were updated for the requested v0.0.4 release line.
+
 ## Active Context Update (2026-05-05 - bar texture picker final UI polish)
 
 - Replaced the MH/OH and ranged nested texture dropdown path with a scrolling full-preview bar-texture picker that stretches each texture across the row behind its label.

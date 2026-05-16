@@ -8,7 +8,16 @@ local UnitSpellHaste = rawget(_G, "UnitSpellHaste")
 local GetSpellHaste = rawget(_G, "GetSpellHaste")
 local UnitCastingInfo = rawget(_G, "UnitCastingInfo")
 local UnitChannelInfo = rawget(_G, "UnitChannelInfo")
-local GetClock = GetTimePreciseSec or GetTime
+
+local function GetClock()
+	if ns.GetAlignedTime then
+		return ns.GetAlignedTime()
+	end
+	if GetTimePreciseSec then
+		return GetTimePreciseSec()
+	end
+	return GetTime()
+end
 
 GetClock()
 
@@ -32,16 +41,18 @@ end
 
 local function ResolveSpellInfo(group)
 	for _, spellId in ipairs(group.ids) do
-		local spellName, castTime
+		local spellName, spellIcon, castTime
 		if ns.GetSpellInfo then
 			local spellInfo = { ns.GetSpellInfo(spellId) }
 			spellName = spellInfo[1]
+			spellIcon = spellInfo[3]
 			castTime = spellInfo[4]
 		end
 		if spellName and castTime and castTime > 0 then
 			return {
 				spellId = spellId,
 				spellName = spellName,
+				iconTexture = spellIcon,
 				castTime = castTime / 1000,
 				abbrev = group.abbrev,
 				label = group.label,
@@ -247,6 +258,7 @@ local function BuildDisplayInfo(spellInfo)
 	return {
 		spellId = spellInfo.spellId,
 		spellName = spellInfo.spellName,
+		iconTexture = spellInfo.iconTexture,
 		spellAbbrev = spellInfo.abbrev,
 		castTime = effectiveCastTime,
 		castRemaining = castRemaining,

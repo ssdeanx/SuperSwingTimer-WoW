@@ -23,18 +23,23 @@ This document captures the UI direction for `/sst`.
   - spark layer
   - weave marker layer
   - any new overlay layers later
+- Keep the new enemy bar on the same shared bar/spark styling path as MH/OH so it picks up the existing texture, border, background, and spark controls, while keeping its own red default fill and separate visibility toggle.
 - Keep visual cues on a dedicated overlay frame above the bar fill so breakpoint markers never depend on hover-sensitive HIGHLIGHT ordering.
 - Keep the hunter Auto Shot / Multi-Shot cast bar separate from the ranged swing bar, but lock the Auto Shot hidden-window display to the same end-of-cycle red/green ranged window so movement pinning does not make the cast bar bounce.
+- Keep the shared swing clock on a `GetTime()`-aligned `GetTimePreciseSec()` / `GetTime()` path and apply cached latency only to predictive windows such as Auto Shot safe-stop timing, hunter hidden-window sizing, and weave clip math.
 - Keep spark tint independent from `Use Class Colors` and next-melee queue fill tints so the spark can stay white or use a manual color without losing contrast, and keep the main spark on a color-preserving blend mode so its visible tint does not warm from the bar fill underneath.
+- Keep the main spark aligned to the actual rendered fill edge so width changes do not make it visibly trail behind the bar.
 - Toggling `Use Class Colors` on should not overwrite the stored manual MH/OH/ranged colors; toggling it back off should restore those saved manual colors.
 - Make shaman weave overlays respect both the weave toggle and Minimal Mode so the class mod cannot re-show them after the visibility layer has hidden them.
 - Add weave-assist presentation options:
   - show / hide weave overlay
-  - tiny upper / lower marker pair that follows the spell-haste-adjusted safe swing point
+  - tiny upper / lower spell-icon marker pair that follows the spell-haste-adjusted safe swing point
   - marker size, gap, alpha, and layer controls, with compact spark defaults that stay bar-height aligned instead of becoming a full-height glow
   - color selection by spell family
   - per-family enable / disable toggles for Lightning Bolt, Chain Lightning, Healing Wave, Lesser Healing Wave, and Chain Heal
 - Texture selection for the MH/OH and ranged bars should use a scrolling full-preview list that stretches each bar texture behind its label, keeps a fixed-height visible window with scroll support, and stays focused on bar-style textures from Blizzard fallbacks, WeakAuras bars, and any installed LibSharedMedia statusbar packs. The spark row and the shaman weave spark row should stay on the dedicated thumbnail browser seeded with the Normal `Square_FullWhite` preset, while the collapsed bar rows show the current texture as a miniature preview bar instead of a small icon.
+- The enemy bar should be toggleable from `/sst`, default to red, store its own anchor, expose its own color swatch, and follow the same preview / lock-drag flow as the other primary bars.
+- Auto Shot safe/unsafe feedback should expose its own color swatches in `/sst` so players can tune both the ranged cast-window fill and the overlay tint without changing the base ranged-bar color.
 - Make the row controls obvious: toggles use the right-side checkbox, selector settings use the right-side dropdown, and sliders expose a right-side editable numeric field.
 - Include a `Lock / Unlock Bars` control plus a temporary `Test Bars` action so players can preview and reposition the bars without fighting the normal combat visibility rules.
 - Make the unlocked bars easy to grab by giving them a slightly larger drag hit area and using actual drag handlers (`OnDragStart` / `OnDragStop`) on the anchor bars, and expose a bar border size control so the frame outline can be tuned instead of being fixed at a single pixel thickness.

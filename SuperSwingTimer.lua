@@ -7,12 +7,16 @@ local strtrim = rawget(_G, "strtrim")
 local GetShapeshiftForm = rawget(_G, "GetShapeshiftForm")
 local GetTimePreciseSec = rawget(_G, "GetTimePreciseSec")
 local GetTime = rawget(_G, "GetTime")
+local InCombatLockdown = rawget(_G, "InCombatLockdown")
 
 local function GetCurrentTime()
-	if GetTimePreciseSec then
-		return GetTimePreciseSec() + (ns.cachedLatency or 0)
+	if ns.GetAlignedTime then
+		return ns.GetAlignedTime()
 	end
-	return GetTime() + (ns.cachedLatency or 0)
+	if GetTimePreciseSec then
+		return GetTimePreciseSec()
+	end
+	return GetTime()
 end
 
 local LATENCY_REFRESH_INTERVAL = 0.10
@@ -75,10 +79,11 @@ local function MigrateDB()
 	-- Fresh install
 	if not SuperSwingTimerDB then
 		SuperSwingTimerDB = {
-			version                    = 24,
+			version                    = 26,
 			showMH                     = ns.DB_DEFAULTS.showMH,
 			showOH                     = ns.DB_DEFAULTS.showOH,
 			showRanged                 = ns.DB_DEFAULTS.showRanged,
+			showEnemy                  = ns.DB_DEFAULTS.showEnemy,
 			showWeaveAssist            = ns.DB_DEFAULTS.showWeaveAssist,
 			useClassColors             = ns.DB_DEFAULTS.useClassColors,
 			indicatorBlendMode         = ns.DB_DEFAULTS.indicatorBlendMode,
@@ -138,6 +143,7 @@ local function MigrateDB()
 				mh     = { point = ns.DB_DEFAULTS.positions.mh.point, relativePoint = ns.DB_DEFAULTS.positions.mh.relativePoint, x = ns.DB_DEFAULTS.positions.mh.x, y = ns.DB_DEFAULTS.positions.mh.y },
 				oh     = { point = ns.DB_DEFAULTS.positions.oh.point, relativePoint = ns.DB_DEFAULTS.positions.oh.relativePoint, x = ns.DB_DEFAULTS.positions.oh.x, y = ns.DB_DEFAULTS.positions.oh.y },
 				ranged = { point = ns.DB_DEFAULTS.positions.ranged.point, relativePoint = ns.DB_DEFAULTS.positions.ranged.relativePoint, x = ns.DB_DEFAULTS.positions.ranged.x, y = ns.DB_DEFAULTS.positions.ranged.y },
+				enemy  = { point = ns.DB_DEFAULTS.positions.enemy.point, relativePoint = ns.DB_DEFAULTS.positions.enemy.relativePoint, x = ns.DB_DEFAULTS.positions.enemy.x, y = ns.DB_DEFAULTS.positions.enemy.y },
 			},
 		}
 		for key, def in pairs(ns.DB_DEFAULTS.colors) do
@@ -155,6 +161,7 @@ local function MigrateDB()
 	SuperSwingTimerDB.showMH             = (SuperSwingTimerDB.showMH ~= false)
 	SuperSwingTimerDB.showOH             = (SuperSwingTimerDB.showOH ~= false)
 	SuperSwingTimerDB.showRanged         = (SuperSwingTimerDB.showRanged ~= false)
+	SuperSwingTimerDB.showEnemy          = (SuperSwingTimerDB.showEnemy ~= false)
 	SuperSwingTimerDB.showWeaveAssist    = (SuperSwingTimerDB.showWeaveAssist ~= false)
 	-- useClassColors strictly defaults to false unless explicitly true in the DB
 	if SuperSwingTimerDB.useClassColors == nil then
@@ -173,6 +180,12 @@ local function MigrateDB()
 		if not SuperSwingTimerDB.positions[slot] then
 			SuperSwingTimerDB.positions[slot] = { point = def.point, relativePoint = def.relativePoint, x = def.x, y =
 			def.y }
+		end
+	end
+	SuperSwingTimerDB.colors = SuperSwingTimerDB.colors or {}
+	for key, def in pairs(ns.DB_DEFAULTS.colors) do
+		if not SuperSwingTimerDB.colors[key] then
+			SuperSwingTimerDB.colors[key] = { r = def.r, g = def.g, b = def.b, a = def.a }
 		end
 	end
 	SuperSwingTimerDB.sparkColor = SuperSwingTimerDB.sparkColor or {
@@ -448,6 +461,33 @@ local function MigrateDB()
 	if (SuperSwingTimerDB.version or 0) < 24 then
 		SuperSwingTimerDB.version = 24
 	end
+
+	-- v24 -> v25: add the enemy bar defaults and bring the stock spark width back to 3px.
+	if (SuperSwingTimerDB.version or 0) < 25 then
+		if SuperSwingTimerDB.sparkWidth == nil or math.abs((SuperSwingTimerDB.sparkWidth or 0) - 4) < 0.001 then
+			SuperSwingTimerDB.sparkWidth = ns.DB_DEFAULTS.sparkWidth
+		end
+		SuperSwingTimerDB.version = 25
+	end
+
+	-- v25 -> v26: add configurable Auto Shot safe/unsafe colors.
+	if (SuperSwingTimerDB.version or 0) < 26 then
+		SuperSwingTimerDB.colors = SuperSwingTimerDB.colors or {}
+		local colors = SuperSwingTimerDB.colors
+		colors.autoShotSafe = colors.autoShotSafe or {
+			r = ns.DB_DEFAULTS.colors.autoShotSafe.r,
+			g = ns.DB_DEFAULTS.colors.autoShotSafe.g,
+			b = ns.DB_DEFAULTS.colors.autoShotSafe.b,
+			a = ns.DB_DEFAULTS.colors.autoShotSafe.a,
+		}
+		colors.autoShotUnsafe = colors.autoShotUnsafe or {
+			r = ns.DB_DEFAULTS.colors.autoShotUnsafe.r,
+			g = ns.DB_DEFAULTS.colors.autoShotUnsafe.g,
+			b = ns.DB_DEFAULTS.colors.autoShotUnsafe.b,
+			a = ns.DB_DEFAULTS.colors.autoShotUnsafe.a,
+		}
+		SuperSwingTimerDB.version = 26
+	end
 end
 
 -- ============================================================
@@ -513,12 +553,13 @@ local function RegisterEvents()
 	-- Core events for all classes
 	frame:RegisterEvent("COMBAT_LOG_EVENT_UNFILTERED")
 	frame:RegisterEvent("ADDON_LOADED")
+	frame:RegisterEvent("UNIT_ATTACK_SPEED")
+	frame:RegisterEvent("PLAYER_TARGET_CHANGED")
+	frame:RegisterEvent("PLAYER_REGEN_DISABLED")
+	frame:RegisterEvent("PLAYER_REGEN_ENABLED")
 
 	if cfg.melee then
-		frame:RegisterEvent("UNIT_ATTACK_SPEED")
 		frame:RegisterEvent("UNIT_AURA")
-		frame:RegisterEvent("PLAYER_REGEN_DISABLED")
-		frame:RegisterEvent("PLAYER_REGEN_ENABLED")
 		frame:RegisterEvent("PLAYER_EQUIPMENT_CHANGED")
 		frame:RegisterEvent("UNIT_INVENTORY_CHANGED")
 		frame:RegisterEvent("UNIT_SPELLCAST_SUCCEEDED")
@@ -542,8 +583,6 @@ local function RegisterEvents()
 		frame:RegisterEvent("STOP_AUTOREPEAT_SPELL")
 		frame:RegisterEvent("PLAYER_STARTED_MOVING")
 		frame:RegisterEvent("PLAYER_STOPPED_MOVING")
-		frame:RegisterEvent("PLAYER_REGEN_DISABLED")
-		frame:RegisterEvent("PLAYER_REGEN_ENABLED")
 	end
 
 	if cfg.melee and ns.playerClass == "DRUID" then
@@ -646,11 +685,20 @@ frame:SetScript("OnEvent", function(self, event, ...)
 		if ns.UpdateCastZoneVisual then
 			ns.UpdateCastZoneVisual()
 		end
+	elseif event == "PLAYER_TARGET_CHANGED" then
+		if ns.RefreshEnemyTarget then
+			ns.RefreshEnemyTarget()
+		end
+		if InCombatLockdown and InCombatLockdown() and ns.ApplyVisibility then
+			ns.ApplyVisibility()
+		end
 	elseif event == "UNIT_ATTACK_SPEED" then
 		local unit = ...
 		if unit == "player" then
 			ns.SyncMeleeTimerSpeed("mh", nil, true)
 			ns.SyncMeleeTimerSpeed("oh", nil, true)
+		elseif unit == "target" and ns.SyncMeleeTimerSpeed then
+			ns.SyncMeleeTimerSpeed("enemy", nil, true)
 		end
 	elseif event == "UNIT_AURA" then
 		local unit = ...
@@ -682,6 +730,9 @@ frame:SetScript("OnEvent", function(self, event, ...)
 	elseif event == "PLAYER_ENTERING_WORLD" then
 		local isInitialLogin, isReloadingUi = ...
 		ns.OnPlayerEnteringWorld(isInitialLogin, isReloadingUi)
+		if ns.RefreshEnemyTarget then
+			ns.RefreshEnemyTarget()
+		end
 		if ns.ClearWeavePreview then
 			ns.ClearWeavePreview()
 		end
@@ -713,6 +764,7 @@ frame:SetScript("OnEvent", function(self, event, ...)
 		ns.ResetTimer("mh")
 		ns.ResetTimer("oh")
 		ns.ResetTimer("ranged")
+		ns.ResetTimer("enemy")
 		if ns.ClearHunterCastState then
 			ns.ClearHunterCastState()
 		end

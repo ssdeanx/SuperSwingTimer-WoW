@@ -11,11 +11,14 @@ local DRUID_MAUL_TINT = { r = 1.0, g = 0.78, b = 0.10 }
 local HUNTER_RAPTOR_TINT = { r = 0.55, g = 1.00, b = 0.55 }
 
 local function GetCurrentTime()
+	if ns.GetAlignedTime then
+		return ns.GetAlignedTime()
+	end
 	if GetTimePreciseSec then
-		return GetTimePreciseSec() + (ns.cachedLatency or 0)
+		return GetTimePreciseSec()
 	end
 
-	return GetTime() + (ns.cachedLatency or 0)
+	return GetTime()
 end
 
 local function GetOverlayParent(bar)
@@ -323,6 +326,28 @@ local function SetupWarrior()
 end
 
 local function SetupEnhShaman()
+	local function ApplyWeaveMarkerTexture(texture, iconTexture, fallbackTexture, size, alpha, color)
+		if not texture then
+			return
+		end
+
+		texture:SetWidth(size)
+		texture:SetHeight(size)
+		texture:SetAlpha(alpha)
+
+		if iconTexture then
+			texture:SetTexture(iconTexture)
+			texture:SetTexCoord(0.07, 0.93, 0.07, 0.93)
+			texture:SetBlendMode("BLEND")
+			texture:SetVertexColor(1, 1, 1, 1)
+		else
+			texture:SetTexture(fallbackTexture)
+			texture:SetTexCoord(0, 1, 0, 1)
+			texture:SetBlendMode(ns.GetIndicatorBlendMode and ns.GetIndicatorBlendMode() or "ADD")
+			texture:SetVertexColor(color.r, color.g, color.b, 1)
+		end
+	end
+
 	local function UpdateWeaveVisuals()
 		if not ns.weaveSpark or not ns.weaveTriangleTop or not ns.weaveTriangleBottom then
 			return
@@ -356,7 +381,7 @@ local function SetupEnhShaman()
 		local barWidth = (ns.mhBar and ns.mhBar:GetWidth()) or (ns.mhBar and ns.mhBar.barWidth) or ns.BAR_WIDTH or 0
 		local barAnchor = GetOverlayParent(ns.mhBar)
 
-		local castWindow = math.max((info.castRemaining or info.castTime or 0) + (info.latency or 0), 0)
+		local castWindow = math.max((info.castTime or 0) + (info.latency or 0), 0)
 		local markerPos = ((timer.duration - castWindow) / timer.duration) * barWidth
 		if markerPos < 0 then
 			markerPos = 0
@@ -375,8 +400,11 @@ local function SetupEnhShaman()
 		end
 
 		local color = info.color or { r = 0.7, g = 0.8, b = 1, a = 1 }
+		local iconTexture = info.iconTexture
 		local triangleGap = ns.GetWeaveTriangleGap and ns.GetWeaveTriangleGap() or 2
 		local triangleSize = ns.GetWeaveTriangleSize and ns.GetWeaveTriangleSize() or 14
+		local topFallbackTexture = ns.GetWeaveTriangleTopTexture and ns.GetWeaveTriangleTopTexture() or "Interface\\Buttons\\UI-ScrollBar-ScrollDownButton-Arrow"
+		local bottomFallbackTexture = ns.GetWeaveTriangleBottomTexture and ns.GetWeaveTriangleBottomTexture() or "Interface\\Buttons\\UI-ScrollBar-ScrollUpButton-Arrow"
 		local sparkWidth = ns.GetWeaveSparkWidth and ns.GetWeaveSparkWidth() or 14
 		local sparkHeight = ns.GetWeaveSparkHeight and ns.GetWeaveSparkHeight() or 30
 		local clampedSparkHeight = math.max(1, math.min(sparkHeight, (ns.mhBar and ns.mhBar:GetHeight()) or ns.BAR_HEIGHT or sparkHeight))
@@ -396,16 +424,12 @@ local function SetupEnhShaman()
 
 		ns.weaveTriangleTop:ClearAllPoints()
 		ns.weaveTriangleTop:SetPoint("BOTTOM", barAnchor, "TOP", markerPos, triangleGap)
-		ns.weaveTriangleTop:SetWidth(triangleSize)
-		ns.weaveTriangleTop:SetHeight(triangleSize)
-		ns.weaveTriangleTop:SetVertexColor(color.r, color.g, color.b, triangleAlpha)
+		ApplyWeaveMarkerTexture(ns.weaveTriangleTop, iconTexture, topFallbackTexture, triangleSize, triangleAlpha, color)
 		ns.weaveTriangleTop:Show()
 
 		ns.weaveTriangleBottom:ClearAllPoints()
 		ns.weaveTriangleBottom:SetPoint("TOP", barAnchor, "BOTTOM", markerPos, -triangleGap)
-		ns.weaveTriangleBottom:SetWidth(triangleSize)
-		ns.weaveTriangleBottom:SetHeight(triangleSize)
-		ns.weaveTriangleBottom:SetVertexColor(color.r, color.g, color.b, triangleAlpha)
+		ApplyWeaveMarkerTexture(ns.weaveTriangleBottom, iconTexture, bottomFallbackTexture, triangleSize, triangleAlpha, color)
 		ns.weaveTriangleBottom:Show()
 		if ns.weaveMarker then
 			ns.weaveMarker:SetShown(showSpark)

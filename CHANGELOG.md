@@ -1,4 +1,20 @@
 # Super Swing Timer Changelog
+
+## 0.0.4 - 2026-05-15
+
+- Added a new current-target enemy swing bar that uses `PLAYER_TARGET_CHANGED`, `UnitGUID("target")`, `UnitAttackSpeed("target")`, and hostile-target `SWING_DAMAGE` / `SWING_MISSED` combat-log events to track the selected enemy's main-hand swing timing.
+- The enemy bar is enabled by default, uses a red default color, stores its own position in SavedVariables, resets cleanly when the target dies or changes, and can be turned off from the `/sst` config panel.
+- Added an `Enemy Color` swatch to the color section so the new target bar can be recolored without tying it to `Use Class Colors`.
+- Moved cached latency off the shared base timer clock: swing bars and motion now stay on a `GetTime()`-aligned precise clock, while latency is applied only to predictive windows such as Auto Shot safe-stop timing and weave clip math.
+- Added `Auto Shot Safe Color` and `Auto Shot Unsafe Color` swatches so the hunter red/green feedback can be tuned independently from the base ranged bar color.
+- Tightened hunter ranged live resync: when `GetSpellCooldown(75)` exposes an active Auto Shot cooldown, the ranged timer now reuses that cooldown start as the live swing anchor instead of only stretching the duration mid-cycle.
+- Fixed the shared visibility pass so MH/OH/enemy bars no longer leak visible outside combat when config refreshes, equipment changes, or other UI apply paths run out of combat; preview mode and active ranged behavior still stay visible when appropriate.
+- Tightened Test Bars cleanup so ending the preview now restores the normal shared visibility rules instead of force-hiding active out-of-combat ranged behavior.
+- Smoothed shaman weave timing by keeping the breakpoint marker locked to the full cast-time-plus-latency start point instead of letting that marker slide with `castRemaining` while you are already casting.
+- Replaced the shaman weave triangle markers with small tracked-spell icons so the breakpoint helper shows the real spell family icon directly on the MH bar overlay.
+- Fixed the shared spark drifting behind the visible fill by anchoring it from the actual rendered status-bar texture edge instead of only re-deriving it from the saved frame width.
+- Changed the stock spark width default to 3px and migrated older untouched 4px default installs down to the new width while preserving custom user sizes.
+- Synced the addon metadata and docs to the requested v0.0.4 release line.
   
 ## 3.1.26 - 2026-05-05
 

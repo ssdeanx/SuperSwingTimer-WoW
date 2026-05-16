@@ -25,6 +25,14 @@ This document stores the API facts we should rely on while building the `/sst` U
 - Hidden hunter cast-bar helpers should anchor to the same end-of-cycle stop-to-fire window as the ranged red/green zone without rewriting the authoritative ranged swing anchor.
 - Authoritative MH/OH/ranged timers should stay on the raw `GetTimePreciseSec()` / `GetTime()` clock; cached latency belongs in safe-window math (hunter stop-to-fire, weave clip math), not in the stored swing timestamps themselves.
 
+## Enemy target timing inputs
+
+- `PLAYER_TARGET_CHANGED` is the correct target-swap signal for resetting or seeding current-target enemy state.
+- `UnitGUID("target")` identifies the tracked hostile target for the enemy bar.
+- `UnitAttackSpeed("target")` is verified on Warcraft Wiki for `"target"` and should be used as the current target melee-speed source.
+- Enemy swing starts should come from `COMBAT_LOG_EVENT_UNFILTERED` via the tracked target GUID on `SWING_DAMAGE` / `SWING_MISSED`.
+- If the addon only exposes one enemy bar, ignore off-hand flags on enemy swing events so the bar stays readable and does not restart twice per dual-wield cycle.
+
 ## Classic/TBC compatibility helpers
 
 - `ns.GetSpellInfo()` should be preferred over raw `GetSpellInfo()` in addon code so localized spell-name lookup keeps working across Classic/TBC Anniversary clients that expose `C_Spell.GetSpellInfo()`.

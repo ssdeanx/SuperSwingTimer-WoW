@@ -2,7 +2,6 @@ local _, ns = ...
 ---@diagnostic disable: undefined-field
 local CreateFrame = rawget(_G, "CreateFrame")
 local UIParent = rawget(_G, "UIParent")
-local InCombatLockdown = rawget(_G, "InCombatLockdown")
 local ColorPickerFrame = rawget(_G, "ColorPickerFrame")
 local GameTooltip = rawget(_G, "GameTooltip")
 local C_Timer = rawget(_G, "C_Timer")
@@ -151,6 +150,16 @@ end
 
 local BAR_COLOR_KEYS = { "mh", "oh", "ranged" }
 
+local function UsesClassColorToggle(colorKey)
+	for _, key in ipairs(BAR_COLOR_KEYS) do
+		if key == colorKey then
+			return true
+		end
+	end
+
+	return false
+end
+
 local function CopyColor(color, fallback)
 	local source = color or fallback or { r = 1, g = 1, b = 1, a = 1 }
 	return {
@@ -231,12 +240,15 @@ local function ShowBarPreview()
 	ns.ApplyBarColors()
 	ns.ApplyIndicatorBlendMode(ns.GetIndicatorBlendMode())
 	ns.ApplyVisibility()
-	local bars = { ns.mhBar, ns.ohBar, ns.rangedBar, ns.hunterCastBar }
+	local bars = { ns.enemyBar, ns.mhBar, ns.ohBar, ns.rangedBar, ns.hunterCastBar }
 	for _, bar in ipairs(bars) do
 		if bar then
 			bar:SetAlpha(1)
 			bar:SetMinMaxValues(0, 1)
 			bar:SetValue(1)
+			if ns.RefreshBarSparkPosition then
+				ns.RefreshBarSparkPosition(bar, 1)
+			end
 		end
 	end
 end
@@ -245,12 +257,14 @@ local function HideBarPreview()
 	if ns.barTestActive then
 		return
 	end
-	-- Only hide if not in combat (combat show/hide handles itself)
-	if not InCombatLockdown or not InCombatLockdown() then
-		local bars = { ns.mhBar, ns.ohBar, ns.rangedBar, ns.hunterCastBar }
-		for _, bar in ipairs(bars) do
-			if bar then bar:SetAlpha(0) end
-		end
+	if ns.ApplyVisibility then
+		ns.ApplyVisibility()
+		return
+	end
+	-- Fallback only if the shared visibility helper is unavailable.
+	local bars = { ns.enemyBar, ns.mhBar, ns.ohBar, ns.rangedBar, ns.hunterCastBar }
+	for _, bar in ipairs(bars) do
+		if bar then bar:SetAlpha(0) end
 	end
 end
 
@@ -432,7 +446,7 @@ local function CreateColorButton(parent, label, colorKey, yOffset, options)
 			options.applyColor(r, g, b, alpha, swatch)
 		else
 			local isSealTwist = (colorKey == "sealTwist")
-			if not isSealTwist then
+			if not isSealTwist and UsesClassColorToggle(colorKey) then
 				SuperSwingTimerDB.useClassColors = false
 			end
 			SuperSwingTimerDB.colors[colorKey] = { r = r, g = g, b = b, a = alpha }
@@ -1748,10 +1762,21 @@ local function CreatePanel()
 		end
 	)
 
+	local showEnemyRow = CreateToggleRow(
+		content,
+		"Show Enemy Bar",
+		-162,
+		function() return SuperSwingTimerDB.showEnemy ~= false end,
+		function(enabled)
+			SuperSwingTimerDB.showEnemy = enabled
+			ns.ApplyVisibility()
+		end
+	)
+
 	local showWeaveRow = CreateToggleRow(
 		content,
 		"Shaman Weave Assist",
-		-162,
+		-186,
 		function() return SuperSwingTimerDB.showWeaveAssist ~= false end,
 		function(enabled)
 			SuperSwingTimerDB.showWeaveAssist = enabled
@@ -1759,7 +1784,7 @@ local function CreatePanel()
 		end
 	)
 
-	local mhOhHeader = CreateSectionHeader(content, "MH/OH Bar Appearance", -202, {
+	local mhOhHeader = CreateSectionHeader(content, "MH/OH Bar Appearance", -230, {
 		rows = mhOhRows,
 		getCollapsed = function() return sectionCollapsed.mhOh end,
 		setCollapsed = function(collapsed) sectionCollapsed.mhOh = collapsed end,
@@ -1772,8 +1797,9 @@ local function CreatePanel()
 	barVisibilityRows[2] = showMHRow
 	barVisibilityRows[3] = showOHRow
 	barVisibilityRows[4] = showRangedRow
+	barVisibilityRows[5] = showEnemyRow
 	if ns.playerClass == "SHAMAN" then
-		barVisibilityRows[5] = showWeaveRow
+		barVisibilityRows[6] = showWeaveRow
 	end
 	SetRowsShown(barVisibilityRows, not sectionCollapsed.barVisibility)
 	if barVisibilityHeader.refresh then
@@ -2069,47 +2095,19 @@ local function CreatePanel()
 	ns.DB_DEFAULTS.weaveSparkAlpha)
 	SyncSliderDisplay(weaveSparkAlphaSlider, weaveSparkAlphaSlider:GetValue())
 
-	local weaveTriangleTopRow = CreateTexturePathRow(
+	local weaveMarkerNoteRow = CreateDescriptionText(
 		content,
-		"Upper Marker Texture",
-		ShiftY(-925),
-		function() return SuperSwingTimerDB.weaveTriangleTopTexture or ns.DB_DEFAULTS.weaveTriangleTopTexture end,
-		function(texturePath)
-			ns.ApplyWeaveTriangleSettings(
-				texturePath,
-				SuperSwingTimerDB.weaveTriangleBottomTexture or ns.DB_DEFAULTS.weaveTriangleBottomTexture,
-				SuperSwingTimerDB.weaveTriangleSize or ns.DB_DEFAULTS.weaveTriangleSize,
-				SuperSwingTimerDB.weaveTriangleGap ~= nil and SuperSwingTimerDB.weaveTriangleGap or
-				ns.DB_DEFAULTS.weaveTriangleGap,
-				SuperSwingTimerDB.weaveTriangleTextureLayer or ns.DB_DEFAULTS.weaveTriangleTextureLayer,
-				SuperSwingTimerDB.weaveTriangleAlpha ~= nil and SuperSwingTimerDB.weaveTriangleAlpha or
-				ns.DB_DEFAULTS.weaveTriangleAlpha
-			)
-		end
+		"Breakpoint markers now use the tracked spell's icon automatically. " ..
+		"Use the size, gap, alpha, and layer controls below to tune the small icon markers.",
+		ShiftY(-915)
 	)
 
-	local weaveTriangleBottomRow = CreateTexturePathRow(
-		content,
-		"Lower Marker Texture",
-		ShiftY(-960),
-		function() return SuperSwingTimerDB.weaveTriangleBottomTexture or ns.DB_DEFAULTS.weaveTriangleBottomTexture end,
-		function(texturePath)
-			ns.ApplyWeaveTriangleSettings(
-				SuperSwingTimerDB.weaveTriangleTopTexture or ns.DB_DEFAULTS.weaveTriangleTopTexture,
-				texturePath,
-				SuperSwingTimerDB.weaveTriangleSize or ns.DB_DEFAULTS.weaveTriangleSize,
-				SuperSwingTimerDB.weaveTriangleGap ~= nil and SuperSwingTimerDB.weaveTriangleGap or
-				ns.DB_DEFAULTS.weaveTriangleGap,
-				SuperSwingTimerDB.weaveTriangleTextureLayer or ns.DB_DEFAULTS.weaveTriangleTextureLayer,
-				SuperSwingTimerDB.weaveTriangleAlpha ~= nil and SuperSwingTimerDB.weaveTriangleAlpha or
-				ns.DB_DEFAULTS.weaveTriangleAlpha
-			)
-		end
-	)
+	local weaveTriangleTopRow = nil
+	local weaveTriangleBottomRow = nil
 
 	local weaveTriangleLayerRow = CreateCycleRow(
 		content,
-		"Marker Layer",
+		"Spell Icon Layer",
 		ShiftY(-995),
 		ns.TEXTURE_LAYER_OPTIONS,
 		function() return SuperSwingTimerDB.weaveTriangleTextureLayer or ns.DB_DEFAULTS.weaveTriangleTextureLayer end,
@@ -2127,16 +2125,16 @@ local function CreatePanel()
 		end
 	)
 
-	local weaveTriangleSizeSlider = CreateSlider(content, "Marker Size", 6, 24, 1, ShiftY(-1030))
+	local weaveTriangleSizeSlider = CreateSlider(content, "Spell Icon Size", 6, 24, 1, ShiftY(-1030))
 	weaveTriangleSizeSlider:SetValue(SuperSwingTimerDB.weaveTriangleSize or ns.DB_DEFAULTS.weaveTriangleSize)
 	SyncSliderDisplay(weaveTriangleSizeSlider, weaveTriangleSizeSlider:GetValue())
 
-	local weaveTriangleGapSlider = CreateSlider(content, "Marker Gap", 0, 6, 1, ShiftY(-1080))
+	local weaveTriangleGapSlider = CreateSlider(content, "Spell Icon Gap", 0, 6, 1, ShiftY(-1080))
 	weaveTriangleGapSlider:SetValue(SuperSwingTimerDB.weaveTriangleGap ~= nil and SuperSwingTimerDB.weaveTriangleGap or
 	ns.DB_DEFAULTS.weaveTriangleGap)
 	SyncSliderDisplay(weaveTriangleGapSlider, weaveTriangleGapSlider:GetValue())
 
-	local weaveTriangleAlphaSlider = CreateSlider(content, "Marker Alpha", 0, 1, 0.05, ShiftY(-1130))
+	local weaveTriangleAlphaSlider = CreateSlider(content, "Spell Icon Alpha", 0, 1, 0.05, ShiftY(-1130))
 	weaveTriangleAlphaSlider:SetValue(SuperSwingTimerDB.weaveTriangleAlpha ~= nil and
 	SuperSwingTimerDB.weaveTriangleAlpha or ns.DB_DEFAULTS.weaveTriangleAlpha)
 	SyncSliderDisplay(weaveTriangleAlphaSlider, weaveTriangleAlphaSlider:GetValue())
@@ -2145,12 +2143,11 @@ local function CreatePanel()
 	shamanRows[3] = weaveSparkWidthSlider
 	shamanRows[4] = weaveSparkHeightSlider
 	shamanRows[5] = weaveSparkAlphaSlider
-	shamanRows[6] = weaveTriangleTopRow
-	shamanRows[7] = weaveTriangleBottomRow
-	shamanRows[8] = weaveTriangleLayerRow
-	shamanRows[9] = weaveTriangleSizeSlider
-	shamanRows[10] = weaveTriangleGapSlider
-	shamanRows[11] = weaveTriangleAlphaSlider
+	shamanRows[6] = weaveMarkerNoteRow
+	shamanRows[7] = weaveTriangleLayerRow
+	shamanRows[8] = weaveTriangleSizeSlider
+	shamanRows[9] = weaveTriangleGapSlider
+	shamanRows[10] = weaveTriangleAlphaSlider
 	SetRowsShown(shamanRows, not sectionCollapsed.shaman)
 	if shamanHeader.refresh then
 		shamanHeader.refresh()
@@ -2330,7 +2327,19 @@ local function CreatePanel()
 	local ohRow             = CreateColorButton(content, "Off Hand Color", "oh", yStart + spacing, { allowAlpha = true })
 	local rangedRow         = CreateColorButton(content, "Ranged Color", "ranged", yStart + spacing * 2,
 		{ allowAlpha = true })
-	local sealRow           = CreateColorButton(content, "Seal Breakpoint Line", "sealTwist", yStart + spacing * 3,
+	local autoShotSafeRow   = CreateColorButton(content, "Auto Shot Safe Color", "autoShotSafe", yStart + spacing * 3,
+		{
+			allowAlpha = true,
+			tooltipText = "Pick the green stop-safe Auto Shot window color and overlay opacity.",
+		})
+	local autoShotUnsafeRow = CreateColorButton(content, "Auto Shot Unsafe Color", "autoShotUnsafe", yStart + spacing * 4,
+		{
+			allowAlpha = true,
+			tooltipText = "Pick the moving / too-late Auto Shot window color and overlay opacity.",
+		})
+	local enemyRow          = CreateColorButton(content, "Enemy Color", "enemy", yStart + spacing * 5,
+		{ allowAlpha = true })
+	local sealRow           = CreateColorButton(content, "Seal Breakpoint Line", "sealTwist", yStart + spacing * 6,
 		{ allowAlpha = true })
 
 	-- Seal-twist row only visible for Paladins
@@ -2340,9 +2349,11 @@ local function CreatePanel()
 	colorRowsSection[1] = mhRow
 	colorRowsSection[2] = ohRow
 	colorRowsSection[3] = rangedRow
-	colorRowsSection[4] = sealRow
+	colorRowsSection[4] = autoShotSafeRow
+	colorRowsSection[5] = autoShotUnsafeRow
+	colorRowsSection[6] = enemyRow
 	if ns.playerClass == "PALADIN" then
-		colorRowsSection[5] = sealRow
+		colorRowsSection[7] = sealRow
 	end
 	SetRowsShown(colorRowsSection, not sectionCollapsed.colors)
 	if colorHeader.refresh then
@@ -2356,7 +2367,9 @@ local function CreatePanel()
 	})
 	local weaveFamiliesDescription = CreateDescriptionText(
 		content,
-		"Each family below is color-coded to match its spell breakpoint family. Toggle a family off to remove every rank in that family from the weave helper. The tiny upper and lower markers stay attached to the MH swing bar and move with spell haste.",
+		"Each family below is color-coded to match its spell breakpoint family. " ..
+		"Toggle a family off to remove every rank in that family from the weave helper. " ..
+		"The small breakpoint icons use the tracked spell's real icon, stay attached to the MH swing bar, and move with spell haste.",
 		-1736
 	)
 
@@ -2473,11 +2486,14 @@ local function CreatePanel()
 		if showRangedRow and showRangedRow.refresh then
 			showRangedRow.refresh()
 		end
+		if showEnemyRow and showEnemyRow.refresh then
+			showEnemyRow.refresh()
+		end
 		if showWeaveRow and showWeaveRow.refresh then
 			showWeaveRow.refresh()
 		end
 		-- Update color swatches
-		for _, row in ipairs({ mhRow, ohRow, rangedRow, sealRow }) do
+		for _, row in ipairs({ mhRow, ohRow, rangedRow, enemyRow, sealRow }) do
 			local key = row.button.colorKey
 			local c = ns.GetBarColor(key)
 			if c then
@@ -2511,8 +2527,6 @@ local function CreatePanel()
 		rangedTextureRow,
 		sparkTextureRow,
 		weaveSparkTextureRow,
-		weaveTriangleTopRow,
-		weaveTriangleBottomRow,
 	}
 	f.sparkWidthSlider = sparkWidthSlider
 	f.sparkHeightSlider = sparkHeightSlider
@@ -2525,10 +2539,11 @@ local function CreatePanel()
 	f.showMHRow = showMHRow
 	f.showOHRow = showOHRow
 	f.showRangedRow = showRangedRow
+	f.showEnemyRow = showEnemyRow
 	f.showWeaveRow = showWeaveRow
 	f.useClassColorsRow = useClassColorsRow
 	f.weaveFamilyRows = weaveFamilyRows
-	f.colorRows = { mhRow, ohRow, rangedRow, sealRow }
+	f.colorRows = { mhRow, ohRow, rangedRow, enemyRow, sealRow }
 	return f
 end
 
@@ -2646,6 +2661,9 @@ function ns.ToggleConfig()
 		if panel.showRangedRow and panel.showRangedRow.refresh then
 			panel.showRangedRow.refresh()
 		end
+		if panel.showEnemyRow and panel.showEnemyRow.refresh then
+			panel.showEnemyRow.refresh()
+		end
 		if panel.showWeaveRow and panel.showWeaveRow.refresh then
 			panel.showWeaveRow.refresh()
 		end
@@ -2675,6 +2693,7 @@ function ns.ToggleConfig()
 end
 
 function ns.ResetConfigDefaults()
+	SuperSwingTimerDB.colors                     = SuperSwingTimerDB.colors or {}
 	SuperSwingTimerDB.positions                  = {
 		mh = {
 			point = ns.DB_DEFAULTS.positions.mh.point,
@@ -2693,6 +2712,12 @@ function ns.ResetConfigDefaults()
 			relativePoint = ns.DB_DEFAULTS.positions.ranged.relativePoint,
 			x = ns.DB_DEFAULTS.positions.ranged.x,
 			y = ns.DB_DEFAULTS.positions.ranged.y,
+		},
+		enemy = {
+			point = ns.DB_DEFAULTS.positions.enemy.point,
+			relativePoint = ns.DB_DEFAULTS.positions.enemy.relativePoint,
+			x = ns.DB_DEFAULTS.positions.enemy.x,
+			y = ns.DB_DEFAULTS.positions.enemy.y,
 		},
 	}
 	SuperSwingTimerDB.barWidth                   = ns.DB_DEFAULTS.barWidth
@@ -2741,6 +2766,7 @@ function ns.ResetConfigDefaults()
 	SuperSwingTimerDB.showMH                     = ns.DB_DEFAULTS.showMH
 	SuperSwingTimerDB.showOH                     = ns.DB_DEFAULTS.showOH
 	SuperSwingTimerDB.showRanged                 = ns.DB_DEFAULTS.showRanged
+	SuperSwingTimerDB.showEnemy                  = ns.DB_DEFAULTS.showEnemy
 	SuperSwingTimerDB.showWeaveAssist            = ns.DB_DEFAULTS.showWeaveAssist
 	SuperSwingTimerDB.useClassColors             = ns.DB_DEFAULTS.useClassColors
 	SuperSwingTimerDB.indicatorBlendMode         = ns.DB_DEFAULTS.indicatorBlendMode
@@ -2858,6 +2884,9 @@ function ns.ResetConfigDefaults()
 	end
 	if panel and panel.showRangedRow and panel.showRangedRow.refresh then
 		panel.showRangedRow.refresh()
+	end
+	if panel and panel.showEnemyRow and panel.showEnemyRow.refresh then
+		panel.showEnemyRow.refresh()
 	end
 	if panel and panel.showWeaveRow and panel.showWeaveRow.refresh then
 		panel.showWeaveRow.refresh()

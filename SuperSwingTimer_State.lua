@@ -10,6 +10,9 @@ local UnitCastingInfo = rawget(_G, "UnitCastingInfo")
 local CombatLogGetCurrentEventInfo = rawget(_G, "CombatLogGetCurrentEventInfo")
 local C_Timer = rawget(_G, "C_Timer")
 local UnitGUID = rawget(_G, "UnitGUID")
+local UnitExists = rawget(_G, "UnitExists")
+local UnitCanAttack = rawget(_G, "UnitCanAttack")
+local UnitName = rawget(_G, "UnitName")
 local GetNetStats = rawget(_G, "GetNetStats")
 local GetRangedHaste = rawget(_G, "GetRangedHaste") or rawget(_G, "GetHaste")
 
@@ -23,7 +26,7 @@ local RANGED_START_DEDUPE_WINDOW = 0.25
 -- ============================================================
 -- Timer State
 -- ============================================================
--- Three independent timers: mh (main hand), oh (off hand), ranged.
+-- Four independent timers: mh (main hand), oh (off hand), ranged, enemy.
 -- Each timer struct:
 --   state              "idle" | "swinging"
 --   lastSwing          GetCurrentTime() / combat-log timestamp at swing start
@@ -35,6 +38,7 @@ ns.timers = {
 	mh     = { state = "idle", lastSwing = 0, duration = 0, speed = 0, nextSpeedCheckAt = 0 },
 	oh     = { state = "idle", lastSwing = 0, duration = 0, speed = 0, nextSpeedCheckAt = 0 },
 	ranged = { state = "idle", lastSwing = 0, duration = 0, speed = 0, nextSpeedCheckAt = 0 },
+	enemy  = { state = "idle", lastSwing = 0, duration = 0, speed = 0, nextSpeedCheckAt = 0 },
 }
 
 ns.extraAttackPending = 0
@@ -51,16 +55,27 @@ ns.pauseSwingTime = nil
 ns.warriorQueuedMeleeSpell = nil
 ns.druidQueuedMeleeSpell = nil
 ns.hunterQueuedMeleeSpell = nil
+ns.enemyTargetGUID = nil
+ns.enemyTargetName = nil
 
 -- ============================================================
 -- State helpers
 -- ============================================================
 
+-- Keep the base timer clock in the GetTime() domain so cooldown, cast, and
+-- channel timestamps stay directly comparable, but prefer GetTimePreciseSec()
+-- by aligning it once to that same domain.
+-- Latency is applied only to predictive windows and guards so a refreshed
+-- latency cache cannot shift every in-flight timer forward or backward.
+
 local function GetCurrentTime()
-	if GetTimePreciseSec then
-		return GetTimePreciseSec() + (ns.cachedLatency or 0)
+	if ns.GetAlignedTime then
+		return ns.GetAlignedTime()
 	end
-	return GetTime() + (ns.cachedLatency or 0)
+	if GetTimePreciseSec then
+		return GetTimePreciseSec()
+	end
+	return GetTime()
 end
 
 function ns.RefreshLatencyCache()
@@ -84,7 +99,7 @@ function ns.GetAutoShotCooldown()
 		end
 	end
 	if enabled == 1 and startTime and duration and duration > 0 then
-		return startTime + (ns.cachedLatency or 0), duration
+		return startTime, duration
 	end
 
 	return nil, nil
@@ -205,6 +220,70 @@ function ns.RefreshUpdateLoop()
 	end
 end
 
+local function HasAttackableTarget()
+	if type(UnitExists) == "function" and not UnitExists("target") then
+		return false
+	end
+	if type(UnitCanAttack) == "function" and not UnitCanAttack("player", "target") then
+		return false
+	end
+	return type(UnitGUID) == "function" and UnitGUID("target") ~= nil
+end
+
+local function GetEnemySwingSpeed()
+	if not ns.enemyTargetGUID or type(UnitGUID) ~= "function" then
+		return nil
+	end
+
+	if UnitGUID("target") ~= ns.enemyTargetGUID then
+		return nil
+	end
+
+	local enemySpeed = type(UnitAttackSpeed) == "function" and UnitAttackSpeed("target") or nil
+	if enemySpeed and enemySpeed > 0 then
+		return enemySpeed
+	end
+
+	return nil
+end
+
+function ns.RefreshEnemyTarget()
+	local enemyTimer = ns.timers and ns.timers.enemy
+	local hadTrackedTarget = ns.enemyTargetGUID ~= nil
+	if not HasAttackableTarget() then
+		ns.enemyTargetGUID = nil
+		ns.enemyTargetName = nil
+		if hadTrackedTarget then
+			ns.ResetTimer("enemy")
+		end
+		if ns.enemyBar and ns.enemyBar.labelText then
+			ns.enemyBar.labelText:SetText("Enemy")
+		end
+		return
+	end
+
+	local targetGUID = UnitGUID("target")
+	local targetChanged = ns.enemyTargetGUID ~= targetGUID
+	ns.enemyTargetGUID = targetGUID
+	ns.enemyTargetName = type(UnitName) == "function" and UnitName("target") or "Enemy"
+
+	if targetChanged then
+		ns.ResetTimer("enemy")
+	end
+
+	local targetSpeed = GetEnemySwingSpeed()
+	if enemyTimer and targetSpeed and targetSpeed > 0 then
+		enemyTimer.speed = targetSpeed
+		if enemyTimer.state ~= "swinging" then
+			enemyTimer.duration = targetSpeed
+		end
+	end
+
+	if ns.enemyBar and enemyTimer and enemyTimer.state ~= "swinging" and ns.enemyBar.labelText then
+		ns.enemyBar.labelText:SetText(ns.enemyTargetName or "Enemy")
+	end
+end
+
 function ns.SyncAllTimerSpeeds(force)
 	local now = GetCurrentTime()
 	if ns.timers.mh and ns.timers.mh.state == "swinging" then
@@ -212,6 +291,9 @@ function ns.SyncAllTimerSpeeds(force)
 	end
 	if ns.timers.oh and ns.timers.oh.state == "swinging" then
 		ns.SyncMeleeTimerSpeed("oh", now, force)
+	end
+	if ns.timers.enemy and ns.timers.enemy.state == "swinging" then
+		ns.SyncMeleeTimerSpeed("enemy", now, force)
 	end
 	if ns.timers.ranged and ns.timers.ranged.state == "swinging" then
 		ns.SyncRangedTimerSpeed(now, force)
@@ -252,9 +334,12 @@ function ns.OnPlayerEnteringWorld()
 	ns.extraAttackPending = 0
 	ClearPendingMeleeQueueState()
 	ns.StopSanityTicker()
+	ns.enemyTargetGUID = nil
+	ns.enemyTargetName = nil
 	ns.ResetTimer("mh")
 	ns.ResetTimer("oh")
 	ns.ResetTimer("ranged")
+	ns.ResetTimer("enemy")
 	ns.HideBars()
 	if ns.UpdateOHBar then
 		ns.UpdateOHBar()
@@ -290,8 +375,13 @@ function ns.SyncMeleeTimerSpeed(slot, now, force)
 	if not force and now < (t.nextSpeedCheckAt or 0) then return end
 	t.nextSpeedCheckAt = now + SPEED_CHECK_INTERVAL
 
-	local mhSpeed, ohSpeed = UnitAttackSpeed("player")
-	local currentSpeed = (slot == "oh") and ohSpeed or mhSpeed
+	local currentSpeed
+	if slot == "enemy" then
+		currentSpeed = GetEnemySwingSpeed()
+	else
+		local mhSpeed, ohSpeed = UnitAttackSpeed("player")
+		currentSpeed = (slot == "oh") and ohSpeed or mhSpeed
+	end
 	if currentSpeed and currentSpeed > 0 then
 		ns.RescaleTimer(slot, currentSpeed)
 	end
@@ -306,9 +396,20 @@ function ns.SyncRangedTimerSpeed(now, force)
 	t.nextSpeedCheckAt = now + SPEED_CHECK_INTERVAL
 
 	local currentRangedHaste = GetPlayerRangedHastePercent()
-	local _, autoShotDuration = ns.GetAutoShotCooldown()
+	local autoShotStart, autoShotDuration = ns.GetAutoShotCooldown()
 	if autoShotDuration and autoShotDuration > 0 then
-		ns.RescaleTimer("ranged", autoShotDuration)
+		if autoShotStart and autoShotStart > 0 then
+			local drift = math.abs((t.lastSwing or autoShotStart) - autoShotStart)
+			t.duration = autoShotDuration
+			t.speed = autoShotDuration
+			if drift > 0.01 then
+				t.lastSwing = autoShotStart
+				t.hiddenCastWindowStart = nil
+				t.hiddenCastWindowDuration = nil
+			end
+		else
+			ns.RescaleTimer("ranged", autoShotDuration)
+		end
 		t.hastePercent = currentRangedHaste
 		return
 	end
@@ -351,6 +452,10 @@ function ns.StartSwing(slot, _, startTime)
 		end
 		t.hiddenCastWindowStart = nil
 		t.hiddenCastWindowDuration = nil
+	elseif slot == "enemy" then
+		local enemySpeed = GetEnemySwingSpeed()
+		speed = (enemySpeed and enemySpeed > 0) and enemySpeed or ((t.speed and t.speed > 0) and t.speed or 2.0)
+		t.lastSwing = now
 	else
 		local mhSpeed, ohSpeed = UnitAttackSpeed("player")
 		if slot == "mh" then
@@ -377,6 +482,15 @@ function ns.StartSwing(slot, _, startTime)
 	end
 
 	ns.RefreshUpdateLoop()
+end
+
+function ns.StartEnemySwing(startTime)
+	if not ns.enemyTargetGUID then
+		return false
+	end
+
+	ns.StartSwing("enemy", nil, startTime or GetCurrentTime())
+	return ns.timers.enemy and ns.timers.enemy.state == "swinging"
 end
 
 function ns.StartRangedSwing(startTime)
@@ -449,7 +563,7 @@ function ns.HandleSpellcastStart(unit, castGUIDOrSpellName, spellId)
 		if type(UnitCastingInfo) == "function" then
 			local _, _, _, startTimeMs = UnitCastingInfo("player")
 			if startTimeMs and startTimeMs > 0 then
-				ns.hunterCastStartTime = (startTimeMs / 1000) + (ns.cachedLatency or 0)
+				ns.hunterCastStartTime = (startTimeMs / 1000)
 			end
 		end
 		if not ns.hunterCastStartTime then
@@ -623,6 +737,21 @@ function ns.HandleCLEU()
 	local eventTime = GetCurrentTime()
 
 	local currentPlayerGUID = GetPlayerGUID()
+	local currentEnemyGUID = ns.enemyTargetGUID
+
+	if currentEnemyGUID and sourceGUID == currentEnemyGUID then
+		if subEvent == "SWING_DAMAGE" then
+			local isOffHandAttack = cleuArg21
+			if not isOffHandAttack then
+				ns.StartEnemySwing(eventTime)
+			end
+		elseif subEvent == "SWING_MISSED" then
+			local isOffHandAttack = cleuArg13
+			if not isOffHandAttack then
+				ns.StartEnemySwing(eventTime)
+			end
+		end
+	end
 
 	-- ---- Player is the source ----
 	if sourceGUID == currentPlayerGUID then
@@ -691,6 +820,14 @@ function ns.HandleCLEU()
 			end
 		end
 	end
+
+	if currentEnemyGUID and targetGUID == currentEnemyGUID then
+		if subEvent == "UNIT_DIED" or subEvent == "UNIT_DESTROYED" then
+			ns.enemyTargetGUID = nil
+			ns.enemyTargetName = nil
+			ns.ResetTimer("enemy")
+		end
+	end
 end
 
 -- ============================================================
@@ -720,7 +857,7 @@ function ns.HandleSpellcastSucceeded(unit, castGUIDOrSpellName, spellId)
 				ns.hunterCastSpellId = castSpellId or castSpellName or spellToken
 				ns.hunterCastDuration = castWindow
 				if startTimeMs and startTimeMs > 0 then
-					ns.hunterCastStartTime = (startTimeMs / 1000) + (ns.cachedLatency or 0)
+					ns.hunterCastStartTime = (startTimeMs / 1000)
 				else
 					ns.hunterCastStartTime = now
 				end

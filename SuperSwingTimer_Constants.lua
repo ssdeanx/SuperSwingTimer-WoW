@@ -1,6 +1,29 @@
 local _, ns        = ...
 ---@diagnostic disable: undefined-field
 local GetAddOnInfo         = rawget(_G, "GetAddOnInfo")
+local GetTimePreciseSec    = rawget(_G, "GetTimePreciseSec")
+local GetTime              = rawget(_G, "GetTime")
+
+local function EnsurePreciseClockOffset()
+	if ns.preciseClockOffset == nil and GetTimePreciseSec and GetTime then
+		local preciseNow = GetTimePreciseSec()
+		ns.preciseClockOffset = (GetTime() or 0) - preciseNow
+	end
+
+	return ns.preciseClockOffset or 0
+end
+
+if GetTimePreciseSec and GetTime then
+	EnsurePreciseClockOffset()
+end
+
+function ns.GetAlignedTime()
+	if GetTimePreciseSec and GetTime then
+		return GetTimePreciseSec() + EnsurePreciseClockOffset()
+	end
+
+	return GetTime and GetTime() or 0
+end
 
 -- Authoritative GetSpellInfo wrapper for Classic/TBC Anniversary (1.15+)
 function ns.GetSpellInfo(spellIdentifier)
@@ -341,10 +364,11 @@ ns.CLASS_CONFIG = {
 -- SavedVariables defaults
 -- ============================================================
 ns.DB_DEFAULTS = {
-	version                    = 24,
+	version                    = 26,
 	showMH                     = true,
 	showOH                     = true,
 	showRanged                 = true,
+	showEnemy                  = true,
 	showWeaveAssist            = true,
 	useClassColors             = false,
 	weaveSpellFamilies         = {
@@ -376,7 +400,7 @@ ns.DB_DEFAULTS = {
 	weaveTriangleGap           = 1,
 	weaveTriangleAlpha         = 1,
 	weaveMarkerLayer           = "OVERLAY",
-	sparkWidth                 = 4,
+	sparkWidth                 = 3,
 	sparkHeight                = 20,
 	barBorderSize              = 1,
 	barBackgroundAlpha         = 0.5,
@@ -389,12 +413,16 @@ ns.DB_DEFAULTS = {
 		mh        = { r = 0, g = 0, b = 0, a = 1 },
 		oh        = { r = 0, g = 0, b = 0, a = 1 },
 		ranged    = { r = 0, g = 0, b = 0, a = 1 },
+		autoShotSafe = { r = 0.2, g = 0.78, b = 0.25, a = 0.4 },
+		autoShotUnsafe = { r = 1, g = 0, b = 0, a = 0.4 },
+		enemy     = { r = 1, g = 0, b = 0, a = 1 },
 		sealTwist = { r = 0, g = 0, b = 0, a = 1 },
 	},
 	positions                  = {
 		mh     = { point = "CENTER", relativePoint = "CENTER", x = 0, y = -120 },
 		oh     = { point = "CENTER", relativePoint = "CENTER", x = 0, y = -145 },
 		ranged = { point = "CENTER", relativePoint = "CENTER", x = 0, y = -100 },
+		enemy  = { point = "CENTER", relativePoint = "CENTER", x = 0, y = -75 },
 	},
 }
 
