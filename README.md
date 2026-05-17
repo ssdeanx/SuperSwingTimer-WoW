@@ -22,7 +22,7 @@ Super Swing Timer tracks white-hit swing timers across main hand, off hand, rang
 
 - All melee classes: Warrior, Rogue, Paladin, Shaman, Druid, and Hunter
 - Current-target enemy swing bar that tracks your selected hostile target from `PLAYER_TARGET_CHANGED`, `UnitGUID("target")`, `UnitAttackSpeed("target")`, and hostile `SWING_DAMAGE` / `SWING_MISSED` combat-log events, while ignoring off-hand hits so the single enemy bar stays readable
-- Hunter auto shot with `GetSpellCooldown(75)` + ranged-speed sync for the ranged timer, plus ranged-haste-aware fallback resync when `UnitRangedDamage()` is temporarily unavailable; while the cooldown API is active, live ranged resync also reuses the cooldown start anchor instead of only stretching duration mid-cycle; the shared swing clock now stays on a `GetTime()`-aligned `GetTimePreciseSec()` / `GetTime()` path while cached latency is applied only to the Auto Shot safe-stop window, a separate latency-aware 0.5s Auto Shot / Multi-Shot cast window, configurable safe/unsafe window colors, a black threshold line showing when the cast window begins, and a dedicated 10px hunter cast bar beneath the ranged timer that now locks Auto Shot to the same end-of-cycle hidden window as the red/green ranged feedback while Multi-Shot continues to use live cast timing
+- Hunter auto shot with `GetSpellCooldown(75)` + ranged-speed sync for the ranged timer, plus ranged-haste-aware fallback resync when `UnitRangedDamage()` is temporarily unavailable; while the cooldown API is active, live ranged resync also reuses the cooldown start anchor instead of only stretching duration mid-cycle; the shared swing clock now stays on a `GetTime()`-aligned `GetTimePreciseSec()` / `GetTime()` path while cached latency is applied only to the Auto Shot safe-stop window, a separate latency-aware 0.5s Auto Shot / Multi-Shot shot window, configurable safe/unsafe window colors, a black threshold line showing when the cast window begins, and a dedicated 10px hunter cast bar beneath the ranged timer that now locks Auto Shot to the same end-of-cycle hidden window as the red/green ranged feedback while BC Classic instant Multi-Shot shots fall back to a stored short display window instead of disappearing when `UnitCastingInfo()` is empty
 - Off-hand timing now requires a real off-hand weapon speed instead of fabricating hidden OH cycles, and the OH frame is reused cleanly across equipment swaps
 - Dual-wield tracking with independent MH and OH timers
 - NMA detection for Heroic Strike, Cleave, Maul, and Raptor Strike
@@ -34,7 +34,7 @@ Super Swing Timer tracks white-hit swing timers across main hand, off hand, rang
 - Ret Paladin seal breakpoint line that shows the actual strike-edge end marker plus a GCD/swing-aware reseal point on twist seals, with the full seal list from `docs/spellIds.md` covered by aura-name fallback and the breakpoint lines clamped above the bar texture
 - Shaman weave assist for Lightning Bolt, Chain Lightning, Healing Wave, Lesser Healing Wave, and Chain Heal breakpoints, with color-coded family timing, small breakpoint spell icons that stay above and below the MH bar texture, resolve spell names through the shared spell-info wrapper, and stay hidden when Minimal Mode or the weave toggle disables them
 - Optional class colors for MH / OH / ranged bar fills, with the spark color kept independent so queue tints and white/manual spark colors stay readable, and turning class colors off restores the saved manual bar colors instead of leaving the class tint behind
-- Rogue latency-adjusted main-hand end window that turns red on the final slice of the MH bar so Combat Rogues can press Sinister Strike into the swing landing and more reliably fire it immediately after the main-hand hit
+- Rogue latency-adjusted main-hand end window that turns red on the final slice of the MH bar so Combat Rogues can press Sinister Strike into the swing landing and more reliably fire it immediately after the main-hand hit, while the spark stays layered above that red slice for readability
 - Rogue test energy-tick helper: a 5px vertical bar to the left of the MH/OH stack that fills upward on the Classic/TBC 2-second energy cadence, matches the visible melee-bar heights (25px at the stock 15px MH + 10px OH profile), and re-syncs itself when likely natural energy gains are observed
 - Customizable bars, separate MH/OH and ranged textures, glow/opaque indicator mode, compact spark settings with a 3px default spark width, a slight forward-biased pixel-snapped spark edge so the thin spark reads closer to the live fill edge, alpha-enabled color pickers, configurable bar background tint and opacity, adjustable bar border color and thickness, widened drag hitboxes plus real drag handlers for easier bar movement, reset-to-default position restore, visibility, lock state, and the Test Bars preview via `/sst`, `/super`, or `/superswingtimer`
 - Toggle MH / OH / ranged / enemy bars, the Rogue Sinister Strike cue, the Rogue energy tick helper, plus the shaman weave helper and its family controls from the config panel or Blizzard's Interface Options → AddOns list
@@ -45,7 +45,7 @@ Super Swing Timer tracks white-hit swing timers across main hand, off hand, rang
 
 | Situation | What you see | Why it matters |
 | --- | --- | --- |
-| Auto Shot / Multi-Shot | A dedicated hunter cast bar under the ranged timer: Auto Shot locks to the same end-of-cycle hidden cast window as the ranged red/green zone, while Multi-Shot keeps its live cast timing | Shows the stop-to-fire window near cycle end without Auto Shot bounce, while the ranged bar and cast helper stay on the same latency-aware clock |
+| Auto Shot / Multi-Shot | A dedicated hunter cast bar under the ranged timer: Auto Shot locks to the same end-of-cycle hidden cast window as the ranged red/green zone, while BC Classic instant Multi-Shot shots use a short stored shot window when no live cast data is available | Shows the stop-to-fire window near cycle end without Auto Shot bounce, while keeping instant Multi-Shot feedback visible on Classic/TBC clients that do not expose a normal live cast |
 | Rogue Sinister Strike | A red tail slice on the MH bar that scales with latency | Highlights the best press-into-the-landing window so Sinister Strike can fire immediately after the main-hand hit more reliably |
 | Rogue energy tick | A 5px vertical bar to the left of the MH/OH stack that matches the visible melee-bar heights and fills upward over the observed 2-second tick cadence | Gives Rogues a quick read on the next likely energy pulse without touching the authoritative swing timers |
 | Heroic Strike / Cleave / Maul | MH bar tint changes to show the queued next-melee attack while the spark keeps its manual/default tint | Shows the queued state and helps you cancel or preserve rage before the hit lands without losing the spark contrast |
@@ -72,7 +72,7 @@ Super Swing Timer tracks white-hit swing timers across main hand, off hand, rang
 
 ## Usage
 
-Bars appear automatically in combat. The ranged bar for Hunters also appears when auto-shot mode starts, and the smaller hunter cast bar appears beneath it for the fixed Auto Shot hidden cast window (`ns.CAST_WINDOW` plus cached latency) instead of the full ranged cooldown cycle; live Multi-Shot casts still use their normal cast timing.
+Bars appear automatically in combat. The ranged bar for Hunters also appears when auto-shot mode starts, and the smaller hunter cast bar appears beneath it for the fixed Auto Shot hidden cast window (`ns.CAST_WINDOW` plus cached latency) instead of the full ranged cooldown cycle; BC Classic instant Multi-Shot shots now seed that helper with a short stored shot window when the client does not expose a live cast.
 
 | Bar | Default | Meaning |
 | --- | --- | --- |
@@ -80,7 +80,7 @@ Bars appear automatically in combat. The ranged bar for Hunters also appears whe
 | Ranged | Green by default | Safe stop before the cast-window breakpoint (configurable) |
 | Ranged | Red by default | Cast window - you are still moving (configurable) |
 | Enemy | Red | Current hostile target main-hand swing cooldown |
-| Hunter Cast | Ranged color | Auto Shot hidden-window bar or live Multi-Shot cast bar beneath the ranged timer |
+| Hunter Cast | Ranged color | Auto Shot hidden-window bar or stored short Multi-Shot shot bar beneath the ranged timer |
 | Main Hand | Black | MH swing cooldown |
 | Off Hand | Black | OH swing cooldown |
 
@@ -90,7 +90,7 @@ The main commands are `/sst`, `/super`, and `/superswingtimer`. `/swang` remains
 
 | Class | Bars | Special |
 | --- | --- | --- |
-| Hunter | Ranged + MH + cast bar | Auto Shot cooldown sync, 0.5s cast window, movement clipping protection with green/red safe-stop feedback, and a dedicated Auto Shot / Multi-Shot cast bar |
+| Hunter | Ranged + MH + cast bar | Auto Shot cooldown sync, 0.5s hidden shot window, movement clipping protection with green/red safe-stop feedback, and a dedicated Auto Shot / Multi-Shot helper bar |
 | Warrior | MH + OH | Heroic Strike, Cleave, and Slam handling |
 | Rogue | MH + OH | Dual-wield tracking plus a latency-adjusted MH end-window cue for Sinister Strike timing and a test vertical energy tick helper |
 | Paladin | MH | Seal breakpoint line |

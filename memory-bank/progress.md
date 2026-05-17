@@ -1,5 +1,10 @@
 # Progress
 
+## Progress Update (2026-05-17 - all-classes final polish)
+
+- Fixed the Hunter Multi-Shot regression for BC Classic/TBC behavior by seeding the dedicated hunter helper bar from stored success/start state even when Classic does not expose a live cast through `UnitCastingInfo()`.
+- Kept the Rogue Sinister cue under the shared spark layer so the spark stays visible through the red end-window slice instead of getting buried by the overlay.
+
 ## Progress Update (2026-05-16 - hunter startup and visibility hardening)
 
 - Hardened Hunter startup/visibility: auto-repeat now seeds ranged timing immediately, cooldown updates refresh shared visibility, and combat-entry bar showing now routes through `ApplyVisibility()` instead of force-showing ranged bars.

@@ -2,6 +2,8 @@
 
 ## 0.0.5 - 2026-05-16
 
+- Final all-classes timing polish: BC Classic Hunter Multi-Shot now seeds the small hunter helper bar from stored state even when Classic does not expose a live cast, so the dedicated hunter bar no longer disappears for instant Multi-Shot shots.
+- Rogue cue polish: the latency-adjusted red Sinister Strike slice now stays under the spark layer so the spark remains readable through the red tail section.
 - Reworked the top of `/sst` into a two-column Quick Controls section so the most-used visibility toggles stay on the left while the primary bar-color swatches sit on the right for faster setup.
 - Moved the main bar color controls into that top quick-control area, including class-specific swatches such as Hunter Auto Shot safe/unsafe feedback, the enemy bar, the Rogue Sinister cue, and the Paladin seal line when relevant.
 - Added a Rogue-only latency-adjusted red end-window overlay on the MH bar so Combat Rogues can press Sinister Strike into the swing landing and more reliably have it fire immediately after the main-hand hit.

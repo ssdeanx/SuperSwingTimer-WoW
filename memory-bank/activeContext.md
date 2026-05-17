@@ -1,5 +1,10 @@
 # Active Context
 
+## Active Context Update (2026-05-17 - all-classes final polish)
+
+- Rechecked the remaining class-specific timing paths and tightened only the two real regressions: BC Classic Hunter Multi-Shot now seeds the dedicated hunter helper bar from stored state when the client exposes no live cast, and the Rogue Sinister cue now stays visually under the shared spark so the spark remains readable through the red end slice.
+- Kept the shared spark-height model unchanged because it was already correct for the slimmer v0.0.5 profile: the default spark height follows the 15px main bars, clamps down to the 10px OH bar and 10px hunter helper bar automatically, and does not need a separate per-class default override.
+
 ## Active Context Update (2026-05-16 - hunter startup and visibility hardening)
 
 - Hardened the Hunter path in `SuperSwingTimer.lua` and `SuperSwingTimer_UI.lua`: `START_AUTOREPEAT_SPELL` now seeds the ranged timer immediately instead of requiring the cooldown API to already be active, `SPELL_UPDATE_COOLDOWN` refreshes visibility after hunter cooldown sync/start, and the combat-entry `ShowBars()` helper now defers to `ns.ApplyVisibility()` so ranged/hunter bars follow the same visibility rules as the rest of the addon.

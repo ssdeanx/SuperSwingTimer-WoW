@@ -1191,6 +1191,9 @@ function ns.ApplySparkSettings(texturePath, width, height, layer, alpha, color)
 			UpdateSparkPosition(bar)
 		end
 	end
+	if ns.ApplyRogueCueLayer then
+		ns.ApplyRogueCueLayer()
+	end
 end
 
 function ns.ApplySparkColor(color)
@@ -1238,6 +1241,18 @@ function ns.ApplySparkTextureLayer(layer)
 			end
 		end
 	end
+	if ns.ApplyRogueCueLayer then
+		ns.ApplyRogueCueLayer()
+	end
+end
+
+function ns.ApplyRogueCueLayer()
+	if not ns.rogueSinisterAssistZone or not ns.rogueSinisterAssistZone.SetDrawLayer then
+		return
+	end
+
+	local sparkLayer = ns.GetSparkTextureLayer and ns.GetSparkTextureLayer() or "OVERLAY"
+	ns.rogueSinisterAssistZone:SetDrawLayer(sparkLayer, 0)
 end
 
 function ns.ApplyWeaveMarkerLayer(layer)
@@ -1252,13 +1267,6 @@ function ns.ApplyWeaveMarkerLayer(layer)
 			else
 				texture:SetDrawLayer(layer)
 			end
-		end
-	end
-	if ns.rogueSinisterAssistZone and ns.rogueSinisterAssistZone.SetDrawLayer then
-		if ns.SetTextureLayerAboveBar then
-			ns.SetTextureLayerAboveBar(ns.rogueSinisterAssistZone, layer, ns.GetBarTextureLayer())
-		else
-			ns.rogueSinisterAssistZone:SetDrawLayer(layer)
 		end
 	end
 	-- Also apply layer to the canonical weave marker if present

@@ -75,6 +75,7 @@ Use these links first when checking Classic addon UI behavior, widgets, frames, 
 
 ## Current progress
 
+- Final all-classes polish (2026-05-17): BC Classic Hunter Multi-Shot now seeds the small hunter helper bar from stored state even when Classic exposes no live cast, and the Rogue Sinister cue now stays under the shared spark layer so the spark stays readable through the red tail slice.
 - Hunter stability follow-up (2026-05-16): auto-repeat start now seeds the ranged swing immediately instead of waiting for the cooldown API to become active first, hunter cooldown events refresh visibility through the shared path, and combat-entry bar showing now defers to `ApplyVisibility()` so ranged visibility stays consistent with the real hunter state.
 - Config open-path hardening (2026-05-16): `/sst` now lazily re-initializes the panel if needed, the quick color swatches use pure texture-backed buttons instead of backdrop-on-button styling, and the pre-show color-row refresh is guarded so a bad row cannot block the whole panel.
 - UI interaction hardening (2026-05-16): the config row click handlers now defer to the real right-side button/toggle/dropdown when the cursor is already over that control, which removes duplicate-trigger behavior from the `/sst` panel.

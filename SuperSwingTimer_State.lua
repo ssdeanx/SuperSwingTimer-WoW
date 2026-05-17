@@ -539,6 +539,57 @@ local function ResolveSpellcastEventSpell(primaryArg, spellId)
 	return primaryArg
 end
 
+local function GetHunterStoredCastDuration(spellToken, fallbackDuration)
+	local resolvedDuration = tonumber(fallbackDuration)
+
+	if type(ns.GetSpellInfo) == "function" then
+		local _, _, _, castTimeMs = ns.GetSpellInfo(spellToken)
+		if castTimeMs and castTimeMs > 0 then
+			resolvedDuration = math.max((castTimeMs / 1000), 0.01)
+		end
+	end
+
+	if not resolvedDuration or resolvedDuration <= 0 then
+		resolvedDuration = math.max(ns.CAST_WINDOW or 0.5, 0.01)
+	end
+
+	return math.max(resolvedDuration, 0.01)
+end
+
+local function SeedHunterStoredCastState(spellToken, fallbackStartTime, fallbackDuration)
+	if ns.playerClass ~= "HUNTER" or not ns.IsHunterCastSpell or not ns.IsHunterCastSpell(spellToken) then
+		return false
+	end
+
+	if ns.IsAutoShotSpell and ns.IsAutoShotSpell(spellToken) then
+		return false
+	end
+
+	local storedSpell = spellToken
+	local startTime = tonumber(fallbackStartTime) or GetCurrentTime()
+	local duration = GetHunterStoredCastDuration(spellToken, fallbackDuration)
+
+	if type(UnitCastingInfo) == "function" then
+		local castSpellName, _, _, startTimeMs, endTimeMs, _, _, castSpellId = UnitCastingInfo("player")
+		local liveSpell = castSpellId or castSpellName
+		if liveSpell and ns.IsHunterCastSpell(liveSpell) and not (ns.IsAutoShotSpell and ns.IsAutoShotSpell(liveSpell)) then
+			storedSpell = liveSpell
+			if startTimeMs and startTimeMs > 0 then
+				startTime = (startTimeMs / 1000)
+			end
+			if endTimeMs and startTimeMs and endTimeMs > startTimeMs then
+				duration = math.max((endTimeMs - startTimeMs) / 1000, 0.01)
+			end
+		end
+	end
+
+	ns.hunterCastActive = true
+	ns.hunterCastSpellId = storedSpell
+	ns.hunterCastStartTime = startTime
+	ns.hunterCastDuration = duration
+	return true
+end
+
 function ns.HandleSpellcastStart(unit, castGUIDOrSpellName, spellId)
 	-- Classic/BCC payloads provide castGUID + spellID; older paths may still pass
 	-- spellName/rank, so resolve whichever spell token is actually present.
@@ -553,22 +604,10 @@ function ns.HandleSpellcastStart(unit, castGUIDOrSpellName, spellId)
 	ns.casting = true
 	ns.currentCastSpellId = spellToken
 	if isHunterCastSpell and not isAutoShotSpell then
-		ns.hunterCastActive = true
-		ns.hunterCastSpellId = spellToken
-	end
-	ns.hunterCastStartTime = nil
-	ns.hunterCastDuration = nil
-	if isHunterCastSpell and not isAutoShotSpell then
-		ns.hunterCastDuration = castWindow
-		if type(UnitCastingInfo) == "function" then
-			local _, _, _, startTimeMs = UnitCastingInfo("player")
-			if startTimeMs and startTimeMs > 0 then
-				ns.hunterCastStartTime = (startTimeMs / 1000)
-			end
-		end
-		if not ns.hunterCastStartTime then
-			ns.hunterCastStartTime = now
-		end
+		SeedHunterStoredCastState(spellToken, now, castWindow)
+	else
+		ns.hunterCastStartTime = nil
+		ns.hunterCastDuration = nil
 	end
 	ns.preventSwingReset = ns.preventSwingReset or (ns.NO_RESET_SWING_SPELLS and (ns.NO_RESET_SWING_SPELLS[spellToken] or (spellIdNumber and ns.NO_RESET_SWING_SPELLS[spellIdNumber])))
 	if ns.PAUSE_SWING_SPELLS and (ns.PAUSE_SWING_SPELLS[spellToken] or (spellIdNumber and ns.PAUSE_SWING_SPELLS[spellIdNumber])) and not ns.pauseSwingTime then
@@ -846,22 +885,8 @@ function ns.HandleSpellcastSucceeded(unit, castGUIDOrSpellName, spellId)
 		ns.AdjustSwingTimesAfterPause(now)
 	elseif ns.playerClass == "HUNTER" and ns.IsHunterCastSpell and ns.IsHunterCastSpell(spellToken) then
 		local isAutoShotSpell = ns.IsAutoShotSpell and ns.IsAutoShotSpell(spellToken)
-		local castWindow = math.max(ns.CAST_WINDOW or 0.5, 0.01)
-		if not isAutoShotSpell and ns.hunterCastActive and ns.hunterCastSpellId and ns.IsHunterCastSpell(ns.hunterCastSpellId) then
-			ns.hunterCastDuration = castWindow
-			ns.hunterCastStartTime = ns.hunterCastStartTime or now
-		elseif not isAutoShotSpell and type(UnitCastingInfo) == "function" then
-			local castSpellName, _, _, startTimeMs, _, _, _, castSpellId = UnitCastingInfo("player")
-			if ns.IsHunterCastSpell(castSpellId) or ns.IsHunterCastSpell(castSpellName) then
-				ns.hunterCastActive = true
-				ns.hunterCastSpellId = castSpellId or castSpellName or spellToken
-				ns.hunterCastDuration = castWindow
-				if startTimeMs and startTimeMs > 0 then
-					ns.hunterCastStartTime = (startTimeMs / 1000)
-				else
-					ns.hunterCastStartTime = now
-				end
-			end
+		if not isAutoShotSpell then
+			SeedHunterStoredCastState(spellToken, ns.hunterCastStartTime or now, ns.hunterCastDuration)
 		end
 	elseif ns.RESET_SWING_SPELLS and (ns.RESET_SWING_SPELLS[spellToken] or (spellIdNumber and ns.RESET_SWING_SPELLS[spellIdNumber])) then
 		ns.StartSwing("mh", nil, now)

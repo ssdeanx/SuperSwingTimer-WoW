@@ -966,16 +966,18 @@ local function SetupRogue()
 
 		if not ns.rogueSinisterAssistZone then
 			local barParent = GetOverlayParent(ns.mhBar)
-			local cue = barParent:CreateTexture(nil, "OVERLAY")
+			local cue = barParent:CreateTexture(nil, "ARTWORK")
 			cue:SetColorTexture(1, 0, 0, 0.45)
 			cue:SetPoint("TOPRIGHT", barParent, "TOPRIGHT", 0, 0)
 			cue:SetPoint("BOTTOMRIGHT", barParent, "BOTTOMRIGHT", 0, 0)
 			cue:SetWidth(0)
-			if ns.SetTextureLayerAboveBar then
-				ns.SetTextureLayerAboveBar(cue, ns.GetWeaveMarkerLayer and ns.GetWeaveMarkerLayer() or "OVERLAY", ns.GetBarTextureLayer and ns.GetBarTextureLayer() or "ARTWORK")
-			end
 			cue:Hide()
 			ns.rogueSinisterAssistZone = cue
+			if ns.ApplyRogueCueLayer then
+				ns.ApplyRogueCueLayer()
+			elseif cue.SetDrawLayer then
+				cue:SetDrawLayer("OVERLAY", 0)
+			end
 		end
 
 		if not ns.rogueEnergyTickBar then
@@ -1050,6 +1052,9 @@ local function SetupRogue()
 		end
 
 		ApplyRogueCueColor()
+		if ns.ApplyRogueCueLayer then
+			ns.ApplyRogueCueLayer()
+		end
 		ApplyRogueEnergyTickColor()
 		ns.rogueLastEnergy = UnitPower and UnitPower("player") or ns.rogueLastEnergy
 		if not ns.rogueEnergyTickStartTime then
