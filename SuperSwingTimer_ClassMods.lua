@@ -3,6 +3,7 @@ local _, ns = ...
 local CreateFrame = rawget(_G, "CreateFrame")
 local UIParent = rawget(_G, "UIParent")
 local UnitAura = rawget(_G, "UnitAura")
+local UnitBuff = rawget(_G, "UnitBuff")
 local UnitPower = rawget(_G, "UnitPower")
 local GetTimePreciseSec = rawget(_G, "GetTimePreciseSec")
 local GetTime = rawget(_G, "GetTime")
@@ -31,6 +32,46 @@ local function GetOverlayParent(bar)
 	return bar
 end
 
+local function GetHelpfulAuraData(unit, index)
+	if not unit or not index then
+		return nil
+	end
+
+	local name
+	local a5
+	local a6
+	local a7
+	local a10
+	local a11
+	if UnitBuff then
+		name, _, _, _, a5, a6, a7, _, _, a10, a11 = UnitBuff(unit, index)
+	elseif UnitAura then
+		name, _, _, _, a5, a6, a7, _, _, a10, a11 = UnitAura(unit, index, "HELPFUL")
+	end
+
+	if not name then
+		return nil
+	end
+
+	local duration
+	local expirationTime
+	local spellId
+
+	if type(a10) == "number" then
+		-- Current Classic / TBC Anniversary helpful-aura shape.
+		duration = a5
+		expirationTime = a6
+		spellId = a10
+	else
+		-- Older Classic-compatible helpful-aura shape.
+		duration = a6
+		expirationTime = a7
+		spellId = type(a11) == "number" and a11 or nil
+	end
+
+	return name, duration, expirationTime, spellId
+end
+
 -- ============================================================
 -- Class-specific visual overlays and behavior hooks.
 -- Each class mod sets callbacks on ns (OnMeleeSwing, OnRangedSwing,
@@ -44,7 +85,7 @@ local function SetupRetPaladin()
 		end
 
 		for index = 1, 40 do
-			local auraName, _, _, _, _, _, _, _, _, auraSpellId = UnitAura("player", index, "HELPFUL")
+			local auraName, _, _, auraSpellId = GetHelpfulAuraData("player", index)
 			if not auraName then
 				break
 			end
@@ -740,7 +781,7 @@ local function SetupRogue()
 	local ROGUE_CUE_FALLBACK_ALPHA_MULTIPLIER = 0.82
 	local ROGUE_SLICE_AND_DICE_BAR_GAP = 2
 	local ROGUE_ENERGY_TICK_DURATION = 2.0
-	local ROGUE_ENERGY_BAR_WIDTH = 5
+	local ROGUE_ENERGY_BAR_WIDTH = 6
 	local ROGUE_ENERGY_BAR_GAP = 3
 	local SLICE_AND_DICE_SPELL_ID = ns.ROGUE_SLICE_AND_DICE_ID or 5171
 	local SLICE_AND_DICE_NAME = ns.GetSpellInfo and ns.GetSpellInfo(SLICE_AND_DICE_SPELL_ID) or "Slice and Dice"
@@ -863,12 +904,12 @@ local function SetupRogue()
 	end
 
 	local function GetRogueSliceAndDiceAura()
-		if not UnitAura then
+		if not UnitAura and not UnitBuff then
 			return nil
 		end
 
 		for index = 1, 40 do
-			local auraName, _, _, _, _, duration, expirationTime, _, _, auraSpellId = UnitAura("player", index, "HELPFUL")
+			local auraName, duration, expirationTime, auraSpellId = GetHelpfulAuraData("player", index)
 			if not auraName then
 				break
 			end

@@ -1,5 +1,11 @@
 # Progress
 
+## Progress Update (2026-05-17 - v0.0.7 rogue aura and widget follow-up)
+
+- Thickened the Rogue energy helper from 5px to 6px for cleaner readability.
+- Fixed the Rogue Slice and Dice helper by switching it to a Classic-safe helpful-aura unpack path that tolerates current `UnitBuff` / `UnitAura` return signatures on TBC Anniversary / Classic clients.
+- Rechecked Warcraft Wiki / Blizzard widget references and kept the current `/sst` scroll-frame architecture in place for v0.0.7, documenting `HybridScrollFrame` only as a future picker-list optimization.
+
 ## Progress Update (2026-05-17 - v0.0.6 Rogue Slice and Dice completion)
 
 - Added a Rogue-only Slice and Dice duration helper above the MH bar, driven by `UnitAura("player", ..., "HELPFUL")` plus real-time expiration tracking so the bar appears only while the buff is active and stays wired into the existing bar texture/border/background/color refresh paths.

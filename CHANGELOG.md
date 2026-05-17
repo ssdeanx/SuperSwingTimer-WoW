@@ -1,5 +1,11 @@
 # Super Swing Timer Changelog
 
+## 0.0.7 - 2026-05-17
+
+- Rogue helper follow-up: thickened the Rogue energy-tick helper to 6px so it reads more cleanly next to the melee stack without changing its timing behavior.
+- Rogue Slice and Dice fix: the SnD helper now reads helpful auras through a Classic-safe `UnitBuff` / `UnitAura` signature-tolerant path, which fixes the bar not showing on current Classic/TBC clients where helpful-aura return positions differ.
+- Widget audit follow-up: rechecked Warcraft Wiki / Blizzard options-panel references and kept `/sst` on the current `UIPanelScrollFrameTemplate` path for production safety, while documenting `HybridScrollFrame` as a future optimization candidate only for very long picker lists.
+
 ## 0.0.6 - 2026-05-17
 
 - Rogue production follow-up: Rogues now get a slim Slice and Dice duration bar above the main-hand bar that tracks the active buff in real time from `UnitAura`, uses the shared MH bar width/texture styling path, and can be toggled or recolored from `/sst`.

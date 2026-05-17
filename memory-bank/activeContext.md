@@ -1,5 +1,10 @@
 # Active Context
 
+## Active Context Update (2026-05-17 - v0.0.7 rogue aura and widget follow-up)
+
+- Tightened the Rogue helper pass one more time: the test Rogue energy bar is now 6px wide for slightly better readability, and the Slice and Dice helper now reads player buffs through a Classic-safe `UnitBuff` / `UnitAura` signature-tolerant helper in `SuperSwingTimer_ClassMods.lua`, which fixes the SnD bar not appearing on current Classic/TBC clients where helpful-aura return positions differ.
+- Rechecked Warcraft Wiki / Blizzard widget references during the same pass and kept `/sst` on the current `UIPanelScrollFrameTemplate` path for production safety, while documenting `HybridScrollFrame` only as a future optimization for very long picker lists instead of doing a risky late rewrite.
+
 ## Active Context Update (2026-05-17 - v0.0.6 rogue Slice and Dice pass)
 
 - Added the last Rogue production helper in `SuperSwingTimer_ClassMods.lua`, `SuperSwingTimer_UI.lua`, `SuperSwingTimer_Config.lua`, and bootstrap/default wiring: Rogues now get a slim Slice and Dice duration bar above the MH bar that tracks the active buff from `UnitAura` in real time, uses the shared bar texture/background/border styling path, and exposes its own toggle/color control in Quick Controls.

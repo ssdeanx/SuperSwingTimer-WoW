@@ -28,8 +28,8 @@ This document captures the UI direction for `/sst`.
   - any new overlay layers later
 - Keep the new enemy bar on the same shared bar/spark styling path as MH/OH so it picks up the existing texture, border, background, and spark controls, while keeping its own red default fill and separate visibility toggle.
 - Keep the Rogue Sinister cue MH-only: a small latency-adjusted red end window should sit on the right end of the MH bar so Rogues can queue Sinister Strike into the swing landing without adding latency to the shared base timer clock, but keep that cue below the shared spark layer so the spark still reads cleanly through the red slice; when the MH bar is visible but the live swing timer has not started yet, fall back to the current MH weapon speed instead of hiding the cue entirely.
-- Add a Rogue test energy helper: a 5px-wide vertical bar to the left of the MH/OH stack that fills upward on the observed TBC energy-tick cadence, matches the visible MH/OH bar heights (23px at the stock 15px + 8px profile), stays separate from the swing timers, and exposes its own toggle and color swatch in the top quick controls.
-- Add a Rogue Slice and Dice helper: a slim 3-4px duration bar above the MH bar that uses the shared bar texture/background/border styling, tracks the active buff from `UnitAura("player", ..., "HELPFUL")`, stays hidden when the buff is down, and exposes its own toggle and color swatch in the top quick controls.
+- Add a Rogue test energy helper: a 6px-wide vertical bar to the left of the MH/OH stack that fills upward on the observed TBC energy-tick cadence, matches the visible MH/OH bar heights (23px at the stock 15px + 8px profile), stays separate from the swing timers, and exposes its own toggle and color swatch in the top quick controls.
+- Add a Rogue Slice and Dice helper: a slim 3-4px duration bar above the MH bar that uses the shared bar texture/background/border styling, tracks the active buff from a Classic-safe `UnitBuff` / `UnitAura` helpful-aura read, stays hidden when the buff is down, and exposes its own toggle and color swatch in the top quick controls.
 - Keep visual cues on a dedicated overlay frame above the bar fill so breakpoint markers never depend on hover-sensitive HIGHLIGHT ordering.
 - Keep the hunter Auto Shot / Multi-Shot cast bar separate from the ranged swing bar, but lock the Auto Shot hidden-window display to the same end-of-cycle red/green ranged window so movement pinning does not make the cast bar bounce; BC Classic instant Multi-Shot shots should still seed a short stored helper window when `UnitCastingInfo()` does not expose a live cast.
 - Keep the shared swing clock on a `GetTime()`-aligned `GetTimePreciseSec()` / `GetTime()` path and apply cached latency only to predictive windows such as Auto Shot safe-stop timing, hunter hidden-window sizing, and weave clip math.
@@ -68,6 +68,7 @@ This document captures the UI direction for `/sst`.
 - `Interface/AddOns/Blizzard_Settings_Shared/Blizzard_SettingsPanel.lua`
 - `Interface/AddOns/Blizzard_Settings_Shared/Blizzard_CategoryList.lua`
 - `Interface/AddOns/Blizzard_Settings_Shared/Blizzard_ImplementationReadme.lua`
+- Warcraft Wiki `StatusBar:SetOrientation()` and `ScrollFrame` / `UIPanelScrollFrameTemplate` notes: keep the main `/sst` panel on the current scroll-frame path, and treat `HybridScrollFrame` as a future-only optimization for very long virtualized picker lists rather than a risky late release rewrite.
 
 ## Notes for the addon
 
