@@ -17,7 +17,7 @@ This document captures the UI direction for `/sst`.
 - Keep the first interactive row in each collapsible section clearly below the section header so slider or row clicks never also hit the collapse toggle.
 - Keep the top section as a two-column quick-control area: left column for checkboxes/toggles, right column for the primary bar color swatches, and use compact non-overlapping row spacing so the Rogue/Hunter quick rows do not crash into each other.
 - Keep the quick color swatches visually strong: prefer flat high-contrast preview tiles over washed-out stock button art so the chosen bar colors are readable in the config panel.
-- Keep the default live profile slimmer: 15px for the main shared bars, 10px for the derived OH bar, and a default spark height that matches the slimmer main bars while still clamping to each host frame.
+- Keep the default live profile slimmer: 15px for the main shared bars, 8px for the derived OH bar, a slim 3-4px Rogue Slice and Dice helper above MH, and a default spark height that matches the slimmer main bars while still clamping to each host frame.
 
 ## Addon-specific UI goals
 
@@ -27,8 +27,9 @@ This document captures the UI direction for `/sst`.
   - weave marker layer
   - any new overlay layers later
 - Keep the new enemy bar on the same shared bar/spark styling path as MH/OH so it picks up the existing texture, border, background, and spark controls, while keeping its own red default fill and separate visibility toggle.
-- Keep the Rogue Sinister cue MH-only: a small latency-adjusted red end window should sit on the right end of the MH bar so Rogues can queue Sinister Strike into the swing landing without adding latency to the shared base timer clock, but keep that cue below the shared spark layer so the spark still reads cleanly through the red slice.
-- Add a Rogue test energy helper: a 5px-wide vertical bar to the left of the MH/OH stack that fills upward on the observed TBC energy-tick cadence, matches the visible MH/OH bar heights (25px at the stock 15px + 10px profile), stays separate from the swing timers, and exposes its own toggle and color swatch in the top quick controls.
+- Keep the Rogue Sinister cue MH-only: a small latency-adjusted red end window should sit on the right end of the MH bar so Rogues can queue Sinister Strike into the swing landing without adding latency to the shared base timer clock, but keep that cue below the shared spark layer so the spark still reads cleanly through the red slice; when the MH bar is visible but the live swing timer has not started yet, fall back to the current MH weapon speed instead of hiding the cue entirely.
+- Add a Rogue test energy helper: a 5px-wide vertical bar to the left of the MH/OH stack that fills upward on the observed TBC energy-tick cadence, matches the visible MH/OH bar heights (23px at the stock 15px + 8px profile), stays separate from the swing timers, and exposes its own toggle and color swatch in the top quick controls.
+- Add a Rogue Slice and Dice helper: a slim 3-4px duration bar above the MH bar that uses the shared bar texture/background/border styling, tracks the active buff from `UnitAura("player", ..., "HELPFUL")`, stays hidden when the buff is down, and exposes its own toggle and color swatch in the top quick controls.
 - Keep visual cues on a dedicated overlay frame above the bar fill so breakpoint markers never depend on hover-sensitive HIGHLIGHT ordering.
 - Keep the hunter Auto Shot / Multi-Shot cast bar separate from the ranged swing bar, but lock the Auto Shot hidden-window display to the same end-of-cycle red/green ranged window so movement pinning does not make the cast bar bounce; BC Classic instant Multi-Shot shots should still seed a short stored helper window when `UnitCastingInfo()` does not expose a live cast.
 - Keep the shared swing clock on a `GetTime()`-aligned `GetTimePreciseSec()` / `GetTime()` path and apply cached latency only to predictive windows such as Auto Shot safe-stop timing, hunter hidden-window sizing, and weave clip math.
@@ -72,6 +73,6 @@ This document captures the UI direction for `/sst`.
 
 - Keep the panel Classic/TBC-safe.
 - Use the current custom UI path first; do not depend on Blizzard's new settings UI for compatibility.
-- Preserve live preview behavior when changing colors, textures, or visibility.
+- Preserve live preview behavior when changing colors, textures, or visibility, but keep the normal gameplay bars combat-driven and reset hidden/idle bars back to empty so combat entry does not show stale full fills from the previous cycle.
 - Avoid letting UI-only hunter fallback rendering write new authoritative cast state unless there is a real live cast to persist.
 - Reuse named bar frames (especially OH) across equipment swaps instead of niling them out and recreating the same global frame name later.

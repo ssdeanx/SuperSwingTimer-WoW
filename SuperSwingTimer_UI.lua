@@ -64,7 +64,16 @@ local function GetOffHandBarHeight(mainHeight)
 	end
 
 	local baseHeight = tonumber(mainHeight) or ns.BAR_HEIGHT or 15
-	return math.max(6, baseHeight - 5)
+	return math.max(6, baseHeight - 7)
+end
+
+local function GetRogueSliceAndDiceBarHeight(mainHeight)
+	if ns.GetRogueSliceAndDiceBarHeight then
+		return ns.GetRogueSliceAndDiceBarHeight(mainHeight)
+	end
+
+	local baseHeight = tonumber(mainHeight) or ns.BAR_HEIGHT or 15
+	return math.max(3, math.min(4, math.floor((baseHeight * 0.3) + 0.5)))
 end
 
 local function GetBarProgressFraction(bar)
@@ -707,6 +716,12 @@ function ns.RestoreAllBarPositions()
 		ns.hunterCastBar:SetPoint("TOPLEFT", ns.rangedBar, "BOTTOMLEFT", 0, -(ns.HUNTER_CAST_BAR_GAP or 2))
 		ns.hunterCastBar:SetPoint("TOPRIGHT", ns.rangedBar, "BOTTOMRIGHT", 0, -(ns.HUNTER_CAST_BAR_GAP or 2))
 	end
+
+	if ns.rogueSliceAndDiceBar and ns.mhBar then
+		ns.rogueSliceAndDiceBar:ClearAllPoints()
+		ns.rogueSliceAndDiceBar:SetPoint("BOTTOMLEFT", ns.mhBar, "TOPLEFT", 0, 2)
+		ns.rogueSliceAndDiceBar:SetPoint("BOTTOMRIGHT", ns.mhBar, "TOPRIGHT", 0, 2)
+	end
 end
 
 -- ============================================================
@@ -790,12 +805,28 @@ local function ShowBars()
 	end
 end
 
+local function ResetBarDisplay(bar)
+	if not bar then
+		return
+	end
+
+	bar:SetMinMaxValues(0, 1)
+	bar:SetValue(0)
+	if bar.castOverlay then
+		bar.castOverlay:SetWidth(0)
+	end
+	if bar.castThresholdMarker then
+		bar.castThresholdMarker:Hide()
+	end
+	UpdateSparkPosition(bar, 0)
+end
+
 local function HideBars()
-	if ns.enemyBar  then ns.enemyBar:SetAlpha(0) end
-	if ns.rangedBar then ns.rangedBar:SetAlpha(0) end
-	if ns.hunterCastBar then ns.hunterCastBar:SetAlpha(0) end
-	if ns.mhBar     then ns.mhBar:SetAlpha(0) end
-	if ns.ohBar     then ns.ohBar:SetAlpha(0) end
+	if ns.enemyBar  then ns.enemyBar:SetAlpha(0); ResetBarDisplay(ns.enemyBar) end
+	if ns.rangedBar then ns.rangedBar:SetAlpha(0); ResetBarDisplay(ns.rangedBar) end
+	if ns.hunterCastBar then ns.hunterCastBar:SetAlpha(0); ResetBarDisplay(ns.hunterCastBar) end
+	if ns.mhBar     then ns.mhBar:SetAlpha(0); ResetBarDisplay(ns.mhBar) end
+	if ns.ohBar     then ns.ohBar:SetAlpha(0); ResetBarDisplay(ns.ohBar) end
 	if ns.UpdateRogueEnergyTickVisual then
 		ns.UpdateRogueEnergyTickVisual()
 	end
@@ -840,10 +871,7 @@ local function UpdateRangedBar(elapsed)
 	end
 
 	if t.state ~= "swinging" then
-		f.castOverlay:SetWidth(0)
-		if f.castThresholdMarker then
-			f.castThresholdMarker:Hide()
-		end
+		ResetBarDisplay(f)
 		return
 	end
 
@@ -899,7 +927,11 @@ end
 -- ============================================================
 local function UpdateMeleeBar(slot, frame)
 	local t = ns.timers[slot]
-	if not frame or t.state ~= "swinging" then return end
+	if not frame then return end
+	if t.state ~= "swinging" then
+		ResetBarDisplay(frame)
+		return
+	end
 
 	local now = GetCurrentTime()
 	if ns.pauseSwingTime and (slot == "mh" or slot == "oh") then
@@ -934,7 +966,7 @@ function ns.ApplyBarSize(width, height)
 	SuperSwingTimerDB.barWidth  = width
 	SuperSwingTimerDB.barHeight = height
 
-	local bars = { ns.enemyBar, ns.mhBar, ns.ohBar, ns.rangedBar, ns.hunterCastBar }
+	local bars = { ns.enemyBar, ns.mhBar, ns.ohBar, ns.rangedBar, ns.hunterCastBar, ns.rogueSliceAndDiceBar }
 	for _, bar in ipairs(bars) do
 		if bar then
 			local barHeight = height
@@ -942,6 +974,8 @@ function ns.ApplyBarSize(width, height)
 				barHeight = ns.HUNTER_CAST_BAR_HEIGHT or 10
 			elseif bar == ns.ohBar then
 				barHeight = GetOffHandBarHeight(height)
+			elseif bar == ns.rogueSliceAndDiceBar then
+				barHeight = GetRogueSliceAndDiceBarHeight(height)
 			end
 			bar:SetSize(width, barHeight)
 			bar.barWidth = width
@@ -959,6 +993,11 @@ function ns.ApplyBarSize(width, height)
 		ns.ohBar:SetPoint("TOPLEFT", ns.mhBar, "BOTTOMLEFT", 0, -2)
 		ns.ohBar:SetPoint("TOPRIGHT", ns.mhBar, "BOTTOMRIGHT", 0, -2)
 	end
+	if ns.rogueSliceAndDiceBar and ns.mhBar then
+		ns.rogueSliceAndDiceBar:ClearAllPoints()
+		ns.rogueSliceAndDiceBar:SetPoint("BOTTOMLEFT", ns.mhBar, "TOPLEFT", 0, 2)
+		ns.rogueSliceAndDiceBar:SetPoint("BOTTOMRIGHT", ns.mhBar, "TOPRIGHT", 0, 2)
+	end
 	if ns.UpdateCastZoneVisual then
 		ns.UpdateCastZoneVisual()
 	end
@@ -967,6 +1006,9 @@ function ns.ApplyBarSize(width, height)
 	end
 	if ns.UpdateRogueEnergyTickVisual then
 		ns.UpdateRogueEnergyTickVisual()
+	end
+	if ns.UpdateRogueSliceAndDiceVisual then
+		ns.UpdateRogueSliceAndDiceVisual()
 	end
 end
 
@@ -978,7 +1020,7 @@ function ns.ApplyBarBorderSize(borderSize)
 
 	SuperSwingTimerDB.barBorderSize = borderSize
 
-	for _, bar in ipairs({ ns.enemyBar, ns.mhBar, ns.ohBar, ns.rangedBar, ns.hunterCastBar, ns.rogueEnergyTickBar }) do
+	for _, bar in ipairs({ ns.enemyBar, ns.mhBar, ns.ohBar, ns.rangedBar, ns.hunterCastBar, ns.rogueEnergyTickBar, ns.rogueSliceAndDiceBar }) do
 		local borderTextures = bar and bar.borderTextures or nil
 		if borderTextures then
 			local showBorder = borderSize > 0
@@ -1011,7 +1053,7 @@ function ns.ApplyBarTexture(texturePath, layer)
 
 	SuperSwingTimerDB.barTexture = texturePath
 	SuperSwingTimerDB.barTextureLayer = layer
-	for _, bar in ipairs({ ns.enemyBar, ns.mhBar, ns.ohBar, ns.rogueEnergyTickBar }) do
+	for _, bar in ipairs({ ns.enemyBar, ns.mhBar, ns.ohBar, ns.rogueEnergyTickBar, ns.rogueSliceAndDiceBar }) do
 		if bar then
 			bar:SetStatusBarTexture(texturePath)
 			bar.statusBarTexture = bar.statusBarTexture or bar:GetStatusBarTexture()
@@ -1054,7 +1096,7 @@ function ns.ApplyBarTextureLayer(layer)
 		layer = ns.DB_DEFAULTS.barTextureLayer
 	end
 	SuperSwingTimerDB.barTextureLayer = layer
-	for _, bar in ipairs({ ns.enemyBar, ns.mhBar, ns.ohBar, ns.rangedBar, ns.hunterCastBar, ns.rogueEnergyTickBar }) do
+	for _, bar in ipairs({ ns.enemyBar, ns.mhBar, ns.ohBar, ns.rangedBar, ns.hunterCastBar, ns.rogueEnergyTickBar, ns.rogueSliceAndDiceBar }) do
 		if bar and bar.statusBarTexture then
 			bar.statusBarTexture:SetDrawLayer(layer)
 		end
@@ -1092,7 +1134,7 @@ function ns.ApplyBarBackgroundColor(color)
 
 	SuperSwingTimerDB.barBackgroundColor = { r = r, g = g, b = b, a = alpha }
 	SuperSwingTimerDB.barBackgroundAlpha = alpha
-	for _, bar in ipairs({ ns.enemyBar, ns.mhBar, ns.ohBar, ns.rangedBar, ns.hunterCastBar, ns.rogueEnergyTickBar }) do
+	for _, bar in ipairs({ ns.enemyBar, ns.mhBar, ns.ohBar, ns.rangedBar, ns.hunterCastBar, ns.rogueEnergyTickBar, ns.rogueSliceAndDiceBar }) do
 		if bar and bar.backgroundTexture then
 			bar.backgroundTexture:SetColorTexture(r, g, b, 1)
 			bar.backgroundTexture:SetAlpha(alpha)
@@ -1127,7 +1169,7 @@ function ns.ApplyBarBorderColor(color)
 	end
 
 	SuperSwingTimerDB.barBorderColor = { r = r, g = g, b = b, a = alpha }
-	for _, bar in ipairs({ ns.enemyBar, ns.mhBar, ns.ohBar, ns.rangedBar, ns.hunterCastBar, ns.rogueEnergyTickBar }) do
+	for _, bar in ipairs({ ns.enemyBar, ns.mhBar, ns.ohBar, ns.rangedBar, ns.hunterCastBar, ns.rogueEnergyTickBar, ns.rogueSliceAndDiceBar }) do
 		local borderTextures = bar and bar.borderTextures or nil
 		if borderTextures then
 			for _, texture in pairs(borderTextures) do
@@ -1426,6 +1468,9 @@ function ns.ApplyMinimalMode(enabled)
 	if ns.UpdateRogueEnergyTickVisual then
 		ns.UpdateRogueEnergyTickVisual()
 	end
+	if ns.UpdateRogueSliceAndDiceVisual then
+		ns.UpdateRogueSliceAndDiceVisual()
+	end
 end
 
 function ns.ApplyVisibility()
@@ -1433,33 +1478,50 @@ function ns.ApplyVisibility()
 	local db = SuperSwingTimerDB or ns.DB_DEFAULTS
 	local _, ohSpeed = UnitAttackSpeed("player")
 	local hasOffHand = ohSpeed and ohSpeed > 0
-	local inCombat = InCombatLockdown and InCombatLockdown() or false
+	local inCombat = (ns.playerInCombat == true) or (InCombatLockdown and InCombatLockdown() or false)
 	local previewActive = ns.barTestActive == true
+	local meleeMHActive = ns.timers and ns.timers.mh and ns.timers.mh.state == "swinging"
+	local meleeOHActive = ns.timers and ns.timers.oh and ns.timers.oh.state == "swinging"
 	local rangedActive = ns.timers and ns.timers.ranged and ns.timers.ranged.state == "swinging"
 	local hunterCastVisible = ShouldShowHunterCastBar()
 	local showEnemy = db.showEnemy ~= false and (
 		previewActive or
-		(inCombat and (ns.enemyTargetGUID ~= nil or (ns.timers.enemy and ns.timers.enemy.state == "swinging")))
+		(inCombat and ns.enemyTargetGUID ~= nil)
 	)
 	local showMH = cfg.melee and db.showMH ~= false and (previewActive or inCombat)
 	local showOH = cfg.dualWield and db.showOH ~= false and hasOffHand and (previewActive or inCombat)
-	local showRanged = cfg.ranged and db.showRanged ~= false and (previewActive or inCombat or rangedActive or hunterCastVisible)
+	local showRanged = cfg.ranged and db.showRanged ~= false and (previewActive or inCombat)
 
 	if ns.enemyBar then
 		ns.enemyBar:SetAlpha(showEnemy and 1 or 0)
+		if not showEnemy then
+			ResetBarDisplay(ns.enemyBar)
+		end
 	end
 
 	if ns.mhBar then
 		ns.mhBar:SetAlpha(showMH and 1 or 0)
+		if not previewActive and not meleeMHActive then
+			ResetBarDisplay(ns.mhBar)
+		end
 	end
 	if ns.ohBar then
 		ns.ohBar:SetAlpha(showOH and 1 or 0)
+		if not previewActive and not meleeOHActive then
+			ResetBarDisplay(ns.ohBar)
+		end
 	end
 	if ns.rangedBar then
 		ns.rangedBar:SetAlpha(showRanged and 1 or 0)
+		if not previewActive and not rangedActive and not ns.channeling then
+			ResetBarDisplay(ns.rangedBar)
+		end
 	end
 	if ns.hunterCastBar then
 		ns.hunterCastBar:SetAlpha((showRanged and hunterCastVisible) and 1 or 0)
+		if not hunterCastVisible then
+			ResetBarDisplay(ns.hunterCastBar)
+		end
 	end
 	if ns.weaveSpark or ns.weaveTriangleTop or ns.weaveTriangleBottom or ns.weaveMarker then
 		local showWeave = db.showWeaveAssist ~= false and ns.playerClass == "SHAMAN" and not ns.IsMinimalMode()
@@ -1475,6 +1537,9 @@ function ns.ApplyVisibility()
 	end
 	if ns.UpdateRogueEnergyTickVisual then
 		ns.UpdateRogueEnergyTickVisual()
+	end
+	if ns.UpdateRogueSliceAndDiceVisual then
+		ns.UpdateRogueSliceAndDiceVisual()
 	end
 end
 
@@ -1543,6 +1608,12 @@ function ns.ApplyBarColors()
 	end
 	if ns.UpdateRogueEnergyTickVisual then
 		ns.UpdateRogueEnergyTickVisual()
+	end
+	if ns.UpdateRogueSliceAndDiceColor then
+		ns.UpdateRogueSliceAndDiceColor()
+	end
+	if ns.UpdateRogueSliceAndDiceVisual then
+		ns.UpdateRogueSliceAndDiceVisual()
 	end
 	if ns.ApplySparkColor then
 		ns.ApplySparkColor()

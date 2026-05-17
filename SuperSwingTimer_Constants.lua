@@ -56,6 +56,7 @@ ns.CAST_WINDOW             = 0.5 -- shared hidden hunter / ranged cast window in
 -- ============================================================
 ns.AUTO_SHOT_ID            = 75
 ns.AUTO_SHOT_NAME          = ns.GetSpellInfo(ns.AUTO_SHOT_ID) or "Auto Shot" or "Shoot"
+ns.ROGUE_SLICE_AND_DICE_ID = 5171
 ns.HUNTER_CAST_SPELLS      = {
 	[75] = true, -- Auto Shot
 	[2643] = true, -- Multi-Shot rank 1
@@ -364,13 +365,14 @@ ns.CLASS_CONFIG = {
 -- SavedVariables defaults
 -- ============================================================
 ns.DB_DEFAULTS = {
-	version                    = 28,
+	version                    = 30,
 	showMH                     = true,
 	showOH                     = true,
 	showRanged                 = true,
 	showEnemy                  = true,
 	showRogueSinisterAssist    = true,
 	showRogueEnergyTick        = true,
+	showRogueSliceAndDice      = true,
 	showWeaveAssist            = true,
 	useClassColors             = false,
 	weaveSpellFamilies         = {
@@ -382,7 +384,7 @@ ns.DB_DEFAULTS = {
 		CH  = true,
 	},
 	indicatorBlendMode         = "ADD",
-	barWidth                   = 200,
+	barWidth                   = 240,
 	barHeight                  = 15,
 	barTexture                 = "Interface\\TargetingFrame\\UI-StatusBar",
 	rangedBarTexture           = "Interface\\TargetingFrame\\UI-StatusBar",
@@ -392,7 +394,7 @@ ns.DB_DEFAULTS = {
 	weaveSparkTexture          = "Interface\\AddOns\\WeakAuras\\Media\\Textures\\target_indicator.tga",
 	weaveSparkTextureLayer     = "OVERLAY",
 	weaveSparkWidth            = 3,
-	weaveSparkHeight           = 20,
+	weaveSparkHeight           = 15,
 	weaveSparkAlpha            = 0.95,
 	sparkColor                 = { r = 1, g = 1, b = 1, a = 1 },
 	weaveTriangleTopTexture    = "Interface\\Buttons\\UI-ScrollBar-ScrollDownButton-Arrow",
@@ -405,8 +407,8 @@ ns.DB_DEFAULTS = {
 	sparkWidth                 = 3,
 	sparkHeight                = 15,
 	barBorderSize              = 1,
-	barBackgroundAlpha         = 0.5,
-	barBackgroundColor         = { r = 0, g = 0, b = 0, a = 0.5 },
+	barBackgroundAlpha         = 0.4,
+	barBackgroundColor         = { r = 0, g = 0, b = 0, a = 0.4 },
 	barBorderColor             = { r = 0, g = 0, b = 0, a = 1 },
 	sparkAlpha                 = 1,
 	minimalMode                = false,
@@ -418,15 +420,16 @@ ns.DB_DEFAULTS = {
 		autoShotSafe = { r = 0.2, g = 0.78, b = 0.25, a = 0.4 },
 		autoShotUnsafe = { r = 1, g = 0, b = 0, a = 0.4 },
 		enemy     = { r = 1, g = 0, b = 0, a = 1 },
-		rogueSinister = { r = 1, g = 0, b = 0, a = 0.45 },
+		rogueSinister = { r = 1, g = 0, b = 0, a = 0.35 },
 		rogueEnergyTick = { r = 1.0, g = 0.82, b = 0.18, a = 1 },
+		rogueSliceAndDice = { r = 0.95, g = 0.82, b = 0.22, a = 0.95 },
 		sealTwist = { r = 0, g = 0, b = 0, a = 1 },
 	},
 	positions                  = {
 		mh     = { point = "CENTER", relativePoint = "CENTER", x = 0, y = -120 },
 		oh     = { point = "CENTER", relativePoint = "CENTER", x = 0, y = -145 },
 		ranged = { point = "CENTER", relativePoint = "CENTER", x = 0, y = -100 },
-		enemy  = { point = "CENTER", relativePoint = "CENTER", x = 0, y = -75 },
+		enemy  = { point = "CENTER", relativePoint = "CENTER", x = 0, y = -50 },
 	},
 }
 
@@ -926,7 +929,12 @@ end
 
 function ns.GetOffHandBarHeight(mainHeight)
 	local baseHeight = tonumber(mainHeight) or ns.BAR_HEIGHT or ns.DB_DEFAULTS.barHeight or 15
-	return math.max(6, baseHeight - 5)
+	return math.max(6, baseHeight - 7)
+end
+
+function ns.GetRogueSliceAndDiceBarHeight(mainHeight)
+	local baseHeight = tonumber(mainHeight) or ns.BAR_HEIGHT or ns.DB_DEFAULTS.barHeight or 15
+	return math.max(3, math.min(4, math.floor((baseHeight * 0.3) + 0.5)))
 end
 
 function ns.GetWeaveSparkWidth()

@@ -482,6 +482,9 @@ function ns.StartSwing(slot, _, startTime)
 	end
 
 	ns.RefreshUpdateLoop()
+	if ns.ApplyVisibility then
+		ns.ApplyVisibility()
+	end
 end
 
 function ns.StartEnemySwing(startTime)
@@ -735,6 +738,9 @@ function ns.ResetTimer(slot)
 		if ns.UpdateCastZoneVisual then
 			ns.UpdateCastZoneVisual()
 		end
+	end
+	if ns.ApplyVisibility then
+		ns.ApplyVisibility()
 	end
 end
 

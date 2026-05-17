@@ -1,5 +1,35 @@
 # Active Context
 
+## Active Context Update (2026-05-17 - v0.0.6 rogue Slice and Dice pass)
+
+- Added the last Rogue production helper in `SuperSwingTimer_ClassMods.lua`, `SuperSwingTimer_UI.lua`, `SuperSwingTimer_Config.lua`, and bootstrap/default wiring: Rogues now get a slim Slice and Dice duration bar above the MH bar that tracks the active buff from `UnitAura` in real time, uses the shared bar texture/background/border styling path, and exposes its own toggle/color control in Quick Controls.
+- Tightened the slimmer live profile again during the same pass by reducing the derived OH default from 10px to 8px while keeping the new SnD helper clamped to a 3-4px height.
+
+## Active Context Update (2026-05-17 - rogue helper polish follow-up)
+
+- Polished the Rogue helpers in `SuperSwingTimer_ClassMods.lua` and `SuperSwingTimer_Config.lua`: the Sinister Strike end-window now keeps a softer default alpha and slightly softens again while it is showing from the weapon-speed fallback path instead of a live swing, the vertical Rogue energy helper now fills upward again, and the existing Rogue energy checkbox in Quick Controls is labeled more clearly as `Rogue Energy Helper`.
+
+## Active Context Update (2026-05-17 - release polish ui follow-up)
+
+- Polished the `/sst` shell for release in `SuperSwingTimer_Config.lua`: config backdrops now go through an optional `BackdropTemplate` helper for safer Classic/TBC compatibility, the main options scrollframe supports mouse-wheel scrolling, and the Quick Controls section now pushes the next header down from its real runtime height so Rogue/Hunter rows cannot overlap the next section.
+- Rechecked the shared live visibility path during the same pass and left the current gameplay behavior intact on purpose: live bars remain hidden out of combat, while `/sst` preview/Test Bars stay on their separate explicit preview path. The panel subtitle and README now call that split out more clearly.
+
+## Active Context Update (2026-05-17 - visibility correction follow-up)
+
+- Corrected the over-broad visibility regression in `SuperSwingTimer_UI.lua`: normal gameplay bars are combat-only again, hidden bars now reset their displayed value back to empty, and entering combat no longer shows stale full MH/OH/ranged/enemy bars before the first live timer begins.
+
+## Active Context Update (2026-05-17 - active-timer visibility follow-up)
+
+- Found the broader visibility gap after Rogue testing: melee/enemy bars were still stricter than ranged and would not show from their own active timers. `SuperSwingTimer_UI.lua` now lets MH/OH/enemy bars stay visible whenever their real timer state is active, and `SuperSwingTimer_State.lua` now reapplies shared visibility immediately on timer start/reset so melee bars no longer wait for a separate later event to wake them up.
+
+## Active Context Update (2026-05-17 - rogue combat visibility fix)
+
+- Found the likely root cause of Rogue melee bars not appearing until a later unrelated path refreshed visibility: `SuperSwingTimer_UI.lua` was still depending only on `InCombatLockdown()` timing inside `ApplyVisibility()`. The addon now tracks combat explicitly from `PLAYER_REGEN_DISABLED` / `PLAYER_REGEN_ENABLED` in `SuperSwingTimer.lua` and feeds that shared flag into visibility decisions, which should make Rogue MH/OH bars appear reliably as soon as combat starts.
+
+## Active Context Update (2026-05-17 - rogue cue consistency follow-up)
+
+- Tightened the Rogue helper one more time in `SuperSwingTimer_ClassMods.lua`: the SS cue no longer requires an already-active MH swing timer and now falls back to the live MH weapon speed whenever the MH bar itself is visible, which keeps the cue present at opener and other brief timer-idle moments during Rogue testing.
+
 ## Active Context Update (2026-05-17 - all-classes final polish)
 
 - Rechecked the remaining class-specific timing paths and tightened only the two real regressions: BC Classic Hunter Multi-Shot now seeds the dedicated hunter helper bar from stored state when the client exposes no live cast, and the Rogue Sinister cue now stays visually under the shared spark so the spark remains readable through the red end slice.

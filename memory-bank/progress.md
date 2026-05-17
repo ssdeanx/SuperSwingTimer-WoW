@@ -1,5 +1,36 @@
 # Progress
 
+## Progress Update (2026-05-17 - v0.0.6 Rogue Slice and Dice completion)
+
+- Added a Rogue-only Slice and Dice duration helper above the MH bar, driven by `UnitAura("player", ..., "HELPFUL")` plus real-time expiration tracking so the bar appears only while the buff is active and stays wired into the existing bar texture/border/background/color refresh paths.
+- Added SavedVariables defaults, migration, `/sst` Quick Controls toggle/color wiring, docs, and v0.0.6 metadata for the new Rogue helper, and slimmed the derived OH stock profile down to 8px while keeping the SnD helper on a 3-4px height.
+
+## Progress Update (2026-05-17 - rogue helper polish follow-up)
+
+- Polished the Rogue Sinister cue so its stock alpha is softer by default, it still updates live from the saved color swatch, and the fallback display path softens that tint a little further when the cue is only using weapon-speed preview instead of an active swing.
+- Fixed the Rogue energy helper orientation so the slim vertical bar fills upward again, and clarified the existing `/sst` Rogue checkbox label to `Rogue Energy Helper`.
+
+## Progress Update (2026-05-17 - release polish ui follow-up)
+
+- Hardened the `/sst` config shell for release by adding an optional `BackdropTemplate` helper, mouse-wheel scrolling on the main config panel, a slightly larger texture-browse click target, and dynamic post-Quick-Controls section spacing so class-specific quick rows no longer collide with the next header.
+- Re-audited live bar visibility during the same pass and kept the combat-only out-of-combat behavior intact; the UI/docs now explicitly distinguish `/sst` preview mode from live combat-driven bars.
+
+## Progress Update (2026-05-17 - visibility correction follow-up)
+
+- Corrected the normal bar visibility regression: gameplay bars are combat-only again, and hidden or idle MH/OH/ranged/enemy bars now reset to an empty state so combat entry does not show stale full fills before a real timer starts.
+
+## Progress Update (2026-05-17 - active-timer visibility follow-up)
+
+- Fixed the broader visibility issue behind the Rogue reports: MH/OH/enemy bars now follow the same active-timer visibility model as ranged, and timer start/reset now refreshes shared visibility immediately instead of waiting for a separate combat/UI event.
+
+## Progress Update (2026-05-17 - rogue combat visibility fix)
+
+- Fixed the likely Rogue root cause where melee bars sometimes stayed hidden until another event refreshed visibility: the shared combat visibility path now uses an explicit regen-event combat flag instead of depending only on `InCombatLockdown()` timing.
+
+## Progress Update (2026-05-17 - rogue cue consistency follow-up)
+
+- Fixed the intermittent Rogue cue visibility issue by letting the SS helper fall back to the live MH weapon speed whenever the MH bar is visible, instead of hiding the cue unless a live MH swing timer is already running.
+
 ## Progress Update (2026-05-17 - all-classes final polish)
 
 - Fixed the Hunter Multi-Shot regression for BC Classic/TBC behavior by seeding the dedicated hunter helper bar from stored success/start state even when Classic does not expose a live cast through `UnitCastingInfo()`.

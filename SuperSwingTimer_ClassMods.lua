@@ -737,30 +737,41 @@ local function SetupRogue()
 	local DEFAULT_ROGUE_QUEUE_WINDOW = 0.08
 	local ROGUE_QUEUE_INPUT_CUSHION = 0.03
 	local MAX_ROGUE_QUEUE_WINDOW = 0.22
+	local ROGUE_CUE_FALLBACK_ALPHA_MULTIPLIER = 0.82
+	local ROGUE_SLICE_AND_DICE_BAR_GAP = 2
 	local ROGUE_ENERGY_TICK_DURATION = 2.0
 	local ROGUE_ENERGY_BAR_WIDTH = 5
 	local ROGUE_ENERGY_BAR_GAP = 3
+	local SLICE_AND_DICE_SPELL_ID = ns.ROGUE_SLICE_AND_DICE_ID or 5171
+	local SLICE_AND_DICE_NAME = ns.GetSpellInfo and ns.GetSpellInfo(SLICE_AND_DICE_SPELL_ID) or "Slice and Dice"
 
 	local function GetRogueCueColor()
-		return ns.GetBarColor and ns.GetBarColor("rogueSinister") or { r = 1, g = 0, b = 0, a = 0.45 }
+		return ns.GetBarColor and ns.GetBarColor("rogueSinister") or { r = 1, g = 0, b = 0, a = 0.35 }
 	end
 
 	local function GetRogueEnergyTickColor()
 		return ns.GetBarColor and ns.GetBarColor("rogueEnergyTick") or { r = 1.0, g = 0.82, b = 0.18, a = 1 }
 	end
 
-	local function ApplyRogueCueColor()
+	local function GetRogueSliceAndDiceColor()
+		return ns.GetBarColor and ns.GetBarColor("rogueSliceAndDice") or { r = 0.95, g = 0.82, b = 0.22, a = 0.95 }
+	end
+
+	local function ApplyRogueCueColor(alphaScale)
 		local cue = ns.rogueSinisterAssistZone
 		if not cue then
 			return
 		end
 
 		local color = GetRogueCueColor()
+		local alpha = color.a ~= nil and color.a or 0.35
+		alphaScale = tonumber(alphaScale) or 1
+		alpha = math.max(0, math.min(alpha * alphaScale, 1))
 		cue:SetColorTexture(
 			color.r or 1,
 			color.g or 0,
 			color.b or 0,
-			color.a ~= nil and color.a or 0.45
+			alpha
 		)
 	end
 
@@ -776,6 +787,21 @@ local function SetupRogue()
 			color.g or 0.82,
 			color.b or 0.18,
 			color.a ~= nil and color.a or 1
+		)
+	end
+
+	local function ApplyRogueSliceAndDiceColor()
+		local sndBar = ns.rogueSliceAndDiceBar
+		if not sndBar then
+			return
+		end
+
+		local color = GetRogueSliceAndDiceColor()
+		sndBar:SetStatusBarColor(
+			color.r or 0.95,
+			color.g or 0.82,
+			color.b or 0.22,
+			color.a ~= nil and color.a or 0.95
 		)
 	end
 
@@ -836,6 +862,38 @@ local function SetupRogue()
 		return math.max(1, totalHeight)
 	end
 
+	local function GetRogueSliceAndDiceAura()
+		if not UnitAura then
+			return nil
+		end
+
+		for index = 1, 40 do
+			local auraName, _, _, _, _, duration, expirationTime, _, _, auraSpellId = UnitAura("player", index, "HELPFUL")
+			if not auraName then
+				break
+			end
+
+			if auraSpellId == SLICE_AND_DICE_SPELL_ID or auraName == SLICE_AND_DICE_NAME then
+				return duration, expirationTime, auraSpellId, auraName
+			end
+		end
+
+		return nil
+	end
+
+	local function SyncRogueSliceAndDiceAura()
+		local duration, expirationTime = GetRogueSliceAndDiceAura()
+		if type(duration) == "number" and duration > 0 and type(expirationTime) == "number" and expirationTime > 0 then
+			ns.rogueSliceAndDiceDuration = duration
+			ns.rogueSliceAndDiceExpirationTime = expirationTime
+			return true
+		end
+
+		ns.rogueSliceAndDiceDuration = nil
+		ns.rogueSliceAndDiceExpirationTime = nil
+		return false
+	end
+
 	local function UpdateRogueEnergyTickVisual()
 		local energyBar = ns.rogueEnergyTickBar
 		local mhBar = ns.mhBar
@@ -879,6 +937,56 @@ local function SetupRogue()
 		energyBar:SetAlpha(1)
 	end
 
+	local function UpdateRogueSliceAndDiceVisual()
+		local sndBar = ns.rogueSliceAndDiceBar
+		local mhBar = ns.mhBar
+		local db = SuperSwingTimerDB or ns.DB_DEFAULTS
+		if not sndBar or not mhBar then
+			return
+		end
+
+		if ns.playerClass ~= "ROGUE" or db.showRogueSliceAndDice == false or (ns.IsMinimalMode and ns.IsMinimalMode()) then
+			sndBar:SetAlpha(0)
+			return
+		end
+
+		local previewActive = ns.barTestActive == true
+		local isActive = false
+		local progress = 0
+		if previewActive then
+			isActive = true
+			progress = 0.66
+		else
+			local duration = ns.rogueSliceAndDiceDuration
+			local expirationTime = ns.rogueSliceAndDiceExpirationTime
+			if type(duration) == "number" and duration > 0 and type(expirationTime) == "number" and expirationTime > 0 then
+				local remaining = expirationTime - GetCurrentTime()
+				if remaining > 0 then
+					isActive = true
+					progress = remaining / duration
+				else
+					ns.rogueSliceAndDiceDuration = nil
+					ns.rogueSliceAndDiceExpirationTime = nil
+				end
+			end
+		end
+
+		if not isActive then
+			sndBar:SetAlpha(0)
+			sndBar:SetValue(0)
+			return
+		end
+
+		sndBar:ClearAllPoints()
+		sndBar:SetPoint("BOTTOMLEFT", mhBar, "TOPLEFT", 0, ROGUE_SLICE_AND_DICE_BAR_GAP)
+		sndBar:SetPoint("BOTTOMRIGHT", mhBar, "TOPRIGHT", 0, ROGUE_SLICE_AND_DICE_BAR_GAP)
+		sndBar:SetHeight(ns.GetRogueSliceAndDiceBarHeight and ns.GetRogueSliceAndDiceBarHeight(mhBar:GetHeight()) or 4)
+		sndBar:SetMinMaxValues(0, 1)
+		sndBar:SetValue(math.max(0, math.min(progress, 1)))
+		ApplyRogueSliceAndDiceColor()
+		sndBar:SetAlpha(1)
+	end
+
 	local function HandleRogueEnergyPowerUpdate(unit, powerType)
 		if ns.playerClass ~= "ROGUE" or unit ~= "player" or type(UnitPower) ~= "function" then
 			return
@@ -900,6 +1008,15 @@ local function SetupRogue()
 		UpdateRogueEnergyTickVisual()
 	end
 
+	local function HandleRogueSliceAndDiceAura(unit)
+		if ns.playerClass ~= "ROGUE" or unit ~= "player" then
+			return
+		end
+
+		SyncRogueSliceAndDiceAura()
+		UpdateRogueSliceAndDiceVisual()
+	end
+
 	local function UpdateRogueSinisterAssistVisual()
 		local cue = ns.rogueSinisterAssistZone
 		local mhBar = ns.mhBar
@@ -915,13 +1032,9 @@ local function SetupRogue()
 
 		local timer = ns.timers and ns.timers.mh or nil
 		local duration = timer and timer.duration or nil
-		local previewActive = ns.barTestActive == true
 		local activeSwing = timer and timer.state == "swinging" and duration and duration > 0
+		local previewActive = ns.barTestActive == true
 		if not activeSwing then
-			if not previewActive then
-				cue:Hide()
-				return
-			end
 			duration = GetPreviewMeleeDuration()
 		end
 
@@ -949,7 +1062,11 @@ local function SetupRogue()
 		cue:SetPoint("TOPRIGHT", barAnchor, "TOPRIGHT", 0, 0)
 		cue:SetPoint("BOTTOMRIGHT", barAnchor, "BOTTOMRIGHT", 0, 0)
 		cue:SetWidth(cueWidth)
-		ApplyRogueCueColor()
+		local alphaScale = 1
+		if not activeSwing and not previewActive then
+			alphaScale = ROGUE_CUE_FALLBACK_ALPHA_MULTIPLIER
+		end
+		ApplyRogueCueColor(alphaScale)
 		cue:Show()
 	end
 
@@ -957,7 +1074,10 @@ local function SetupRogue()
 	ns.UpdateRogueSinisterAssistVisual = UpdateRogueSinisterAssistVisual
 	ns.UpdateRogueEnergyTickColor = ApplyRogueEnergyTickColor
 	ns.UpdateRogueEnergyTickVisual = UpdateRogueEnergyTickVisual
+	ns.UpdateRogueSliceAndDiceColor = ApplyRogueSliceAndDiceColor
+	ns.UpdateRogueSliceAndDiceVisual = UpdateRogueSliceAndDiceVisual
 	ns.HandleRogueEnergyPowerUpdate = HandleRogueEnergyPowerUpdate
+	ns.HandleRogueSliceAndDiceAura = HandleRogueSliceAndDiceAura
 
 	ns.OnBarsCreated = function()
 		if not ns.mhBar then
@@ -967,7 +1087,7 @@ local function SetupRogue()
 		if not ns.rogueSinisterAssistZone then
 			local barParent = GetOverlayParent(ns.mhBar)
 			local cue = barParent:CreateTexture(nil, "ARTWORK")
-			cue:SetColorTexture(1, 0, 0, 0.45)
+			cue:SetColorTexture(1, 0, 0, 0.35)
 			cue:SetPoint("TOPRIGHT", barParent, "TOPRIGHT", 0, 0)
 			cue:SetPoint("BOTTOMRIGHT", barParent, "BOTTOMRIGHT", 0, 0)
 			cue:SetWidth(0)
@@ -990,7 +1110,7 @@ local function SetupRogue()
 				energyBar:SetOrientation("VERTICAL")
 			end
 			if energyBar.SetReverseFill then
-				energyBar:SetReverseFill(true)
+				energyBar:SetReverseFill(false)
 			end
 			energyBar:SetSize(ROGUE_ENERGY_BAR_WIDTH, (ns.mhBar and ns.mhBar:GetHeight()) or ns.BAR_HEIGHT or 15)
 			energyBar:SetMinMaxValues(0, 1)
@@ -1051,25 +1171,97 @@ local function SetupRogue()
 			ns.rogueEnergyTickBar = energyBar
 		end
 
+		if not ns.rogueSliceAndDiceBar then
+			local sndBar = rawget(_G, "SuperSwingTimerRogueSliceAndDiceBar")
+			if not sndBar then
+				sndBar = CreateFrame("StatusBar", "SuperSwingTimerRogueSliceAndDiceBar", UIParent)
+			end
+			sndBar:SetStatusBarTexture(ns.GetBarTexture and ns.GetBarTexture() or "Interface\\TargetingFrame\\UI-StatusBar")
+			sndBar:SetSize(
+				(ns.mhBar and ns.mhBar:GetWidth()) or ns.BAR_WIDTH or 240,
+				ns.GetRogueSliceAndDiceBarHeight and ns.GetRogueSliceAndDiceBarHeight((ns.mhBar and ns.mhBar:GetHeight()) or ns.BAR_HEIGHT or 15) or 4
+			)
+			sndBar:SetMinMaxValues(0, 1)
+			sndBar:SetValue(0)
+			sndBar:SetFrameStrata(ns.mhBar:GetFrameStrata())
+			sndBar:SetFrameLevel((ns.mhBar:GetFrameLevel() or 0) + 1)
+			sndBar:EnableMouse(false)
+			local statusBarTexture = sndBar:GetStatusBarTexture()
+			if statusBarTexture then
+				statusBarTexture:SetDrawLayer(ns.GetBarTextureLayer and ns.GetBarTextureLayer() or "ARTWORK")
+			end
+
+			local backgroundTexture = sndBar.backgroundTexture or sndBar:CreateTexture(nil, "BACKGROUND")
+			backgroundTexture:SetAllPoints(true)
+			local backgroundColor = ns.GetBarBackgroundColor and ns.GetBarBackgroundColor() or (ns.DB_DEFAULTS and ns.DB_DEFAULTS.barBackgroundColor)
+			backgroundColor = backgroundColor or { r = 0, g = 0, b = 0, a = 0.5 }
+			backgroundTexture:SetColorTexture(backgroundColor.r or 0, backgroundColor.g or 0, backgroundColor.b or 0, 1)
+			backgroundTexture:SetAlpha(backgroundColor.a ~= nil and backgroundColor.a or 0.5)
+
+			if not sndBar.borderTextures then
+				local borderColor = ns.GetBarBorderColor and ns.GetBarBorderColor() or (ns.DB_DEFAULTS and ns.DB_DEFAULTS.barBorderColor)
+				borderColor = borderColor or { r = 0, g = 0, b = 0, a = 1 }
+				local borderTop = sndBar:CreateTexture(nil, "OVERLAY")
+				borderTop:SetColorTexture(borderColor.r or 0, borderColor.g or 0, borderColor.b or 0, borderColor.a or 1)
+				borderTop:SetPoint("TOPLEFT", -1, 1)
+				borderTop:SetPoint("TOPRIGHT", 1, 1)
+				borderTop:SetHeight(1)
+
+				local borderBottom = sndBar:CreateTexture(nil, "OVERLAY")
+				borderBottom:SetColorTexture(borderColor.r or 0, borderColor.g or 0, borderColor.b or 0, borderColor.a or 1)
+				borderBottom:SetPoint("BOTTOMLEFT", -1, -1)
+				borderBottom:SetPoint("BOTTOMRIGHT", 1, -1)
+				borderBottom:SetHeight(1)
+
+				local borderLeft = sndBar:CreateTexture(nil, "OVERLAY")
+				borderLeft:SetColorTexture(borderColor.r or 0, borderColor.g or 0, borderColor.b or 0, borderColor.a or 1)
+				borderLeft:SetPoint("TOPLEFT", -1, 1)
+				borderLeft:SetPoint("BOTTOMLEFT", -1, -1)
+				borderLeft:SetWidth(1)
+
+				local borderRight = sndBar:CreateTexture(nil, "OVERLAY")
+				borderRight:SetColorTexture(borderColor.r or 0, borderColor.g or 0, borderColor.b or 0, borderColor.a or 1)
+				borderRight:SetPoint("TOPRIGHT", 1, 1)
+				borderRight:SetPoint("BOTTOMRIGHT", 1, -1)
+				borderRight:SetWidth(1)
+
+				sndBar.borderTextures = {
+					top = borderTop,
+					bottom = borderBottom,
+					left = borderLeft,
+					right = borderRight,
+				}
+			end
+
+			sndBar.backgroundTexture = backgroundTexture
+			sndBar.statusBarTexture = statusBarTexture
+			sndBar:SetAlpha(0)
+			ns.rogueSliceAndDiceBar = sndBar
+		end
+
 		ApplyRogueCueColor()
 		if ns.ApplyRogueCueLayer then
 			ns.ApplyRogueCueLayer()
 		end
 		ApplyRogueEnergyTickColor()
+		ApplyRogueSliceAndDiceColor()
 		ns.rogueLastEnergy = UnitPower and UnitPower("player") or ns.rogueLastEnergy
 		if not ns.rogueEnergyTickStartTime then
 			ns.rogueEnergyTickStartTime = GetCurrentTime()
 		end
+		SyncRogueSliceAndDiceAura()
 
 		local origOnUpdate = ns.OnUpdate or function() end
 		ns.OnUpdate = function(elapsed)
 			origOnUpdate(elapsed)
 			UpdateRogueSinisterAssistVisual()
 			UpdateRogueEnergyTickVisual()
+			UpdateRogueSliceAndDiceVisual()
 		end
 
 		UpdateRogueSinisterAssistVisual()
 		UpdateRogueEnergyTickVisual()
+		UpdateRogueSliceAndDiceVisual()
 	end
 end
 
@@ -1091,17 +1283,25 @@ function ns.InitClassMods()
 	ns.UpdateRogueSinisterAssistVisual = nil
 	ns.UpdateRogueEnergyTickColor = nil
 	ns.UpdateRogueEnergyTickVisual = nil
+	ns.UpdateRogueSliceAndDiceColor = nil
+	ns.UpdateRogueSliceAndDiceVisual = nil
 	ns.HandleRogueEnergyPowerUpdate = nil
+	ns.HandleRogueSliceAndDiceAura = nil
 	ns.warriorQueuedMeleeSpell = nil
 	ns.druidQueuedMeleeSpell = nil
 	ns.hunterQueuedMeleeSpell = nil
 	ns.rogueLastEnergy = nil
 	ns.rogueEnergyTickStartTime = nil
+	ns.rogueSliceAndDiceDuration = nil
+	ns.rogueSliceAndDiceExpirationTime = nil
 	if ns.rogueSinisterAssistZone then
 		ns.rogueSinisterAssistZone:Hide()
 	end
 	if ns.rogueEnergyTickBar then
 		ns.rogueEnergyTickBar:SetAlpha(0)
+	end
+	if ns.rogueSliceAndDiceBar then
+		ns.rogueSliceAndDiceBar:SetAlpha(0)
 	end
 	local class = ns.playerClass
 	if class == "PALADIN" then
@@ -1119,4 +1319,3 @@ function ns.InitClassMods()
 	end
 	-- Pure casters: no bars created, no mods needed
 end
-

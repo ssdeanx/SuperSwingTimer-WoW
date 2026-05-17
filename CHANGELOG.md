@@ -1,7 +1,21 @@
 # Super Swing Timer Changelog
 
+## 0.0.6 - 2026-05-17
+
+- Rogue production follow-up: Rogues now get a slim Slice and Dice duration bar above the main-hand bar that tracks the active buff in real time from `UnitAura`, uses the shared MH bar width/texture styling path, and can be toggled or recolored from `/sst`.
+- Profile polish follow-up: the derived off-hand bar is slimmer again at 8px on the stock 15px main-bar profile, while the new Rogue Slice and Dice helper stays on a compact 3-4px height.
+
 ## 0.0.5 - 2026-05-16
 
+- Rogue polish follow-up: the Rogue Sinister Strike cue now uses a softer stock alpha while still updating live from the saved swatch, and the opener/fallback path slightly softens that tint when the bar is only showing from weapon-speed fallback instead of an active live swing.
+- Rogue energy helper follow-up: the vertical Rogue energy bar now fills upward again, and the top Quick Controls checkbox is labeled `Rogue Energy Helper` so the toggle is easier to find during Rogue setup.
+- Final release UI polish: `/sst` now keeps later sections pushed below the actual Quick Controls height, so Rogue/Hunter class-specific quick rows no longer risk overlapping the next section header.
+- Config shell polish: the main `/sst` panel now supports mouse-wheel scrolling, the subtitle more clearly distinguishes setup preview bars from live combat-driven bars, and the small texture browse button uses a slightly larger click target.
+- Classic/TBC UI safety follow-up: config frames that need backdrops now use an optional `BackdropTemplate` path instead of assuming the newer template always exists, which keeps the panel safer for Classic-era UI variants while preserving the current Anniversary look.
+- Visibility correction: normal bars are combat-only again, hidden bars now reset to an empty state, and entering combat no longer shows stale full bars before the first real swing or shot starts.
+
+- Active-timer visibility fix: melee and enemy bars now follow the same model ranged already used — an active timer can keep its bar visible even if the combat-flag path is late — and timer start/reset now refreshes the shared visibility rules immediately.
+- Rogue cue consistency follow-up: the Rogue Sinister Strike slice now falls back to the live MH weapon speed whenever the MH bar is visible, so it no longer disappears at opener or other moments where the MH timer has not started yet.
 - Final all-classes timing polish: BC Classic Hunter Multi-Shot now seeds the small hunter helper bar from stored state even when Classic does not expose a live cast, so the dedicated hunter bar no longer disappears for instant Multi-Shot shots.
 - Rogue cue polish: the latency-adjusted red Sinister Strike slice now stays under the spark layer so the spark remains readable through the red tail section.
 - Reworked the top of `/sst` into a two-column Quick Controls section so the most-used visibility toggles stay on the left while the primary bar-color swatches sit on the right for faster setup.

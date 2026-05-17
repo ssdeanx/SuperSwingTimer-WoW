@@ -42,6 +42,7 @@ ns.barTestTimer        = nil
 ns.playerClass         = nil
 ns.classConfig         = nil
 ns.druidFormChangeTime = nil
+ns.playerInCombat      = false
 
 -- ============================================================
 -- SavedVariables migration
@@ -79,13 +80,14 @@ local function MigrateDB()
 	-- Fresh install
 	if not SuperSwingTimerDB then
 		SuperSwingTimerDB = {
-			version                    = 28,
+			version                    = 30,
 			showMH                     = ns.DB_DEFAULTS.showMH,
 			showOH                     = ns.DB_DEFAULTS.showOH,
 			showRanged                 = ns.DB_DEFAULTS.showRanged,
 			showEnemy                  = ns.DB_DEFAULTS.showEnemy,
 			showRogueSinisterAssist    = ns.DB_DEFAULTS.showRogueSinisterAssist,
 			showRogueEnergyTick        = ns.DB_DEFAULTS.showRogueEnergyTick,
+			showRogueSliceAndDice      = ns.DB_DEFAULTS.showRogueSliceAndDice,
 			showWeaveAssist            = ns.DB_DEFAULTS.showWeaveAssist,
 			useClassColors             = ns.DB_DEFAULTS.useClassColors,
 			indicatorBlendMode         = ns.DB_DEFAULTS.indicatorBlendMode,
@@ -166,6 +168,7 @@ local function MigrateDB()
 	SuperSwingTimerDB.showEnemy          = (SuperSwingTimerDB.showEnemy ~= false)
 	SuperSwingTimerDB.showRogueSinisterAssist = (SuperSwingTimerDB.showRogueSinisterAssist ~= false)
 	SuperSwingTimerDB.showRogueEnergyTick = (SuperSwingTimerDB.showRogueEnergyTick ~= false)
+	SuperSwingTimerDB.showRogueSliceAndDice = (SuperSwingTimerDB.showRogueSliceAndDice ~= false)
 	SuperSwingTimerDB.showWeaveAssist    = (SuperSwingTimerDB.showWeaveAssist ~= false)
 	-- useClassColors strictly defaults to false unless explicitly true in the DB
 	if SuperSwingTimerDB.useClassColors == nil then
@@ -524,6 +527,33 @@ local function MigrateDB()
 		}
 		SuperSwingTimerDB.version = 28
 	end
+
+	-- v28 -> v29: soften untouched Rogue SS cue alpha.
+	if (SuperSwingTimerDB.version or 0) < 29 then
+		SuperSwingTimerDB.colors = SuperSwingTimerDB.colors or {}
+		local rogueCue = SuperSwingTimerDB.colors.rogueSinister
+		if rogueCue
+			and math.abs((rogueCue.r or 0) - 1) < 0.001
+			and math.abs((rogueCue.g or 0) - 0) < 0.001
+			and math.abs((rogueCue.b or 0) - 0) < 0.001
+			and math.abs((rogueCue.a or 0) - 0.45) < 0.001 then
+			rogueCue.a = ns.DB_DEFAULTS.colors.rogueSinister.a
+		end
+		SuperSwingTimerDB.version = 29
+	end
+
+	-- v29 -> v30: add Rogue Slice and Dice helper defaults and color.
+	if (SuperSwingTimerDB.version or 0) < 30 then
+		SuperSwingTimerDB.showRogueSliceAndDice = (SuperSwingTimerDB.showRogueSliceAndDice ~= false)
+		SuperSwingTimerDB.colors = SuperSwingTimerDB.colors or {}
+		SuperSwingTimerDB.colors.rogueSliceAndDice = SuperSwingTimerDB.colors.rogueSliceAndDice or {
+			r = ns.DB_DEFAULTS.colors.rogueSliceAndDice.r,
+			g = ns.DB_DEFAULTS.colors.rogueSliceAndDice.g,
+			b = ns.DB_DEFAULTS.colors.rogueSliceAndDice.b,
+			a = ns.DB_DEFAULTS.colors.rogueSliceAndDice.a,
+		}
+		SuperSwingTimerDB.version = 30
+	end
 end
 
 -- ============================================================
@@ -730,7 +760,7 @@ frame:SetScript("OnEvent", function(self, event, ...)
 		if ns.RefreshEnemyTarget then
 			ns.RefreshEnemyTarget()
 		end
-		if InCombatLockdown and InCombatLockdown() and ns.ApplyVisibility then
+		if ((ns.playerInCombat == true) or (InCombatLockdown and InCombatLockdown())) and ns.ApplyVisibility then
 			ns.ApplyVisibility()
 		end
 	elseif event == "UNIT_ATTACK_SPEED" then
@@ -745,6 +775,9 @@ frame:SetScript("OnEvent", function(self, event, ...)
 		local unit = ...
 		if unit == "player" then
 			ns.SanityCheckTimers()
+			if ns.playerClass == "ROGUE" and ns.HandleRogueSliceAndDiceAura then
+				ns.HandleRogueSliceAndDiceAura(unit)
+			end
 		end
 	elseif event == "UNIT_POWER_UPDATE" or event == "UNIT_POWER_FREQUENT" then
 		local unit, powerType = ...
@@ -778,6 +811,7 @@ frame:SetScript("OnEvent", function(self, event, ...)
 		ns.SanityCheckTimers(true)
 	elseif event == "PLAYER_ENTERING_WORLD" then
 		local isInitialLogin, isReloadingUi = ...
+		ns.playerInCombat = false
 		ns.OnPlayerEnteringWorld(isInitialLogin, isReloadingUi)
 		if ns.RefreshEnemyTarget then
 			ns.RefreshEnemyTarget()
@@ -812,9 +846,11 @@ frame:SetScript("OnEvent", function(self, event, ...)
 			ns.rangedBar:SetAlpha(0)
 		end
 	elseif event == "PLAYER_REGEN_DISABLED" then
+		ns.playerInCombat = true
 		ns.ShowBars()
 		ns.StartSanityTicker()
 	elseif event == "PLAYER_REGEN_ENABLED" then
+		ns.playerInCombat = false
 		ns.StopSanityTicker()
 		ns.HideBars()
 		if ns.ClearPendingMeleeQueueState then

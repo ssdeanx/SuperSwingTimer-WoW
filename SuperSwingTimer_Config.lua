@@ -12,6 +12,7 @@ local UIDropDownMenu_SetText = _G.UIDropDownMenu_SetText
 local UIDropDownMenu_SetWidth = _G.UIDropDownMenu_SetWidth
 local ToggleDropDownMenu = rawget(_G, "ToggleDropDownMenu")
 local strtrim = rawget(_G, "strtrim")
+local BackdropTemplateMixin = rawget(_G, "BackdropTemplateMixin")
 
 -- ============================================================
 -- Config panel: /sst opens this frame.
@@ -25,6 +26,54 @@ local layoutScale = 1.6
 
 local function ShiftY(y)
 	return math.floor((y * layoutScale) + 0.5) - layoutShift
+end
+
+local function GetOptionalBackdropTemplate(template)
+	if not BackdropTemplateMixin then
+		return template
+	end
+
+	if template and template ~= "" then
+		return string.format("%s,BackdropTemplate", template)
+	end
+
+	return "BackdropTemplate"
+end
+
+local function CreateOptionalBackdropFrame(frameType, name, parent, template)
+	return CreateFrame(frameType, name, parent, GetOptionalBackdropTemplate(template))
+end
+
+local function SetFrameBackdrop(frame, backdropInfo, backgroundColor, borderColor)
+	if not frame or not frame.SetBackdrop then
+		return
+	end
+
+	frame:SetBackdrop(backdropInfo)
+	if backgroundColor and frame.SetBackdropColor then
+		frame:SetBackdropColor(backgroundColor[1], backgroundColor[2], backgroundColor[3], backgroundColor[4])
+	end
+	if borderColor and frame.SetBackdropBorderColor then
+		frame:SetBackdropBorderColor(borderColor[1], borderColor[2], borderColor[3], borderColor[4])
+	end
+end
+
+local function EnableScrollFrameMouseWheel(scrollFrame, step)
+	if not scrollFrame then
+		return
+	end
+
+	scrollFrame:EnableMouseWheel(true)
+	scrollFrame:SetScript("OnMouseWheel", function(self, delta)
+		local current = self:GetVerticalScroll() or 0
+		local child = self:GetScrollChild()
+		local maxRange = 0
+		if child then
+			maxRange = math.max((child:GetHeight() or 0) - (self:GetHeight() or 0), 0)
+		end
+		local nextScroll = math.max(0, math.min(current - (delta * (step or 32)), maxRange))
+		self:SetVerticalScroll(nextScroll)
+	end)
 end
 
 local INDICATOR_BLEND_OPTIONS = {
@@ -254,6 +303,9 @@ local function ShowBarPreview()
 	if ns.UpdateRogueEnergyTickVisual then
 		ns.UpdateRogueEnergyTickVisual()
 	end
+	if ns.UpdateRogueSliceAndDiceVisual then
+		ns.UpdateRogueSliceAndDiceVisual()
+	end
 end
 
 local function HideBarPreview()
@@ -271,6 +323,9 @@ local function HideBarPreview()
 	end
 	if ns.UpdateRogueEnergyTickVisual then
 		ns.UpdateRogueEnergyTickVisual()
+	end
+	if ns.UpdateRogueSliceAndDiceVisual then
+		ns.UpdateRogueSliceAndDiceVisual()
 	end
 end
 
@@ -581,18 +636,16 @@ local function HideTextureBrowserGrid(frame)
 end
 
 local function CreateTextureBrowserListRow(parent)
-	local button = CreateFrame("Button", nil, parent, "BackdropTemplate")
+	local button = CreateOptionalBackdropFrame("Button", nil, parent)
 	button:SetHeight(26)
-	button:SetBackdrop({
+	SetFrameBackdrop(button, {
 		bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
 		edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
 		tile = true,
 		tileSize = 4,
 		edgeSize = 8,
 		insets = { left = 1, right = 1, top = 1, bottom = 1 },
-	})
-	button:SetBackdropColor(0.08, 0.08, 0.08, 0.94)
-	button:SetBackdropBorderColor(0.30, 0.30, 0.30, 1)
+	}, { 0.08, 0.08, 0.08, 0.94 }, { 0.30, 0.30, 0.30, 1 })
 
 	local preview = button:CreateTexture(nil, "BACKGROUND")
 	preview:SetPoint("TOPLEFT", button, "TOPLEFT", 2, -2)
@@ -668,20 +721,8 @@ local function EnsureTextureBrowserList(frame)
 	local scrollFrame = CreateFrame("ScrollFrame", nil, frame, "UIPanelScrollFrameTemplate")
 	scrollFrame:SetPoint("TOPLEFT", frame, "TOPLEFT", 16, -80)
 	scrollFrame:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -34, 46)
-	scrollFrame:EnableMouseWheel(true)
 	scrollFrame:SetClipsChildren(true)
-	scrollFrame:SetScript("OnMouseWheel", function(self, delta)
-		local current = self:GetVerticalScroll() or 0
-		local step = 32
-		local child = self:GetScrollChild()
-		local range = 0
-		if child then
-			local maxRange = (child:GetHeight() or 0) - (self:GetHeight() or 0)
-			range = math.max(maxRange, 0)
-		end
-		local nextScroll = math.max(0, math.min(current - (delta * step), range))
-		self:SetVerticalScroll(nextScroll)
-	end)
+	EnableScrollFrameMouseWheel(scrollFrame, 32)
 
 	local content = CreateFrame("Frame", nil, scrollFrame)
 	content:SetSize(1, 1)
@@ -851,7 +892,7 @@ local function RefreshTextureBrowser(frame)
 end
 
 local function CreateTextureBrowserFrame()
-	local frame = CreateFrame("Frame", "SuperSwingTimerTextureBrowserFrame", UIParent, "BackdropTemplate")
+	local frame = CreateOptionalBackdropFrame("Frame", "SuperSwingTimerTextureBrowserFrame", UIParent)
 	frame:SetSize(660, 580)
 	frame:SetPoint("CENTER")
 	frame:SetFrameStrata("DIALOG")
@@ -861,16 +902,14 @@ local function CreateTextureBrowserFrame()
 	frame:RegisterForDrag("LeftButton")
 	frame:SetScript("OnDragStart", frame.StartMoving)
 	frame:SetScript("OnDragStop", frame.StopMovingOrSizing)
-	frame:SetBackdrop({
+	SetFrameBackdrop(frame, {
 		bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
 		edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
 		tile = true,
 		tileSize = 16,
 		edgeSize = 16,
 		insets = { left = 4, right = 4, top = 4, bottom = 4 },
-	})
-	frame:SetBackdropColor(0.06, 0.06, 0.06, 0.98)
-	frame:SetBackdropBorderColor(0.35, 0.35, 0.35, 1)
+	}, { 0.06, 0.06, 0.06, 0.98 }, { 0.35, 0.35, 0.35, 1 })
 	frame:Hide()
 
 	local title = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
@@ -946,18 +985,16 @@ local function CreateTextureBrowserFrame()
 	local startY = -78
 	frame.buttons = {}
 	for index = 1, 20 do
-		local button = CreateFrame("Button", nil, frame, "BackdropTemplate")
+		local button = CreateOptionalBackdropFrame("Button", nil, frame)
 		button:SetSize(buttonWidth, buttonHeight)
-		button:SetBackdrop({
+		SetFrameBackdrop(button, {
 			bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
 			edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
 			tile = true,
 			tileSize = 4,
 			edgeSize = 8,
 			insets = { left = 1, right = 1, top = 1, bottom = 1 },
-		})
-		button:SetBackdropColor(0.08, 0.08, 0.08, 0.95)
-		button:SetBackdropBorderColor(0.30, 0.30, 0.30, 1)
+		}, { 0.08, 0.08, 0.08, 0.95 }, { 0.30, 0.30, 0.30, 1 })
 		local columnOffset = ((index - 1) % columns) * (buttonWidth + buttonPaddingX)
 		local rowOffset = math.floor((index - 1) / columns) * (buttonHeight + buttonPaddingY)
 		button:SetPoint("TOPLEFT", frame, "TOPLEFT", startX + columnOffset, startY - rowOffset)
@@ -1150,7 +1187,7 @@ local function CreateTexturePathRow(parent, label, yOffset, getTexture, applyTex
 		row.pathBox = pathBox
 
 		local browseButton = CreateFrame("Button", nil, row, "UIPanelButtonTemplate")
-		browseButton:SetSize(22, 20)
+		browseButton:SetSize(24, 24)
 		browseButton:SetPoint("BOTTOMRIGHT", row, "BOTTOMRIGHT", 0, 0)
 		browseButton:SetText("")
 		browseButton:SetNormalTexture("Interface\\AddOns\\WeakAuras\\Media\\Textures\\browse.tga")
@@ -1187,19 +1224,17 @@ local function CreateTexturePathRow(parent, label, yOffset, getTexture, applyTex
 	if options.mode == "barList" then
 		local defaultTexture = options.defaultTexture or getTexture() or ns.DB_DEFAULTS.barTexture
 
-		local pickerButton = CreateFrame("Button", nil, row, "BackdropTemplate")
+		local pickerButton = CreateOptionalBackdropFrame("Button", nil, row)
 		pickerButton:SetPoint("BOTTOMRIGHT", row, "BOTTOMRIGHT", 0, 0)
 		pickerButton:SetSize(320, 24)
-		pickerButton:SetBackdrop({
+		SetFrameBackdrop(pickerButton, {
 			bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
 			edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
 			tile = true,
 			tileSize = 4,
 			edgeSize = 8,
 			insets = { left = 1, right = 1, top = 1, bottom = 1 },
-		})
-		pickerButton:SetBackdropColor(0.08, 0.08, 0.08, 0.94)
-		pickerButton:SetBackdropBorderColor(0.30, 0.30, 0.30, 1)
+		}, { 0.08, 0.08, 0.08, 0.94 }, { 0.30, 0.30, 0.30, 1 })
 		row.pickerButton = pickerButton
 
 		local preview = pickerButton:CreateTexture(nil, "BACKGROUND")
@@ -1535,7 +1570,7 @@ local function CreateActionRow(parent, label, buttonText, yOffset, onClick, tool
 end
 
 local function CreateSectionHeader(parent, label, yOffset, options)
-	local row = CreateFrame("Button", nil, parent, "BackdropTemplate")
+	local row = CreateOptionalBackdropFrame("Button", nil, parent)
 	row:SetPoint("TOPLEFT", parent, "TOPLEFT", 20, yOffset)
 	row:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -20, yOffset)
 	row:SetHeight(24)
@@ -1674,10 +1709,10 @@ end
 -- Panel creation
 -- ============================================================
 local function CreatePanel()
-	local f = CreateFrame("Frame", "SuperSwingTimerConfigPanel", UIParent, "BackdropTemplate")
+	local f = CreateOptionalBackdropFrame("Frame", "SuperSwingTimerConfigPanel", UIParent)
 	f:SetSize(780, 760)
 	f:SetPoint("CENTER")
-	f:SetBackdrop({
+	SetFrameBackdrop(f, {
 		bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
 		edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
 		tile = true,
@@ -1720,7 +1755,7 @@ local function CreatePanel()
 	local subtitle = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
 	subtitle:SetPoint("TOP", title, "BOTTOM", 0, -2)
 	subtitle:SetText(
-	"Hover rows for help, then use the right-side checkbox, dropdown, numeric field, or swatch button to change them.")
+	"Opening /sst previews the bars. Live bars stay combat-driven; hover rows for help, then use the right-side control.")
 
 	-- Close button
 	local close = CreateFrame("Button", nil, f, "UIPanelCloseButton")
@@ -1729,6 +1764,7 @@ local function CreatePanel()
 	local scrollFrame = CreateFrame("ScrollFrame", nil, f, "UIPanelScrollFrameTemplate")
 	scrollFrame:SetPoint("TOPLEFT", f, "TOPLEFT", 12, -46)
 	scrollFrame:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -20, 54)
+	EnableScrollFrameMouseWheel(scrollFrame, 36)
 
 	local content = CreateFrame("Frame", nil, scrollFrame)
 	content:SetSize(720, 3600)
@@ -1896,7 +1932,7 @@ local function CreatePanel()
 	local showRogueEnergyRow = nil
 	if ns.playerClass == "ROGUE" then
 		showRogueEnergyRow = AddQuickToggle(
-			"Rogue Energy Tick",
+			"Rogue Energy Helper",
 			function() return SuperSwingTimerDB.showRogueEnergyTick ~= false end,
 			function(enabled)
 				SuperSwingTimerDB.showRogueEnergyTick = enabled
@@ -1905,7 +1941,24 @@ local function CreatePanel()
 				end
 			end,
 			{
-				tooltipText = "Show the test Rogue energy tick helper bar to the left of the MH/OH stack.",
+				tooltipText = "Show the slim Rogue energy helper bar to the left of the MH/OH stack.",
+			}
+		)
+	end
+
+	local showRogueSliceAndDiceRow = nil
+	if ns.playerClass == "ROGUE" then
+		showRogueSliceAndDiceRow = AddQuickToggle(
+			"Rogue Slice and Dice",
+			function() return SuperSwingTimerDB.showRogueSliceAndDice ~= false end,
+			function(enabled)
+				SuperSwingTimerDB.showRogueSliceAndDice = enabled
+				if ns.UpdateRogueSliceAndDiceVisual then
+					ns.UpdateRogueSliceAndDiceVisual()
+				end
+			end,
+			{
+				tooltipText = "Show the slim Slice and Dice duration bar above the main-hand bar while the buff is active.",
 			}
 		)
 	end
@@ -1938,11 +1991,15 @@ local function CreatePanel()
 	if ns.playerClass == "ROGUE" then
 		AddQuickColor("Rogue SS Cue", "rogueSinister", {
 			allowAlpha = true,
-			tooltipText = "Pick the rogue main-hand end-window color that marks when to queue Sinister Strike into the swing landing.",
+			tooltipText = "Pick the Rogue main-hand end-window color that marks when to queue Sinister Strike into the swing landing; the configured alpha updates live.",
 		})
-		AddQuickColor("Rogue Tick", "rogueEnergyTick", {
+		AddQuickColor("Rogue Energy", "rogueEnergyTick", {
 			allowAlpha = true,
-			tooltipText = "Pick the Rogue test energy tick bar color for the vertical helper to the left of the melee stack.",
+			tooltipText = "Pick the Rogue energy helper bar color for the vertical helper to the left of the melee stack.",
+		})
+		AddQuickColor("Rogue SnD", "rogueSliceAndDice", {
+			allowAlpha = true,
+			tooltipText = "Pick the Rogue Slice and Dice helper bar color for the slim duration bar above the main-hand bar.",
 		})
 	end
 
@@ -1950,7 +2007,13 @@ local function CreatePanel()
 		AddQuickColor("Seal Line", "sealTwist", { allowAlpha = true })
 	end
 
-	local mhOhHeader = CreateSectionHeader(content, "MH/OH Bar Appearance", -230, {
+	local quickSectionBottomY = math.min(quickToggleY, quickColorY)
+	local postQuickYOffset = (quickSectionBottomY - 14) - (-230)
+	local function PostQuickY(y)
+		return y + postQuickYOffset
+	end
+
+	local mhOhHeader = CreateSectionHeader(content, "MH/OH Bar Appearance", PostQuickY(-230), {
 		rows = mhOhRows,
 		getCollapsed = function() return sectionCollapsed.mhOh end,
 		setCollapsed = function(collapsed) sectionCollapsed.mhOh = collapsed end,
@@ -1962,18 +2025,18 @@ local function CreatePanel()
 
 	-- Keep the first MH/OH control clearly below the section header so slider clicks
 	-- cannot also hit the collapse toggle.
-	local widthSlider = CreateSlider(content, "Bar Width", 100, 400, 10, ShiftY(-75))
+	local widthSlider = CreateSlider(content, "Bar Width", 100, 400, 10, PostQuickY(ShiftY(-75)))
 	widthSlider:SetValue(SuperSwingTimerDB.barWidth or ns.DB_DEFAULTS.barWidth)
 	SyncSliderDisplay(widthSlider, widthSlider:GetValue())
 
-	local heightSlider = CreateSlider(content, "Bar Height", 10, 40, 2, ShiftY(-100))
+	local heightSlider = CreateSlider(content, "Bar Height", 10, 40, 2, PostQuickY(ShiftY(-100)))
 	heightSlider:SetValue(SuperSwingTimerDB.barHeight or ns.DB_DEFAULTS.barHeight)
 	SyncSliderDisplay(heightSlider, heightSlider:GetValue())
 
 	local barTextureRow = CreateTexturePathRow(
 		content,
 		"MH/OH Bar Texture",
-		ShiftY(-145),
+		PostQuickY(ShiftY(-145)),
 		{
 			mode = "barList",
 			defaultTexture = ns.DB_DEFAULTS.barTexture,
@@ -1996,7 +2059,7 @@ local function CreatePanel()
 	local barLayerRow = CreateCycleRow(
 		content,
 		"MH/OH Texture Layer",
-		ShiftY(-180),
+		PostQuickY(ShiftY(-180)),
 		ns.TEXTURE_LAYER_OPTIONS,
 		function() return SuperSwingTimerDB.barTextureLayer or ns.DB_DEFAULTS.barTextureLayer end,
 		function(layer) ns.ApplyBarTextureLayer(layer) end
@@ -2005,7 +2068,7 @@ local function CreatePanel()
 	local rangedTextureRow = CreateTexturePathRow(
 		content,
 		"Ranged Bar Texture",
-		ShiftY(-200),
+		PostQuickY(ShiftY(-200)),
 		{
 			mode = "barList",
 			defaultTexture = ns.DB_DEFAULTS.rangedBarTexture,
@@ -2029,11 +2092,11 @@ local function CreatePanel()
 	local sparkTextureRow = CreateTexturePathRow(
 		content,
 		"Spark Texture",
-		ShiftY(-215),
+		PostQuickY(ShiftY(-215)),
 		{
 			mode = "browser",
 			label = "Spark Texture",
-			yOffset = ShiftY(-215),
+			yOffset = PostQuickY(ShiftY(-215)),
 			defaultTexture = ns.DB_DEFAULTS.sparkTexture,
 			getTexture = function() return SuperSwingTimerDB.sparkTexture or ns.DB_DEFAULTS.sparkTexture end,
 			applyTexture = function(texturePath)
@@ -2059,7 +2122,7 @@ local function CreatePanel()
 		}
 	)
 
-	local sparkAlphaSlider = CreateSlider(content, "Spark Alpha", 0, 1, 0.05, ShiftY(-425))
+	local sparkAlphaSlider = CreateSlider(content, "Spark Alpha", 0, 1, 0.05, PostQuickY(ShiftY(-425)))
 	sparkAlphaSlider:SetValue(SuperSwingTimerDB.sparkAlpha ~= nil and SuperSwingTimerDB.sparkAlpha or
 	ns.DB_DEFAULTS.sparkAlpha)
 	SyncSliderDisplay(sparkAlphaSlider, sparkAlphaSlider:GetValue())
@@ -2068,7 +2131,7 @@ local function CreatePanel()
 		content,
 		"Spark Color",
 		"spark",
-		ShiftY(-250),
+		PostQuickY(ShiftY(-250)),
 		{
 			allowAlpha = true,
 			getColor = function()
@@ -2092,17 +2155,17 @@ local function CreatePanel()
 	local sparkLayerRow = CreateCycleRow(
 		content,
 		"Spark Layer",
-		ShiftY(-285),
+		PostQuickY(ShiftY(-285)),
 		ns.TEXTURE_LAYER_OPTIONS,
 		function() return SuperSwingTimerDB.sparkTextureLayer or ns.DB_DEFAULTS.sparkTextureLayer end,
 		function(layer) ns.ApplySparkTextureLayer(layer) end
 	)
 
-	local sparkWidthSlider = CreateSlider(content, "Spark Width", 2, 60, 1, ShiftY(-350))
+	local sparkWidthSlider = CreateSlider(content, "Spark Width", 2, 60, 1, PostQuickY(ShiftY(-350)))
 	sparkWidthSlider:SetValue(SuperSwingTimerDB.sparkWidth or ns.DB_DEFAULTS.sparkWidth)
 	SyncSliderDisplay(sparkWidthSlider, sparkWidthSlider:GetValue())
 
-	local sparkHeightSlider = CreateSlider(content, "Spark Height", 2, 90, 1, ShiftY(-400))
+	local sparkHeightSlider = CreateSlider(content, "Spark Height", 2, 90, 1, PostQuickY(ShiftY(-400)))
 	sparkHeightSlider:SetValue(SuperSwingTimerDB.sparkHeight or ns.DB_DEFAULTS.sparkHeight)
 	SyncSliderDisplay(sparkHeightSlider, sparkHeightSlider:GetValue())
 
@@ -2110,7 +2173,7 @@ local function CreatePanel()
 		content,
 		"Bar Background Color",
 		"barBackground",
-		ShiftY(-450),
+		PostQuickY(ShiftY(-450)),
 		{
 			allowAlpha = false,
 			getColor = function()
@@ -2125,7 +2188,7 @@ local function CreatePanel()
 		}
 	)
 
-	local backgroundAlphaSlider = CreateSlider(content, "Bar Background Alpha", 0, 1, 0.05, ShiftY(-500))
+	local backgroundAlphaSlider = CreateSlider(content, "Bar Background Alpha", 0, 1, 0.05, PostQuickY(ShiftY(-500)))
 	backgroundAlphaSlider:SetValue(SuperSwingTimerDB.barBackgroundAlpha ~= nil and SuperSwingTimerDB.barBackgroundAlpha or
 	ns.DB_DEFAULTS.barBackgroundAlpha)
 	SyncSliderDisplay(backgroundAlphaSlider, backgroundAlphaSlider:GetValue())
@@ -2133,7 +2196,7 @@ local function CreatePanel()
 	local indicatorBlendModeRow = CreateCycleRow(
 		content,
 		"Indicator Glow Mode",
-		ShiftY(-550),
+		PostQuickY(ShiftY(-550)),
 		INDICATOR_BLEND_OPTIONS,
 		function() return SuperSwingTimerDB.indicatorBlendMode or ns.DB_DEFAULTS.indicatorBlendMode end,
 		function(blendMode)
@@ -2145,7 +2208,7 @@ local function CreatePanel()
 		content,
 		"Bar Border Color",
 		"barBorder",
-		ShiftY(-600),
+		PostQuickY(ShiftY(-600)),
 		{
 			allowAlpha = true,
 			getColor = function()
@@ -2158,7 +2221,7 @@ local function CreatePanel()
 		}
 	)
 
-	local barBorderSlider = CreateSlider(content, "Bar Border Size", 0, 6, 1, ShiftY(-650))
+	local barBorderSlider = CreateSlider(content, "Bar Border Size", 0, 6, 1, PostQuickY(ShiftY(-650)))
 	barBorderSlider:SetValue(SuperSwingTimerDB.barBorderSize ~= nil and SuperSwingTimerDB.barBorderSize or
 	ns.DB_DEFAULTS.barBorderSize)
 	SyncSliderDisplay(barBorderSlider, barBorderSlider:GetValue())
@@ -2188,7 +2251,7 @@ local function CreatePanel()
 		mhOhHeader.refresh()
 	end
 
-	local shamanHeader = CreateSectionHeader(content, "Shaman Weave Assist", -728, {
+	local shamanHeader = CreateSectionHeader(content, "Shaman Weave Assist", PostQuickY(-728), {
 		rows = shamanRows,
 		getCollapsed = function() return sectionCollapsed.shaman end,
 		setCollapsed = function(collapsed) sectionCollapsed.shaman = collapsed end,
@@ -2197,11 +2260,11 @@ local function CreatePanel()
 	local weaveSparkTextureRow = CreateTexturePathRow(
 		content,
 		"Cast Breakpoint Spark Texture",
-		ShiftY(-705),
+		PostQuickY(ShiftY(-705)),
 		{
 			mode = "browser",
 			label = "Cast Breakpoint Spark Texture",
-			yOffset = ShiftY(-705),
+			yOffset = PostQuickY(ShiftY(-705)),
 			defaultTexture = ns.DB_DEFAULTS.weaveSparkTexture,
 			getTexture = function() return SuperSwingTimerDB.weaveSparkTexture or ns.DB_DEFAULTS.weaveSparkTexture end,
 			applyTexture = function(texturePath)
@@ -2230,21 +2293,21 @@ local function CreatePanel()
 	local weaveSparkLayerRow = CreateCycleRow(
 		content,
 		"Cast Breakpoint Layer",
-		ShiftY(-740),
+		PostQuickY(ShiftY(-740)),
 		ns.TEXTURE_LAYER_OPTIONS,
 		function() return SuperSwingTimerDB.weaveSparkTextureLayer or ns.DB_DEFAULTS.weaveSparkTextureLayer end,
 		function(layer) ns.ApplyWeaveSparkTextureLayer(layer) end
 	)
 
-	local weaveSparkWidthSlider = CreateSlider(content, "Cast Spark Width", 2, 60, 1, ShiftY(-775))
+	local weaveSparkWidthSlider = CreateSlider(content, "Cast Spark Width", 2, 60, 1, PostQuickY(ShiftY(-775)))
 	weaveSparkWidthSlider:SetValue(SuperSwingTimerDB.weaveSparkWidth or ns.DB_DEFAULTS.weaveSparkWidth)
 	SyncSliderDisplay(weaveSparkWidthSlider, weaveSparkWidthSlider:GetValue())
 
-	local weaveSparkHeightSlider = CreateSlider(content, "Cast Spark Height", 2, 100, 1, ShiftY(-825))
+	local weaveSparkHeightSlider = CreateSlider(content, "Cast Spark Height", 2, 100, 1, PostQuickY(ShiftY(-825)))
 	weaveSparkHeightSlider:SetValue(SuperSwingTimerDB.weaveSparkHeight or ns.DB_DEFAULTS.weaveSparkHeight)
 	SyncSliderDisplay(weaveSparkHeightSlider, weaveSparkHeightSlider:GetValue())
 
-	local weaveSparkAlphaSlider = CreateSlider(content, "Cast Spark Alpha", 0, 1, 0.05, ShiftY(-875))
+	local weaveSparkAlphaSlider = CreateSlider(content, "Cast Spark Alpha", 0, 1, 0.05, PostQuickY(ShiftY(-875)))
 	weaveSparkAlphaSlider:SetValue(SuperSwingTimerDB.weaveSparkAlpha ~= nil and SuperSwingTimerDB.weaveSparkAlpha or
 	ns.DB_DEFAULTS.weaveSparkAlpha)
 	SyncSliderDisplay(weaveSparkAlphaSlider, weaveSparkAlphaSlider:GetValue())
@@ -2253,7 +2316,7 @@ local function CreatePanel()
 		content,
 		"Breakpoint markers now use the tracked spell's icon automatically. " ..
 		"Use the size, gap, alpha, and layer controls below to tune the small icon markers.",
-		ShiftY(-915)
+		PostQuickY(ShiftY(-915))
 	)
 
 	local weaveTriangleTopRow = nil
@@ -2262,7 +2325,7 @@ local function CreatePanel()
 	local weaveTriangleLayerRow = CreateCycleRow(
 		content,
 		"Spell Icon Layer",
-		ShiftY(-995),
+		PostQuickY(ShiftY(-995)),
 		ns.TEXTURE_LAYER_OPTIONS,
 		function() return SuperSwingTimerDB.weaveTriangleTextureLayer or ns.DB_DEFAULTS.weaveTriangleTextureLayer end,
 		function(layer)
@@ -2279,16 +2342,16 @@ local function CreatePanel()
 		end
 	)
 
-	local weaveTriangleSizeSlider = CreateSlider(content, "Spell Icon Size", 6, 24, 1, ShiftY(-1030))
+	local weaveTriangleSizeSlider = CreateSlider(content, "Spell Icon Size", 6, 24, 1, PostQuickY(ShiftY(-1030)))
 	weaveTriangleSizeSlider:SetValue(SuperSwingTimerDB.weaveTriangleSize or ns.DB_DEFAULTS.weaveTriangleSize)
 	SyncSliderDisplay(weaveTriangleSizeSlider, weaveTriangleSizeSlider:GetValue())
 
-	local weaveTriangleGapSlider = CreateSlider(content, "Spell Icon Gap", 0, 6, 1, ShiftY(-1080))
+	local weaveTriangleGapSlider = CreateSlider(content, "Spell Icon Gap", 0, 6, 1, PostQuickY(ShiftY(-1080)))
 	weaveTriangleGapSlider:SetValue(SuperSwingTimerDB.weaveTriangleGap ~= nil and SuperSwingTimerDB.weaveTriangleGap or
 	ns.DB_DEFAULTS.weaveTriangleGap)
 	SyncSliderDisplay(weaveTriangleGapSlider, weaveTriangleGapSlider:GetValue())
 
-	local weaveTriangleAlphaSlider = CreateSlider(content, "Spell Icon Alpha", 0, 1, 0.05, ShiftY(-1130))
+	local weaveTriangleAlphaSlider = CreateSlider(content, "Spell Icon Alpha", 0, 1, 0.05, PostQuickY(ShiftY(-1130)))
 	weaveTriangleAlphaSlider:SetValue(SuperSwingTimerDB.weaveTriangleAlpha ~= nil and
 	SuperSwingTimerDB.weaveTriangleAlpha or ns.DB_DEFAULTS.weaveTriangleAlpha)
 	SyncSliderDisplay(weaveTriangleAlphaSlider, weaveTriangleAlphaSlider:GetValue())
@@ -2312,7 +2375,7 @@ local function CreatePanel()
 		SetRowsShown(shamanRows, false)
 	end
 
-	local generalHeader = CreateSectionHeader(content, "General Behavior", -1318, {
+	local generalHeader = CreateSectionHeader(content, "General Behavior", PostQuickY(-1318), {
 		rows = generalRows,
 		getCollapsed = function() return sectionCollapsed.general end,
 		setCollapsed = function(collapsed) sectionCollapsed.general = collapsed end,
@@ -2321,7 +2384,7 @@ local function CreatePanel()
 	local minimalModeRow = CreateToggleRow(
 		content,
 		"Minimal Mode",
-		ShiftY(-1305),
+		PostQuickY(ShiftY(-1305)),
 		function() return SuperSwingTimerDB.minimalMode == true end,
 		function(enabled) ns.ApplyMinimalMode(enabled) end
 	)
@@ -2329,7 +2392,7 @@ local function CreatePanel()
 	local lockBarsRow = CreateToggleRow(
 		content,
 		"Lock / Unlock Bars",
-		ShiftY(-1335),
+		PostQuickY(ShiftY(-1335)),
 		function() return SuperSwingTimerDB.lockBars == true end,
 		function(enabled) SuperSwingTimerDB.lockBars = enabled end
 	)
@@ -2337,7 +2400,7 @@ local function CreatePanel()
 		content,
 		"Test Bars",
 		"Preview 8s",
-		ShiftY(-1365),
+		PostQuickY(ShiftY(-1365)),
 		function()
 			StartBarTestPreview(8)
 		end,
@@ -2472,7 +2535,7 @@ local function CreatePanel()
 		)
 	end)
 
-	local weaveFamiliesHeader = CreateSectionHeader(content, "Weave Families", -1708, {
+	local weaveFamiliesHeader = CreateSectionHeader(content, "Weave Families", PostQuickY(-1708), {
 		rows = weaveFamiliesRows,
 		getCollapsed = function() return sectionCollapsed.weaveFamilies end,
 		setCollapsed = function(collapsed) sectionCollapsed.weaveFamilies = collapsed end,
@@ -2482,15 +2545,15 @@ local function CreatePanel()
 		"Each family below is color-coded to match its spell breakpoint family. " ..
 		"Toggle a family off to remove every rank in that family from the weave helper. " ..
 		"The small breakpoint icons use the tracked spell's real icon, stay attached to the MH swing bar, and move with spell haste.",
-		-1736
+		PostQuickY(-1736)
 	)
 
 	local weaveFamilyRows = {
-		CreateWeaveFamilyRow(content, "LB", "Lightning Bolt", -1750),
-		CreateWeaveFamilyRow(content, "CL", "Chain Lightning", -1778),
-		CreateWeaveFamilyRow(content, "HW", "Healing Wave", -1806),
-		CreateWeaveFamilyRow(content, "LHW", "Lesser Healing Wave", -1834),
-		CreateWeaveFamilyRow(content, "CH", "Chain Heal", -1862),
+		CreateWeaveFamilyRow(content, "LB", "Lightning Bolt", PostQuickY(-1750)),
+		CreateWeaveFamilyRow(content, "CL", "Chain Lightning", PostQuickY(-1778)),
+		CreateWeaveFamilyRow(content, "HW", "Healing Wave", PostQuickY(-1806)),
+		CreateWeaveFamilyRow(content, "LHW", "Lesser Healing Wave", PostQuickY(-1834)),
+		CreateWeaveFamilyRow(content, "CH", "Chain Heal", PostQuickY(-1862)),
 	}
 
 	if ns.playerClass ~= "SHAMAN" then
@@ -2610,6 +2673,9 @@ local function CreatePanel()
 		if showRogueEnergyRow and showRogueEnergyRow.refresh then
 			showRogueEnergyRow.refresh()
 		end
+		if showRogueSliceAndDiceRow and showRogueSliceAndDiceRow.refresh then
+			showRogueSliceAndDiceRow.refresh()
+		end
 		-- Update color swatches
 		for _, row in ipairs(colorRowsSection) do
 			if row and row.button then
@@ -2663,6 +2729,7 @@ local function CreatePanel()
 	f.showWeaveRow = showWeaveRow
 	f.showRogueAssistRow = showRogueAssistRow
 	f.showRogueEnergyRow = showRogueEnergyRow
+	f.showRogueSliceAndDiceRow = showRogueSliceAndDiceRow
 	f.useClassColorsRow = useClassColorsRow
 	f.weaveFamilyRows = weaveFamilyRows
 	f.colorRows = colorRowsSection
@@ -2801,6 +2868,9 @@ function ns.ToggleConfig()
 		if panel.showRogueEnergyRow and panel.showRogueEnergyRow.refresh then
 			panel.showRogueEnergyRow.refresh()
 		end
+		if panel.showRogueSliceAndDiceRow and panel.showRogueSliceAndDiceRow.refresh then
+			panel.showRogueSliceAndDiceRow.refresh()
+		end
 		if panel.weaveFamilyRows then
 			for _, row in ipairs(panel.weaveFamilyRows) do
 				if row.refresh then
@@ -2907,6 +2977,7 @@ function ns.ResetConfigDefaults()
 	SuperSwingTimerDB.showEnemy                  = ns.DB_DEFAULTS.showEnemy
 	SuperSwingTimerDB.showRogueSinisterAssist    = ns.DB_DEFAULTS.showRogueSinisterAssist
 	SuperSwingTimerDB.showRogueEnergyTick        = ns.DB_DEFAULTS.showRogueEnergyTick
+	SuperSwingTimerDB.showRogueSliceAndDice      = ns.DB_DEFAULTS.showRogueSliceAndDice
 	SuperSwingTimerDB.showWeaveAssist            = ns.DB_DEFAULTS.showWeaveAssist
 	SuperSwingTimerDB.useClassColors             = ns.DB_DEFAULTS.useClassColors
 	SuperSwingTimerDB.indicatorBlendMode         = ns.DB_DEFAULTS.indicatorBlendMode
@@ -3036,6 +3107,9 @@ function ns.ResetConfigDefaults()
 	end
 	if panel and panel.showRogueEnergyRow and panel.showRogueEnergyRow.refresh then
 		panel.showRogueEnergyRow.refresh()
+	end
+	if panel and panel.showRogueSliceAndDiceRow and panel.showRogueSliceAndDiceRow.refresh then
+		panel.showRogueSliceAndDiceRow.refresh()
 	end
 	if panel and panel.colorRows then
 		for _, row in ipairs(panel.colorRows) do
