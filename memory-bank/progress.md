@@ -1,5 +1,45 @@
 # Progress
 
+## Progress Update (2026-05-16 - hunter startup and visibility hardening)
+
+- Hardened Hunter startup/visibility: auto-repeat now seeds ranged timing immediately, cooldown updates refresh shared visibility, and combat-entry bar showing now routes through `ApplyVisibility()` instead of force-showing ranged bars.
+
+## Progress Update (2026-05-16 - config open-path hardening)
+
+- Hardened the `/sst` open path: lazy panel re-init, pure texture-backed quick swatches, and guarded color-row refresh before show so the config panel cannot be blocked by a bad quick-color row.
+
+## Progress Update (2026-05-16 - config row interaction hardening)
+
+- Hardened the `/sst` row click helpers so clicks on the actual right-side button/toggle/dropdown no longer double-trigger through the parent row.
+
+## Progress Update (2026-05-16 - config swatch bugfix)
+
+- Fixed the broken `/sst` color selector buttons by switching them to plain `BackdropTemplate` preview tiles with a visible gray base, which restores the missing-but-clickable swatches and Hunter/class quick colors.
+
+## Progress Update (2026-05-16 - config color swatch readability follow-up)
+
+- Reworked the `/sst` color selector buttons to use flatter high-contrast preview tiles so the chosen bar colors show much more clearly in the config UI.
+
+## Progress Update (2026-05-16 - final fit-and-finish quick-controls, Rogue test bar, and spark polish)
+
+- Tightened the top `/sst` Quick Controls spacing so the Rogue/Hunter two-column quick rows no longer overlap in the live panel.
+- Resized the Rogue test energy helper to a 5px-wide vertical bar that matches the visible melee-bar heights instead of spanning the inter-bar gap.
+- Polished the thin stock spark by pixel-snapping the fill-edge anchor and adding a tiny forward bias so it reads closer to the live edge on the 15px/10px bar profile.
+
+## Progress Update (2026-05-16 - final pre-test Rogue energy tick and slimmer defaults)
+
+- Changed the stock live profile so the main shared bars now default to 15px, the OH bar derives to 10px, and the default spark height follows the slimmer main-bar profile while still clamping to each host bar.
+- Added a Rogue-only test vertical energy-tick helper to the left of the MH/OH stack, driven by `UnitPower("player")` plus Rogue-only `UNIT_POWER_UPDATE` / `UNIT_POWER_FREQUENT` hooks and observed natural energy gains, without disturbing the aligned swing clock.
+- Added `/sst` quick-control toggle/color wiring, migration/reset defaults, and release/doc updates for the new Rogue energy tick helper.
+
+## Progress Update (2026-05-16 - v0.0.5 rogue cue and quick-controls)
+
+- Reworked the top of `/sst` into a two-column Quick Controls section so visibility toggles sit on the left while the primary bar-color swatches sit on the right.
+- Moved the most-used bar colors to that top section and kept the class-specific quick colors conditional, including Hunter Auto Shot safe/unsafe colors, the enemy bar color, the Rogue Sinister cue color, and the Paladin seal line where relevant.
+- Added a Rogue-only latency-adjusted red end-window overlay on the MH bar so players can press Sinister Strike into the end of the swing and more reliably land it immediately after the main-hand hit.
+- Added `showRogueSinisterAssist` defaults/migration/reset support plus a dedicated Rogue cue color, and wired the overlay into the existing bar-color, size, visibility, minimal-mode, and layer-refresh paths.
+- Hid the shaman weave section on non-shaman classes so the config panel stays cleaner during production use.
+
 ## Progress Update (2026-05-15 - v0.0.4 enemy bar and spark sync)
 
 - Added the new enemy target bar end-to-end: defaults/migration in constants/bootstrap, enemy timer state in `SuperSwingTimer_State.lua`, a draggable/shared-style enemy frame in `SuperSwingTimer_UI.lua`, and `/sst` toggle/color/reset support in `SuperSwingTimer_Config.lua`.

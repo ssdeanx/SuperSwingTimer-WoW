@@ -1,6 +1,9 @@
 local _, ns = ...
 ---@diagnostic disable: undefined-field
+local CreateFrame = rawget(_G, "CreateFrame")
+local UIParent = rawget(_G, "UIParent")
 local UnitAura = rawget(_G, "UnitAura")
+local UnitPower = rawget(_G, "UnitPower")
 local GetTimePreciseSec = rawget(_G, "GetTimePreciseSec")
 local GetTime = rawget(_G, "GetTime")
 local GetSpellCooldown = rawget(_G, "GetSpellCooldown")
@@ -729,6 +732,342 @@ local function SetupHunter()
 	end
 end
 
+local function SetupRogue()
+	local UnitAttackSpeed = rawget(_G, "UnitAttackSpeed")
+	local DEFAULT_ROGUE_QUEUE_WINDOW = 0.08
+	local ROGUE_QUEUE_INPUT_CUSHION = 0.03
+	local MAX_ROGUE_QUEUE_WINDOW = 0.22
+	local ROGUE_ENERGY_TICK_DURATION = 2.0
+	local ROGUE_ENERGY_BAR_WIDTH = 5
+	local ROGUE_ENERGY_BAR_GAP = 3
+
+	local function GetRogueCueColor()
+		return ns.GetBarColor and ns.GetBarColor("rogueSinister") or { r = 1, g = 0, b = 0, a = 0.45 }
+	end
+
+	local function GetRogueEnergyTickColor()
+		return ns.GetBarColor and ns.GetBarColor("rogueEnergyTick") or { r = 1.0, g = 0.82, b = 0.18, a = 1 }
+	end
+
+	local function ApplyRogueCueColor()
+		local cue = ns.rogueSinisterAssistZone
+		if not cue then
+			return
+		end
+
+		local color = GetRogueCueColor()
+		cue:SetColorTexture(
+			color.r or 1,
+			color.g or 0,
+			color.b or 0,
+			color.a ~= nil and color.a or 0.45
+		)
+	end
+
+	local function ApplyRogueEnergyTickColor()
+		local energyBar = ns.rogueEnergyTickBar
+		if not energyBar then
+			return
+		end
+
+		local color = GetRogueEnergyTickColor()
+		energyBar:SetStatusBarColor(
+			color.r or 1,
+			color.g or 0.82,
+			color.b or 0.18,
+			color.a ~= nil and color.a or 1
+		)
+	end
+
+	local function GetPreviewMeleeDuration()
+		local mainHandSpeed = type(UnitAttackSpeed) == "function" and UnitAttackSpeed("player") or nil
+		if type(mainHandSpeed) == "number" and mainHandSpeed > 0 then
+			return mainHandSpeed
+		end
+
+		local timer = ns.timers and ns.timers.mh
+		if timer and timer.duration and timer.duration > 0 then
+			return timer.duration
+		end
+
+		return 2.0
+	end
+
+	local function GetRogueCueWindow(timerDuration)
+		if not timerDuration or timerDuration <= 0 then
+			return 0
+		end
+
+		local latency = math.max(ns.cachedLatency or 0, 0)
+		local window = latency + ROGUE_QUEUE_INPUT_CUSHION
+		local maxWindow = math.max(math.min(timerDuration * 0.35, MAX_ROGUE_QUEUE_WINDOW), DEFAULT_ROGUE_QUEUE_WINDOW)
+		if window < DEFAULT_ROGUE_QUEUE_WINDOW then
+			window = DEFAULT_ROGUE_QUEUE_WINDOW
+		elseif window > maxWindow then
+			window = maxWindow
+		end
+
+		return window
+	end
+
+	local function IsLikelyNaturalRogueEnergyGain(delta)
+		delta = tonumber(delta)
+		if not delta or delta <= 0 then
+			return false
+		end
+
+		return (delta >= 18 and delta <= 22) or (delta >= 38 and delta <= 42)
+	end
+
+	local function GetRogueEnergyAnchorBar()
+		if ns.ohBar and ns.ohBar.GetAlpha and (ns.ohBar:GetAlpha() or 0) > 0 then
+			return ns.ohBar
+		end
+
+		return ns.mhBar
+	end
+
+	local function GetRogueEnergyBarHeight(mhBar, anchorBottom)
+		local totalHeight = (mhBar and mhBar:GetHeight()) or ns.BAR_HEIGHT or 15
+		if anchorBottom and anchorBottom ~= mhBar then
+			totalHeight = totalHeight + ((anchorBottom:GetHeight() or 0))
+		end
+
+		return math.max(1, totalHeight)
+	end
+
+	local function UpdateRogueEnergyTickVisual()
+		local energyBar = ns.rogueEnergyTickBar
+		local mhBar = ns.mhBar
+		local db = SuperSwingTimerDB or ns.DB_DEFAULTS
+		if not energyBar or not mhBar then
+			return
+		end
+
+		if ns.playerClass ~= "ROGUE" or db.showRogueEnergyTick == false or (ns.IsMinimalMode and ns.IsMinimalMode()) then
+			energyBar:SetAlpha(0)
+			return
+		end
+
+		local previewActive = ns.barTestActive == true
+		local mhVisible = mhBar.GetAlpha and (mhBar:GetAlpha() or 0) > 0
+		if not previewActive and not mhVisible then
+			energyBar:SetAlpha(0)
+			return
+		end
+
+		local anchorBottom = GetRogueEnergyAnchorBar() or mhBar
+		local energyHeight = GetRogueEnergyBarHeight(mhBar, anchorBottom)
+		energyBar:ClearAllPoints()
+		energyBar:SetPoint("TOPRIGHT", mhBar, "TOPLEFT", -ROGUE_ENERGY_BAR_GAP, 0)
+		energyBar:SetWidth(ROGUE_ENERGY_BAR_WIDTH)
+		energyBar:SetHeight(energyHeight)
+		energyBar:SetMinMaxValues(0, 1)
+
+		local now = GetCurrentTime()
+		if not ns.rogueEnergyTickStartTime then
+			ns.rogueEnergyTickStartTime = now
+		end
+
+		local elapsed = now - ns.rogueEnergyTickStartTime
+		if elapsed < 0 then
+			elapsed = 0
+		end
+		local progress = (elapsed % ROGUE_ENERGY_TICK_DURATION) / ROGUE_ENERGY_TICK_DURATION
+		energyBar:SetValue(progress)
+		ApplyRogueEnergyTickColor()
+		energyBar:SetAlpha(1)
+	end
+
+	local function HandleRogueEnergyPowerUpdate(unit, powerType)
+		if ns.playerClass ~= "ROGUE" or unit ~= "player" or type(UnitPower) ~= "function" then
+			return
+		end
+		if powerType and powerType ~= "ENERGY" then
+			return
+		end
+
+		local currentEnergy = UnitPower("player") or 0
+		local previousEnergy = ns.rogueLastEnergy
+		if previousEnergy ~= nil then
+			local delta = currentEnergy - previousEnergy
+			if IsLikelyNaturalRogueEnergyGain(delta) then
+				ns.rogueEnergyTickStartTime = GetCurrentTime()
+			end
+		end
+
+		ns.rogueLastEnergy = currentEnergy
+		UpdateRogueEnergyTickVisual()
+	end
+
+	local function UpdateRogueSinisterAssistVisual()
+		local cue = ns.rogueSinisterAssistZone
+		local mhBar = ns.mhBar
+		local db = SuperSwingTimerDB or ns.DB_DEFAULTS
+		if not cue or not mhBar then
+			return
+		end
+
+		if ns.playerClass ~= "ROGUE" or db.showRogueSinisterAssist == false or (ns.IsMinimalMode and ns.IsMinimalMode()) then
+			cue:Hide()
+			return
+		end
+
+		local timer = ns.timers and ns.timers.mh or nil
+		local duration = timer and timer.duration or nil
+		local previewActive = ns.barTestActive == true
+		local activeSwing = timer and timer.state == "swinging" and duration and duration > 0
+		if not activeSwing then
+			if not previewActive then
+				cue:Hide()
+				return
+			end
+			duration = GetPreviewMeleeDuration()
+		end
+
+		if (mhBar.GetAlpha and (mhBar:GetAlpha() or 0) <= 0) or not duration or duration <= 0 then
+			cue:Hide()
+			return
+		end
+
+		local barWidth = mhBar:GetWidth() or mhBar.barWidth or ns.BAR_WIDTH or 0
+		if barWidth <= 0 then
+			cue:Hide()
+			return
+		end
+
+		local cueWindow = GetRogueCueWindow(duration)
+		if cueWindow <= 0 then
+			cue:Hide()
+			return
+		end
+
+		local cueWidth = math.min((cueWindow / duration) * barWidth, barWidth)
+		cueWidth = math.max(cueWidth, 1)
+		local barAnchor = GetOverlayParent(mhBar)
+		cue:ClearAllPoints()
+		cue:SetPoint("TOPRIGHT", barAnchor, "TOPRIGHT", 0, 0)
+		cue:SetPoint("BOTTOMRIGHT", barAnchor, "BOTTOMRIGHT", 0, 0)
+		cue:SetWidth(cueWidth)
+		ApplyRogueCueColor()
+		cue:Show()
+	end
+
+	ns.UpdateRogueSinisterAssistColor = ApplyRogueCueColor
+	ns.UpdateRogueSinisterAssistVisual = UpdateRogueSinisterAssistVisual
+	ns.UpdateRogueEnergyTickColor = ApplyRogueEnergyTickColor
+	ns.UpdateRogueEnergyTickVisual = UpdateRogueEnergyTickVisual
+	ns.HandleRogueEnergyPowerUpdate = HandleRogueEnergyPowerUpdate
+
+	ns.OnBarsCreated = function()
+		if not ns.mhBar then
+			return
+		end
+
+		if not ns.rogueSinisterAssistZone then
+			local barParent = GetOverlayParent(ns.mhBar)
+			local cue = barParent:CreateTexture(nil, "OVERLAY")
+			cue:SetColorTexture(1, 0, 0, 0.45)
+			cue:SetPoint("TOPRIGHT", barParent, "TOPRIGHT", 0, 0)
+			cue:SetPoint("BOTTOMRIGHT", barParent, "BOTTOMRIGHT", 0, 0)
+			cue:SetWidth(0)
+			if ns.SetTextureLayerAboveBar then
+				ns.SetTextureLayerAboveBar(cue, ns.GetWeaveMarkerLayer and ns.GetWeaveMarkerLayer() or "OVERLAY", ns.GetBarTextureLayer and ns.GetBarTextureLayer() or "ARTWORK")
+			end
+			cue:Hide()
+			ns.rogueSinisterAssistZone = cue
+		end
+
+		if not ns.rogueEnergyTickBar then
+			local energyBar = rawget(_G, "SuperSwingTimerRogueEnergyTickBar")
+			if not energyBar then
+				energyBar = CreateFrame("StatusBar", "SuperSwingTimerRogueEnergyTickBar", UIParent)
+			end
+			energyBar:SetStatusBarTexture(ns.GetBarTexture and ns.GetBarTexture() or "Interface\\TargetingFrame\\UI-StatusBar")
+			if energyBar.SetOrientation then
+				energyBar:SetOrientation("VERTICAL")
+			end
+			if energyBar.SetReverseFill then
+				energyBar:SetReverseFill(true)
+			end
+			energyBar:SetSize(ROGUE_ENERGY_BAR_WIDTH, (ns.mhBar and ns.mhBar:GetHeight()) or ns.BAR_HEIGHT or 15)
+			energyBar:SetMinMaxValues(0, 1)
+			energyBar:SetValue(0)
+			energyBar:SetFrameStrata(ns.mhBar:GetFrameStrata())
+			energyBar:SetFrameLevel((ns.mhBar:GetFrameLevel() or 0) + 1)
+			energyBar:EnableMouse(false)
+			local statusBarTexture = energyBar:GetStatusBarTexture()
+			if statusBarTexture then
+				statusBarTexture:SetDrawLayer(ns.GetBarTextureLayer and ns.GetBarTextureLayer() or "ARTWORK")
+			end
+
+			local backgroundTexture = energyBar.backgroundTexture or energyBar:CreateTexture(nil, "BACKGROUND")
+			backgroundTexture:SetAllPoints(true)
+			local backgroundColor = ns.GetBarBackgroundColor and ns.GetBarBackgroundColor() or (ns.DB_DEFAULTS and ns.DB_DEFAULTS.barBackgroundColor)
+			backgroundColor = backgroundColor or { r = 0, g = 0, b = 0, a = 0.5 }
+			backgroundTexture:SetColorTexture(backgroundColor.r or 0, backgroundColor.g or 0, backgroundColor.b or 0, 1)
+			backgroundTexture:SetAlpha(backgroundColor.a ~= nil and backgroundColor.a or 0.5)
+
+			if not energyBar.borderTextures then
+				local borderColor = ns.GetBarBorderColor and ns.GetBarBorderColor() or (ns.DB_DEFAULTS and ns.DB_DEFAULTS.barBorderColor)
+				borderColor = borderColor or { r = 0, g = 0, b = 0, a = 1 }
+				local borderTop = energyBar:CreateTexture(nil, "OVERLAY")
+				borderTop:SetColorTexture(borderColor.r or 0, borderColor.g or 0, borderColor.b or 0, borderColor.a or 1)
+				borderTop:SetPoint("TOPLEFT", -1, 1)
+				borderTop:SetPoint("TOPRIGHT", 1, 1)
+				borderTop:SetHeight(1)
+
+				local borderBottom = energyBar:CreateTexture(nil, "OVERLAY")
+				borderBottom:SetColorTexture(borderColor.r or 0, borderColor.g or 0, borderColor.b or 0, borderColor.a or 1)
+				borderBottom:SetPoint("BOTTOMLEFT", -1, -1)
+				borderBottom:SetPoint("BOTTOMRIGHT", 1, -1)
+				borderBottom:SetHeight(1)
+
+				local borderLeft = energyBar:CreateTexture(nil, "OVERLAY")
+				borderLeft:SetColorTexture(borderColor.r or 0, borderColor.g or 0, borderColor.b or 0, borderColor.a or 1)
+				borderLeft:SetPoint("TOPLEFT", -1, 1)
+				borderLeft:SetPoint("BOTTOMLEFT", -1, -1)
+				borderLeft:SetWidth(1)
+
+				local borderRight = energyBar:CreateTexture(nil, "OVERLAY")
+				borderRight:SetColorTexture(borderColor.r or 0, borderColor.g or 0, borderColor.b or 0, borderColor.a or 1)
+				borderRight:SetPoint("TOPRIGHT", 1, 1)
+				borderRight:SetPoint("BOTTOMRIGHT", 1, -1)
+				borderRight:SetWidth(1)
+
+				energyBar.borderTextures = {
+					top = borderTop,
+					bottom = borderBottom,
+					left = borderLeft,
+					right = borderRight,
+				}
+			end
+
+			energyBar.backgroundTexture = backgroundTexture
+			energyBar.statusBarTexture = statusBarTexture
+			energyBar:SetAlpha(0)
+			ns.rogueEnergyTickBar = energyBar
+		end
+
+		ApplyRogueCueColor()
+		ApplyRogueEnergyTickColor()
+		ns.rogueLastEnergy = UnitPower and UnitPower("player") or ns.rogueLastEnergy
+		if not ns.rogueEnergyTickStartTime then
+			ns.rogueEnergyTickStartTime = GetCurrentTime()
+		end
+
+		local origOnUpdate = ns.OnUpdate or function() end
+		ns.OnUpdate = function(elapsed)
+			origOnUpdate(elapsed)
+			UpdateRogueSinisterAssistVisual()
+			UpdateRogueEnergyTickVisual()
+		end
+
+		UpdateRogueSinisterAssistVisual()
+		UpdateRogueEnergyTickVisual()
+	end
+end
+
 -- ============================================================
 -- Dispatch: pick class mods for the current class
 -- ============================================================
@@ -743,14 +1082,29 @@ function ns.InitClassMods()
 	ns.ClearDruidQueueTint = nil
 	ns.UpdateHunterQueueTint = nil
 	ns.ClearHunterQueueTint = nil
+	ns.UpdateRogueSinisterAssistColor = nil
+	ns.UpdateRogueSinisterAssistVisual = nil
+	ns.UpdateRogueEnergyTickColor = nil
+	ns.UpdateRogueEnergyTickVisual = nil
+	ns.HandleRogueEnergyPowerUpdate = nil
 	ns.warriorQueuedMeleeSpell = nil
 	ns.druidQueuedMeleeSpell = nil
 	ns.hunterQueuedMeleeSpell = nil
+	ns.rogueLastEnergy = nil
+	ns.rogueEnergyTickStartTime = nil
+	if ns.rogueSinisterAssistZone then
+		ns.rogueSinisterAssistZone:Hide()
+	end
+	if ns.rogueEnergyTickBar then
+		ns.rogueEnergyTickBar:SetAlpha(0)
+	end
 	local class = ns.playerClass
 	if class == "PALADIN" then
 		SetupRetPaladin()
 	elseif class == "WARRIOR" then
 		SetupWarrior()
+	elseif class == "ROGUE" then
+		SetupRogue()
 	elseif class == "HUNTER" then
 		SetupHunter()
 	elseif class == "SHAMAN" then
@@ -758,7 +1112,6 @@ function ns.InitClassMods()
 	elseif class == "DRUID" then
 		SetupDruid()
 	end
-	-- ROGUE: no special overlays beyond dual bars
 	-- Pure casters: no bars created, no mods needed
 end
 

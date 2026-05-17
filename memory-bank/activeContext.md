@@ -1,5 +1,45 @@
 # Active Context
 
+## Active Context Update (2026-05-16 - hunter startup and visibility hardening)
+
+- Hardened the Hunter path in `SuperSwingTimer.lua` and `SuperSwingTimer_UI.lua`: `START_AUTOREPEAT_SPELL` now seeds the ranged timer immediately instead of requiring the cooldown API to already be active, `SPELL_UPDATE_COOLDOWN` refreshes visibility after hunter cooldown sync/start, and the combat-entry `ShowBars()` helper now defers to `ns.ApplyVisibility()` so ranged/hunter bars follow the same visibility rules as the rest of the addon.
+
+## Active Context Update (2026-05-16 - config open-path hardening)
+
+- Hardened `SuperSwingTimer_Config.lua` so `/sst` now lazily re-initializes the panel if needed, the quick color swatches use pure texture-backed buttons instead of backdrop-on-button styling, and the pre-show color refresh is guarded so one malformed color row cannot block the whole panel from opening.
+
+## Active Context Update (2026-05-16 - config row interaction hardening)
+
+- Hardened `SuperSwingTimer_Config.lua` row click handling so row-level helper clicks now back off when the cursor is already on the real button, toggle, or dropdown control, preventing duplicate activations that could make the `/sst` panel feel buggy.
+
+## Active Context Update (2026-05-16 - config swatch bugfix)
+
+- Fixed the `/sst` color selector regression in `SuperSwingTimer_Config.lua` by replacing the broken button-template override with a plain `BackdropTemplate` preview tile that keeps a visible gray base behind each swatch, restoring the missing-but-clickable quick colors and the Hunter/class color rows.
+
+## Active Context Update (2026-05-16 - config color swatch readability follow-up)
+
+- Reworked `CreateColorButton` in `SuperSwingTimer_Config.lua` so the `/sst` color selectors now use flatter high-contrast preview tiles instead of washed-out stock button art, which makes the chosen MH/OH/ranged/enemy/Rogue/Hunter colors much easier to read during setup.
+
+## Active Context Update (2026-05-16 - final fit-and-finish quick-controls, Rogue test bar, and spark polish)
+
+- Tightened the `/sst` top Quick Controls layout so the two-column toggle/color area now uses compact non-overlapping row spacing and no longer collides when Rogue/Hunter-specific quick rows are present.
+- Polished the Rogue test energy helper in `SuperSwingTimer_ClassMods.lua`: it is now a 5px-wide vertical bar that matches the visible MH/OH bar heights (25px at the stock 15px MH + 10px OH profile) instead of stretching across the inter-bar gap.
+- Polished `SuperSwingTimer_UI.lua` spark positioning for the thinner stock profile by pixel-snapping the live fill-edge anchor and adding a very small forward bias so the 3px spark reads closer to the true leading edge.
+
+## Active Context Update (2026-05-16 - final pre-test Rogue energy tick and slimmer live profile)
+
+- Tightened the live v0.0.5 bar profile again before gameplay testing: shared main bars now default to 15px, the OH bar derives to 10px, and the default spark height follows the slimmer main bars while still clamping to each specific host bar.
+- Added a Rogue-only test energy-tick helper in `SuperSwingTimer_ClassMods.lua`: a slim vertical status bar anchored to the left of the MH/OH stack that uses `StatusBar:SetOrientation("VERTICAL")`, `SetReverseFill(true)`, `UnitPower("player")`, and Rogue-only `UNIT_POWER_UPDATE` / `UNIT_POWER_FREQUENT` hooks to track the observed 2-second energy cadence without touching the authoritative swing timers.
+- Added SavedVariables defaults/migration/reset support plus top quick-control toggle/color wiring for `showRogueEnergyTick` and the `rogueEnergyTick` color, while keeping the existing Rogue Sinister Strike end-window cue MH-only.
+
+## Active Context Update (2026-05-16 - v0.0.5 rogue cue and quick-controls pass)
+
+- Reworked the top of `/sst` into a two-column Quick Controls section so the most-used visibility toggles stay in a left column while the primary bar-color swatches live in a right column near the top of the panel.
+- Moved the core bar color controls into that top section, keeping class-specific quick colors conditional: Hunter Auto Shot safe/unsafe colors show only on Hunter, Rogue gets a dedicated `Rogue SS Cue Color`, and Paladin keeps the seal line swatch available without leaving the core bar colors buried far down the panel.
+- Added a Rogue-only MH overlay in `SuperSwingTimer_ClassMods.lua` that paints a latency-adjusted red end window on the right side of the MH bar. The window uses cached latency plus a small input cushion so pressing Sinister Strike as the bar enters the red slice better lands it immediately after the main-hand swing without changing the authoritative swing clock.
+- Added SavedVariables defaults/migration/reset support for `showRogueSinisterAssist` and the `rogueSinister` helper color, and hooked the new Rogue overlay into bar-color, bar-size, visibility, minimal-mode, and overlay-layer refresh paths so it behaves like the other class overlays.
+- Hid the shaman-only weave config section on non-shaman classes for a cleaner production panel.
+
 ## Active Context Update (2026-05-15 - v0.0.4 enemy bar and spark sync pass)
 
 - Added a new current-target enemy swing bar path that tracks the selected hostile target through `PLAYER_TARGET_CHANGED`, `UnitGUID("target")`, `UnitAttackSpeed("target")`, and hostile target `SWING_DAMAGE` / `SWING_MISSED` combat-log events while ignoring off-hand enemy hits to keep the single enemy bar readable.

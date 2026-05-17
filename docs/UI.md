@@ -15,6 +15,9 @@ This document captures the UI direction for `/sst`.
 - Use a small subtitle under the title to explain what the panel controls.
 - Avoid one dense vertical wall of controls; sectioning is the readability win.
 - Keep the first interactive row in each collapsible section clearly below the section header so slider or row clicks never also hit the collapse toggle.
+- Keep the top section as a two-column quick-control area: left column for checkboxes/toggles, right column for the primary bar color swatches, and use compact non-overlapping row spacing so the Rogue/Hunter quick rows do not crash into each other.
+- Keep the quick color swatches visually strong: prefer flat high-contrast preview tiles over washed-out stock button art so the chosen bar colors are readable in the config panel.
+- Keep the default live profile slimmer: 15px for the main shared bars, 10px for the derived OH bar, and a default spark height that matches the slimmer main bars while still clamping to each host frame.
 
 ## Addon-specific UI goals
 
@@ -24,11 +27,13 @@ This document captures the UI direction for `/sst`.
   - weave marker layer
   - any new overlay layers later
 - Keep the new enemy bar on the same shared bar/spark styling path as MH/OH so it picks up the existing texture, border, background, and spark controls, while keeping its own red default fill and separate visibility toggle.
+- Keep the Rogue Sinister cue MH-only: a small latency-adjusted red end window should sit on the right end of the MH bar so Rogues can queue Sinister Strike into the swing landing without adding latency to the shared base timer clock.
+- Add a Rogue test energy helper: a 5px-wide vertical bar to the left of the MH/OH stack that fills upward on the observed TBC energy-tick cadence, matches the visible MH/OH bar heights (25px at the stock 15px + 10px profile), stays separate from the swing timers, and exposes its own toggle and color swatch in the top quick controls.
 - Keep visual cues on a dedicated overlay frame above the bar fill so breakpoint markers never depend on hover-sensitive HIGHLIGHT ordering.
 - Keep the hunter Auto Shot / Multi-Shot cast bar separate from the ranged swing bar, but lock the Auto Shot hidden-window display to the same end-of-cycle red/green ranged window so movement pinning does not make the cast bar bounce.
 - Keep the shared swing clock on a `GetTime()`-aligned `GetTimePreciseSec()` / `GetTime()` path and apply cached latency only to predictive windows such as Auto Shot safe-stop timing, hunter hidden-window sizing, and weave clip math.
 - Keep spark tint independent from `Use Class Colors` and next-melee queue fill tints so the spark can stay white or use a manual color without losing contrast, and keep the main spark on a color-preserving blend mode so its visible tint does not warm from the bar fill underneath.
-- Keep the main spark aligned to the actual rendered fill edge so width changes do not make it visibly trail behind the bar.
+- Keep the main spark aligned to the actual rendered fill edge so width changes do not make it visibly trail behind the bar; for the thin 3px stock spark, lightly pixel-snap and nudge the anchor so it reads on the leading edge more cleanly.
 - Toggling `Use Class Colors` on should not overwrite the stored manual MH/OH/ranged colors; toggling it back off should restore those saved manual colors.
 - Make shaman weave overlays respect both the weave toggle and Minimal Mode so the class mod cannot re-show them after the visibility layer has hidden them.
 - Add weave-assist presentation options:
@@ -40,6 +45,7 @@ This document captures the UI direction for `/sst`.
 - Texture selection for the MH/OH and ranged bars should use a scrolling full-preview list that stretches each bar texture behind its label, keeps a fixed-height visible window with scroll support, and stays focused on bar-style textures from Blizzard fallbacks, WeakAuras bars, and any installed LibSharedMedia statusbar packs. The spark row and the shaman weave spark row should stay on the dedicated thumbnail browser seeded with the Normal `Square_FullWhite` preset, while the collapsed bar rows show the current texture as a miniature preview bar instead of a small icon.
 - The enemy bar should be toggleable from `/sst`, default to red, store its own anchor, expose its own color swatch, and follow the same preview / lock-drag flow as the other primary bars.
 - Auto Shot safe/unsafe feedback should expose its own color swatches in `/sst` so players can tune both the ranged cast-window fill and the overlay tint without changing the base ranged-bar color.
+- Rogue Sinister cue color should expose its own swatch in `/sst` so the helper can stay visible without forcing the main MH bar itself to turn red.
 - Make the row controls obvious: toggles use the right-side checkbox, selector settings use the right-side dropdown, and sliders expose a right-side editable numeric field.
 - Include a `Lock / Unlock Bars` control plus a temporary `Test Bars` action so players can preview and reposition the bars without fighting the normal combat visibility rules.
 - Make the unlocked bars easy to grab by giving them a slightly larger drag hit area and using actual drag handlers (`OnDragStart` / `OnDragStop`) on the anchor bars, and expose a bar border size control so the frame outline can be tuned instead of being fixed at a single pixel thickness.

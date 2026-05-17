@@ -79,11 +79,13 @@ local function MigrateDB()
 	-- Fresh install
 	if not SuperSwingTimerDB then
 		SuperSwingTimerDB = {
-			version                    = 26,
+			version                    = 28,
 			showMH                     = ns.DB_DEFAULTS.showMH,
 			showOH                     = ns.DB_DEFAULTS.showOH,
 			showRanged                 = ns.DB_DEFAULTS.showRanged,
 			showEnemy                  = ns.DB_DEFAULTS.showEnemy,
+			showRogueSinisterAssist    = ns.DB_DEFAULTS.showRogueSinisterAssist,
+			showRogueEnergyTick        = ns.DB_DEFAULTS.showRogueEnergyTick,
 			showWeaveAssist            = ns.DB_DEFAULTS.showWeaveAssist,
 			useClassColors             = ns.DB_DEFAULTS.useClassColors,
 			indicatorBlendMode         = ns.DB_DEFAULTS.indicatorBlendMode,
@@ -162,6 +164,8 @@ local function MigrateDB()
 	SuperSwingTimerDB.showOH             = (SuperSwingTimerDB.showOH ~= false)
 	SuperSwingTimerDB.showRanged         = (SuperSwingTimerDB.showRanged ~= false)
 	SuperSwingTimerDB.showEnemy          = (SuperSwingTimerDB.showEnemy ~= false)
+	SuperSwingTimerDB.showRogueSinisterAssist = (SuperSwingTimerDB.showRogueSinisterAssist ~= false)
+	SuperSwingTimerDB.showRogueEnergyTick = (SuperSwingTimerDB.showRogueEnergyTick ~= false)
 	SuperSwingTimerDB.showWeaveAssist    = (SuperSwingTimerDB.showWeaveAssist ~= false)
 	-- useClassColors strictly defaults to false unless explicitly true in the DB
 	if SuperSwingTimerDB.useClassColors == nil then
@@ -488,6 +492,38 @@ local function MigrateDB()
 		}
 		SuperSwingTimerDB.version = 26
 	end
+
+	-- v26 -> v27: add Rogue Sinister Strike helper defaults and color.
+	if (SuperSwingTimerDB.version or 0) < 27 then
+		SuperSwingTimerDB.showRogueSinisterAssist = (SuperSwingTimerDB.showRogueSinisterAssist ~= false)
+		SuperSwingTimerDB.colors = SuperSwingTimerDB.colors or {}
+		SuperSwingTimerDB.colors.rogueSinister = SuperSwingTimerDB.colors.rogueSinister or {
+			r = ns.DB_DEFAULTS.colors.rogueSinister.r,
+			g = ns.DB_DEFAULTS.colors.rogueSinister.g,
+			b = ns.DB_DEFAULTS.colors.rogueSinister.b,
+			a = ns.DB_DEFAULTS.colors.rogueSinister.a,
+		}
+		SuperSwingTimerDB.version = 27
+	end
+
+	-- v27 -> v28: slimmer default bar profile and Rogue energy tick helper.
+	if (SuperSwingTimerDB.version or 0) < 28 then
+		if SuperSwingTimerDB.barHeight == nil or math.abs((SuperSwingTimerDB.barHeight or 0) - 20) < 0.001 then
+			SuperSwingTimerDB.barHeight = ns.DB_DEFAULTS.barHeight
+		end
+		if SuperSwingTimerDB.sparkHeight == nil or math.abs((SuperSwingTimerDB.sparkHeight or 0) - 20) < 0.001 then
+			SuperSwingTimerDB.sparkHeight = ns.DB_DEFAULTS.sparkHeight
+		end
+		SuperSwingTimerDB.showRogueEnergyTick = (SuperSwingTimerDB.showRogueEnergyTick ~= false)
+		SuperSwingTimerDB.colors = SuperSwingTimerDB.colors or {}
+		SuperSwingTimerDB.colors.rogueEnergyTick = SuperSwingTimerDB.colors.rogueEnergyTick or {
+			r = ns.DB_DEFAULTS.colors.rogueEnergyTick.r,
+			g = ns.DB_DEFAULTS.colors.rogueEnergyTick.g,
+			b = ns.DB_DEFAULTS.colors.rogueEnergyTick.b,
+			a = ns.DB_DEFAULTS.colors.rogueEnergyTick.a,
+		}
+		SuperSwingTimerDB.version = 28
+	end
 end
 
 -- ============================================================
@@ -574,6 +610,11 @@ local function RegisterEvents()
 
 	if cfg.melee and ns.playerClass == "SHAMAN" then
 		frame:RegisterEvent("SPELLS_CHANGED")
+	end
+
+	if cfg.melee and ns.playerClass == "ROGUE" then
+		frame:RegisterEvent("UNIT_POWER_UPDATE")
+		frame:RegisterEvent("UNIT_POWER_FREQUENT")
 	end
 
 	if cfg.ranged then
@@ -705,6 +746,11 @@ frame:SetScript("OnEvent", function(self, event, ...)
 		if unit == "player" then
 			ns.SanityCheckTimers()
 		end
+	elseif event == "UNIT_POWER_UPDATE" or event == "UNIT_POWER_FREQUENT" then
+		local unit, powerType = ...
+		if ns.playerClass == "ROGUE" and unit == "player" and ns.HandleRogueEnergyPowerUpdate and (powerType == nil or powerType == "ENERGY") then
+			ns.HandleRogueEnergyPowerUpdate(unit, powerType)
+		end
 	elseif event == "UNIT_RANGEDDAMAGE" then
 		local unit = ...
 		if unit == "player" then
@@ -718,6 +764,9 @@ frame:SetScript("OnEvent", function(self, event, ...)
 					ns.SyncRangedTimerSpeed(nil, true)
 				else
 					ns.StartRangedSwing()
+				end
+				if ns.ApplyVisibility then
+					ns.ApplyVisibility()
 				end
 			end
 		end
@@ -733,6 +782,9 @@ frame:SetScript("OnEvent", function(self, event, ...)
 		if ns.RefreshEnemyTarget then
 			ns.RefreshEnemyTarget()
 		end
+		if ns.playerClass == "ROGUE" and ns.HandleRogueEnergyPowerUpdate then
+			ns.HandleRogueEnergyPowerUpdate("player", "ENERGY")
+		end
 		if ns.ClearWeavePreview then
 			ns.ClearWeavePreview()
 		end
@@ -742,16 +794,23 @@ frame:SetScript("OnEvent", function(self, event, ...)
 		end
 	elseif event == "START_AUTOREPEAT_SPELL" then
 		-- Hunter starts auto-shooting
-		if ns.playerClass == "HUNTER" and ns.GetAutoShotCooldown then
-			local _, autoShotDuration = ns.GetAutoShotCooldown()
-			if autoShotDuration and autoShotDuration > 0 and ns.timers.ranged and ns.timers.ranged.state ~= "swinging" then
+		if ns.playerClass == "HUNTER" then
+			if ns.timers.ranged and ns.timers.ranged.state ~= "swinging" then
 				ns.StartRangedSwing()
 			end
+			if ns.ApplyVisibility then
+				ns.ApplyVisibility()
+			elseif ns.rangedBar then
+				ns.rangedBar:SetAlpha(1)
+			end
 		end
-		if ns.rangedBar then ns.rangedBar:SetAlpha(1) end
 	elseif event == "STOP_AUTOREPEAT_SPELL" then
 		ns.ResetTimer("ranged")
-		if ns.rangedBar then ns.rangedBar:SetAlpha(0) end
+		if ns.ApplyVisibility then
+			ns.ApplyVisibility()
+		elseif ns.rangedBar then
+			ns.rangedBar:SetAlpha(0)
+		end
 	elseif event == "PLAYER_REGEN_DISABLED" then
 		ns.ShowBars()
 		ns.StartSanityTicker()

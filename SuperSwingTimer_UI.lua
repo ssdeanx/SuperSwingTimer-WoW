@@ -58,6 +58,15 @@ local function ClampSparkHeightForBar(bar, requestedHeight)
 	return math.max(1, math.min(targetHeight, barHeight))
 end
 
+local function GetOffHandBarHeight(mainHeight)
+	if ns.GetOffHandBarHeight then
+		return ns.GetOffHandBarHeight(mainHeight)
+	end
+
+	local baseHeight = tonumber(mainHeight) or ns.BAR_HEIGHT or 15
+	return math.max(6, baseHeight - 5)
+end
+
 local function GetBarProgressFraction(bar)
 	if not bar or not bar.GetMinMaxValues or not bar.GetValue then
 		return 0
@@ -86,6 +95,7 @@ local function UpdateSparkPosition(bar, explicitFraction)
 
 	local sparkAnchor = ns.GetOverlayFrame and ns.GetOverlayFrame(bar) or bar
 	local barWidth = bar:GetWidth() or bar.barWidth or ns.BAR_WIDTH or 0
+	local sparkWidth = (bar.sparkTexture.GetWidth and bar.sparkTexture:GetWidth()) or (ns.GetSparkWidth and ns.GetSparkWidth()) or 0
 	local sparkPos
 	local fill = bar.statusBarTexture or (bar.GetStatusBarTexture and bar:GetStatusBarTexture()) or nil
 	if fill and sparkAnchor.GetLeft and fill.GetRight and barWidth > 0 then
@@ -103,6 +113,11 @@ local function UpdateSparkPosition(bar, explicitFraction)
 		end
 		sparkPos = (fraction or 0) * barWidth
 	end
+
+	if sparkWidth > 1 then
+		sparkPos = sparkPos + math.min((sparkWidth - 1) * 0.25, 1)
+	end
+	sparkPos = math.floor((sparkPos or 0) + 0.5)
 
 	if sparkPos < 0 then
 		sparkPos = 0
@@ -461,8 +476,10 @@ end
 local function CreateOHBar()
 	local mh = ns.mhBar
 	local f = ns.ohBar or rawget(_G, "SuperSwingTimerOHBar")
+	local offHandHeight = GetOffHandBarHeight((mh and mh:GetHeight()) or ns.BAR_HEIGHT)
+	local offHandWidth = (mh and mh:GetWidth()) or ns.BAR_WIDTH
 	if not f then
-		f = CreateBar("SuperSwingTimerOHBar")
+		f = CreateBar("SuperSwingTimerOHBar", offHandWidth, offHandHeight)
 	end
 	local c = ns.GetBarColor and ns.GetBarColor("oh") or (SuperSwingTimerDB and SuperSwingTimerDB.colors and SuperSwingTimerDB.colors.oh)
 	if c then
@@ -472,6 +489,10 @@ local function CreateOHBar()
 	end
 	f.labelText:SetText("Off Hand")
 	f:SetMinMaxValues(0, 1)
+	f:SetSize(offHandWidth, offHandHeight)
+	if f.sparkTexture then
+		f.sparkTexture:SetHeight(ClampSparkHeightForBar(f, ns.GetSparkHeight()))
+	end
 	-- Anchor OH below MH with 2px gap
 	f:ClearAllPoints()
 	f:SetPoint("TOPLEFT", mh, "BOTTOMLEFT", 0, -2)
@@ -656,6 +677,9 @@ local function SavePosition(slot, frame)
 			point = point, relativePoint = relativePoint, x = x, y = y
 		}
 	end
+	if ns.UpdateRogueEnergyTickVisual then
+		ns.UpdateRogueEnergyTickVisual()
+	end
 end
 
 local function RestorePosition(slot, frame)
@@ -732,6 +756,11 @@ end
 -- Combat show/hide
 -- ============================================================
 local function ShowBars()
+	if ns.ApplyVisibility then
+		ns.ApplyVisibility()
+		return
+	end
+
 	local cfg = ns.classConfig
 	local db = SuperSwingTimerDB or ns.DB_DEFAULTS
 	local _, ohSpeed = UnitAttackSpeed("player")
@@ -756,6 +785,9 @@ local function ShowBars()
 	elseif ns.ohBar then
 		ns.ohBar:SetAlpha(0)
 	end
+	if ns.UpdateRogueEnergyTickVisual then
+		ns.UpdateRogueEnergyTickVisual()
+	end
 end
 
 local function HideBars()
@@ -764,6 +796,9 @@ local function HideBars()
 	if ns.hunterCastBar then ns.hunterCastBar:SetAlpha(0) end
 	if ns.mhBar     then ns.mhBar:SetAlpha(0) end
 	if ns.ohBar     then ns.ohBar:SetAlpha(0) end
+	if ns.UpdateRogueEnergyTickVisual then
+		ns.UpdateRogueEnergyTickVisual()
+	end
 end
 
 ns.ShowBars = ShowBars
@@ -902,7 +937,12 @@ function ns.ApplyBarSize(width, height)
 	local bars = { ns.enemyBar, ns.mhBar, ns.ohBar, ns.rangedBar, ns.hunterCastBar }
 	for _, bar in ipairs(bars) do
 		if bar then
-			local barHeight = bar == ns.hunterCastBar and (ns.HUNTER_CAST_BAR_HEIGHT or 10) or height
+			local barHeight = height
+			if bar == ns.hunterCastBar then
+				barHeight = ns.HUNTER_CAST_BAR_HEIGHT or 10
+			elseif bar == ns.ohBar then
+				barHeight = GetOffHandBarHeight(height)
+			end
 			bar:SetSize(width, barHeight)
 			bar.barWidth = width
 			if bar.sparkTexture then
@@ -922,6 +962,12 @@ function ns.ApplyBarSize(width, height)
 	if ns.UpdateCastZoneVisual then
 		ns.UpdateCastZoneVisual()
 	end
+	if ns.UpdateRogueSinisterAssistVisual then
+		ns.UpdateRogueSinisterAssistVisual()
+	end
+	if ns.UpdateRogueEnergyTickVisual then
+		ns.UpdateRogueEnergyTickVisual()
+	end
 end
 
 function ns.ApplyBarBorderSize(borderSize)
@@ -932,7 +978,7 @@ function ns.ApplyBarBorderSize(borderSize)
 
 	SuperSwingTimerDB.barBorderSize = borderSize
 
-	for _, bar in ipairs({ ns.enemyBar, ns.mhBar, ns.ohBar, ns.rangedBar, ns.hunterCastBar }) do
+	for _, bar in ipairs({ ns.enemyBar, ns.mhBar, ns.ohBar, ns.rangedBar, ns.hunterCastBar, ns.rogueEnergyTickBar }) do
 		local borderTextures = bar and bar.borderTextures or nil
 		if borderTextures then
 			local showBorder = borderSize > 0
@@ -965,7 +1011,7 @@ function ns.ApplyBarTexture(texturePath, layer)
 
 	SuperSwingTimerDB.barTexture = texturePath
 	SuperSwingTimerDB.barTextureLayer = layer
-	for _, bar in ipairs({ ns.enemyBar, ns.mhBar, ns.ohBar }) do
+	for _, bar in ipairs({ ns.enemyBar, ns.mhBar, ns.ohBar, ns.rogueEnergyTickBar }) do
 		if bar then
 			bar:SetStatusBarTexture(texturePath)
 			bar.statusBarTexture = bar.statusBarTexture or bar:GetStatusBarTexture()
@@ -1008,7 +1054,7 @@ function ns.ApplyBarTextureLayer(layer)
 		layer = ns.DB_DEFAULTS.barTextureLayer
 	end
 	SuperSwingTimerDB.barTextureLayer = layer
-	for _, bar in ipairs({ ns.enemyBar, ns.mhBar, ns.ohBar, ns.rangedBar, ns.hunterCastBar }) do
+	for _, bar in ipairs({ ns.enemyBar, ns.mhBar, ns.ohBar, ns.rangedBar, ns.hunterCastBar, ns.rogueEnergyTickBar }) do
 		if bar and bar.statusBarTexture then
 			bar.statusBarTexture:SetDrawLayer(layer)
 		end
@@ -1046,7 +1092,7 @@ function ns.ApplyBarBackgroundColor(color)
 
 	SuperSwingTimerDB.barBackgroundColor = { r = r, g = g, b = b, a = alpha }
 	SuperSwingTimerDB.barBackgroundAlpha = alpha
-	for _, bar in ipairs({ ns.enemyBar, ns.mhBar, ns.ohBar, ns.rangedBar, ns.hunterCastBar }) do
+	for _, bar in ipairs({ ns.enemyBar, ns.mhBar, ns.ohBar, ns.rangedBar, ns.hunterCastBar, ns.rogueEnergyTickBar }) do
 		if bar and bar.backgroundTexture then
 			bar.backgroundTexture:SetColorTexture(r, g, b, 1)
 			bar.backgroundTexture:SetAlpha(alpha)
@@ -1081,7 +1127,7 @@ function ns.ApplyBarBorderColor(color)
 	end
 
 	SuperSwingTimerDB.barBorderColor = { r = r, g = g, b = b, a = alpha }
-	for _, bar in ipairs({ ns.enemyBar, ns.mhBar, ns.ohBar, ns.rangedBar, ns.hunterCastBar }) do
+	for _, bar in ipairs({ ns.enemyBar, ns.mhBar, ns.ohBar, ns.rangedBar, ns.hunterCastBar, ns.rogueEnergyTickBar }) do
 		local borderTextures = bar and bar.borderTextures or nil
 		if borderTextures then
 			for _, texture in pairs(borderTextures) do
@@ -1206,6 +1252,13 @@ function ns.ApplyWeaveMarkerLayer(layer)
 			else
 				texture:SetDrawLayer(layer)
 			end
+		end
+	end
+	if ns.rogueSinisterAssistZone and ns.rogueSinisterAssistZone.SetDrawLayer then
+		if ns.SetTextureLayerAboveBar then
+			ns.SetTextureLayerAboveBar(ns.rogueSinisterAssistZone, layer, ns.GetBarTextureLayer())
+		else
+			ns.rogueSinisterAssistZone:SetDrawLayer(layer)
 		end
 	end
 	-- Also apply layer to the canonical weave marker if present
@@ -1359,6 +1412,12 @@ function ns.ApplyMinimalMode(enabled)
 			texture:SetShown(not enabled)
 		end
 	end
+	if ns.UpdateRogueSinisterAssistVisual then
+		ns.UpdateRogueSinisterAssistVisual()
+	end
+	if ns.UpdateRogueEnergyTickVisual then
+		ns.UpdateRogueEnergyTickVisual()
+	end
 end
 
 function ns.ApplyVisibility()
@@ -1402,6 +1461,12 @@ function ns.ApplyVisibility()
 				texture:SetShown(showWeave)
 			end
 		end
+	end
+	if ns.UpdateRogueSinisterAssistVisual then
+		ns.UpdateRogueSinisterAssistVisual()
+	end
+	if ns.UpdateRogueEnergyTickVisual then
+		ns.UpdateRogueEnergyTickVisual()
 	end
 end
 
@@ -1458,6 +1523,18 @@ function ns.ApplyBarColors()
 	end
 	if ns.UpdateHunterQueueTint then
 		ns.UpdateHunterQueueTint()
+	end
+	if ns.UpdateRogueSinisterAssistColor then
+		ns.UpdateRogueSinisterAssistColor()
+	end
+	if ns.UpdateRogueSinisterAssistVisual then
+		ns.UpdateRogueSinisterAssistVisual()
+	end
+	if ns.UpdateRogueEnergyTickColor then
+		ns.UpdateRogueEnergyTickColor()
+	end
+	if ns.UpdateRogueEnergyTickVisual then
+		ns.UpdateRogueEnergyTickVisual()
 	end
 	if ns.ApplySparkColor then
 		ns.ApplySparkColor()
@@ -1546,6 +1623,9 @@ function ns.UpdateOHBar()
 	elseif ns.ohBar then
 		ns.ohBar:Hide()
 		ns.ResetTimer("oh")
+	end
+	if ns.UpdateRogueEnergyTickVisual then
+		ns.UpdateRogueEnergyTickVisual()
 	end
 end
 

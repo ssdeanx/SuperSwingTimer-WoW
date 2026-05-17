@@ -1,5 +1,21 @@
 # Super Swing Timer Changelog
 
+## 0.0.5 - 2026-05-16
+
+- Reworked the top of `/sst` into a two-column Quick Controls section so the most-used visibility toggles stay on the left while the primary bar-color swatches sit on the right for faster setup.
+- Moved the main bar color controls into that top quick-control area, including class-specific swatches such as Hunter Auto Shot safe/unsafe feedback, the enemy bar, the Rogue Sinister cue, and the Paladin seal line when relevant.
+- Added a Rogue-only latency-adjusted red end-window overlay on the MH bar so Combat Rogues can press Sinister Strike into the swing landing and more reliably have it fire immediately after the main-hand hit.
+- Added a `Rogue SS Cue` toggle plus a `Rogue SS Cue Color` swatch so the new Rogue timing helper can be turned off or retuned without recoloring the entire MH bar.
+- Slimmed the stock live profile for the release build: main bars now default to 15px tall, the OH bar derives to 10px by default, and the default spark height follows that slimmer profile while still clamping to each host bar.
+- Added a test Rogue energy-tick helper bar: a slim vertical status bar anchored to the left of the MH/OH stack that fills upward over the observed 2-second TBC energy cadence, with a toggle and color swatch in the top quick controls.
+- Final pre-test polish: tightened the Quick Controls spacing so the two top columns no longer overlap when Rogue/Hunter-specific quick rows are present, resized the Rogue test energy bar to a 5px-wide helper that matches the visible MH/OH bar heights, and slightly forward-biased plus pixel-snapped the 3px spark so the thin spark reads closer to the true fill edge.
+- UI readability follow-up: the `/sst` color swatches now use flatter high-contrast preview tiles instead of the washed-out stock button look, so MH/OH/ranged/enemy/Rogue/Hunter colors read much more clearly while configuring the addon.
+- UI bugfix follow-up: the color selectors now use a plain `BackdropTemplate` preview button with a visible gray base, which fixes the broken invisible-but-clickable swatches and restores the Hunter/class quick colors in the panel.
+- UI interaction hardening: row-level click helpers now ignore clicks that are already landing on the actual button, toggle, or dropdown control, which removes double-trigger behavior that could make the config panel feel buggy.
+- Config open-path hardening: `/sst` now lazily re-initializes the panel if needed and safely refreshes quick color rows before showing, while the color swatches themselves no longer rely on backdrop methods on buttons. This prevents malformed quick-color controls from blocking the panel entirely.
+- Hunter stability follow-up: `START_AUTOREPEAT_SPELL` now seeds the ranged timer immediately instead of waiting for the cooldown API to already be active, hunter cooldown updates refresh visibility through the shared rules, and the combat-entry helper now defers to `ApplyVisibility()` so ranged/hunter bars do not get forced visible on the wrong path.
+- Hid the shaman-only weave section on non-shaman classes so `/sst` stays cleaner during normal Warrior, Rogue, Hunter, and Paladin setup.
+
 ## 0.0.4 - 2026-05-15
 
 - Added a new current-target enemy swing bar that uses `PLAYER_TARGET_CHANGED`, `UnitGUID("target")`, `UnitAttackSpeed("target")`, and hostile-target `SWING_DAMAGE` / `SWING_MISSED` combat-log events to track the selected enemy's main-hand swing timing.

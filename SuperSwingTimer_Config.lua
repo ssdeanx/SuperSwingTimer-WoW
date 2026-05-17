@@ -251,6 +251,9 @@ local function ShowBarPreview()
 			end
 		end
 	end
+	if ns.UpdateRogueEnergyTickVisual then
+		ns.UpdateRogueEnergyTickVisual()
+	end
 end
 
 local function HideBarPreview()
@@ -265,6 +268,9 @@ local function HideBarPreview()
 	local bars = { ns.enemyBar, ns.mhBar, ns.ohBar, ns.rangedBar, ns.hunterCastBar }
 	for _, bar in ipairs(bars) do
 		if bar then bar:SetAlpha(0) end
+	end
+	if ns.UpdateRogueEnergyTickVisual then
+		ns.UpdateRogueEnergyTickVisual()
 	end
 end
 
@@ -404,15 +410,19 @@ end
 
 local function CreateColorButton(parent, label, colorKey, yOffset, options)
 	options = options or {}
+	local leftInset = options.leftInset or 20
+	local rightInset = options.rightInset or 20
+	local rowHeight = options.rowHeight or 44
+	local buttonWidth = options.buttonWidth or 180
 	local getColor = options.getColor or function()
 		return ns.GetBarColor(colorKey)
 	end
 	local allowAlpha = options.allowAlpha == true
 	local tooltipText = options.tooltipText or string.format("Click the swatch button to change the %s color.", label)
 	local row = CreateFrame("Frame", nil, parent)
-	row:SetPoint("TOPLEFT", parent, "TOPLEFT", 20, yOffset)
-	row:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -20, yOffset)
-	row:SetHeight(44)
+	row:SetPoint("TOPLEFT", parent, "TOPLEFT", leftInset, yOffset)
+	row:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -rightInset, yOffset)
+	row:SetHeight(rowHeight)
 	row:EnableMouse(true)
 	row.hover = AddRowHoverHighlight(row)
 
@@ -420,13 +430,25 @@ local function CreateColorButton(parent, label, colorKey, yOffset, options)
 	text:SetPoint("TOPLEFT", row, "TOPLEFT", 0, 0)
 	text:SetText(label)
 
-	local btn = CreateFrame("Button", nil, row, "UIPanelButtonTemplate")
-	btn:SetSize(180, 20)
+	local btn = CreateFrame("Button", nil, row)
+	btn:SetSize(buttonWidth, 20)
 	btn:SetPoint("BOTTOMRIGHT", row, "BOTTOMRIGHT", 0, 0)
 	text:SetPoint("RIGHT", btn, "LEFT", -12, 0)
 
+	local border = btn:CreateTexture(nil, "BACKGROUND")
+	border:SetPoint("TOPLEFT", btn, "TOPLEFT", -1, 1)
+	border:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT", 1, -1)
+	border:SetColorTexture(0.42, 0.42, 0.42, 1)
+	btn.border = border
+
+	local previewBase = btn:CreateTexture(nil, "BACKGROUND")
+	previewBase:SetPoint("TOPLEFT", btn, "TOPLEFT", 0, 0)
+	previewBase:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT", 0, 0)
+	previewBase:SetColorTexture(0.08, 0.08, 0.08, 0.96)
+	btn.previewBase = previewBase
+
 	local swatch = btn:CreateTexture(nil, "ARTWORK")
-	swatch:SetAllPoints(true)
+	swatch:SetAllPoints(previewBase)
 	local c = getColor()
 	if c then
 		swatch:SetColorTexture(c.r, c.g, c.b, c.a)
@@ -434,11 +456,12 @@ local function CreateColorButton(parent, label, colorKey, yOffset, options)
 	btn.swatch = swatch
 	btn.colorKey = colorKey
 
-	local border = btn:CreateTexture(nil, "OVERLAY")
-	border:SetColorTexture(0.4, 0.4, 0.4, 1)
-	border:SetPoint("TOPLEFT", -1, 1)
-	border:SetPoint("BOTTOMRIGHT", 1, -1)
-	border:SetDrawLayer("OVERLAY", -1)
+	local gloss = btn:CreateTexture(nil, "OVERLAY")
+	gloss:SetPoint("TOPLEFT", swatch, "TOPLEFT", 0, 0)
+	gloss:SetPoint("TOPRIGHT", swatch, "TOPRIGHT", 0, 0)
+	gloss:SetHeight(8)
+	gloss:SetColorTexture(1, 1, 1, 0.08)
+	btn.gloss = gloss
 
 	local function ApplySelectedColor(r, g, b, a)
 		local alpha = allowAlpha and (a or 1) or 1
@@ -456,10 +479,12 @@ local function CreateColorButton(parent, label, colorKey, yOffset, options)
 			end
 			if panel and panel.colorRows then
 				for _, colorRow in ipairs(panel.colorRows) do
-					local key = colorRow.button.colorKey
-					local effective = ns.GetBarColor(key)
-					if effective then
-						colorRow.swatch:SetColorTexture(effective.r, effective.g, effective.b, effective.a)
+					if colorRow and colorRow.button and colorRow.swatch then
+						local key = colorRow.button.colorKey
+						local effective = ns.GetBarColor(key)
+						if effective then
+							colorRow.swatch:SetColorTexture(effective.r, effective.g, effective.b, effective.a)
+						end
 					end
 				end
 			end
@@ -481,10 +506,23 @@ local function CreateColorButton(parent, label, colorKey, yOffset, options)
 	end
 
 	btn:SetScript("OnClick", OpenPicker)
+	btn:SetScript("OnEnter", function(self)
+		if self.border then
+			self.border:SetColorTexture(0.82, 0.82, 0.82, 1)
+		end
+	end)
+	btn:SetScript("OnLeave", function(self)
+		if self.border then
+			self.border:SetColorTexture(0.42, 0.42, 0.42, 1)
+		end
+	end)
 	AddControlTooltip(row, label, tooltipText)
 
 	row:SetScript("OnMouseUp", function(_, button)
 		if button == "LeftButton" then
+			if btn.IsMouseOver and btn:IsMouseOver() then
+				return
+			end
 			OpenPicker()
 		end
 	end)
@@ -1251,6 +1289,9 @@ local function CreateTexturePathRow(parent, label, yOffset, getTexture, applyTex
 	row.dropdown = dropdown
 	row:SetScript("OnMouseUp", function(_, mouseButton)
 		if mouseButton == "LeftButton" and ToggleDropDownMenu then
+			if dropdown.IsMouseOver and dropdown:IsMouseOver() then
+				return
+			end
 			ToggleDropDownMenu(1, nil, dropdown, dropdown, 0, 0)
 		end
 	end)
@@ -1397,6 +1438,9 @@ local function CreateCycleRow(parent, label, yOffset, options, getValue, applyVa
 	row.dropdown = dropdown
 	row:SetScript("OnMouseUp", function(_, mouseButton)
 		if mouseButton == "LeftButton" and ToggleDropDownMenu then
+			if dropdown.IsMouseOver and dropdown:IsMouseOver() then
+				return
+			end
 			ToggleDropDownMenu(1, nil, dropdown, dropdown, 0, 0)
 		end
 	end)
@@ -1410,11 +1454,16 @@ local function CreateCycleRow(parent, label, yOffset, options, getValue, applyVa
 	return row
 end
 
-local function CreateToggleRow(parent, label, yOffset, getValue, applyValue)
+local function CreateToggleRow(parent, label, yOffset, getValue, applyValue, options)
+	options = options or {}
+	local leftInset = options.leftInset or 20
+	local rightInset = options.rightInset or 20
+	local rowHeight = options.rowHeight or 40
+	local tooltipText = options.tooltipText or string.format("Toggle %s on or off.", label)
 	local row = CreateFrame("Frame", nil, parent)
-	row:SetPoint("TOPLEFT", parent, "TOPLEFT", 20, yOffset)
-	row:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -20, yOffset)
-	row:SetHeight(40)
+	row:SetPoint("TOPLEFT", parent, "TOPLEFT", leftInset, yOffset)
+	row:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -rightInset, yOffset)
+	row:SetHeight(rowHeight)
 	row:EnableMouse(true)
 	row.hover = AddRowHoverHighlight(row)
 
@@ -1432,10 +1481,13 @@ local function CreateToggleRow(parent, label, yOffset, getValue, applyValue)
 
 	row:SetScript("OnMouseUp", function(_, mouseButton)
 		if mouseButton == "LeftButton" then
+			if toggle.IsMouseOver and toggle:IsMouseOver() then
+				return
+			end
 			toggle:Click()
 		end
 	end)
-	AddControlTooltip(row, label, string.format("Toggle %s on or off.", label))
+	AddControlTooltip(row, label, tooltipText)
 
 	row.toggle = toggle
 	row.refresh = function()
@@ -1469,6 +1521,9 @@ local function CreateActionRow(parent, label, buttonText, yOffset, onClick, tool
 
 	row:SetScript("OnMouseUp", function(_, mouseButton)
 		if mouseButton == "LeftButton" then
+			if btn.IsMouseOver and btn:IsMouseOver() then
+				return
+			end
 			btn:Click()
 		end
 	end)
@@ -1598,6 +1653,9 @@ local function CreateWeaveFamilyRow(parent, abbrev, label, yOffset)
 
 	row:SetScript("OnMouseUp", function(_, mouseButton)
 		if mouseButton == "LeftButton" then
+			if toggle.IsMouseOver and toggle:IsMouseOver() then
+				return
+			end
 			toggle:Click()
 		end
 	end)
@@ -1692,18 +1750,51 @@ local function CreatePanel()
 	local generalRows = {}
 	local colorRowsSection = {}
 	local weaveFamiliesRows = {}
+	local cfg = ns.classConfig or {}
+	local quickToggleOptions = { leftInset = 20, rightInset = 410, rowHeight = 30 }
+	local quickColorOptions = { leftInset = 410, rightInset = 20, rowHeight = 30, buttonWidth = 122 }
+	local quickToggleY = -48
+	local quickColorY = -48
+	local quickRowStep = -30
 
 	-- Sliders / selectors
-	local barVisibilityHeader = CreateSectionHeader(content, "Bar Visibility", -10, {
+	local barVisibilityHeader = CreateSectionHeader(content, "Quick Controls", -10, {
 		rows = barVisibilityRows,
 		getCollapsed = function() return sectionCollapsed.barVisibility end,
 		setCollapsed = function(collapsed) sectionCollapsed.barVisibility = collapsed end,
 	})
 
-	local useClassColorsRow = CreateToggleRow(
-		content,
+	local function AddQuickToggle(label, getValue, applyValue, options)
+		local rowOptions = {}
+		for key, value in pairs(quickToggleOptions) do
+			rowOptions[key] = value
+		end
+		if options then
+			for key, value in pairs(options) do
+				rowOptions[key] = value
+			end
+		end
+		local row = CreateToggleRow(content, label, quickToggleY, getValue, applyValue, rowOptions)
+		quickToggleY = quickToggleY + quickRowStep
+		barVisibilityRows[#barVisibilityRows + 1] = row
+		return row
+	end
+
+	local function AddQuickColor(label, colorKey, options)
+		options = options or {}
+		options.leftInset = quickColorOptions.leftInset
+		options.rightInset = quickColorOptions.rightInset
+		options.rowHeight = quickColorOptions.rowHeight
+		options.buttonWidth = quickColorOptions.buttonWidth
+		local row = CreateColorButton(content, label, colorKey, quickColorY, options)
+		quickColorY = quickColorY + quickRowStep
+		barVisibilityRows[#barVisibilityRows + 1] = row
+		colorRowsSection[#colorRowsSection + 1] = row
+		return row
+	end
+
+	local useClassColorsRow = AddQuickToggle(
 		"Use Class Colors",
-		-50,
 		function() return SuperSwingTimerDB.useClassColors == true end,
 		function(enabled)
 			local wasEnabled = SuperSwingTimerDB.useClassColors == true
@@ -1719,53 +1810,56 @@ local function CreatePanel()
 			end
 			if f.colorRows then
 				for _, colorRow in ipairs(f.colorRows) do
-					local key = colorRow.button.colorKey
-					local effective = ns.GetBarColor(key)
-					if effective then
-						colorRow.swatch:SetColorTexture(effective.r, effective.g, effective.b, effective.a)
+					if colorRow and colorRow.button and colorRow.swatch then
+						local key = colorRow.button.colorKey
+						local effective = ns.GetBarColor(key)
+						if effective then
+							colorRow.swatch:SetColorTexture(effective.r, effective.g, effective.b, effective.a)
+						end
 					end
 				end
 			end
 		end
 	)
 
-	local showMHRow = CreateToggleRow(
-		content,
-		"Show Main Hand",
-		-78,
-		function() return SuperSwingTimerDB.showMH ~= false end,
-		function(enabled)
-			SuperSwingTimerDB.showMH = enabled
-			ns.ApplyVisibility()
-		end
-	)
+	local showMHRow = nil
+	if cfg.melee then
+		showMHRow = AddQuickToggle(
+			"Show Main Hand",
+			function() return SuperSwingTimerDB.showMH ~= false end,
+			function(enabled)
+				SuperSwingTimerDB.showMH = enabled
+				ns.ApplyVisibility()
+			end
+		)
+	end
 
-	local showOHRow = CreateToggleRow(
-		content,
-		"Show Off Hand",
-		-106,
-		function() return SuperSwingTimerDB.showOH ~= false end,
-		function(enabled)
-			SuperSwingTimerDB.showOH = enabled
-			ns.ApplyVisibility()
-		end
-	)
+	local showOHRow = nil
+	if cfg.dualWield then
+		showOHRow = AddQuickToggle(
+			"Show Off Hand",
+			function() return SuperSwingTimerDB.showOH ~= false end,
+			function(enabled)
+				SuperSwingTimerDB.showOH = enabled
+				ns.ApplyVisibility()
+			end
+		)
+	end
 
-	local showRangedRow = CreateToggleRow(
-		content,
-		"Show Ranged",
-		-134,
-		function() return SuperSwingTimerDB.showRanged ~= false end,
-		function(enabled)
-			SuperSwingTimerDB.showRanged = enabled
-			ns.ApplyVisibility()
-		end
-	)
+	local showRangedRow = nil
+	if cfg.ranged then
+		showRangedRow = AddQuickToggle(
+			"Show Ranged",
+			function() return SuperSwingTimerDB.showRanged ~= false end,
+			function(enabled)
+				SuperSwingTimerDB.showRanged = enabled
+				ns.ApplyVisibility()
+			end
+		)
+	end
 
-	local showEnemyRow = CreateToggleRow(
-		content,
+	local showEnemyRow = AddQuickToggle(
 		"Show Enemy Bar",
-		-162,
 		function() return SuperSwingTimerDB.showEnemy ~= false end,
 		function(enabled)
 			SuperSwingTimerDB.showEnemy = enabled
@@ -1773,34 +1867,94 @@ local function CreatePanel()
 		end
 	)
 
-	local showWeaveRow = CreateToggleRow(
-		content,
-		"Shaman Weave Assist",
-		-186,
-		function() return SuperSwingTimerDB.showWeaveAssist ~= false end,
-		function(enabled)
-			SuperSwingTimerDB.showWeaveAssist = enabled
-			ns.ApplyVisibility()
-		end
-	)
+	local showWeaveRow = nil
+	if ns.playerClass == "SHAMAN" then
+		showWeaveRow = AddQuickToggle(
+			"Shaman Weave Assist",
+			function() return SuperSwingTimerDB.showWeaveAssist ~= false end,
+			function(enabled)
+				SuperSwingTimerDB.showWeaveAssist = enabled
+				ns.ApplyVisibility()
+			end
+		)
+	end
+
+	local showRogueAssistRow = nil
+	if ns.playerClass == "ROGUE" then
+		showRogueAssistRow = AddQuickToggle(
+			"Rogue SS Cue",
+			function() return SuperSwingTimerDB.showRogueSinisterAssist ~= false end,
+			function(enabled)
+				SuperSwingTimerDB.showRogueSinisterAssist = enabled
+				if ns.UpdateRogueSinisterAssistVisual then
+					ns.UpdateRogueSinisterAssistVisual()
+				end
+			end
+		)
+	end
+
+	local showRogueEnergyRow = nil
+	if ns.playerClass == "ROGUE" then
+		showRogueEnergyRow = AddQuickToggle(
+			"Rogue Energy Tick",
+			function() return SuperSwingTimerDB.showRogueEnergyTick ~= false end,
+			function(enabled)
+				SuperSwingTimerDB.showRogueEnergyTick = enabled
+				if ns.UpdateRogueEnergyTickVisual then
+					ns.UpdateRogueEnergyTickVisual()
+				end
+			end,
+			{
+				tooltipText = "Show the test Rogue energy tick helper bar to the left of the MH/OH stack.",
+			}
+		)
+	end
+
+	if cfg.melee then
+		AddQuickColor("MH Color", "mh", { allowAlpha = true })
+	end
+
+	if cfg.dualWield then
+		AddQuickColor("OH Color", "oh", { allowAlpha = true })
+	end
+
+	if cfg.ranged then
+		AddQuickColor("Ranged Color", "ranged", { allowAlpha = true })
+	end
+
+	if ns.playerClass == "HUNTER" then
+		AddQuickColor("Auto Shot Safe", "autoShotSafe", {
+			allowAlpha = true,
+			tooltipText = "Pick the green stop-safe Auto Shot window color and overlay opacity.",
+		})
+		AddQuickColor("Auto Shot Unsafe", "autoShotUnsafe", {
+			allowAlpha = true,
+			tooltipText = "Pick the moving / too-late Auto Shot window color and overlay opacity.",
+		})
+	end
+
+	AddQuickColor("Enemy Color", "enemy", { allowAlpha = true })
+
+	if ns.playerClass == "ROGUE" then
+		AddQuickColor("Rogue SS Cue", "rogueSinister", {
+			allowAlpha = true,
+			tooltipText = "Pick the rogue main-hand end-window color that marks when to queue Sinister Strike into the swing landing.",
+		})
+		AddQuickColor("Rogue Tick", "rogueEnergyTick", {
+			allowAlpha = true,
+			tooltipText = "Pick the Rogue test energy tick bar color for the vertical helper to the left of the melee stack.",
+		})
+	end
+
+	if ns.playerClass == "PALADIN" then
+		AddQuickColor("Seal Line", "sealTwist", { allowAlpha = true })
+	end
 
 	local mhOhHeader = CreateSectionHeader(content, "MH/OH Bar Appearance", -230, {
 		rows = mhOhRows,
 		getCollapsed = function() return sectionCollapsed.mhOh end,
 		setCollapsed = function(collapsed) sectionCollapsed.mhOh = collapsed end,
 	})
-
-	if ns.playerClass ~= "SHAMAN" then
-		showWeaveRow:Hide()
-	end
-	barVisibilityRows[1] = useClassColorsRow
-	barVisibilityRows[2] = showMHRow
-	barVisibilityRows[3] = showOHRow
-	barVisibilityRows[4] = showRangedRow
-	barVisibilityRows[5] = showEnemyRow
-	if ns.playerClass == "SHAMAN" then
-		barVisibilityRows[6] = showWeaveRow
-	end
 	SetRowsShown(barVisibilityRows, not sectionCollapsed.barVisibility)
 	if barVisibilityHeader.refresh then
 		barVisibilityHeader.refresh()
@@ -2148,9 +2302,14 @@ local function CreatePanel()
 	shamanRows[8] = weaveTriangleSizeSlider
 	shamanRows[9] = weaveTriangleGapSlider
 	shamanRows[10] = weaveTriangleAlphaSlider
-	SetRowsShown(shamanRows, not sectionCollapsed.shaman)
-	if shamanHeader.refresh then
-		shamanHeader.refresh()
+	if ns.playerClass == "SHAMAN" then
+		SetRowsShown(shamanRows, not sectionCollapsed.shaman)
+		if shamanHeader.refresh then
+			shamanHeader.refresh()
+		end
+	else
+		shamanHeader:Hide()
+		SetRowsShown(shamanRows, false)
 	end
 
 	local generalHeader = CreateSectionHeader(content, "General Behavior", -1318, {
@@ -2313,53 +2472,6 @@ local function CreatePanel()
 		)
 	end)
 
-	-- Color buttons
-	local colorHeader       = CreateSectionHeader(content, "Bar Colors", -1398, {
-		rows = colorRowsSection,
-		getCollapsed = function() return sectionCollapsed.colors end,
-		setCollapsed = function(collapsed) sectionCollapsed.colors = collapsed end,
-	})
-
-	local yStart            = ShiftY(-1398)
-	local spacing           = -28
-
-	local mhRow             = CreateColorButton(content, "Main Hand Color", "mh", yStart, { allowAlpha = true })
-	local ohRow             = CreateColorButton(content, "Off Hand Color", "oh", yStart + spacing, { allowAlpha = true })
-	local rangedRow         = CreateColorButton(content, "Ranged Color", "ranged", yStart + spacing * 2,
-		{ allowAlpha = true })
-	local autoShotSafeRow   = CreateColorButton(content, "Auto Shot Safe Color", "autoShotSafe", yStart + spacing * 3,
-		{
-			allowAlpha = true,
-			tooltipText = "Pick the green stop-safe Auto Shot window color and overlay opacity.",
-		})
-	local autoShotUnsafeRow = CreateColorButton(content, "Auto Shot Unsafe Color", "autoShotUnsafe", yStart + spacing * 4,
-		{
-			allowAlpha = true,
-			tooltipText = "Pick the moving / too-late Auto Shot window color and overlay opacity.",
-		})
-	local enemyRow          = CreateColorButton(content, "Enemy Color", "enemy", yStart + spacing * 5,
-		{ allowAlpha = true })
-	local sealRow           = CreateColorButton(content, "Seal Breakpoint Line", "sealTwist", yStart + spacing * 6,
-		{ allowAlpha = true })
-
-	-- Seal-twist row only visible for Paladins
-	if ns.playerClass ~= "PALADIN" then
-		sealRow:Hide()
-	end
-	colorRowsSection[1] = mhRow
-	colorRowsSection[2] = ohRow
-	colorRowsSection[3] = rangedRow
-	colorRowsSection[4] = autoShotSafeRow
-	colorRowsSection[5] = autoShotUnsafeRow
-	colorRowsSection[6] = enemyRow
-	if ns.playerClass == "PALADIN" then
-		colorRowsSection[7] = sealRow
-	end
-	SetRowsShown(colorRowsSection, not sectionCollapsed.colors)
-	if colorHeader.refresh then
-		colorHeader.refresh()
-	end
-
 	local weaveFamiliesHeader = CreateSectionHeader(content, "Weave Families", -1708, {
 		rows = weaveFamiliesRows,
 		getCollapsed = function() return sectionCollapsed.weaveFamilies end,
@@ -2492,12 +2604,20 @@ local function CreatePanel()
 		if showWeaveRow and showWeaveRow.refresh then
 			showWeaveRow.refresh()
 		end
+		if showRogueAssistRow and showRogueAssistRow.refresh then
+			showRogueAssistRow.refresh()
+		end
+		if showRogueEnergyRow and showRogueEnergyRow.refresh then
+			showRogueEnergyRow.refresh()
+		end
 		-- Update color swatches
-		for _, row in ipairs({ mhRow, ohRow, rangedRow, enemyRow, sealRow }) do
-			local key = row.button.colorKey
-			local c = ns.GetBarColor(key)
-			if c then
-				row.swatch:SetColorTexture(c.r, c.g, c.b, c.a)
+		for _, row in ipairs(colorRowsSection) do
+			if row and row.button then
+				local key = row.button.colorKey
+				local c = ns.GetBarColor(key)
+				if c then
+					row.swatch:SetColorTexture(c.r, c.g, c.b, c.a)
+				end
 			end
 		end
 	end)
@@ -2541,9 +2661,11 @@ local function CreatePanel()
 	f.showRangedRow = showRangedRow
 	f.showEnemyRow = showEnemyRow
 	f.showWeaveRow = showWeaveRow
+	f.showRogueAssistRow = showRogueAssistRow
+	f.showRogueEnergyRow = showRogueEnergyRow
 	f.useClassColorsRow = useClassColorsRow
 	f.weaveFamilyRows = weaveFamilyRows
-	f.colorRows = { mhRow, ohRow, rangedRow, enemyRow, sealRow }
+	f.colorRows = colorRowsSection
 	return f
 end
 
@@ -2563,10 +2685,16 @@ end
 -- Public API
 -- ============================================================
 function ns.InitConfig()
+	if panel then
+		return
+	end
 	panel = CreatePanel()
 end
 
 function ns.ToggleConfig()
+	if not panel and ns.InitConfig then
+		ns.InitConfig()
+	end
 	if not panel then return end
 	if panel:IsShown() then
 		panel:Hide()
@@ -2667,6 +2795,12 @@ function ns.ToggleConfig()
 		if panel.showWeaveRow and panel.showWeaveRow.refresh then
 			panel.showWeaveRow.refresh()
 		end
+		if panel.showRogueAssistRow and panel.showRogueAssistRow.refresh then
+			panel.showRogueAssistRow.refresh()
+		end
+		if panel.showRogueEnergyRow and panel.showRogueEnergyRow.refresh then
+			panel.showRogueEnergyRow.refresh()
+		end
 		if panel.weaveFamilyRows then
 			for _, row in ipairs(panel.weaveFamilyRows) do
 				if row.refresh then
@@ -2674,11 +2808,15 @@ function ns.ToggleConfig()
 				end
 			end
 		end
-		for _, row in ipairs(panel.colorRows) do
-			local key = row.button.colorKey
-			local c = ns.GetBarColor(key)
-			if c then
-				row.swatch:SetColorTexture(c.r, c.g, c.b, c.a)
+		if panel.colorRows then
+			for _, row in ipairs(panel.colorRows) do
+				if row and row.button and row.swatch then
+					local key = row.button.colorKey
+					local c = ns.GetBarColor(key)
+					if c then
+						row.swatch:SetColorTexture(c.r, c.g, c.b, c.a)
+					end
+				end
 			end
 		end
 		if panel.barBorderColorRow and panel.barBorderColorRow.refresh then
@@ -2767,6 +2905,8 @@ function ns.ResetConfigDefaults()
 	SuperSwingTimerDB.showOH                     = ns.DB_DEFAULTS.showOH
 	SuperSwingTimerDB.showRanged                 = ns.DB_DEFAULTS.showRanged
 	SuperSwingTimerDB.showEnemy                  = ns.DB_DEFAULTS.showEnemy
+	SuperSwingTimerDB.showRogueSinisterAssist    = ns.DB_DEFAULTS.showRogueSinisterAssist
+	SuperSwingTimerDB.showRogueEnergyTick        = ns.DB_DEFAULTS.showRogueEnergyTick
 	SuperSwingTimerDB.showWeaveAssist            = ns.DB_DEFAULTS.showWeaveAssist
 	SuperSwingTimerDB.useClassColors             = ns.DB_DEFAULTS.useClassColors
 	SuperSwingTimerDB.indicatorBlendMode         = ns.DB_DEFAULTS.indicatorBlendMode
@@ -2890,5 +3030,18 @@ function ns.ResetConfigDefaults()
 	end
 	if panel and panel.showWeaveRow and panel.showWeaveRow.refresh then
 		panel.showWeaveRow.refresh()
+	end
+	if panel and panel.showRogueAssistRow and panel.showRogueAssistRow.refresh then
+		panel.showRogueAssistRow.refresh()
+	end
+	if panel and panel.showRogueEnergyRow and panel.showRogueEnergyRow.refresh then
+		panel.showRogueEnergyRow.refresh()
+	end
+	if panel and panel.colorRows then
+		for _, row in ipairs(panel.colorRows) do
+			if row and row.refresh then
+				row.refresh()
+			end
+		end
 	end
 end

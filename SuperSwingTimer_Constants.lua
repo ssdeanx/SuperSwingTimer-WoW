@@ -46,7 +46,7 @@ end
 -- UI constants
 -- ============================================================
 ns.BAR_WIDTH               = 240
-ns.BAR_HEIGHT              = 18
+ns.BAR_HEIGHT              = 15
 ns.HUNTER_CAST_BAR_HEIGHT  = 10
 ns.HUNTER_CAST_BAR_GAP     = 2
 ns.CAST_WINDOW             = 0.5 -- shared hidden hunter / ranged cast window in TBC
@@ -364,11 +364,13 @@ ns.CLASS_CONFIG = {
 -- SavedVariables defaults
 -- ============================================================
 ns.DB_DEFAULTS = {
-	version                    = 26,
+	version                    = 28,
 	showMH                     = true,
 	showOH                     = true,
 	showRanged                 = true,
 	showEnemy                  = true,
+	showRogueSinisterAssist    = true,
+	showRogueEnergyTick        = true,
 	showWeaveAssist            = true,
 	useClassColors             = false,
 	weaveSpellFamilies         = {
@@ -381,7 +383,7 @@ ns.DB_DEFAULTS = {
 	},
 	indicatorBlendMode         = "ADD",
 	barWidth                   = 200,
-	barHeight                  = 20,
+	barHeight                  = 15,
 	barTexture                 = "Interface\\TargetingFrame\\UI-StatusBar",
 	rangedBarTexture           = "Interface\\TargetingFrame\\UI-StatusBar",
 	barTextureLayer            = "ARTWORK",
@@ -401,7 +403,7 @@ ns.DB_DEFAULTS = {
 	weaveTriangleAlpha         = 1,
 	weaveMarkerLayer           = "OVERLAY",
 	sparkWidth                 = 3,
-	sparkHeight                = 20,
+	sparkHeight                = 15,
 	barBorderSize              = 1,
 	barBackgroundAlpha         = 0.5,
 	barBackgroundColor         = { r = 0, g = 0, b = 0, a = 0.5 },
@@ -416,6 +418,8 @@ ns.DB_DEFAULTS = {
 		autoShotSafe = { r = 0.2, g = 0.78, b = 0.25, a = 0.4 },
 		autoShotUnsafe = { r = 1, g = 0, b = 0, a = 0.4 },
 		enemy     = { r = 1, g = 0, b = 0, a = 1 },
+		rogueSinister = { r = 1, g = 0, b = 0, a = 0.45 },
+		rogueEnergyTick = { r = 1.0, g = 0.82, b = 0.18, a = 1 },
 		sealTwist = { r = 0, g = 0, b = 0, a = 1 },
 	},
 	positions                  = {
@@ -918,6 +922,11 @@ function ns.GetSparkHeight()
 		return db.sparkHeight
 	end
 	return ns.DB_DEFAULTS.sparkHeight
+end
+
+function ns.GetOffHandBarHeight(mainHeight)
+	local baseHeight = tonumber(mainHeight) or ns.BAR_HEIGHT or ns.DB_DEFAULTS.barHeight or 15
+	return math.max(6, baseHeight - 5)
 end
 
 function ns.GetWeaveSparkWidth()
