@@ -365,13 +365,14 @@ ns.CLASS_CONFIG = {
 -- SavedVariables defaults
 -- ============================================================
 ns.DB_DEFAULTS = {
-	version                    = 30,
+	version                    = 32,
 	showMH                     = true,
 	showOH                     = true,
 	showRanged                 = true,
 	showEnemy                  = true,
 	showRogueSinisterAssist    = true,
 	showRogueEnergyTick        = true,
+	showRogueComboPoints       = true,
 	showRogueSliceAndDice      = true,
 	showWeaveAssist            = true,
 	useClassColors             = false,
@@ -422,6 +423,8 @@ ns.DB_DEFAULTS = {
 		enemy     = { r = 1, g = 0, b = 0, a = 1 },
 		rogueSinister = { r = 1, g = 0, b = 0, a = 0.35 },
 		rogueEnergyTick = { r = 1.0, g = 0.82, b = 0.18, a = 1 },
+		rogueEnergyTotal = { r = 0.98, g = 0.90, b = 0.24, a = 0.9 },
+		rogueComboPoints = { r = 1.0, g = 0.18, b = 0.12, a = 0.95 },
 		rogueSliceAndDice = { r = 0.95, g = 0.82, b = 0.22, a = 0.95 },
 		sealTwist = { r = 0, g = 0, b = 0, a = 1 },
 	},
@@ -935,6 +938,11 @@ end
 function ns.GetRogueSliceAndDiceBarHeight(mainHeight)
 	local baseHeight = tonumber(mainHeight) or ns.BAR_HEIGHT or ns.DB_DEFAULTS.barHeight or 15
 	return math.max(3, math.min(4, math.floor((baseHeight * 0.3) + 0.5)))
+end
+
+function ns.GetRogueComboPointBarHeight(mainHeight)
+	local baseHeight = tonumber(mainHeight) or ns.BAR_HEIGHT or ns.DB_DEFAULTS.barHeight or 15
+	return math.max(2, math.min(4, math.floor((baseHeight * 0.27) + 0.5)))
 end
 
 function ns.GetWeaveSparkWidth()

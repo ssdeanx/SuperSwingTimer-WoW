@@ -1,8 +1,22 @@
 # Active Context
 
+## Active Context Update (2026-05-18 - rogue helper cleanup follow-up)
+
+- Removed the experimental Rogue combo-point strip and the right-side total-energy battery helper from the active Rogue runtime/config path, leaving one slim 4px energy-tick bar to the left of MH and removing the extra Quick Controls rows that were only there for those experiments.
+- Polished the Rogue Slice and Dice helper in `SuperSwingTimer_ClassMods.lua`: it is anchored directly above MH again, hides whenever the MH bar itself is hidden, and rechecks the player buff state on a short throttle so it is less sensitive to late aura updates.
+
+## Active Context Update (2026-05-17 - rogue combo-point strip follow-up)
+
+- Added a Rogue-only five-box combo-point strip in `SuperSwingTimer_ClassMods.lua`, `SuperSwingTimer.lua`, `SuperSwingTimer_Config.lua`, `SuperSwingTimer_UI.lua`, and defaults/migration wiring: the strip sits directly above MH, fits the full MH width with compact 4px-tall boxes, reads current-target points from `GetComboPoints("player", "target")`, refreshes on `UNIT_COMBO_POINTS` plus `PLAYER_TARGET_CHANGED`, and has its own Quick Controls toggle/color row.
+- Stacked the existing Rogue Slice and Dice bar above that combo-point strip instead of directly on MH, while keeping the paired Rogue energy helpers untouched to the left of the MH/OH stack.
+
+## Active Context Update (2026-05-17 - rogue energy battery test follow-up)
+
+- Reworked the Rogue energy helper test pass in `SuperSwingTimer_ClassMods.lua`, `SuperSwingTimer_UI.lua`, and `SuperSwingTimer_Config.lua`: the old single vertical energy helper is now a paired 4px setup with a left tick bar and a right total-energy battery bar, both anchored to the left of the MH/OH stack, sharing the existing helper toggle, and exposing separate color swatches in Quick Controls.
+
 ## Active Context Update (2026-05-17 - v0.0.7 rogue aura and widget follow-up)
 
-- Tightened the Rogue helper pass one more time: the test Rogue energy bar is now 6px wide for slightly better readability, and the Slice and Dice helper now reads player buffs through a Classic-safe `UnitBuff` / `UnitAura` signature-tolerant helper in `SuperSwingTimer_ClassMods.lua`, which fixes the SnD bar not appearing on current Classic/TBC clients where helpful-aura return positions differ.
+- Tightened the Rogue helper pass one more time: the Slice and Dice helper now reads player buffs through a Classic-safe `UnitBuff` / `UnitAura` signature-tolerant helper in `SuperSwingTimer_ClassMods.lua`, which fixes the SnD bar not appearing on current Classic/TBC clients where helpful-aura return positions differ.
 - Rechecked Warcraft Wiki / Blizzard widget references during the same pass and kept `/sst` on the current `UIPanelScrollFrameTemplate` path for production safety, while documenting `HybridScrollFrame` only as a future optimization for very long picker lists instead of doing a risky late rewrite.
 
 ## Active Context Update (2026-05-17 - v0.0.6 rogue Slice and Dice pass)

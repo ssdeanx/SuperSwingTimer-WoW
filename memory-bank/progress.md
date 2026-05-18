@@ -1,8 +1,22 @@
 # Progress
 
+## Progress Update (2026-05-18 - rogue helper cleanup follow-up)
+
+- Removed the Rogue combo-point strip and the right-side total-energy battery from the live Rogue helper path, keeping only the single 4px Rogue energy-tick bar on the left of MH.
+- Polished the Rogue Slice and Dice helper so it anchors directly above MH again, hides when MH is hidden, and rechecks the buff state on a short throttle for smoother live behavior.
+
+## Progress Update (2026-05-17 - rogue combo-point strip follow-up)
+
+- Added a Rogue-only five-box combo-point strip above the MH bar, driven by `GetComboPoints("player", "target")` and refreshed on both `UNIT_COMBO_POINTS` and `PLAYER_TARGET_CHANGED` instead of guessed per-target caching.
+- Added SavedVariables defaults/migration, Quick Controls toggle/color wiring, SnD stacking above the new strip, and doc updates for the combo-point helper while keeping the current v0.0.7 release line.
+
+## Progress Update (2026-05-17 - rogue energy battery test follow-up)
+
+- Reworked the Rogue energy helper into a paired 4px setup: left tick cadence bar plus right total-energy battery bar.
+- Kept the existing Rogue Energy Helper toggle for both bars together and added separate Quick Controls color swatches for the tick bar vs total-energy battery bar.
+
 ## Progress Update (2026-05-17 - v0.0.7 rogue aura and widget follow-up)
 
-- Thickened the Rogue energy helper from 5px to 6px for cleaner readability.
 - Fixed the Rogue Slice and Dice helper by switching it to a Classic-safe helpful-aura unpack path that tolerates current `UnitBuff` / `UnitAura` return signatures on TBC Anniversary / Classic clients.
 - Rechecked Warcraft Wiki / Blizzard widget references and kept the current `/sst` scroll-frame architecture in place for v0.0.7, documenting `HybridScrollFrame` only as a future picker-list optimization.
 

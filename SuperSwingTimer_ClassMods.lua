@@ -780,9 +780,10 @@ local function SetupRogue()
 	local MAX_ROGUE_QUEUE_WINDOW = 0.22
 	local ROGUE_CUE_FALLBACK_ALPHA_MULTIPLIER = 0.82
 	local ROGUE_SLICE_AND_DICE_BAR_GAP = 2
+	local ROGUE_SLICE_AND_DICE_REFRESH_INTERVAL = 0.15
 	local ROGUE_ENERGY_TICK_DURATION = 2.0
-	local ROGUE_ENERGY_BAR_WIDTH = 6
-	local ROGUE_ENERGY_BAR_GAP = 3
+	local ROGUE_ENERGY_TICK_BAR_WIDTH = 4
+	local ROGUE_ENERGY_STACK_GAP = 3
 	local SLICE_AND_DICE_SPELL_ID = ns.ROGUE_SLICE_AND_DICE_ID or 5171
 	local SLICE_AND_DICE_NAME = ns.GetSpellInfo and ns.GetSpellInfo(SLICE_AND_DICE_SPELL_ID) or "Slice and Dice"
 
@@ -817,18 +818,36 @@ local function SetupRogue()
 	end
 
 	local function ApplyRogueEnergyTickColor()
-		local energyBar = ns.rogueEnergyTickBar
-		if not energyBar then
-			return
+		local tickBar = ns.rogueEnergyTickBar
+		if tickBar then
+			local tickColor = GetRogueEnergyTickColor()
+			tickBar:SetStatusBarColor(
+				tickColor.r or 1,
+				tickColor.g or 0.82,
+				tickColor.b or 0.18,
+				tickColor.a ~= nil and tickColor.a or 1
+			)
 		end
 
-		local color = GetRogueEnergyTickColor()
-		energyBar:SetStatusBarColor(
-			color.r or 1,
-			color.g or 0.82,
-			color.b or 0.18,
-			color.a ~= nil and color.a or 1
-		)
+		local totalBar = ns.rogueEnergyTotalBar
+		if totalBar then
+			totalBar:SetAlpha(0)
+			totalBar:SetValue(0)
+		end
+	end
+
+	local function ApplyRogueComboPointColor()
+		if ns.rogueComboPointContainer then
+			ns.rogueComboPointContainer:Hide()
+		end
+		if ns.rogueComboPointBars then
+			for _, bar in ipairs(ns.rogueComboPointBars) do
+				if bar then
+					bar:SetAlpha(0)
+					bar:SetValue(0)
+				end
+			end
+		end
 	end
 
 	local function ApplyRogueSliceAndDiceColor()
@@ -844,6 +863,79 @@ local function SetupRogue()
 			color.b or 0.22,
 			color.a ~= nil and color.a or 0.95
 		)
+	end
+
+	local function EnsureRogueVerticalHelperBar(frameName, width)
+		local bar = rawget(_G, frameName)
+		if not bar then
+			bar = CreateFrame("StatusBar", frameName, UIParent)
+		end
+
+		bar:SetStatusBarTexture(ns.GetBarTexture and ns.GetBarTexture() or "Interface\\TargetingFrame\\UI-StatusBar")
+		if bar.SetOrientation then
+			bar:SetOrientation("VERTICAL")
+		end
+		if bar.SetReverseFill then
+			bar:SetReverseFill(false)
+		end
+		bar:SetSize(width, (ns.mhBar and ns.mhBar:GetHeight()) or ns.BAR_HEIGHT or 15)
+		bar:SetMinMaxValues(0, 1)
+		bar:SetValue(0)
+		bar:SetFrameStrata(ns.mhBar:GetFrameStrata())
+		bar:SetFrameLevel((ns.mhBar:GetFrameLevel() or 0) + 1)
+		bar:EnableMouse(false)
+
+		local statusBarTexture = bar:GetStatusBarTexture()
+		if statusBarTexture then
+			statusBarTexture:SetDrawLayer(ns.GetBarTextureLayer and ns.GetBarTextureLayer() or "ARTWORK")
+		end
+
+		local backgroundTexture = bar.backgroundTexture or bar:CreateTexture(nil, "BACKGROUND")
+		backgroundTexture:SetAllPoints(true)
+		local backgroundColor = ns.GetBarBackgroundColor and ns.GetBarBackgroundColor() or (ns.DB_DEFAULTS and ns.DB_DEFAULTS.barBackgroundColor)
+		backgroundColor = backgroundColor or { r = 0, g = 0, b = 0, a = 0.5 }
+		backgroundTexture:SetColorTexture(backgroundColor.r or 0, backgroundColor.g or 0, backgroundColor.b or 0, 1)
+		backgroundTexture:SetAlpha(backgroundColor.a ~= nil and backgroundColor.a or 0.5)
+
+		if not bar.borderTextures then
+			local borderColor = ns.GetBarBorderColor and ns.GetBarBorderColor() or (ns.DB_DEFAULTS and ns.DB_DEFAULTS.barBorderColor)
+			borderColor = borderColor or { r = 0, g = 0, b = 0, a = 1 }
+			local borderTop = bar:CreateTexture(nil, "OVERLAY")
+			borderTop:SetColorTexture(borderColor.r or 0, borderColor.g or 0, borderColor.b or 0, borderColor.a or 1)
+			borderTop:SetPoint("TOPLEFT", -1, 1)
+			borderTop:SetPoint("TOPRIGHT", 1, 1)
+			borderTop:SetHeight(1)
+
+			local borderBottom = bar:CreateTexture(nil, "OVERLAY")
+			borderBottom:SetColorTexture(borderColor.r or 0, borderColor.g or 0, borderColor.b or 0, borderColor.a or 1)
+			borderBottom:SetPoint("BOTTOMLEFT", -1, -1)
+			borderBottom:SetPoint("BOTTOMRIGHT", 1, -1)
+			borderBottom:SetHeight(1)
+
+			local borderLeft = bar:CreateTexture(nil, "OVERLAY")
+			borderLeft:SetColorTexture(borderColor.r or 0, borderColor.g or 0, borderColor.b or 0, borderColor.a or 1)
+			borderLeft:SetPoint("TOPLEFT", -1, 1)
+			borderLeft:SetPoint("BOTTOMLEFT", -1, -1)
+			borderLeft:SetWidth(1)
+
+			local borderRight = bar:CreateTexture(nil, "OVERLAY")
+			borderRight:SetColorTexture(borderColor.r or 0, borderColor.g or 0, borderColor.b or 0, borderColor.a or 1)
+			borderRight:SetPoint("TOPRIGHT", 1, 1)
+			borderRight:SetPoint("BOTTOMRIGHT", 1, -1)
+			borderRight:SetWidth(1)
+
+			bar.borderTextures = {
+				top = borderTop,
+				bottom = borderBottom,
+				left = borderLeft,
+				right = borderRight,
+			}
+		end
+
+		bar.backgroundTexture = backgroundTexture
+		bar.statusBarTexture = statusBarTexture
+		bar:SetAlpha(0)
+		return bar
 	end
 
 	local function GetPreviewMeleeDuration()
@@ -887,20 +979,11 @@ local function SetupRogue()
 	end
 
 	local function GetRogueEnergyAnchorBar()
-		if ns.ohBar and ns.ohBar.GetAlpha and (ns.ohBar:GetAlpha() or 0) > 0 then
-			return ns.ohBar
-		end
-
 		return ns.mhBar
 	end
 
-	local function GetRogueEnergyBarHeight(mhBar, anchorBottom)
-		local totalHeight = (mhBar and mhBar:GetHeight()) or ns.BAR_HEIGHT or 15
-		if anchorBottom and anchorBottom ~= mhBar then
-			totalHeight = totalHeight + ((anchorBottom:GetHeight() or 0))
-		end
-
-		return math.max(1, totalHeight)
+	local function GetRogueEnergyBarHeight(mhBar)
+		return math.max(1, (mhBar and mhBar:GetHeight()) or ns.BAR_HEIGHT or 15)
 	end
 
 	local function GetRogueSliceAndDiceAura()
@@ -935,33 +1018,48 @@ local function SetupRogue()
 		return false
 	end
 
+	local function GetRogueSliceAndDiceAnchorFrame(mhBar)
+		return mhBar
+	end
+
+	local function UpdateRogueComboPointVisual()
+		ApplyRogueComboPointColor()
+	end
+
 	local function UpdateRogueEnergyTickVisual()
-		local energyBar = ns.rogueEnergyTickBar
+		local tickBar = ns.rogueEnergyTickBar
 		local mhBar = ns.mhBar
 		local db = SuperSwingTimerDB or ns.DB_DEFAULTS
-		if not energyBar or not mhBar then
+		if not tickBar or not mhBar then
 			return
 		end
 
+		if ns.rogueEnergyTotalBar then
+			ns.rogueEnergyTotalBar:SetAlpha(0)
+			ns.rogueEnergyTotalBar:SetValue(0)
+		end
+
 		if ns.playerClass ~= "ROGUE" or db.showRogueEnergyTick == false or (ns.IsMinimalMode and ns.IsMinimalMode()) then
-			energyBar:SetAlpha(0)
+			tickBar:SetAlpha(0)
+			tickBar:SetValue(0)
 			return
 		end
 
 		local previewActive = ns.barTestActive == true
 		local mhVisible = mhBar.GetAlpha and (mhBar:GetAlpha() or 0) > 0
 		if not previewActive and not mhVisible then
-			energyBar:SetAlpha(0)
+			tickBar:SetAlpha(0)
+			tickBar:SetValue(0)
 			return
 		end
 
-		local anchorBottom = GetRogueEnergyAnchorBar() or mhBar
-		local energyHeight = GetRogueEnergyBarHeight(mhBar, anchorBottom)
-		energyBar:ClearAllPoints()
-		energyBar:SetPoint("TOPRIGHT", mhBar, "TOPLEFT", -ROGUE_ENERGY_BAR_GAP, 0)
-		energyBar:SetWidth(ROGUE_ENERGY_BAR_WIDTH)
-		energyBar:SetHeight(energyHeight)
-		energyBar:SetMinMaxValues(0, 1)
+		local anchorBar = GetRogueEnergyAnchorBar() or mhBar
+		local energyHeight = GetRogueEnergyBarHeight(anchorBar)
+		tickBar:ClearAllPoints()
+		tickBar:SetPoint("TOPRIGHT", mhBar, "TOPLEFT", -ROGUE_ENERGY_STACK_GAP, 0)
+		tickBar:SetWidth(ROGUE_ENERGY_TICK_BAR_WIDTH)
+		tickBar:SetHeight(energyHeight)
+		tickBar:SetMinMaxValues(0, 1)
 
 		local now = GetCurrentTime()
 		if not ns.rogueEnergyTickStartTime then
@@ -972,10 +1070,11 @@ local function SetupRogue()
 		if elapsed < 0 then
 			elapsed = 0
 		end
-		local progress = (elapsed % ROGUE_ENERGY_TICK_DURATION) / ROGUE_ENERGY_TICK_DURATION
-		energyBar:SetValue(progress)
+		local tickProgress = (elapsed % ROGUE_ENERGY_TICK_DURATION) / ROGUE_ENERGY_TICK_DURATION
+		tickBar:SetValue(tickProgress)
+
 		ApplyRogueEnergyTickColor()
-		energyBar:SetAlpha(1)
+		tickBar:SetAlpha(1)
 	end
 
 	local function UpdateRogueSliceAndDiceVisual()
@@ -988,26 +1087,41 @@ local function SetupRogue()
 
 		if ns.playerClass ~= "ROGUE" or db.showRogueSliceAndDice == false or (ns.IsMinimalMode and ns.IsMinimalMode()) then
 			sndBar:SetAlpha(0)
+			sndBar:SetValue(0)
 			return
 		end
 
 		local previewActive = ns.barTestActive == true
+		local mhVisible = mhBar.GetAlpha and (mhBar:GetAlpha() or 0) > 0
+		if not previewActive and not mhVisible then
+			sndBar:SetAlpha(0)
+			sndBar:SetValue(0)
+			return
+		end
+
 		local isActive = false
 		local progress = 0
+		local now = GetCurrentTime()
 		if previewActive then
 			isActive = true
 			progress = 0.66
 		else
+			if not ns.rogueSliceAndDiceNextRefreshAt or now >= ns.rogueSliceAndDiceNextRefreshAt or not ns.rogueSliceAndDiceExpirationTime then
+				SyncRogueSliceAndDiceAura()
+				ns.rogueSliceAndDiceNextRefreshAt = now + ROGUE_SLICE_AND_DICE_REFRESH_INTERVAL
+			end
+
 			local duration = ns.rogueSliceAndDiceDuration
 			local expirationTime = ns.rogueSliceAndDiceExpirationTime
 			if type(duration) == "number" and duration > 0 and type(expirationTime) == "number" and expirationTime > 0 then
-				local remaining = expirationTime - GetCurrentTime()
+				local remaining = expirationTime - now
 				if remaining > 0 then
 					isActive = true
 					progress = remaining / duration
 				else
 					ns.rogueSliceAndDiceDuration = nil
 					ns.rogueSliceAndDiceExpirationTime = nil
+					ns.rogueSliceAndDiceNextRefreshAt = nil
 				end
 			end
 		end
@@ -1018,14 +1132,20 @@ local function SetupRogue()
 			return
 		end
 
+		local anchorFrame = GetRogueSliceAndDiceAnchorFrame(mhBar)
 		sndBar:ClearAllPoints()
-		sndBar:SetPoint("BOTTOMLEFT", mhBar, "TOPLEFT", 0, ROGUE_SLICE_AND_DICE_BAR_GAP)
-		sndBar:SetPoint("BOTTOMRIGHT", mhBar, "TOPRIGHT", 0, ROGUE_SLICE_AND_DICE_BAR_GAP)
+		sndBar:SetPoint("BOTTOMLEFT", anchorFrame, "TOPLEFT", 0, ROGUE_SLICE_AND_DICE_BAR_GAP)
+		sndBar:SetPoint("BOTTOMRIGHT", anchorFrame, "TOPRIGHT", 0, ROGUE_SLICE_AND_DICE_BAR_GAP)
 		sndBar:SetHeight(ns.GetRogueSliceAndDiceBarHeight and ns.GetRogueSliceAndDiceBarHeight(mhBar:GetHeight()) or 4)
 		sndBar:SetMinMaxValues(0, 1)
 		sndBar:SetValue(math.max(0, math.min(progress, 1)))
 		ApplyRogueSliceAndDiceColor()
 		sndBar:SetAlpha(1)
+	end
+
+	local function HandleRogueComboPointsChanged(unit)
+		UpdateRogueComboPointVisual()
+		UpdateRogueSliceAndDiceVisual()
 	end
 
 	local function HandleRogueEnergyPowerUpdate(unit, powerType)
@@ -1055,6 +1175,7 @@ local function SetupRogue()
 		end
 
 		SyncRogueSliceAndDiceAura()
+		ns.rogueSliceAndDiceNextRefreshAt = nil
 		UpdateRogueSliceAndDiceVisual()
 	end
 
@@ -1115,8 +1236,11 @@ local function SetupRogue()
 	ns.UpdateRogueSinisterAssistVisual = UpdateRogueSinisterAssistVisual
 	ns.UpdateRogueEnergyTickColor = ApplyRogueEnergyTickColor
 	ns.UpdateRogueEnergyTickVisual = UpdateRogueEnergyTickVisual
+	ns.UpdateRogueComboPointColor = ApplyRogueComboPointColor
+	ns.UpdateRogueComboPointVisual = UpdateRogueComboPointVisual
 	ns.UpdateRogueSliceAndDiceColor = ApplyRogueSliceAndDiceColor
 	ns.UpdateRogueSliceAndDiceVisual = UpdateRogueSliceAndDiceVisual
+	ns.HandleRogueComboPointsChanged = HandleRogueComboPointsChanged
 	ns.HandleRogueEnergyPowerUpdate = HandleRogueEnergyPowerUpdate
 	ns.HandleRogueSliceAndDiceAura = HandleRogueSliceAndDiceAura
 
@@ -1142,74 +1266,23 @@ local function SetupRogue()
 		end
 
 		if not ns.rogueEnergyTickBar then
-			local energyBar = rawget(_G, "SuperSwingTimerRogueEnergyTickBar")
-			if not energyBar then
-				energyBar = CreateFrame("StatusBar", "SuperSwingTimerRogueEnergyTickBar", UIParent)
+			ns.rogueEnergyTickBar = EnsureRogueVerticalHelperBar("SuperSwingTimerRogueEnergyTickBar", ROGUE_ENERGY_TICK_BAR_WIDTH)
+		end
+
+		if ns.rogueEnergyTotalBar then
+			ns.rogueEnergyTotalBar:SetAlpha(0)
+			ns.rogueEnergyTotalBar:SetValue(0)
+		end
+		if ns.rogueComboPointContainer then
+			ns.rogueComboPointContainer:Hide()
+		end
+		if ns.rogueComboPointBars then
+			for _, bar in ipairs(ns.rogueComboPointBars) do
+				if bar then
+					bar:SetAlpha(0)
+					bar:SetValue(0)
+				end
 			end
-			energyBar:SetStatusBarTexture(ns.GetBarTexture and ns.GetBarTexture() or "Interface\\TargetingFrame\\UI-StatusBar")
-			if energyBar.SetOrientation then
-				energyBar:SetOrientation("VERTICAL")
-			end
-			if energyBar.SetReverseFill then
-				energyBar:SetReverseFill(false)
-			end
-			energyBar:SetSize(ROGUE_ENERGY_BAR_WIDTH, (ns.mhBar and ns.mhBar:GetHeight()) or ns.BAR_HEIGHT or 15)
-			energyBar:SetMinMaxValues(0, 1)
-			energyBar:SetValue(0)
-			energyBar:SetFrameStrata(ns.mhBar:GetFrameStrata())
-			energyBar:SetFrameLevel((ns.mhBar:GetFrameLevel() or 0) + 1)
-			energyBar:EnableMouse(false)
-			local statusBarTexture = energyBar:GetStatusBarTexture()
-			if statusBarTexture then
-				statusBarTexture:SetDrawLayer(ns.GetBarTextureLayer and ns.GetBarTextureLayer() or "ARTWORK")
-			end
-
-			local backgroundTexture = energyBar.backgroundTexture or energyBar:CreateTexture(nil, "BACKGROUND")
-			backgroundTexture:SetAllPoints(true)
-			local backgroundColor = ns.GetBarBackgroundColor and ns.GetBarBackgroundColor() or (ns.DB_DEFAULTS and ns.DB_DEFAULTS.barBackgroundColor)
-			backgroundColor = backgroundColor or { r = 0, g = 0, b = 0, a = 0.5 }
-			backgroundTexture:SetColorTexture(backgroundColor.r or 0, backgroundColor.g or 0, backgroundColor.b or 0, 1)
-			backgroundTexture:SetAlpha(backgroundColor.a ~= nil and backgroundColor.a or 0.5)
-
-			if not energyBar.borderTextures then
-				local borderColor = ns.GetBarBorderColor and ns.GetBarBorderColor() or (ns.DB_DEFAULTS and ns.DB_DEFAULTS.barBorderColor)
-				borderColor = borderColor or { r = 0, g = 0, b = 0, a = 1 }
-				local borderTop = energyBar:CreateTexture(nil, "OVERLAY")
-				borderTop:SetColorTexture(borderColor.r or 0, borderColor.g or 0, borderColor.b or 0, borderColor.a or 1)
-				borderTop:SetPoint("TOPLEFT", -1, 1)
-				borderTop:SetPoint("TOPRIGHT", 1, 1)
-				borderTop:SetHeight(1)
-
-				local borderBottom = energyBar:CreateTexture(nil, "OVERLAY")
-				borderBottom:SetColorTexture(borderColor.r or 0, borderColor.g or 0, borderColor.b or 0, borderColor.a or 1)
-				borderBottom:SetPoint("BOTTOMLEFT", -1, -1)
-				borderBottom:SetPoint("BOTTOMRIGHT", 1, -1)
-				borderBottom:SetHeight(1)
-
-				local borderLeft = energyBar:CreateTexture(nil, "OVERLAY")
-				borderLeft:SetColorTexture(borderColor.r or 0, borderColor.g or 0, borderColor.b or 0, borderColor.a or 1)
-				borderLeft:SetPoint("TOPLEFT", -1, 1)
-				borderLeft:SetPoint("BOTTOMLEFT", -1, -1)
-				borderLeft:SetWidth(1)
-
-				local borderRight = energyBar:CreateTexture(nil, "OVERLAY")
-				borderRight:SetColorTexture(borderColor.r or 0, borderColor.g or 0, borderColor.b or 0, borderColor.a or 1)
-				borderRight:SetPoint("TOPRIGHT", 1, 1)
-				borderRight:SetPoint("BOTTOMRIGHT", 1, -1)
-				borderRight:SetWidth(1)
-
-				energyBar.borderTextures = {
-					top = borderTop,
-					bottom = borderBottom,
-					left = borderLeft,
-					right = borderRight,
-				}
-			end
-
-			energyBar.backgroundTexture = backgroundTexture
-			energyBar.statusBarTexture = statusBarTexture
-			energyBar:SetAlpha(0)
-			ns.rogueEnergyTickBar = energyBar
 		end
 
 		if not ns.rogueSliceAndDiceBar then
@@ -1290,6 +1363,7 @@ local function SetupRogue()
 		if not ns.rogueEnergyTickStartTime then
 			ns.rogueEnergyTickStartTime = GetCurrentTime()
 		end
+		ns.rogueSliceAndDiceNextRefreshAt = nil
 		SyncRogueSliceAndDiceAura()
 
 		local origOnUpdate = ns.OnUpdate or function() end
@@ -1324,8 +1398,11 @@ function ns.InitClassMods()
 	ns.UpdateRogueSinisterAssistVisual = nil
 	ns.UpdateRogueEnergyTickColor = nil
 	ns.UpdateRogueEnergyTickVisual = nil
+	ns.UpdateRogueComboPointColor = nil
+	ns.UpdateRogueComboPointVisual = nil
 	ns.UpdateRogueSliceAndDiceColor = nil
 	ns.UpdateRogueSliceAndDiceVisual = nil
+	ns.HandleRogueComboPointsChanged = nil
 	ns.HandleRogueEnergyPowerUpdate = nil
 	ns.HandleRogueSliceAndDiceAura = nil
 	ns.warriorQueuedMeleeSpell = nil
@@ -1333,13 +1410,28 @@ function ns.InitClassMods()
 	ns.hunterQueuedMeleeSpell = nil
 	ns.rogueLastEnergy = nil
 	ns.rogueEnergyTickStartTime = nil
+	ns.rogueComboPointCount = nil
 	ns.rogueSliceAndDiceDuration = nil
 	ns.rogueSliceAndDiceExpirationTime = nil
+	ns.rogueSliceAndDiceNextRefreshAt = nil
 	if ns.rogueSinisterAssistZone then
 		ns.rogueSinisterAssistZone:Hide()
 	end
 	if ns.rogueEnergyTickBar then
 		ns.rogueEnergyTickBar:SetAlpha(0)
+	end
+	if ns.rogueEnergyTotalBar then
+		ns.rogueEnergyTotalBar:SetAlpha(0)
+	end
+	if ns.rogueComboPointContainer then
+		ns.rogueComboPointContainer:Hide()
+	end
+	if ns.rogueComboPointBars then
+		for _, bar in ipairs(ns.rogueComboPointBars) do
+			if bar then
+				bar:SetAlpha(0)
+			end
+		end
 	end
 	if ns.rogueSliceAndDiceBar then
 		ns.rogueSliceAndDiceBar:SetAlpha(0)

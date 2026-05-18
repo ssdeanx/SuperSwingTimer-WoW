@@ -80,13 +80,14 @@ local function MigrateDB()
 	-- Fresh install
 	if not SuperSwingTimerDB then
 		SuperSwingTimerDB = {
-			version                    = 30,
+			version                    = 32,
 			showMH                     = ns.DB_DEFAULTS.showMH,
 			showOH                     = ns.DB_DEFAULTS.showOH,
 			showRanged                 = ns.DB_DEFAULTS.showRanged,
 			showEnemy                  = ns.DB_DEFAULTS.showEnemy,
 			showRogueSinisterAssist    = ns.DB_DEFAULTS.showRogueSinisterAssist,
 			showRogueEnergyTick        = ns.DB_DEFAULTS.showRogueEnergyTick,
+			showRogueComboPoints       = ns.DB_DEFAULTS.showRogueComboPoints,
 			showRogueSliceAndDice      = ns.DB_DEFAULTS.showRogueSliceAndDice,
 			showWeaveAssist            = ns.DB_DEFAULTS.showWeaveAssist,
 			useClassColors             = ns.DB_DEFAULTS.useClassColors,
@@ -168,6 +169,7 @@ local function MigrateDB()
 	SuperSwingTimerDB.showEnemy          = (SuperSwingTimerDB.showEnemy ~= false)
 	SuperSwingTimerDB.showRogueSinisterAssist = (SuperSwingTimerDB.showRogueSinisterAssist ~= false)
 	SuperSwingTimerDB.showRogueEnergyTick = (SuperSwingTimerDB.showRogueEnergyTick ~= false)
+	SuperSwingTimerDB.showRogueComboPoints = (SuperSwingTimerDB.showRogueComboPoints ~= false)
 	SuperSwingTimerDB.showRogueSliceAndDice = (SuperSwingTimerDB.showRogueSliceAndDice ~= false)
 	SuperSwingTimerDB.showWeaveAssist    = (SuperSwingTimerDB.showWeaveAssist ~= false)
 	-- useClassColors strictly defaults to false unless explicitly true in the DB
@@ -553,6 +555,31 @@ local function MigrateDB()
 			a = ns.DB_DEFAULTS.colors.rogueSliceAndDice.a,
 		}
 		SuperSwingTimerDB.version = 30
+	end
+
+	-- v30 -> v31: add Rogue total-energy battery color.
+	if (SuperSwingTimerDB.version or 0) < 31 then
+		SuperSwingTimerDB.colors = SuperSwingTimerDB.colors or {}
+		SuperSwingTimerDB.colors.rogueEnergyTotal = SuperSwingTimerDB.colors.rogueEnergyTotal or {
+			r = ns.DB_DEFAULTS.colors.rogueEnergyTotal.r,
+			g = ns.DB_DEFAULTS.colors.rogueEnergyTotal.g,
+			b = ns.DB_DEFAULTS.colors.rogueEnergyTotal.b,
+			a = ns.DB_DEFAULTS.colors.rogueEnergyTotal.a,
+		}
+		SuperSwingTimerDB.version = 31
+	end
+
+	-- v31 -> v32: add Rogue combo-point helper defaults and color.
+	if (SuperSwingTimerDB.version or 0) < 32 then
+		SuperSwingTimerDB.showRogueComboPoints = (SuperSwingTimerDB.showRogueComboPoints ~= false)
+		SuperSwingTimerDB.colors = SuperSwingTimerDB.colors or {}
+		SuperSwingTimerDB.colors.rogueComboPoints = SuperSwingTimerDB.colors.rogueComboPoints or {
+			r = ns.DB_DEFAULTS.colors.rogueComboPoints.r,
+			g = ns.DB_DEFAULTS.colors.rogueComboPoints.g,
+			b = ns.DB_DEFAULTS.colors.rogueComboPoints.b,
+			a = ns.DB_DEFAULTS.colors.rogueComboPoints.a,
+		}
+		SuperSwingTimerDB.version = 32
 	end
 end
 

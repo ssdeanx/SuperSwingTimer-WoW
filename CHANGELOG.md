@@ -2,7 +2,8 @@
 
 ## 0.0.7 - 2026-05-17
 
-- Rogue helper follow-up: thickened the Rogue energy-tick helper to 6px so it reads more cleanly next to the melee stack without changing its timing behavior.
+- Rogue cleanup follow-up: removed the Rogue combo-point strip and the right-side total-energy battery test helper, leaving a single 4px energy-tick bar anchored to the left of the MH bar.
+- Rogue Slice and Dice polish: the SnD helper now anchors directly above MH again, stays hidden whenever the MH bar is hidden, and rechecks the player buff state on a short throttle so it feels less buggy if aura events arrive late.
 - Rogue Slice and Dice fix: the SnD helper now reads helpful auras through a Classic-safe `UnitBuff` / `UnitAura` signature-tolerant path, which fixes the bar not showing on current Classic/TBC clients where helpful-aura return positions differ.
 - Widget audit follow-up: rechecked Warcraft Wiki / Blizzard options-panel references and kept `/sst` on the current `UIPanelScrollFrameTemplate` path for production safety, while documenting `HybridScrollFrame` as a future optimization candidate only for very long picker lists.
 

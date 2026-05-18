@@ -303,6 +303,9 @@ local function ShowBarPreview()
 	if ns.UpdateRogueEnergyTickVisual then
 		ns.UpdateRogueEnergyTickVisual()
 	end
+	if ns.UpdateRogueComboPointVisual then
+		ns.UpdateRogueComboPointVisual()
+	end
 	if ns.UpdateRogueSliceAndDiceVisual then
 		ns.UpdateRogueSliceAndDiceVisual()
 	end
@@ -323,6 +326,9 @@ local function HideBarPreview()
 	end
 	if ns.UpdateRogueEnergyTickVisual then
 		ns.UpdateRogueEnergyTickVisual()
+	end
+	if ns.UpdateRogueComboPointVisual then
+		ns.UpdateRogueComboPointVisual()
 	end
 	if ns.UpdateRogueSliceAndDiceVisual then
 		ns.UpdateRogueSliceAndDiceVisual()
@@ -1932,7 +1938,7 @@ local function CreatePanel()
 	local showRogueEnergyRow = nil
 	if ns.playerClass == "ROGUE" then
 		showRogueEnergyRow = AddQuickToggle(
-			"Rogue Energy Helper",
+			"Rogue Energy Tick",
 			function() return SuperSwingTimerDB.showRogueEnergyTick ~= false end,
 			function(enabled)
 				SuperSwingTimerDB.showRogueEnergyTick = enabled
@@ -1941,7 +1947,7 @@ local function CreatePanel()
 				end
 			end,
 			{
-				tooltipText = "Show the slim Rogue energy helper bar to the left of the MH/OH stack.",
+				tooltipText = "Show the slim Rogue energy-tick bar to the left of the main-hand bar.",
 			}
 		)
 	end
@@ -1958,7 +1964,7 @@ local function CreatePanel()
 				end
 			end,
 			{
-				tooltipText = "Show the slim Slice and Dice duration bar above the main-hand bar while the buff is active.",
+				tooltipText = "Show the slim Slice and Dice duration bar above the main-hand bar while the buff is active; it now hides whenever the MH bar is hidden and rechecks the buff state on a short throttle for smoother live updates.",
 			}
 		)
 	end
@@ -1993,9 +1999,9 @@ local function CreatePanel()
 			allowAlpha = true,
 			tooltipText = "Pick the Rogue main-hand end-window color that marks when to queue Sinister Strike into the swing landing; the configured alpha updates live.",
 		})
-		AddQuickColor("Rogue Energy", "rogueEnergyTick", {
+		AddQuickColor("Rogue Energy Tick", "rogueEnergyTick", {
 			allowAlpha = true,
-			tooltipText = "Pick the Rogue energy helper bar color for the vertical helper to the left of the melee stack.",
+			tooltipText = "Pick the Rogue energy-tick bar color for the slim vertical helper on the left side of the main-hand bar.",
 		})
 		AddQuickColor("Rogue SnD", "rogueSliceAndDice", {
 			allowAlpha = true,

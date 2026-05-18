@@ -689,6 +689,12 @@ local function SavePosition(slot, frame)
 	if ns.UpdateRogueEnergyTickVisual then
 		ns.UpdateRogueEnergyTickVisual()
 	end
+	if ns.UpdateRogueComboPointVisual then
+		ns.UpdateRogueComboPointVisual()
+	end
+	if ns.UpdateRogueSliceAndDiceVisual then
+		ns.UpdateRogueSliceAndDiceVisual()
+	end
 end
 
 local function RestorePosition(slot, frame)
@@ -721,6 +727,16 @@ function ns.RestoreAllBarPositions()
 		ns.rogueSliceAndDiceBar:ClearAllPoints()
 		ns.rogueSliceAndDiceBar:SetPoint("BOTTOMLEFT", ns.mhBar, "TOPLEFT", 0, 2)
 		ns.rogueSliceAndDiceBar:SetPoint("BOTTOMRIGHT", ns.mhBar, "TOPRIGHT", 0, 2)
+	end
+
+	if ns.UpdateRogueEnergyTickVisual then
+		ns.UpdateRogueEnergyTickVisual()
+	end
+	if ns.UpdateRogueComboPointVisual then
+		ns.UpdateRogueComboPointVisual()
+	end
+	if ns.UpdateRogueSliceAndDiceVisual then
+		ns.UpdateRogueSliceAndDiceVisual()
 	end
 end
 
@@ -1007,6 +1023,9 @@ function ns.ApplyBarSize(width, height)
 	if ns.UpdateRogueEnergyTickVisual then
 		ns.UpdateRogueEnergyTickVisual()
 	end
+	if ns.UpdateRogueComboPointVisual then
+		ns.UpdateRogueComboPointVisual()
+	end
 	if ns.UpdateRogueSliceAndDiceVisual then
 		ns.UpdateRogueSliceAndDiceVisual()
 	end
@@ -1020,7 +1039,7 @@ function ns.ApplyBarBorderSize(borderSize)
 
 	SuperSwingTimerDB.barBorderSize = borderSize
 
-	for _, bar in ipairs({ ns.enemyBar, ns.mhBar, ns.ohBar, ns.rangedBar, ns.hunterCastBar, ns.rogueEnergyTickBar, ns.rogueSliceAndDiceBar }) do
+	for _, bar in ipairs({ ns.enemyBar, ns.mhBar, ns.ohBar, ns.rangedBar, ns.hunterCastBar, ns.rogueEnergyTickBar, ns.rogueEnergyTotalBar, ns.rogueSliceAndDiceBar }) do
 		local borderTextures = bar and bar.borderTextures or nil
 		if borderTextures then
 			local showBorder = borderSize > 0
@@ -1041,6 +1060,9 @@ function ns.ApplyBarBorderSize(borderSize)
 			end
 		end
 	end
+	if ns.UpdateRogueComboPointVisual then
+		ns.UpdateRogueComboPointVisual()
+	end
 end
 
 function ns.ApplyBarTexture(texturePath, layer)
@@ -1053,7 +1075,7 @@ function ns.ApplyBarTexture(texturePath, layer)
 
 	SuperSwingTimerDB.barTexture = texturePath
 	SuperSwingTimerDB.barTextureLayer = layer
-	for _, bar in ipairs({ ns.enemyBar, ns.mhBar, ns.ohBar, ns.rogueEnergyTickBar, ns.rogueSliceAndDiceBar }) do
+	for _, bar in ipairs({ ns.enemyBar, ns.mhBar, ns.ohBar, ns.rogueEnergyTickBar, ns.rogueEnergyTotalBar, ns.rogueSliceAndDiceBar }) do
 		if bar then
 			bar:SetStatusBarTexture(texturePath)
 			bar.statusBarTexture = bar.statusBarTexture or bar:GetStatusBarTexture()
@@ -1063,6 +1085,9 @@ function ns.ApplyBarTexture(texturePath, layer)
 				bar.statusBarTexture:SetDrawLayer(layer)
 			end
 		end
+	end
+	if ns.UpdateRogueComboPointVisual then
+		ns.UpdateRogueComboPointVisual()
 	end
 end
 
@@ -1096,7 +1121,7 @@ function ns.ApplyBarTextureLayer(layer)
 		layer = ns.DB_DEFAULTS.barTextureLayer
 	end
 	SuperSwingTimerDB.barTextureLayer = layer
-	for _, bar in ipairs({ ns.enemyBar, ns.mhBar, ns.ohBar, ns.rangedBar, ns.hunterCastBar, ns.rogueEnergyTickBar, ns.rogueSliceAndDiceBar }) do
+	for _, bar in ipairs({ ns.enemyBar, ns.mhBar, ns.ohBar, ns.rangedBar, ns.hunterCastBar, ns.rogueEnergyTickBar, ns.rogueEnergyTotalBar, ns.rogueSliceAndDiceBar }) do
 		if bar and bar.statusBarTexture then
 			bar.statusBarTexture:SetDrawLayer(layer)
 		end
@@ -1112,6 +1137,9 @@ function ns.ApplyBarTextureLayer(layer)
 	end
 	if ns.rangedBar and ns.rangedBar.castOverlay and ns.SetTextureLayerAboveBar then
 		ns.SetTextureLayerAboveBar(ns.rangedBar.castOverlay, SuperSwingTimerDB.weaveMarkerLayer or ns.DB_DEFAULTS.weaveMarkerLayer, layer)
+	end
+	if ns.UpdateRogueComboPointVisual then
+		ns.UpdateRogueComboPointVisual()
 	end
 end
 
@@ -1134,11 +1162,14 @@ function ns.ApplyBarBackgroundColor(color)
 
 	SuperSwingTimerDB.barBackgroundColor = { r = r, g = g, b = b, a = alpha }
 	SuperSwingTimerDB.barBackgroundAlpha = alpha
-	for _, bar in ipairs({ ns.enemyBar, ns.mhBar, ns.ohBar, ns.rangedBar, ns.hunterCastBar, ns.rogueEnergyTickBar, ns.rogueSliceAndDiceBar }) do
+	for _, bar in ipairs({ ns.enemyBar, ns.mhBar, ns.ohBar, ns.rangedBar, ns.hunterCastBar, ns.rogueEnergyTickBar, ns.rogueEnergyTotalBar, ns.rogueSliceAndDiceBar }) do
 		if bar and bar.backgroundTexture then
 			bar.backgroundTexture:SetColorTexture(r, g, b, 1)
 			bar.backgroundTexture:SetAlpha(alpha)
 		end
+	end
+	if ns.UpdateRogueComboPointVisual then
+		ns.UpdateRogueComboPointVisual()
 	end
 end
 
@@ -1169,7 +1200,7 @@ function ns.ApplyBarBorderColor(color)
 	end
 
 	SuperSwingTimerDB.barBorderColor = { r = r, g = g, b = b, a = alpha }
-	for _, bar in ipairs({ ns.enemyBar, ns.mhBar, ns.ohBar, ns.rangedBar, ns.hunterCastBar, ns.rogueEnergyTickBar, ns.rogueSliceAndDiceBar }) do
+	for _, bar in ipairs({ ns.enemyBar, ns.mhBar, ns.ohBar, ns.rangedBar, ns.hunterCastBar, ns.rogueEnergyTickBar, ns.rogueEnergyTotalBar, ns.rogueSliceAndDiceBar }) do
 		local borderTextures = bar and bar.borderTextures or nil
 		if borderTextures then
 			for _, texture in pairs(borderTextures) do
@@ -1178,6 +1209,9 @@ function ns.ApplyBarBorderColor(color)
 				end
 			end
 		end
+	end
+	if ns.UpdateRogueComboPointVisual then
+		ns.UpdateRogueComboPointVisual()
 	end
 end
 
@@ -1468,6 +1502,9 @@ function ns.ApplyMinimalMode(enabled)
 	if ns.UpdateRogueEnergyTickVisual then
 		ns.UpdateRogueEnergyTickVisual()
 	end
+	if ns.UpdateRogueComboPointVisual then
+		ns.UpdateRogueComboPointVisual()
+	end
 	if ns.UpdateRogueSliceAndDiceVisual then
 		ns.UpdateRogueSliceAndDiceVisual()
 	end
@@ -1537,6 +1574,9 @@ function ns.ApplyVisibility()
 	end
 	if ns.UpdateRogueEnergyTickVisual then
 		ns.UpdateRogueEnergyTickVisual()
+	end
+	if ns.UpdateRogueComboPointVisual then
+		ns.UpdateRogueComboPointVisual()
 	end
 	if ns.UpdateRogueSliceAndDiceVisual then
 		ns.UpdateRogueSliceAndDiceVisual()
@@ -1608,6 +1648,12 @@ function ns.ApplyBarColors()
 	end
 	if ns.UpdateRogueEnergyTickVisual then
 		ns.UpdateRogueEnergyTickVisual()
+	end
+	if ns.UpdateRogueComboPointColor then
+		ns.UpdateRogueComboPointColor()
+	end
+	if ns.UpdateRogueComboPointVisual then
+		ns.UpdateRogueComboPointVisual()
 	end
 	if ns.UpdateRogueSliceAndDiceColor then
 		ns.UpdateRogueSliceAndDiceColor()
