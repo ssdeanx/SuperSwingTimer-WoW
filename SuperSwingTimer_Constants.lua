@@ -3,6 +3,8 @@ local _, ns        = ...
 local GetAddOnInfo         = rawget(_G, "GetAddOnInfo")
 local GetTimePreciseSec    = rawget(_G, "GetTimePreciseSec")
 local GetTime              = rawget(_G, "GetTime")
+local UnitCastingInfo      = rawget(_G, "UnitCastingInfo")
+local UnitChannelInfo      = rawget(_G, "UnitChannelInfo")
 
 local function EnsurePreciseClockOffset()
 	if ns.preciseClockOffset == nil and GetTimePreciseSec and GetTime then
@@ -42,13 +44,42 @@ function ns.GetSpellInfo(spellIdentifier)
 	return nil
 end
 
+-- Classic/TBC-safe UnitCastingInfo wrapper.
+-- Classic clients reliably expose the localized spell name while modern-only
+-- spellID returns are optional, so callers should prefer the returned token
+-- and only trust spellID when it is explicitly numeric.
+function ns.GetUnitCastingSpellInfo(unit)
+	if type(UnitCastingInfo) ~= "function" or not unit then
+		return nil, nil, nil, nil, nil, nil
+	end
+
+	local spellName, _, _, startTimeMs, endTimeMs, _, castId, _, spellId = UnitCastingInfo(unit)
+	if not spellName and type(UnitChannelInfo) == "function" then
+		spellName, _, _, startTimeMs, endTimeMs, _, castId, _, spellId = UnitChannelInfo(unit)
+	end
+	if not spellName then
+		return nil, nil, nil, nil, nil, nil
+	end
+
+	if type(spellId) ~= "number" then
+		spellId = nil
+	end
+
+	return spellId or spellName, spellName, startTimeMs, endTimeMs, castId, spellId
+end
+
 -- ============================================================
 -- UI constants
 -- ============================================================
 ns.BAR_WIDTH               = 240
 ns.BAR_HEIGHT              = 15
-ns.HUNTER_CAST_BAR_HEIGHT  = 10
-ns.HUNTER_CAST_BAR_GAP     = 2
+ns.HUNTER_CAST_BAR_HEIGHT       = 10
+ns.HUNTER_CAST_BAR_GAP          = 2
+ns.HUNTER_RANGE_HELPER_WIDTH    = 7
+ns.ROGUE_SLICE_AND_DICE_BAR_HEIGHT = 4
+ns.ROGUE_ENERGY_TICK_BAR_WIDTH     = 4
+ns.WARRIOR_SHIELD_BLOCK_BAR_HEIGHT = 4
+ns.HUNTER_RAPID_FIRE_BAR_HEIGHT    = 4
 ns.CAST_WINDOW             = 0.5 -- shared hidden hunter / ranged cast window in TBC
 
 -- ============================================================
@@ -56,7 +87,33 @@ ns.CAST_WINDOW             = 0.5 -- shared hidden hunter / ranged cast window in
 -- ============================================================
 ns.AUTO_SHOT_ID            = 75
 ns.AUTO_SHOT_NAME          = ns.GetSpellInfo(ns.AUTO_SHOT_ID) or "Auto Shot" or "Shoot"
+ns.WING_CLIP_ID            = 2974
+ns.WING_CLIP_NAME          = ns.GetSpellInfo(ns.WING_CLIP_ID) or "Wing Clip"
+ns.STEADY_SHOT_ID          = 34120
+ns.STEADY_SHOT_NAME        = ns.GetSpellInfo(ns.STEADY_SHOT_ID) or "Steady Shot"
+ns.STEADY_SHOT_CAST_TIME   = 1.5  -- TBC Steady Shot cast time (unaffected by haste)
+ns.STEADY_SHOT_GRACE       = 0.5  -- Auto Shot fires during the last 0.5s of SS without clipping
+ns.HUNTER_READINESS_ID     = 23989
+ns.HUNTER_READINESS_NAME   = ns.GetSpellInfo(ns.HUNTER_READINESS_ID) or "Readiness"
+ns.ROGUE_ADRENALINE_RUSH_ID = 13750
+ns.ROGUE_ADRENALINE_RUSH_NAME = ns.GetSpellInfo(ns.ROGUE_ADRENALINE_RUSH_ID) or "Adrenaline Rush"
+ns.WARRIOR_BLOODTHIRST_ID   = 23881
+ns.WARRIOR_BLOODTHIRST_NAME = ns.GetSpellInfo(ns.WARRIOR_BLOODTHIRST_ID) or "Bloodthirst"
+ns.WARRIOR_WHIRLWIND_ID     = 1680
+ns.WARRIOR_WHIRLWIND_NAME   = ns.GetSpellInfo(ns.WARRIOR_WHIRLWIND_ID) or "Whirlwind"
+ns.WARRIOR_OVERPOWER_ID     = 7384
+ns.WARRIOR_OVERPOWER_NAME   = ns.GetSpellInfo(ns.WARRIOR_OVERPOWER_ID) or "Overpower"
+ns.DRUID_TIGER_FURY_ID      = 5217
+ns.DRUID_TIGER_FURY_NAME    = ns.GetSpellInfo(ns.DRUID_TIGER_FURY_ID) or "Tiger's Fury"
+ns.SHAMAN_STORMSTRIKE_ID    = 17364
+ns.SHAMAN_STORMSTRIKE_NAME  = ns.GetSpellInfo(ns.SHAMAN_STORMSTRIKE_ID) or "Stormstrike"
+ns.SHAMANISTIC_RAGE_ID      = 30823
+ns.SHAMANISTIC_RAGE_NAME    = ns.GetSpellInfo(ns.SHAMANISTIC_RAGE_ID) or "Shamanistic Rage"
 ns.ROGUE_SLICE_AND_DICE_ID = 5171
+ns.SHIELD_BLOCK_ID         = 2565
+ns.SHIELD_BLOCK_NAME       = ns.GetSpellInfo(ns.SHIELD_BLOCK_ID) or "Shield Block"
+ns.RAVAGE_ID               = 6785
+ns.RAVAGE_NAME             = ns.GetSpellInfo(ns.RAVAGE_ID) or "Ravage"
 ns.HUNTER_CAST_SPELLS      = {
 	[75] = true, -- Auto Shot
 	[2643] = true, -- Multi-Shot rank 1
@@ -65,6 +122,14 @@ ns.HUNTER_CAST_SPELLS      = {
 	[14290] = true, -- Multi-Shot rank 4
 	[25294] = true, -- Multi-Shot rank 5
 	[27021] = true, -- Multi-Shot rank 6
+	[34120] = true, -- Steady Shot (TBC)
+	[19434] = true, -- Aimed Shot rank 1
+	[20900] = true, -- Aimed Shot rank 2
+	[20901] = true, -- Aimed Shot rank 3
+	[20902] = true, -- Aimed Shot rank 4
+	[20903] = true, -- Aimed Shot rank 5
+	[20904] = true, -- Aimed Shot rank 6
+	[27065] = true, -- Aimed Shot rank 7
 }
 
 ns.HUNTER_CAST_SPELL_NAMES = {}
@@ -76,6 +141,29 @@ if true then
 		end
 	end
 end
+	ns.HUNTER_CAST_SPELL_NAMES["Volley"] = true
+
+ns.HUNTER_ACTUAL_CAST_SPELLS = {
+	[34120] = true, -- Steady Shot (TBC)
+	[19434] = true, -- Aimed Shot rank 1
+	[20900] = true, -- Aimed Shot rank 2
+	[20901] = true, -- Aimed Shot rank 3
+	[20902] = true, -- Aimed Shot rank 4
+	[20903] = true, -- Aimed Shot rank 5
+	[20904] = true, -- Aimed Shot rank 6
+	[27065] = true, -- Aimed Shot rank 7
+}
+
+ns.HUNTER_ACTUAL_CAST_SPELL_NAMES = {}
+if true then
+	for spellId in pairs(ns.HUNTER_ACTUAL_CAST_SPELLS) do
+		local spellName = ns.GetSpellInfo(spellId)
+		if spellName then
+			ns.HUNTER_ACTUAL_CAST_SPELL_NAMES[spellName] = true
+		end
+	end
+end
+	ns.HUNTER_ACTUAL_CAST_SPELL_NAMES["Volley"] = true
 
 function ns.IsAutoShotSpell(spellValue)
 	if spellValue == nil then
@@ -96,6 +184,59 @@ function ns.IsHunterCastSpell(spellValue)
 		ns.HUNTER_CAST_SPELLS[spellValue] == true or
 		(spellId and ns.HUNTER_CAST_SPELLS[spellId] == true) or
 		ns.HUNTER_CAST_SPELL_NAMES[spellValue] == true
+	)
+end
+
+function ns.IsHunterActualCastSpell(spellValue)
+	if spellValue == nil then
+		return false
+	end
+
+	local spellId = tonumber(spellValue)
+	return (
+		ns.HUNTER_ACTUAL_CAST_SPELLS[spellValue] == true or
+		(spellId and ns.HUNTER_ACTUAL_CAST_SPELLS[spellId] == true) or
+		ns.HUNTER_ACTUAL_CAST_SPELL_NAMES[spellValue] == true
+	)
+end
+
+-- ============================================================
+-- Multi-Shot detection (TBC instant-shot hidden window)
+-- ============================================================
+-- Multi-Shot is instant in TBC (0 cast time) but has a ~0.5s hidden
+-- shot-firing window identical to Auto Shot's, during which the next
+-- Auto Shot is delayed. Treat it as a first-class spell with dedicated
+-- detection, label, and clip-safety tinting.
+
+ns.MULTI_SHOT_IDS = {
+	[2643] = true,   -- Multi-Shot rank 1
+	[14288] = true,  -- Multi-Shot rank 2
+	[14289] = true,  -- Multi-Shot rank 3
+	[14290] = true,  -- Multi-Shot rank 4
+	[25294] = true,  -- Multi-Shot rank 5 (TBC)
+	[27021] = true,  -- Multi-Shot rank 6 (TBC)
+}
+
+ns.MULTI_SHOT_NAMES = {}
+if true then
+	for spellId in pairs(ns.MULTI_SHOT_IDS) do
+		local spellName = ns.GetSpellInfo(spellId)
+		if spellName then
+			ns.MULTI_SHOT_NAMES[spellName] = true
+		end
+	end
+end
+
+function ns.IsMultiShotSpell(spellValue)
+	if spellValue == nil then
+		return false
+	end
+
+	local spellId = tonumber(spellValue)
+	return (
+		ns.MULTI_SHOT_IDS[spellValue] == true or
+		(spellId and ns.MULTI_SHOT_IDS[spellId] == true) or
+		ns.MULTI_SHOT_NAMES[spellValue] == true
 	)
 end
 
@@ -159,9 +300,19 @@ ns.PALADIN_SEAL_FAMILIES = {
 ns.PALADIN_SEAL_LOOKUP = {}
 ns.PALADIN_SEAL_NAME_LOOKUP = {}
 ns.PALADIN_SEAL_TWIST_FAMILIES = {
+	COMMAND = true,
 	BLOOD = true,
 	MARTYR = true,
 }
+
+-- PALADIN_JUDGEMENT_SPELLS: spell IDs for the Judgement ability.
+-- These are the spells cast when a paladin presses Judgement.
+-- The actual effect depends on the currently active seal.
+ns.PALADIN_JUDGEMENT_SPELLS = {}
+for _, id in ipairs({ 20271, 20272, 34413, 54158 }) do
+	ns.PALADIN_JUDGEMENT_SPELLS[id] = true
+end
+ns.PALADIN_JUDGEMENT_COOLDOWN = 10 -- base CD in seconds; talents reduce it
 
 ns.PALADIN_SEAL_FAMILY_ORDER = {
 	"COMMAND",
@@ -215,6 +366,28 @@ function ns.GetPaladinSealFamilyByAuraName(auraName)
 	end
 	return ns.PALADIN_SEAL_NAME_LOOKUP and ns.PALADIN_SEAL_NAME_LOOKUP[auraName] or nil
 end
+
+-- Per-seal static color map (used for seal-based MH bar tinting)
+-- These are defaults; user can override per-seal in SavedVariables.
+ns.PALADIN_SEAL_COLORS = {
+	COMMAND     = { r = 1.00, g = 0.85, b = 0.00, a = 1 },
+	BLOOD       = { r = 0.80, g = 0.10, b = 0.10, a = 1 },
+	MARTYR      = { r = 0.50, g = 0.30, b = 0.90, a = 1 },
+	VENGEANCE   = { r = 1.00, g = 0.60, b = 0.10, a = 1 },
+	CORRUPTION  = { r = 0.85, g = 0.20, b = 0.60, a = 1 },
+	JUSTICE     = { r = 0.60, g = 0.60, b = 0.60, a = 1 },
+	WISDOM      = { r = 0.30, g = 0.50, b = 1.00, a = 1 },
+	RIGHTEOUSNESS = { r = 1.00, g = 0.95, b = 0.70, a = 1 },
+	LIGHT       = { r = 0.20, g = 0.80, b = 0.30, a = 1 },
+	CRUSADER    = { r = 0.60, g = 0.80, b = 1.00, a = 1 },
+}
+
+-- PALADIN_SEAL_COLOR_KEYS: list of color keys under DB_DEFAULTS.colors for per-seal customization.
+ns.PALADIN_SEAL_COLOR_KEYS = {}
+for familyKey in pairs(ns.PALADIN_SEAL_COLORS) do
+	ns.PALADIN_SEAL_COLOR_KEYS[#ns.PALADIN_SEAL_COLOR_KEYS + 1] = "sealColor" .. familyKey
+end
+table.sort(ns.PALADIN_SEAL_COLOR_KEYS)
 
 -- Next-Melee-Attack abilities stay separated by class. Landed-hit reset
 -- detection is handled in the state module against the active class table.
@@ -272,7 +445,10 @@ local function registerResetSwingSpells(ids)
 	end
 end
 
-registerResetSwingSpells({ 16589, 2645, 51533, 2764, 3018, 5384, 5019, 20066 })
+registerResetSwingSpells({ 16589, 2645, 51533, 2764, 3018, 5384, 5019, 20066, -- Repentance
+	853, 5588, 5589, 10308, -- Hammer of Justice (TBC ranks 1-4)
+	2812, 10318, 27139, -- Holy Wrath (TBC ranks 1-3)
+})
 
 -- NO_RESET_SWING_SPELLS: casts that should not reset swing state.
 ns.NO_RESET_SWING_SPELLS = {}
@@ -316,6 +492,14 @@ ns.DRUID_FORM_IDS = {
 	[768]  = "Cat",   -- Cat Form
 	[5487] = "Bear",  -- Bear Form
 	[9634] = "DireBear", -- Dire Bear Form
+}
+
+-- Druid form bar colors (form ID -> color). Uses GetShapeshiftForm() return values.
+ns.DRUID_FORM_COLORS = {
+	[0] = nil,           -- No form / Caster -> keep default
+	[1] = { r = 0.80, g = 0.15, b = 0.10 }, -- Bear / Dire Bear -> red
+	[2] = { r = 0.90, g = 0.70, b = 0.10 }, -- Cat -> gold/orange
+	[4] = { r = 0.30, g = 0.55, b = 0.90 }, -- Moonkin -> blue
 }
 
 -- Shaman weaving spell groups.
@@ -365,16 +549,38 @@ ns.CLASS_CONFIG = {
 -- SavedVariables defaults
 -- ============================================================
 ns.DB_DEFAULTS = {
-	version                    = 32,
+	version                    = 43,
 	showMH                     = true,
 	showOH                     = true,
 	showRanged                 = true,
+	showHunterRangeHelper      = true,
 	showEnemy                  = true,
 	showRogueSinisterAssist    = true,
 	showRogueEnergyTick        = true,
 	showRogueComboPoints       = true,
 	showRogueSliceAndDice      = true,
 	showWeaveAssist            = true,
+	showPaladinSealColor       = true,
+	showPaladinSealLabel       = true,
+	showPaladinJudgementMarker = true,
+	showPaladinTwistFlash      = true,
+	showWarriorRageBar         = true,
+	showWarriorRageProtection  = false,
+	showWarriorShieldBlockBar  = true,
+	showDruidFormColors        = true,
+	showSwingFlash             = true,
+	showGcdTicker              = true,
+	showDruidRageDim           = true,
+	showRogueEnergyCountdown   = true,
+	-- Phase 2 defaults (v39→v40)
+	showHunterRapidFireBar     = true,
+	showWarriorFlurryCounter   = true,
+	showRogueAdrenalineRushBar = true,
+	showDruidOmenGlow          = true,
+	showShamanWindfuryIcd      = true,
+	showDruidRavageCue         = true,
+	showDruidPowerShiftBar     = true,
+	showDruidEnergyTickBar     = true,
 	useClassColors             = false,
 	weaveSpellFamilies         = {
 
@@ -387,6 +593,15 @@ ns.DB_DEFAULTS = {
 	indicatorBlendMode         = "ADD",
 	barWidth                   = 240,
 	barHeight                  = 15,
+	hunterCastBarHeight        = 10,
+	rogueSliceAndDiceBarHeight = 4,
+	rogueEnergyTickBarWidth     = 4,
+	warriorShieldBlockBarHeight = 4,
+	hunterRapidFireBarHeight    = 4,
+	hunterRangeHelperWidth     = 7,
+	druidPowerShiftBarHeight   = 4,
+	druidEnergyTickBarWidth    = 4,
+	rogueAdrenalineRushBarHeight = 4,
 	barTexture                 = "Interface\\TargetingFrame\\UI-StatusBar",
 	rangedBarTexture           = "Interface\\TargetingFrame\\UI-StatusBar",
 	barTextureLayer            = "ARTWORK",
@@ -418,6 +633,10 @@ ns.DB_DEFAULTS = {
 		mh        = { r = 0, g = 0, b = 0, a = 1 },
 		oh        = { r = 0, g = 0, b = 0, a = 1 },
 		ranged    = { r = 0, g = 0, b = 0, a = 1 },
+		hunterRangeMelee = { r = 0.20, g = 0.85, b = 0.25, a = 1 },
+		hunterRangeSweetSpot = { r = 0.98, g = 0.82, b = 0.18, a = 1 },
+		hunterRangeRanged = { r = 0.20, g = 0.55, b = 1.00, a = 1 },
+		hunterRangeOutOfRange = { r = 0.50, g = 0.50, b = 0.50, a = 1 },
 		autoShotSafe = { r = 0.2, g = 0.78, b = 0.25, a = 0.4 },
 		autoShotUnsafe = { r = 1, g = 0, b = 0, a = 0.4 },
 		enemy     = { r = 1, g = 0, b = 0, a = 1 },
@@ -426,7 +645,33 @@ ns.DB_DEFAULTS = {
 		rogueEnergyTotal = { r = 0.98, g = 0.90, b = 0.24, a = 0.9 },
 		rogueComboPoints = { r = 1.0, g = 0.18, b = 0.12, a = 0.95 },
 		rogueSliceAndDice = { r = 0.95, g = 0.82, b = 0.22, a = 0.95 },
-		sealTwist = { r = 0, g = 0, b = 0, a = 1 },
+		sealTwist = { r = 1, g = 0, b = 0, a = 0.35 },
+		-- Per-seal colors for seal-based MH bar tinting.
+		-- Keyed by seal family name (COMMAND, BLOOD, MARTYR, etc.)
+		sealColorCOMMAND     = { r = 1.00, g = 0.85, b = 0.00, a = 1 },
+		sealColorBLOOD       = { r = 0.80, g = 0.10, b = 0.10, a = 1 },
+		sealColorMARTYR      = { r = 0.50, g = 0.30, b = 0.90, a = 1 },
+		sealColorVENGEANCE   = { r = 1.00, g = 0.60, b = 0.10, a = 1 },
+		sealColorCORRUPTION  = { r = 0.85, g = 0.20, b = 0.60, a = 1 },
+		sealColorJUSTICE     = { r = 0.60, g = 0.60, b = 0.60, a = 1 },
+		sealColorWISDOM      = { r = 0.30, g = 0.50, b = 1.00, a = 1 },
+		sealColorRIGHTEOUSNESS = { r = 1.00, g = 0.95, b = 0.70, a = 1 },
+		sealColorLIGHT       = { r = 0.20, g = 0.80, b = 0.30, a = 1 },
+		sealColorCRUSADER    = { r = 0.60, g = 0.80, b = 1.00, a = 1 },
+		gcdTickerColor       = { r = 0.30, g = 0.70, b = 1.00, a = 0.85 },
+	warriorRageBarColor  = { r = 0.80, g = 0.20, b = 0.10, a = 0.85 },
+	shieldBlockBar       = { r = 0.20, g = 0.55, b = 1.00, a = 0.90 },
+	ravageCue            = { r = 1.00, g = 0.72, b = 0.16, a = 0.28 },
+		druidFormBear       = { r = 0.80, g = 0.15, b = 0.10, a = 1.0 },
+		druidFormCat        = { r = 0.90, g = 0.70, b = 0.10, a = 1.0 },
+		druidFormMoonkin    = { r = 0.30, g = 0.55, b = 0.90, a = 1.0 },
+		gcdTicker           = { r = 0.90, g = 0.90, b = 0.95, a = 0.70 },
+		rogueEnergyText     = { r = 1.0, g = 0.82, b = 0.18, a = 0.85 },
+		rapidFireBar        = { r = 0.15, g = 0.85, b = 0.45, a = 0.85 },
+		flurryCounter       = { r = 1.0, g = 0.75, b = 0.10, a = 1.0 },
+		adrenalineRushBar   = { r = 1.0, g = 0.40, b = 0.10, a = 0.85 },
+		omenGlow            = { r = 0.20, g = 1.0, b = 0.30, a = 0.80 },
+		windfuryIcd         = { r = 0.85, g = 0.45, b = 0.0, a = 0.80 },
 	},
 	positions                  = {
 		mh     = { point = "CENTER", relativePoint = "CENTER", x = 0, y = -120 },
@@ -928,6 +1173,10 @@ function ns.GetSparkHeight()
 		return db.sparkHeight
 	end
 	return ns.DB_DEFAULTS.sparkHeight
+end
+
+function ns.GetHunterRangeHelperWidth()
+	return ns.HUNTER_RANGE_HELPER_WIDTH or 7
 end
 
 function ns.GetOffHandBarHeight(mainHeight)

@@ -14,6 +14,8 @@ the shared base timer clock.
 
 - Accurate main/off hand swing tracking
 - Accurate ranged swing tracking with `GetSpellCooldown(75)` / `GetSpellCooldown("Auto Shot")` fallback behavior
+- Hunter melee/ranged handoff support: the Hunter MH bar can stay attached to the ranged stack, appear only for a live melee swing or queued Raptor Strike, and let the ranged bar fall away cleanly instead of sticking full red after a melee handoff
+- Hunter cast-bar support now covers both the hidden Auto Shot / instant Multi-Shot window and real Steady Shot / Aimed Shot casts, with the real cast-time shots resolved through a Classic-safe `UnitCastingInfo()` spell-name-first path, tinted by whether they still fit before the next Auto Shot window, and shaded with a trailing latency slice that scales with the live cast duration
 - Accurate current-target enemy swing tracking using `PLAYER_TARGET_CHANGED`, `UnitGUID("target")`, `UnitAttackSpeed("target")`, and hostile target `SWING_DAMAGE` / `SWING_MISSED` combat-log events
 - Rogue MH timing help can expose a latency-adjusted red end-window on the main-hand bar so Sinister Strike can be pressed into the swing landing without changing the authoritative MH timer itself
 - Rogue buff help can expose a slim Slice and Dice duration bar above the main-hand frame so upkeep is readable without obscuring the core swing timer

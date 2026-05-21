@@ -1,7 +1,46 @@
 # Super Swing Timer Changelog
 
-## 0.0.7 - 2026-05-17
+## 0.0.8 - 2026-05-20
 
+- **Every class helper bar now has `/sst` controls**: added configurable size sliders (height for horizontal bars, width for vertical bars) and show/hide visibility toggles for all 8 helper bars across 6 classes — Warrior Shield Block Height, Hunter Rapid Fire Height + Range Helper Width, Rogue SnD Height + Energy Tick Width + Adrenaline Rush Height, Druid Power Shift Height + Energy Tick Width, plus Druid Power Shift and Energy Tick visibility toggles. All wired through DB defaults, runtime apply, and config panel refresh.
+- **ClassMods.lua (line 71 crash fix)**: A bare `local updateInterval = 0.016` was sitting outside any function block, before `ns` existed. When the file loaded, Lua executed it unconditionally, hit the `ns` global before it was defined, and threw an error that silently killed the entire file — blocking all `Setup*()` functions. Removed the stray line. This is why warriors/druids/paladins/rogues/shamans loaded zero swing timers.
+- **SuperSwingTimer_State.lua (latency refresh)**: Dropped `LATENCY_REFRESH_INTERVAL` from 5.0s to 0.05s and wired `RefreshLatencyCache()` into `HandleSpellcastDelayed` so cached latency updates immediately on spell pushback instead of waiting for the periodic tick.
+- **SuperSwingTimer_ClassMods.lua + SuperSwingTimer_UI.lua (Paladin seal zone layer fix)**: The Paladin seal twist zone, reseal marker, and judgement marker were routing through `SetTextureLayerAboveBar()` which called into the Shaman weave marker system (`ApplyWeaveMarkerLayer`). This cross-class dependency meant the red zone only worked when shaman code path was active. Fixed by:
+  - All three textures now use `SetDrawLayer("OVERLAY", 0)` directly at creation.
+  - Paladin texture handling removed from `ApplyWeaveMarkerLayer` (now shaman-only).
+  - Added explicit `SetDrawLayer("OVERLAY", 0)` refresh in `ApplyBarTextureLayer` so texture reapplies keep the correct layer.
+- **SuperSwingTimer_ClassMods.lua (code cleanup)**: Removed stale `-- end SetupDruid` comment. Fixed three `end` statements at lines 239–241 that were at 1-tab depth instead of their correct 5/4/3-tab depths (closing `if c then` / elseif-chain / `if ns.paladinLastSealColor`).
+- **SuperSwingTimer_ClassMods.lua (Shaman OnUpdate chain fix)**: `UpdateShamanisticRageBadge()` had a broken OnUpdate hook that called `prevOnUpdate(elapsed)` — an undefined global — which would crash on the first frame. The hook was also inside the function itself, so nothing ever called it to wire it up. Fixed by capturing `ns.OnUpdate` directly as `prevOnUpdate` and adding a bootstrap call `UpdateShamanisticRageBadge()` after the function definition so the OnUpdate chain initializes immediately. Shaman flurry, stormstrike, and shamanistic rage badges now update every frame.
+- **SuperSwingTimer_ClassMods.lua (missing end fix)**: Added the missing closing `end` for `local function UpdateShamanisticRageBadge()` (the function started on line 1507 without a matching close). This was the root cause of LSP cascade errors (`expected 'end' to close 'function' on line 1507 near 'local'`).
+- Warrior Shield Block timer: added a slim aura-driven duration bar above the MH stack so tanks can track the active Shield Block window the same way Rogues track Slice and Dice.
+- Druid Ravage opener cue: added an amber opener-availability glow for Cat Form Ravage when the spell is actually usable on the current target.
+- Roadmap closure polish: marked the active Phase 6 and Phase 7 checklist items complete, moved the broad Hunter / other-class polish idea into an explicit archived / future wishlist section, and updated the README and memory-bank notes to describe the repository as final-prep / feature-complete.
+- Warrior rage-bar visibility: fixed the combat-state check so the warrior rage bar now keys off the actual combat flag used by the rest of the addon, and refreshed that bar immediately when combat starts or ends.
+- `/sst` hardening: registered the slash command eagerly and wrapped the toggle/reset paths so the config command now reports errors instead of failing silently if the panel path stumbles.
+- Hunter Feign Death polish: added an explicit ranged reset path so Feign Death clears the hunter ranged timer / auto-repeat state instead of leaving the bar stuck.
+- Hunter Readiness polish: the Rapid Fire helper now refreshes immediately when Readiness is used, and Rapid Fire itself now shows the live aura duration while it is active.
+- Rogue Adrenaline Rush polish: the Rogue cooldown helper now shows the actual 15s aura duration while active instead of only the cooldown downtime.
+- Rogue pro cues: added Blade Flurry and Cold Blood badges beside the MH bar, and the Rogue energy tick now tints red near cap as a warning.
+- Paladin / Shaman class badges: added a small Reckoning stack badge for Paladins and a Flurry stack badge for Shamans beside the MH bar.
+- Warrior Execute warning: the warrior rage bar now shows a live `EXEC` badge when the target drops to 20% health or below.
+
+## 0.0.7 - 2026-05-19
+
+- TBC Hunter Steady Shot grace period: the safe/unsafe clip-safety tint on the dedicated hunter cast bar now accounts for the 0.5s TBC mechanic where Auto Shot can fire during the last 0.5s of a Steady Shot cast without clipping, making the green/red feedback match real TBC hunter clip behavior instead of being overly conservative.
+- Paladin seal twist red zone: COMMAND seal is now included in the twist families alongside BLOOD and MARTYR, the seal twist line is now a right-anchored proportional-width red fill zone (matching the Rogue Sinister Strike pattern) instead of a thin left-anchored black line, and the default `sealTwist` color changed from opaque black to transparent red for immediate readability.
+- Database migration v33→v34: migrates old opaque black `sealTwist` defaults to the new transparent red default.
+- `ns.STEADY_SHOT_CAST_TIME = 1.5` and `ns.STEADY_SHOT_GRACE = 0.5` constants documented for future TBC hunter tuning.
+
+- Hunter cast-bar API/latency follow-up: the live Steady Shot / Aimed Shot path now resolves casts through a Classic-safe `UnitCastingInfo()` spell-name-first wrapper instead of assuming a modern spellID return, persists recovered Hunter cast tokens more safely across delayed/stop/succeeded edges, and shows a trailing latency slice that scales with cached latency and the real cast duration.
+- Hunter cast precision follow-up: `UNIT_SPELLCAST_DELAYED` is now wired back into the hunter state path so Steady Shot / Aimed Shot pushback refreshes the stored cast timing instead of relying only on the original start snapshot.
+- Hunter clip-polish follow-up: the dedicated hunter bar now tints real Steady Shot / Aimed Shot casts by whether they still finish before the next Auto Shot, making the no-clip timing easier to read during live TBC play.
+- Class-color readability follow-up: when MH / OH / ranged class colors are enabled, the live bar text now flips to black with a white outlined backing for better contrast on bright class-colored fills.
+- Hunter melee handoff follow-up: the Hunter MH bar is now attached to the ranged stack instead of living as a separate draggable bar, and it only appears when the hunter has a live MH swing running or a Raptor Strike queued.
+- Hunter Raptor Strike polish: queued Raptor now uses its own yellow next-attack tint similar to Heroic Strike while staying fully isolated from the Warrior and Druid queue paths.
+- Hunter cast-bar expansion: the dedicated hunter helper bar now shows real Steady Shot / Aimed Shot cast progress in addition to the hidden Auto Shot / short Multi-Shot window, and melee handoffs no longer leave the ranged bar stuck full red after the last ranged cycle expires.
+- Hunter mount/movement fix: mounted Hunters are now treated as not auto-repeating, and cooldown resync is blocked while the ranged bar is pinned in the red moving window so mounting or other long movement cases no longer make the Auto Shot bar loop over and over until you stop.
+- Hunter Auto Shot polish: transient `STOP_AUTOREPEAT_SPELL` events no longer hard-reset the ranged timer mid-cycle, the addon now cross-checks Hunter auto-repeat state through the current Blizzard spell API before seeding new cooldown cycles from `SPELL_UPDATE_COOLDOWN`, and the current cycle is allowed to finish cleanly so the red late window can stay visible instead of clunkily resetting while Auto Shot still fires.
+- `/sst` Quick Controls polish: the top section now has explicit `Visibility` and `Key Colors` column labels, the subtitle is shorter and clearer, and the Hunter red window swatch is labeled `Auto Shot Late` instead of the less intuitive `Unsafe` wording.
 - Rogue cleanup follow-up: removed the Rogue combo-point strip and the right-side total-energy battery test helper, leaving a single 4px energy-tick bar anchored to the left of the MH bar.
 - Rogue Slice and Dice polish: the SnD helper now anchors directly above MH again, stays hidden whenever the MH bar is hidden, and rechecks the player buff state on a short throttle so it feels less buggy if aura events arrive late.
 - Rogue Slice and Dice fix: the SnD helper now reads helpful auras through a Classic-safe `UnitBuff` / `UnitAura` signature-tolerant path, which fixes the bar not showing on current Classic/TBC clients where helpful-aura return positions differ.

@@ -11,6 +11,7 @@ local UIDropDownMenu_Initialize = _G.UIDropDownMenu_Initialize
 local UIDropDownMenu_SetText = _G.UIDropDownMenu_SetText
 local UIDropDownMenu_SetWidth = _G.UIDropDownMenu_SetWidth
 local ToggleDropDownMenu = rawget(_G, "ToggleDropDownMenu")
+local GetTimePreciseSec = rawget(_G, "GetTimePreciseSec")
 local strtrim = rawget(_G, "strtrim")
 local BackdropTemplateMixin = rawget(_G, "BackdropTemplateMixin")
 
@@ -335,9 +336,36 @@ local function HideBarPreview()
 	end
 end
 
+-- ------------------------------------------------------------
+-- Animate test bars during barTestActive — drives each bar
+-- through a separate swing cycle so they move like real timers.
+-- ------------------------------------------------------------
+local function AnimateTestBars()
+	if not ns.barTestStartTime then return end
+	local now = GetTimePreciseSec and GetTimePreciseSec() or GetTime()
+	local t = now - ns.barTestStartTime
+
+	local function animateOne(bar, period, offset)
+		if not bar then return end
+		local phase = ((t + offset) % period) / period
+		local val = math.min(math.max(phase, 0), 1)
+		bar:SetValue(val)
+		if ns.RefreshBarSparkPosition then
+			ns.RefreshBarSparkPosition(bar, val)
+		end
+	end
+
+	animateOne(ns.mhBar, 3.6, 0)
+	animateOne(ns.ohBar, 2.4, 0.8)
+	animateOne(ns.rangedBar, 2.8, 1.5)
+	animateOne(ns.enemyBar, 2.2, 0.3)
+	animateOne(ns.hunterCastBar, 1.5, 2.0)
+end
+
 local function StartBarTestPreview(duration)
-	duration = tonumber(duration) or 8
+	duration = tonumber(duration) or 16
 	ns.barTestActive = true
+	ns.barTestStartTime = GetTimePreciseSec and GetTimePreciseSec() or GetTime()
 	if ns.barTestTimer and ns.barTestTimer.Cancel then
 		ns.barTestTimer:Cancel()
 		ns.barTestTimer = nil
@@ -349,6 +377,7 @@ local function StartBarTestPreview(duration)
 	if C_Timer and C_Timer.NewTimer then
 		ns.barTestTimer = C_Timer.NewTimer(duration, function()
 			ns.barTestActive = false
+			ns.barTestStartTime = nil
 			ns.barTestTimer = nil
 			HideBarPreview()
 		end)
@@ -418,7 +447,7 @@ end
 local function CreateSlider(parent, label, minVal, maxVal, step, yOffset)
 	local slider = CreateFrame("Slider", nil, parent, "OptionsSliderTemplate")
 	slider:SetPoint("TOPLEFT", parent, "TOPLEFT", 20, yOffset)
-	slider:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -90, yOffset)
+	slider:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -600, yOffset)
 	slider:SetMinMaxValues(minVal, maxVal)
 	slider:SetValueStep(step)
 	slider:SetObeyStepOnDrag(true)
@@ -438,7 +467,8 @@ local function CreateSlider(parent, label, minVal, maxVal, step, yOffset)
 
 	local valueBox = CreateFrame("EditBox", nil, parent, "InputBoxTemplate")
 	valueBox:SetSize(54, 20)
-	valueBox:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -20, yOffset - 1)
+	valueBox:SetPoint("LEFT", slider, "RIGHT", 8, 0)
+	valueBox:SetPoint("TOP", slider, "TOP", 0, -1)
 	valueBox:SetAutoFocus(false)
 	valueBox:SetMaxLetters(8)
 	valueBox:SetJustifyH("CENTER")
@@ -462,6 +492,66 @@ local function CreateSlider(parent, label, minVal, maxVal, step, yOffset)
 	end)
 	slider.valueBox = valueBox
 	AddControlTooltip(slider, label, string.format("Drag or type a value to change %s.", label))
+	AddControlTooltip(valueBox, label, string.format("Type a value for %s.", label))
+
+	SyncSliderDisplay(slider, slider:GetValue())
+
+	return slider
+end
+
+-- ------------------------------------------------------------
+-- Compact slider for multi-column layout (accepts left/right insets)
+-- ------------------------------------------------------------
+local function CreateCompactSlider(parent, label, minVal, maxVal, step, yOffset, leftInset, rightInset)
+	leftInset = leftInset or 20
+	rightInset = rightInset or 370
+	local slider = CreateFrame("Slider", nil, parent, "OptionsSliderTemplate")
+	slider:SetPoint("TOPLEFT", parent, "TOPLEFT", leftInset, yOffset)
+	slider:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -rightInset, yOffset)
+	slider:SetMinMaxValues(minVal, maxVal)
+	slider:SetValueStep(step)
+	slider:SetObeyStepOnDrag(true)
+	slider:SetHeight(17)
+
+	slider.Text:SetText(label)
+	slider.Low:SetText(tostring(minVal))
+	slider.High:SetText(tostring(maxVal))
+	slider.formatValue = function(value)
+		return FormatSliderValue(step, value)
+	end
+
+	-- Value label below the slider
+	local valText = slider:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+	valText:SetPoint("TOP", slider, "BOTTOM", 0, -2)
+	slider.valueText = valText
+
+	-- Compact edit box at the column's right edge
+	local valueBox = CreateFrame("EditBox", nil, parent, "InputBoxTemplate")
+	valueBox:SetSize(46, 18)
+	valueBox:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -rightInset + 4, yOffset - 1)
+	valueBox:SetAutoFocus(false)
+	valueBox:SetMaxLetters(6)
+	valueBox:SetJustifyH("CENTER")
+	valueBox:SetScript("OnEnterPressed", function(self)
+		local parsed = NormalizeSliderValue(self:GetText(), minVal, maxVal, step)
+		if parsed ~= nil then
+			slider:SetValue(parsed)
+		end
+		self:ClearFocus()
+		SyncSliderDisplay(slider, slider:GetValue())
+	end)
+	valueBox:SetScript("OnEscapePressed", function(self)
+		self:ClearFocus()
+		SyncSliderDisplay(slider, slider:GetValue())
+	end)
+	valueBox:SetScript("OnEditFocusGained", function(self)
+		self:HighlightText()
+	end)
+	valueBox:SetScript("OnEditFocusLost", function(self)
+		SyncSliderDisplay(slider, slider:GetValue())
+	end)
+	slider.valueBox = valueBox
+	AddControlTooltip(slider, label, string.format("Drag or type to change %s.", label))
 	AddControlTooltip(valueBox, label, string.format("Type a value for %s.", label))
 
 	SyncSliderDisplay(slider, slider:GetValue())
@@ -1761,7 +1851,7 @@ local function CreatePanel()
 	local subtitle = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
 	subtitle:SetPoint("TOP", title, "BOTTOM", 0, -2)
 	subtitle:SetText(
-	"Opening /sst previews the bars. Live bars stay combat-driven; hover rows for help, then use the right-side control.")
+	"Opening /sst previews the bars. Live bars stay combat-only; use the left toggles and right swatches.")
 
 	-- Close button
 	local close = CreateFrame("Button", nil, f, "UIPanelCloseButton")
@@ -1795,8 +1885,8 @@ local function CreatePanel()
 	local cfg = ns.classConfig or {}
 	local quickToggleOptions = { leftInset = 20, rightInset = 410, rowHeight = 30 }
 	local quickColorOptions = { leftInset = 410, rightInset = 20, rowHeight = 30, buttonWidth = 122 }
-	local quickToggleY = -48
-	local quickColorY = -48
+	local quickToggleY = -66
+	local quickColorY = -66
 	local quickRowStep = -30
 
 	-- Sliders / selectors
@@ -1805,6 +1895,16 @@ local function CreatePanel()
 		getCollapsed = function() return sectionCollapsed.barVisibility end,
 		setCollapsed = function(collapsed) sectionCollapsed.barVisibility = collapsed end,
 	})
+
+	local quickToggleLabel = content:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+	quickToggleLabel:SetPoint("TOPLEFT", content, "TOPLEFT", quickToggleOptions.leftInset, -32)
+	quickToggleLabel:SetText("Visibility")
+	barVisibilityRows[#barVisibilityRows + 1] = quickToggleLabel
+
+	local quickColorLabel = content:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+	quickColorLabel:SetPoint("TOPLEFT", content, "TOPLEFT", quickColorOptions.leftInset, -32)
+	quickColorLabel:SetText("Key Colors")
+	barVisibilityRows[#barVisibilityRows + 1] = quickColorLabel
 
 	local function AddQuickToggle(label, getValue, applyValue, options)
 		local rowOptions = {}
@@ -1900,6 +2000,36 @@ local function CreatePanel()
 		)
 	end
 
+	local showHunterRangeHelperRow = nil
+	if ns.playerClass == "HUNTER" then
+		showHunterRangeHelperRow = AddQuickToggle(
+			"Hunter Range Helper",
+			function() return SuperSwingTimerDB.showHunterRangeHelper ~= false end,
+			function(enabled)
+				SuperSwingTimerDB.showHunterRangeHelper = enabled
+				if ns.UpdateHunterRangeHelperVisual then
+					ns.UpdateHunterRangeHelperVisual()
+				else
+					ns.ApplyVisibility()
+				end
+			end,
+			{
+				tooltipText = "Show the slim four-state Hunter range strip next to the ranged stack: green melee, yellow sweet spot, blue ranged, red out of range.",
+			}
+		)
+		-- Phase 2: Hunter Rapid Fire CD bar toggle
+		AddQuickToggle(
+			"Rapid Fire Bar",
+			function() return SuperSwingTimerDB.showHunterRapidFireBar ~= false end,
+			function(enabled)
+				SuperSwingTimerDB.showHunterRapidFireBar = enabled
+			end,
+			{
+				tooltipText = "Show a thin 4px bar below the ranged stack tracking the 40s cooldown and 15s duration of Rapid Fire.",
+			}
+		)
+	end
+
 	local showEnemyRow = AddQuickToggle(
 		"Show Enemy Bar",
 		function() return SuperSwingTimerDB.showEnemy ~= false end,
@@ -1918,6 +2048,17 @@ local function CreatePanel()
 				SuperSwingTimerDB.showWeaveAssist = enabled
 				ns.ApplyVisibility()
 			end
+		)
+		-- Phase 2: Shaman Windfury ICD toggle
+		AddQuickToggle(
+			"Windfury ICD",
+			function() return SuperSwingTimerDB.showShamanWindfuryIcd ~= false end,
+			function(enabled)
+				SuperSwingTimerDB.showShamanWindfuryIcd = enabled
+			end,
+			{
+				tooltipText = "Show a slim 3px vertical bar on the right side of the main-hand bar tracking the 3s Windfury internal cooldown: green=ready, orange=winding down, red=recharging.",
+			}
 		)
 	end
 
@@ -1968,6 +2109,178 @@ local function CreatePanel()
 			}
 		)
 	end
+	if ns.playerClass == "ROGUE" then
+		AddQuickToggle(
+			"Rogue Combo Points",
+			function() return SuperSwingTimerDB.showRogueComboPoints ~= false end,
+			function(enabled)
+				SuperSwingTimerDB.showRogueComboPoints = enabled
+				if ns.UpdateRogueComboPointVisual then
+					ns.UpdateRogueComboPointVisual()
+				end
+			end,
+			{
+				tooltipText = "Show the compact five-box combo-point strip above the main-hand bar while you have a target selected.",
+			}
+		)
+	end
+
+	-- Phase 2: Rogue Adrenaline Rush CD bar toggle
+	if ns.playerClass == "ROGUE" then
+		AddQuickToggle(
+			"Rogue Adrenaline Rush",
+			function() return SuperSwingTimerDB.showRogueAdrenalineRushBar ~= false end,
+			function(enabled)
+				SuperSwingTimerDB.showRogueAdrenalineRushBar = enabled
+			end,
+			{
+				tooltipText = "Show a thin 3px bar below the main-hand bar tracking the 3m cooldown and 15s duration of Adrenaline Rush.",
+			}
+		)
+	end
+
+	-- Phase 2: Warrior Flurry counter toggle
+	if ns.playerClass == "WARRIOR" then
+		AddQuickToggle(
+			"Warrior Flurry",
+			function() return SuperSwingTimerDB.showWarriorFlurryCounter ~= false end,
+			function(enabled)
+				SuperSwingTimerDB.showWarriorFlurryCounter = enabled
+			end,
+			{
+				tooltipText = "Show remaining Flurry charges (⚡1-3) on the main-hand bar while the buff is active.",
+			}
+		)
+	end
+
+	-- Phase 2: Druid Omen of Clarity proc glow toggle
+	if ns.playerClass == "DRUID" then
+		AddQuickToggle(
+			"Omen of Clarity",
+			function() return SuperSwingTimerDB.showDruidOmenGlow ~= false end,
+			function(enabled)
+				SuperSwingTimerDB.showDruidOmenGlow = enabled
+			end,
+			{
+				tooltipText = "Flash the main-hand bar green when Omen of Clarity procs, providing a free instant cast.",
+			}
+		)
+	end
+
+	-- Phase 1 Quick Toggles
+	AddQuickToggle(
+		"Swing Flash",
+		function() return SuperSwingTimerDB.showSwingFlash ~= false end,
+		function(enabled)
+			SuperSwingTimerDB.showSwingFlash = enabled
+		end,
+		{
+			tooltipText = "Flash the spark white for 80ms when a swing lands, for instant hit-feedback without checking the combat log.",
+		}
+	)
+	if ns.playerClass ~= "HUNTER" then
+		AddQuickToggle(
+			"GCD Ticker",
+			function() return SuperSwingTimerDB.showGcdTicker ~= false end,
+			function(enabled)
+				SuperSwingTimerDB.showGcdTicker = enabled
+			end,
+			{
+				tooltipText = "Show a thin 3px bar above the main-hand bar that counts down the fixed 1.5s global cooldown after each cast.",
+			}
+		)
+	end
+	if ns.playerClass == "DRUID" then
+		AddQuickToggle("Power Shift",
+			function() return SuperSwingTimerDB.showDruidPowerShiftBar ~= false end,
+			function(enabled)
+				SuperSwingTimerDB.showDruidPowerShiftBar = enabled
+			end,
+			{
+				tooltipText = "Show a slim Power Shift duration bar under the main-hand bar when in Cat Form, tracking the 1.5s window to cancel forms and re-enter for energy refund.",
+			}
+		)
+		AddQuickToggle("Energy Tick",
+			function() return SuperSwingTimerDB.showDruidEnergyTickBar ~= false end,
+			function(enabled)
+				SuperSwingTimerDB.showDruidEnergyTickBar = enabled
+			end,
+			{
+				tooltipText = "Show a vertical energy-tick timing bar to the left of the main-hand bar, tracking the 2s energy pulse cadence in Cat Form.",
+			}
+		)
+		AddQuickToggle(
+			"Rage Dim",
+			function() return SuperSwingTimerDB.showDruidRageDim ~= false end,
+			function(enabled)
+				SuperSwingTimerDB.showDruidRageDim = enabled
+				ns.ApplyBarColors()
+			end,
+			{
+				tooltipText = "Dim the main-hand bar to 40% alpha in Bear form when below 15 rage, signaling that you lack rage for the next Maul.",
+			}
+		)
+	end
+	if ns.playerClass == "ROGUE" then
+		AddQuickToggle(
+			"Energy Countdown",
+			function() return SuperSwingTimerDB.showRogueEnergyCountdown ~= false end,
+			function(enabled)
+				SuperSwingTimerDB.showRogueEnergyCountdown = enabled
+			end,
+			{
+				tooltipText = "Show seconds-until-next-tick text on the energy-tick bar so you know exactly when your next 20 energy arrives.",
+			}
+		)
+	end
+
+	-- Phase 1: swing landing flash toggle (all melee classes)
+	if cfg.melee then
+		AddQuickToggle(
+			"Swing Flash",
+			function() return SuperSwingTimerDB.showSwingFlash ~= false end,
+			function(enabled)
+				SuperSwingTimerDB.showSwingFlash = enabled
+			end,
+			{ tooltipText = "Flash the spark texture white when a melee or ranged swing lands, giving a crisp visual confirmation of the hit." }
+		)
+	end
+
+	-- GCD ticker toggle (melee except Hunter)
+	if cfg.melee and ns.playerClass ~= "HUNTER" then
+		AddQuickToggle(
+			"GCD Ticker",
+			function() return SuperSwingTimerDB.showGcdTicker ~= false end,
+			function(enabled)
+				SuperSwingTimerDB.showGcdTicker = enabled
+			end,
+			{ tooltipText = "Show a thin 3px bar above the main-hand bar tracking the fixed 1.5s global cooldown window." }
+		)
+	end
+
+	-- Druid rage dim toggle
+	if ns.playerClass == "DRUID" then
+		AddQuickToggle(
+			"Druid Rage Dim",
+			function() return SuperSwingTimerDB.showDruidRageDim ~= false end,
+			function(enabled)
+				SuperSwingTimerDB.showDruidRageDim = enabled
+			end,
+			{ tooltipText = "Dim the main-hand bar opacity when below 15 rage in Bear form as a low-rage warning for Maul planning." }
+		)
+	end
+
+	-- Rogue energy countdown toggle
+	if ns.playerClass == "ROGUE" then
+		AddQuickToggle(
+			"Energy Countdown",
+			function() return SuperSwingTimerDB.showRogueEnergyCountdown ~= false end,
+			function(enabled)
+				SuperSwingTimerDB.showRogueEnergyCountdown = enabled
+			end,
+			{ tooltipText = "Show a countdown label on the energy-tick bar showing seconds until the next energy pulse." }
+		)
+	end
 
 	if cfg.melee then
 		AddQuickColor("MH Color", "mh", { allowAlpha = true })
@@ -1981,18 +2294,82 @@ local function CreatePanel()
 		AddQuickColor("Ranged Color", "ranged", { allowAlpha = true })
 	end
 
+	-- Phase 1: GCD ticker color swatch
+	if ns.playerClass ~= "HUNTER" then
+		AddQuickColor("GCD Ticker", "gcdTicker", {
+			allowAlpha = true,
+			tooltipText = "Pick the GCD ticker bar color.",
+		})
+	end
+
+	if ns.playerClass == "WARRIOR" then
+		AddQuickColor("Rage Bar", "warriorRageBar", {
+			allowAlpha = true,
+			tooltipText = "Pick the warrior rage bar color for the slim rage bar under the main-hand/off-hand bars.",
+		})
+	end
+
+	if ns.playerClass == "DRUID" then
+		AddQuickColor("Bear Form", "druidFormBear", {
+			allowAlpha = true,
+			tooltipText = "Choose the main-hand bar color while in Bear or Dire Bear form.",
+		})
+		AddQuickColor("Cat Form", "druidFormCat", {
+			allowAlpha = true,
+			tooltipText = "Choose the main-hand bar color while in Cat form.",
+		})
+		AddQuickColor("Moonkin Form", "druidFormMoonkin", {
+			allowAlpha = true,
+			tooltipText = "Choose the main-hand bar color while in Moonkin form.",
+		})
+		-- Phase 2: Druid Omen of Clarity proc glow color swatch
+		AddQuickColor("Omen Glow", "omenGlow", {
+			allowAlpha = true,
+			tooltipText = "Pick the green proc-glow color for Omen of Clarity on the main-hand bar.",
+		})
+	end
+
 	if ns.playerClass == "HUNTER" then
+		AddQuickColor("Range Melee", "hunterRangeMelee", {
+			allowAlpha = true,
+			tooltipText = "Pick the Hunter melee-range helper color for targets close enough to use melee skills like Wing Clip.",
+		})
+		AddQuickColor("Range Sweet Spot", "hunterRangeSweetSpot", {
+			allowAlpha = true,
+			tooltipText = "Pick the Hunter near-target sweet-spot color for the slim vertical helper beside the ranged stack.",
+		})
+		AddQuickColor("Range Ranged", "hunterRangeRanged", {
+			allowAlpha = true,
+			tooltipText = "Pick the Hunter ranged-state color for targets safely in Auto Shot range outside the sweet-spot band.",
+		})
+		AddQuickColor("Range Out", "hunterRangeOutOfRange", {
+			allowAlpha = true,
+			tooltipText = "Pick the Hunter out-of-range color for targets beyond usable Auto Shot range.",
+		})
 		AddQuickColor("Auto Shot Safe", "autoShotSafe", {
 			allowAlpha = true,
 			tooltipText = "Pick the green stop-safe Auto Shot window color and overlay opacity.",
 		})
-		AddQuickColor("Auto Shot Unsafe", "autoShotUnsafe", {
+		AddQuickColor("Auto Shot Late", "autoShotUnsafe", {
 			allowAlpha = true,
-			tooltipText = "Pick the moving / too-late Auto Shot window color and overlay opacity.",
+			tooltipText = "Pick the red late / still-moving Auto Shot window color and overlay opacity.",
+		})
+		-- Phase 2: Hunter Rapid Fire bar color swatch
+		AddQuickColor("Rapid Fire", "rapidFireBar", {
+			allowAlpha = true,
+			tooltipText = "Pick the color for the thin 4px Rapid Fire CD/duration bar below the ranged stack.",
 		})
 	end
 
 	AddQuickColor("Enemy Color", "enemy", { allowAlpha = true })
+
+	-- Phase 1: GCD ticker color swatch (all non-Hunter melee)
+	if cfg.melee and ns.playerClass ~= "HUNTER" then
+		AddQuickColor("GCD Ticker", "gcdTicker", {
+			allowAlpha = true,
+			tooltipText = "Pick the GCD ticker bar color for the thin 3px bar above the main-hand bar.",
+		})
+	end
 
 	if ns.playerClass == "ROGUE" then
 		AddQuickColor("Rogue SS Cue", "rogueSinister", {
@@ -2003,23 +2380,159 @@ local function CreatePanel()
 			allowAlpha = true,
 			tooltipText = "Pick the Rogue energy-tick bar color for the slim vertical helper on the left side of the main-hand bar.",
 		})
+		AddQuickColor("Rogue Combo", "rogueComboPoints", {
+			allowAlpha = true,
+			tooltipText = "Pick the Rogue combo-point fill color for the five-box strip above the main-hand bar.",
+		})
 		AddQuickColor("Rogue SnD", "rogueSliceAndDice", {
 			allowAlpha = true,
 			tooltipText = "Pick the Rogue Slice and Dice helper bar color for the slim duration bar above the main-hand bar.",
 		})
+		-- Phase 2: Rogue Adrenaline Rush bar color swatch
+		AddQuickColor("Rogue Adrenaline Rush", "adrenalineRushBar", {
+			allowAlpha = true,
+			tooltipText = "Pick the color for the thin Adrenaline Rush CD/duration bar below the main-hand bar.",
+		})
+	end
+
+	if ns.playerClass == "DRUID" then
+		AddQuickColor("Ravage Cue", "ravageCue", {
+			allowAlpha = true,
+			tooltipText = "Pick the amber glow color for the Ravage opener cue on the main-hand bar.",
+		})
+	end
+
+	if ns.playerClass == "WARRIOR" then
+		AddQuickToggle("Shield Block",
+			function() return SuperSwingTimerDB.showWarriorShieldBlockBar ~= false end,
+			function(enabled)
+				SuperSwingTimerDB.showWarriorShieldBlockBar = enabled
+			end,
+			{
+				tooltipText = "Show a slim Shield Block duration bar above the main-hand stack while the buff is active.",
+			}
+		)
+		AddQuickToggle("Warrior Rage Bar",
+			function() return SuperSwingTimerDB.showWarriorRageBar ~= false end,
+			function(enabled)
+				SuperSwingTimerDB.showWarriorRageBar = enabled
+				ns.ApplyVisibility()
+			end,
+			{
+				tooltipText = "Show a slim rage bar under the main-hand/off-hand bars that tracks your current warrior rage (0-100).",
+			}
+		)
+		AddQuickToggle("Protection Hide",
+			function() return SuperSwingTimerDB.showWarriorRageProtection end,
+			function(enabled)
+				SuperSwingTimerDB.showWarriorRageProtection = enabled
+			end,
+			{
+				tooltipText = "When enabled, show the rage bar even in Protection spec (hidden by default).",
+			}
+		)
+		-- Phase 2: Warrior Flurry counter color swatch
+		AddQuickColor("Flurry Counter", "flurryCounter", {
+			allowAlpha = true,
+			tooltipText = "Pick the color for the Flurry charges text (⚡1-3) on the main-hand bar.",
+		})
+		AddQuickColor("Shield Block", "shieldBlockBar", {
+			allowAlpha = true,
+			tooltipText = "Pick the color for the Shield Block duration bar above the main-hand stack.",
+		})
+	end
+
+	if ns.playerClass == "DRUID" then
+		AddQuickToggle("Druid Form Colors",
+			function() return SuperSwingTimerDB.showDruidFormColors ~= false end,
+			function(enabled)
+				SuperSwingTimerDB.showDruidFormColors = enabled
+				ns.ApplyBarColors()
+			end,
+			{
+				tooltipText = "Color the main-hand (and off-hand) bar based on your current shapeshift form: Bear=red, Cat=gold, Moonkin=blue.",
+			}
+		)
+		AddQuickToggle("Ravage Cue",
+			function() return SuperSwingTimerDB.showDruidRavageCue ~= false end,
+			function(enabled)
+				SuperSwingTimerDB.showDruidRavageCue = enabled
+			end,
+			{
+				tooltipText = "Glow the main-hand bar amber when Ravage is actually usable in Cat Form and on a valid target.",
+			}
+		)
 	end
 
 	if ns.playerClass == "PALADIN" then
+		AddQuickToggle(
+			"Paladin Seal Color",
+			function() return SuperSwingTimerDB.showPaladinSealColor ~= false end,
+			function(enabled)
+				SuperSwingTimerDB.showPaladinSealColor = enabled
+				ns.ApplyBarColors()
+			end,
+			{
+				tooltipText = "Color the main-hand bar to match your currently active seal (Command=gold, Blood=red, Martyr=purple, etc.).",
+			}
+		)
+
+		AddQuickToggle(
+			"Paladin Seal Label",
+			function() return SuperSwingTimerDB.showPaladinSealLabel ~= false end,
+			function(enabled)
+				SuperSwingTimerDB.showPaladinSealLabel = enabled
+				ns.ApplyBarColors()
+			end,
+			{
+				tooltipText = "Show the name of your active seal on the main-hand bar (e.g., Command, Blood, Righteousness).",
+			}
+		)
+
+		AddQuickToggle(
+			"Paladin Judgement CD",
+			function() return SuperSwingTimerDB.showPaladinJudgementMarker ~= false end,
+			function(enabled)
+				SuperSwingTimerDB.showPaladinJudgementMarker = enabled
+				ns.ApplyBarColors()
+			end,
+			{
+				tooltipText = "Show a gold marker on the swing bar when Judgement cooldown is available.",
+			}
+		)
+
+		AddQuickToggle(
+			"Paladin Twist Flash",
+			function() return SuperSwingTimerDB.showPaladinTwistFlash ~= false end,
+			function(enabled)
+				SuperSwingTimerDB.showPaladinTwistFlash = enabled
+				ns.ApplyBarColors()
+			end,
+			{
+				tooltipText = "Flash the seal-twist zone red on the swing end when a twist-family seal (Command, Blood, Martyr) is active.",
+			}
+		)
+
 		AddQuickColor("Seal Line", "sealTwist", { allowAlpha = true })
 	end
 
+	-- Phase 2: Shaman Windfury ICD color swatch
+	if ns.playerClass == "SHAMAN" then
+		AddQuickColor("Windfury ICD", "windfuryIcd", {
+			allowAlpha = true,
+			tooltipText = "Pick the color for the 3px Windfury ICD tracker bar on the right side of the main-hand bar.",
+		})
+	end
+
 	local quickSectionBottomY = math.min(quickToggleY, quickColorY)
-	local postQuickYOffset = (quickSectionBottomY - 14) - (-230)
+	-- Use a 60px padding below the Quick Controls section so the MH/OH header
+	-- always sits well clear of the last row, even on dense class configs.
+	local postQuickYOffset = (quickSectionBottomY - 60) - (-230)
 	local function PostQuickY(y)
 		return y + postQuickYOffset
 	end
 
-	local mhOhHeader = CreateSectionHeader(content, "MH/OH Bar Appearance", PostQuickY(-230), {
+	local mhOhHeader = CreateSectionHeader(content, "Appearance", PostQuickY(-230), {
 		rows = mhOhRows,
 		getCollapsed = function() return sectionCollapsed.mhOh end,
 		setCollapsed = function(collapsed) sectionCollapsed.mhOh = collapsed end,
@@ -2031,18 +2544,54 @@ local function CreatePanel()
 
 	-- Keep the first MH/OH control clearly below the section header so slider clicks
 	-- cannot also hit the collapse toggle.
-	local widthSlider = CreateSlider(content, "Bar Width", 100, 400, 10, PostQuickY(ShiftY(-75)))
+	local widthSlider = CreateCompactSlider(content, "Bar Width", 100, 400, 10, PostQuickY(ShiftY(-88)), 20, 600)
 	widthSlider:SetValue(SuperSwingTimerDB.barWidth or ns.DB_DEFAULTS.barWidth)
 	SyncSliderDisplay(widthSlider, widthSlider:GetValue())
 
-	local heightSlider = CreateSlider(content, "Bar Height", 10, 40, 2, PostQuickY(ShiftY(-100)))
+	local heightSlider = CreateCompactSlider(content, "Bar Height", 10, 40, 2, PostQuickY(ShiftY(-88)), 160, 460)
 	heightSlider:SetValue(SuperSwingTimerDB.barHeight or ns.DB_DEFAULTS.barHeight)
 	SyncSliderDisplay(heightSlider, heightSlider:GetValue())
+
+	local hunterCastBarHeightSlider = CreateSlider(content, "Hunter Cast Bar Height", 4, 30, 2, PostQuickY(ShiftY(-100)))
+	hunterCastBarHeightSlider:SetValue(SuperSwingTimerDB.hunterCastBarHeight or ns.DB_DEFAULTS.hunterCastBarHeight or 10)
+	SyncSliderDisplay(hunterCastBarHeightSlider, hunterCastBarHeightSlider:GetValue())
+
+	local rogueSndBarHeightSlider = CreateSlider(content, "Rogue SnD Height", 2, 20, 1, PostQuickY(ShiftY(-115)))
+	rogueSndBarHeightSlider:SetValue(SuperSwingTimerDB.rogueSliceAndDiceBarHeight or ns.DB_DEFAULTS.rogueSliceAndDiceBarHeight or 4)
+	SyncSliderDisplay(rogueSndBarHeightSlider, rogueSndBarHeightSlider:GetValue())
+
+	local rogueEnergyTickSlider = CreateSlider(content, "Rogue Tick Width", 2, 20, 1, PostQuickY(ShiftY(-130)))
+	rogueEnergyTickSlider:SetValue(SuperSwingTimerDB.rogueEnergyTickBarWidth or ns.DB_DEFAULTS.rogueEnergyTickBarWidth or 4)
+	SyncSliderDisplay(rogueEnergyTickSlider, rogueEnergyTickSlider:GetValue())
+
+	local hunterRangeHelperWidthSlider = CreateSlider(content, "Range Helper Width", 2, 20, 1, PostQuickY(ShiftY(-130)))
+	hunterRangeHelperWidthSlider:SetValue(SuperSwingTimerDB.hunterRangeHelperWidth or ns.DB_DEFAULTS.hunterRangeHelperWidth or 7)
+	SyncSliderDisplay(hunterRangeHelperWidthSlider, hunterRangeHelperWidthSlider:GetValue())
+
+	local hunterRapidFireSlider = CreateSlider(content, "Rapid Fire Height", 2, 20, 1, PostQuickY(ShiftY(-130)))
+	hunterRapidFireSlider:SetValue(SuperSwingTimerDB.hunterRapidFireBarHeight or ns.DB_DEFAULTS.hunterRapidFireBarHeight or 4)
+	SyncSliderDisplay(hunterRapidFireSlider, hunterRapidFireSlider:GetValue())
+
+	local warriorShieldBlockSlider = CreateSlider(content, "Shield Block Height", 2, 20, 1, PostQuickY(ShiftY(-145)))
+	warriorShieldBlockSlider:SetValue(SuperSwingTimerDB.warriorShieldBlockBarHeight or ns.DB_DEFAULTS.warriorShieldBlockBarHeight or 4)
+	SyncSliderDisplay(warriorShieldBlockSlider, warriorShieldBlockSlider:GetValue())
+
+	local druidPowerShiftSlider = CreateSlider(content, "Power Shift Height", 2, 20, 1, PostQuickY(ShiftY(-160)))
+	druidPowerShiftSlider:SetValue(SuperSwingTimerDB.druidPowerShiftBarHeight or ns.DB_DEFAULTS.druidPowerShiftBarHeight or 4)
+	SyncSliderDisplay(druidPowerShiftSlider, druidPowerShiftSlider:GetValue())
+
+	local druidEnergyTickSlider = CreateSlider(content, "Energy Tick Width", 2, 20, 1, PostQuickY(ShiftY(-175)))
+	druidEnergyTickSlider:SetValue(SuperSwingTimerDB.druidEnergyTickBarWidth or ns.DB_DEFAULTS.druidEnergyTickBarWidth or 4)
+	SyncSliderDisplay(druidEnergyTickSlider, druidEnergyTickSlider:GetValue())
+
+	local rogueAdrenalineRushSlider = CreateSlider(content, "Adrenaline Rush Height", 2, 20, 1, PostQuickY(ShiftY(-190)))
+	rogueAdrenalineRushSlider:SetValue(SuperSwingTimerDB.rogueAdrenalineRushBarHeight or ns.DB_DEFAULTS.rogueAdrenalineRushBarHeight or 4)
+	SyncSliderDisplay(rogueAdrenalineRushSlider, rogueAdrenalineRushSlider:GetValue())
 
 	local barTextureRow = CreateTexturePathRow(
 		content,
 		"MH/OH Bar Texture",
-		PostQuickY(ShiftY(-145)),
+		PostQuickY(ShiftY(-165)),
 		{
 			mode = "barList",
 			defaultTexture = ns.DB_DEFAULTS.barTexture,
@@ -2065,7 +2614,7 @@ local function CreatePanel()
 	local barLayerRow = CreateCycleRow(
 		content,
 		"MH/OH Texture Layer",
-		PostQuickY(ShiftY(-180)),
+		PostQuickY(ShiftY(-200)),
 		ns.TEXTURE_LAYER_OPTIONS,
 		function() return SuperSwingTimerDB.barTextureLayer or ns.DB_DEFAULTS.barTextureLayer end,
 		function(layer) ns.ApplyBarTextureLayer(layer) end
@@ -2074,7 +2623,7 @@ local function CreatePanel()
 	local rangedTextureRow = CreateTexturePathRow(
 		content,
 		"Ranged Bar Texture",
-		PostQuickY(ShiftY(-200)),
+		PostQuickY(ShiftY(-220)),
 		{
 			mode = "barList",
 			defaultTexture = ns.DB_DEFAULTS.rangedBarTexture,
@@ -2098,11 +2647,11 @@ local function CreatePanel()
 	local sparkTextureRow = CreateTexturePathRow(
 		content,
 		"Spark Texture",
-		PostQuickY(ShiftY(-215)),
+		PostQuickY(ShiftY(-235)),
 		{
 			mode = "browser",
 			label = "Spark Texture",
-			yOffset = PostQuickY(ShiftY(-215)),
+			yOffset = PostQuickY(ShiftY(-235)),
 			defaultTexture = ns.DB_DEFAULTS.sparkTexture,
 			getTexture = function() return SuperSwingTimerDB.sparkTexture or ns.DB_DEFAULTS.sparkTexture end,
 			applyTexture = function(texturePath)
@@ -2128,7 +2677,7 @@ local function CreatePanel()
 		}
 	)
 
-	local sparkAlphaSlider = CreateSlider(content, "Spark Alpha", 0, 1, 0.05, PostQuickY(ShiftY(-425)))
+	local sparkAlphaSlider = CreateSlider(content, "Spark Alpha", 0, 1, 0.05, PostQuickY(ShiftY(-445)))
 	sparkAlphaSlider:SetValue(SuperSwingTimerDB.sparkAlpha ~= nil and SuperSwingTimerDB.sparkAlpha or
 	ns.DB_DEFAULTS.sparkAlpha)
 	SyncSliderDisplay(sparkAlphaSlider, sparkAlphaSlider:GetValue())
@@ -2137,7 +2686,7 @@ local function CreatePanel()
 		content,
 		"Spark Color",
 		"spark",
-		PostQuickY(ShiftY(-250)),
+		PostQuickY(ShiftY(-270)),
 		{
 			allowAlpha = true,
 			getColor = function()
@@ -2161,17 +2710,17 @@ local function CreatePanel()
 	local sparkLayerRow = CreateCycleRow(
 		content,
 		"Spark Layer",
-		PostQuickY(ShiftY(-285)),
+		PostQuickY(ShiftY(-305)),
 		ns.TEXTURE_LAYER_OPTIONS,
 		function() return SuperSwingTimerDB.sparkTextureLayer or ns.DB_DEFAULTS.sparkTextureLayer end,
 		function(layer) ns.ApplySparkTextureLayer(layer) end
 	)
 
-	local sparkWidthSlider = CreateSlider(content, "Spark Width", 2, 60, 1, PostQuickY(ShiftY(-350)))
+	local sparkWidthSlider = CreateCompactSlider(content, "Spark Width", 2, 60, 1, PostQuickY(ShiftY(-370)), 20, 600)
 	sparkWidthSlider:SetValue(SuperSwingTimerDB.sparkWidth or ns.DB_DEFAULTS.sparkWidth)
 	SyncSliderDisplay(sparkWidthSlider, sparkWidthSlider:GetValue())
 
-	local sparkHeightSlider = CreateSlider(content, "Spark Height", 2, 90, 1, PostQuickY(ShiftY(-400)))
+	local sparkHeightSlider = CreateCompactSlider(content, "Spark Height", 2, 90, 1, PostQuickY(ShiftY(-370)), 160, 460)
 	sparkHeightSlider:SetValue(SuperSwingTimerDB.sparkHeight or ns.DB_DEFAULTS.sparkHeight)
 	SyncSliderDisplay(sparkHeightSlider, sparkHeightSlider:GetValue())
 
@@ -2179,7 +2728,7 @@ local function CreatePanel()
 		content,
 		"Bar Background Color",
 		"barBackground",
-		PostQuickY(ShiftY(-450)),
+		PostQuickY(ShiftY(-470)),
 		{
 			allowAlpha = false,
 			getColor = function()
@@ -2194,7 +2743,7 @@ local function CreatePanel()
 		}
 	)
 
-	local backgroundAlphaSlider = CreateSlider(content, "Bar Background Alpha", 0, 1, 0.05, PostQuickY(ShiftY(-500)))
+	local backgroundAlphaSlider = CreateSlider(content, "Bar Background Alpha", 0, 1, 0.05, PostQuickY(ShiftY(-520)))
 	backgroundAlphaSlider:SetValue(SuperSwingTimerDB.barBackgroundAlpha ~= nil and SuperSwingTimerDB.barBackgroundAlpha or
 	ns.DB_DEFAULTS.barBackgroundAlpha)
 	SyncSliderDisplay(backgroundAlphaSlider, backgroundAlphaSlider:GetValue())
@@ -2202,7 +2751,7 @@ local function CreatePanel()
 	local indicatorBlendModeRow = CreateCycleRow(
 		content,
 		"Indicator Glow Mode",
-		PostQuickY(ShiftY(-550)),
+		PostQuickY(ShiftY(-570)),
 		INDICATOR_BLEND_OPTIONS,
 		function() return SuperSwingTimerDB.indicatorBlendMode or ns.DB_DEFAULTS.indicatorBlendMode end,
 		function(blendMode)
@@ -2214,7 +2763,7 @@ local function CreatePanel()
 		content,
 		"Bar Border Color",
 		"barBorder",
-		PostQuickY(ShiftY(-600)),
+		PostQuickY(ShiftY(-620)),
 		{
 			allowAlpha = true,
 			getColor = function()
@@ -2227,7 +2776,7 @@ local function CreatePanel()
 		}
 	)
 
-	local barBorderSlider = CreateSlider(content, "Bar Border Size", 0, 6, 1, PostQuickY(ShiftY(-650)))
+	local barBorderSlider = CreateSlider(content, "Bar Border Size", 0, 6, 1, PostQuickY(ShiftY(-670)))
 	barBorderSlider:SetValue(SuperSwingTimerDB.barBorderSize ~= nil and SuperSwingTimerDB.barBorderSize or
 	ns.DB_DEFAULTS.barBorderSize)
 	SyncSliderDisplay(barBorderSlider, barBorderSlider:GetValue())
@@ -2238,26 +2787,45 @@ local function CreatePanel()
 	end)
 	mhOhRows[1] = widthSlider
 	mhOhRows[2] = heightSlider
-	mhOhRows[3] = barTextureRow
-	mhOhRows[4] = barLayerRow
-	mhOhRows[5] = rangedTextureRow
-	mhOhRows[6] = sparkTextureRow
-	mhOhRows[7] = sparkAlphaSlider
-	mhOhRows[8] = sparkColorRow
-	mhOhRows[9] = sparkLayerRow
-	mhOhRows[10] = sparkWidthSlider
-	mhOhRows[11] = sparkHeightSlider
-	mhOhRows[12] = backgroundColorRow
-	mhOhRows[13] = backgroundAlphaSlider
-	mhOhRows[14] = indicatorBlendModeRow
-	mhOhRows[15] = barBorderColorRow
-	mhOhRows[16] = barBorderSlider
+	mhOhRows[3] = hunterCastBarHeightSlider
+	mhOhRows[4] = rogueSndBarHeightSlider
+	mhOhRows[5] = rogueEnergyTickSlider
+	mhOhRows[6] = hunterRangeHelperWidthSlider
+	mhOhRows[7] = hunterRapidFireSlider
+	mhOhRows[8] = warriorShieldBlockSlider
+	mhOhRows[9] = druidPowerShiftSlider
+	mhOhRows[10] = druidEnergyTickSlider
+	mhOhRows[11] = rogueAdrenalineRushSlider
+	mhOhRows[12] = barTextureRow
+	mhOhRows[13] = barLayerRow
+	mhOhRows[14] = rangedTextureRow
+	mhOhRows[15] = sparkTextureRow
+	mhOhRows[16] = sparkAlphaSlider
+	mhOhRows[17] = sparkColorRow
+	mhOhRows[18] = sparkLayerRow
+	mhOhRows[19] = sparkWidthSlider
+	mhOhRows[20] = sparkHeightSlider
+	mhOhRows[21] = backgroundColorRow
+	mhOhRows[22] = backgroundAlphaSlider
+	mhOhRows[23] = indicatorBlendModeRow
+	mhOhRows[24] = barBorderColorRow
+	mhOhRows[25] = barBorderSlider
 	SetRowsShown(mhOhRows, not sectionCollapsed.mhOh)
+	-- Class-specific visibility (after SetRowsShown so they override collapse-show)
+	hunterCastBarHeightSlider:SetShown(not sectionCollapsed.mhOh and ns.playerClass == "HUNTER")
+	rogueSndBarHeightSlider:SetShown(not sectionCollapsed.mhOh and ns.playerClass == "ROGUE")
+	rogueEnergyTickSlider:SetShown(not sectionCollapsed.mhOh and ns.playerClass == "ROGUE")
+	hunterRangeHelperWidthSlider:SetShown(not sectionCollapsed.mhOh and ns.playerClass == "HUNTER")
+	hunterRapidFireSlider:SetShown(not sectionCollapsed.mhOh and ns.playerClass == "HUNTER")
+	warriorShieldBlockSlider:SetShown(not sectionCollapsed.mhOh and ns.playerClass == "WARRIOR")
+	druidPowerShiftSlider:SetShown(not sectionCollapsed.mhOh and ns.playerClass == "DRUID")
+	druidEnergyTickSlider:SetShown(not sectionCollapsed.mhOh and ns.playerClass == "DRUID")
+	rogueAdrenalineRushSlider:SetShown(not sectionCollapsed.mhOh and ns.playerClass == "ROGUE")
 	if mhOhHeader.refresh then
 		mhOhHeader.refresh()
 	end
 
-	local shamanHeader = CreateSectionHeader(content, "Shaman Weave Assist", PostQuickY(-728), {
+	local shamanHeader = CreateSectionHeader(content, "Shaman Weave Assist", PostQuickY(-750), {
 		rows = shamanRows,
 		getCollapsed = function() return sectionCollapsed.shaman end,
 		setCollapsed = function(collapsed) sectionCollapsed.shaman = collapsed end,
@@ -2266,11 +2834,11 @@ local function CreatePanel()
 	local weaveSparkTextureRow = CreateTexturePathRow(
 		content,
 		"Cast Breakpoint Spark Texture",
-		PostQuickY(ShiftY(-705)),
+		PostQuickY(ShiftY(-725)),
 		{
 			mode = "browser",
 			label = "Cast Breakpoint Spark Texture",
-			yOffset = PostQuickY(ShiftY(-705)),
+			yOffset = PostQuickY(ShiftY(-725)),
 			defaultTexture = ns.DB_DEFAULTS.weaveSparkTexture,
 			getTexture = function() return SuperSwingTimerDB.weaveSparkTexture or ns.DB_DEFAULTS.weaveSparkTexture end,
 			applyTexture = function(texturePath)
@@ -2299,21 +2867,21 @@ local function CreatePanel()
 	local weaveSparkLayerRow = CreateCycleRow(
 		content,
 		"Cast Breakpoint Layer",
-		PostQuickY(ShiftY(-740)),
+		PostQuickY(ShiftY(-760)),
 		ns.TEXTURE_LAYER_OPTIONS,
 		function() return SuperSwingTimerDB.weaveSparkTextureLayer or ns.DB_DEFAULTS.weaveSparkTextureLayer end,
 		function(layer) ns.ApplyWeaveSparkTextureLayer(layer) end
 	)
 
-	local weaveSparkWidthSlider = CreateSlider(content, "Cast Spark Width", 2, 60, 1, PostQuickY(ShiftY(-775)))
+	local weaveSparkWidthSlider = CreateSlider(content, "Cast Spark Width", 2, 60, 1, PostQuickY(ShiftY(-795)))
 	weaveSparkWidthSlider:SetValue(SuperSwingTimerDB.weaveSparkWidth or ns.DB_DEFAULTS.weaveSparkWidth)
 	SyncSliderDisplay(weaveSparkWidthSlider, weaveSparkWidthSlider:GetValue())
 
-	local weaveSparkHeightSlider = CreateSlider(content, "Cast Spark Height", 2, 100, 1, PostQuickY(ShiftY(-825)))
+	local weaveSparkHeightSlider = CreateSlider(content, "Cast Spark Height", 2, 100, 1, PostQuickY(ShiftY(-845)))
 	weaveSparkHeightSlider:SetValue(SuperSwingTimerDB.weaveSparkHeight or ns.DB_DEFAULTS.weaveSparkHeight)
 	SyncSliderDisplay(weaveSparkHeightSlider, weaveSparkHeightSlider:GetValue())
 
-	local weaveSparkAlphaSlider = CreateSlider(content, "Cast Spark Alpha", 0, 1, 0.05, PostQuickY(ShiftY(-875)))
+	local weaveSparkAlphaSlider = CreateSlider(content, "Cast Spark Alpha", 0, 1, 0.05, PostQuickY(ShiftY(-895)))
 	weaveSparkAlphaSlider:SetValue(SuperSwingTimerDB.weaveSparkAlpha ~= nil and SuperSwingTimerDB.weaveSparkAlpha or
 	ns.DB_DEFAULTS.weaveSparkAlpha)
 	SyncSliderDisplay(weaveSparkAlphaSlider, weaveSparkAlphaSlider:GetValue())
@@ -2322,7 +2890,7 @@ local function CreatePanel()
 		content,
 		"Breakpoint markers now use the tracked spell's icon automatically. " ..
 		"Use the size, gap, alpha, and layer controls below to tune the small icon markers.",
-		PostQuickY(ShiftY(-915))
+		PostQuickY(ShiftY(-935))
 	)
 
 	local weaveTriangleTopRow = nil
@@ -2331,7 +2899,7 @@ local function CreatePanel()
 	local weaveTriangleLayerRow = CreateCycleRow(
 		content,
 		"Spell Icon Layer",
-		PostQuickY(ShiftY(-995)),
+		PostQuickY(ShiftY(-1015)),
 		ns.TEXTURE_LAYER_OPTIONS,
 		function() return SuperSwingTimerDB.weaveTriangleTextureLayer or ns.DB_DEFAULTS.weaveTriangleTextureLayer end,
 		function(layer)
@@ -2348,16 +2916,16 @@ local function CreatePanel()
 		end
 	)
 
-	local weaveTriangleSizeSlider = CreateSlider(content, "Spell Icon Size", 6, 24, 1, PostQuickY(ShiftY(-1030)))
+	local weaveTriangleSizeSlider = CreateSlider(content, "Spell Icon Size", 6, 24, 1, PostQuickY(ShiftY(-1050)))
 	weaveTriangleSizeSlider:SetValue(SuperSwingTimerDB.weaveTriangleSize or ns.DB_DEFAULTS.weaveTriangleSize)
 	SyncSliderDisplay(weaveTriangleSizeSlider, weaveTriangleSizeSlider:GetValue())
 
-	local weaveTriangleGapSlider = CreateSlider(content, "Spell Icon Gap", 0, 6, 1, PostQuickY(ShiftY(-1080)))
+	local weaveTriangleGapSlider = CreateSlider(content, "Spell Icon Gap", 0, 6, 1, PostQuickY(ShiftY(-1100)))
 	weaveTriangleGapSlider:SetValue(SuperSwingTimerDB.weaveTriangleGap ~= nil and SuperSwingTimerDB.weaveTriangleGap or
 	ns.DB_DEFAULTS.weaveTriangleGap)
 	SyncSliderDisplay(weaveTriangleGapSlider, weaveTriangleGapSlider:GetValue())
 
-	local weaveTriangleAlphaSlider = CreateSlider(content, "Spell Icon Alpha", 0, 1, 0.05, PostQuickY(ShiftY(-1130)))
+	local weaveTriangleAlphaSlider = CreateSlider(content, "Spell Icon Alpha", 0, 1, 0.05, PostQuickY(ShiftY(-1150)))
 	weaveTriangleAlphaSlider:SetValue(SuperSwingTimerDB.weaveTriangleAlpha ~= nil and
 	SuperSwingTimerDB.weaveTriangleAlpha or ns.DB_DEFAULTS.weaveTriangleAlpha)
 	SyncSliderDisplay(weaveTriangleAlphaSlider, weaveTriangleAlphaSlider:GetValue())
@@ -2381,7 +2949,7 @@ local function CreatePanel()
 		SetRowsShown(shamanRows, false)
 	end
 
-	local generalHeader = CreateSectionHeader(content, "General Behavior", PostQuickY(-1318), {
+	local generalHeader = CreateSectionHeader(content, "General Behavior", PostQuickY(-1340), {
 		rows = generalRows,
 		getCollapsed = function() return sectionCollapsed.general end,
 		setCollapsed = function(collapsed) sectionCollapsed.general = collapsed end,
@@ -2390,7 +2958,7 @@ local function CreatePanel()
 	local minimalModeRow = CreateToggleRow(
 		content,
 		"Minimal Mode",
-		PostQuickY(ShiftY(-1305)),
+		PostQuickY(ShiftY(-1325)),
 		function() return SuperSwingTimerDB.minimalMode == true end,
 		function(enabled) ns.ApplyMinimalMode(enabled) end
 	)
@@ -2398,19 +2966,19 @@ local function CreatePanel()
 	local lockBarsRow = CreateToggleRow(
 		content,
 		"Lock / Unlock Bars",
-		PostQuickY(ShiftY(-1335)),
+		PostQuickY(ShiftY(-1355)),
 		function() return SuperSwingTimerDB.lockBars == true end,
 		function(enabled) SuperSwingTimerDB.lockBars = enabled end
 	)
 	local testBarsRow = CreateActionRow(
 		content,
 		"Test Bars",
-		"Preview 8s",
-		PostQuickY(ShiftY(-1365)),
+		"Preview 16s",
+		PostQuickY(ShiftY(-1385)),
 		function()
-			StartBarTestPreview(8)
+			StartBarTestPreview(16)
 		end,
-		"Temporarily show the bars for eight seconds so you can reposition them when unlocked."
+		"Temporarily show the bars for sixteen seconds with animated swing cycles so you can reposition them when unlocked."
 	)
 	generalRows[1] = minimalModeRow
 	generalRows[2] = lockBarsRow
@@ -2430,6 +2998,74 @@ local function CreatePanel()
 		value = math.floor(value + 0.5)
 		SyncSliderDisplay(self, value)
 		ns.ApplyBarSize(widthSlider:GetValue(), value)
+	end)
+
+	hunterCastBarHeightSlider:SetScript("OnValueChanged", function(self, value)
+		value = math.floor(value + 0.5)
+		SyncSliderDisplay(self, value)
+		SuperSwingTimerDB.hunterCastBarHeight = value
+		ns.HUNTER_CAST_BAR_HEIGHT = value
+		ns.ApplyBarSize(widthSlider:GetValue(), heightSlider:GetValue())
+	end)
+
+	rogueSndBarHeightSlider:SetScript("OnValueChanged", function(self, value)
+		value = math.floor(value + 0.5)
+		SyncSliderDisplay(self, value)
+		SuperSwingTimerDB.rogueSliceAndDiceBarHeight = value
+		ns.ROGUE_SLICE_AND_DICE_BAR_HEIGHT = value
+		ns.ApplyBarSize(widthSlider:GetValue(), heightSlider:GetValue())
+	end)
+
+	rogueEnergyTickSlider:SetScript("OnValueChanged", function(self, value)
+		value = math.floor(value + 0.5)
+		SyncSliderDisplay(self, value)
+		SuperSwingTimerDB.rogueEnergyTickBarWidth = value
+		ns.ROGUE_ENERGY_TICK_BAR_WIDTH = value
+	end)
+
+	hunterRangeHelperWidthSlider:SetScript("OnValueChanged", function(self, value)
+		value = math.floor(value + 0.5)
+		SyncSliderDisplay(self, value)
+		SuperSwingTimerDB.hunterRangeHelperWidth = value
+		ns.HUNTER_RANGE_HELPER_WIDTH = value
+		if ns.UpdateHunterRangeHelperVisual then
+			ns.UpdateHunterRangeHelperVisual()
+		end
+	end)
+
+	hunterRapidFireSlider:SetScript("OnValueChanged", function(self, value)
+		value = math.floor(value + 0.5)
+		SyncSliderDisplay(self, value)
+		SuperSwingTimerDB.hunterRapidFireBarHeight = value
+		ns.HUNTER_RAPID_FIRE_BAR_HEIGHT = value
+	end)
+
+	warriorShieldBlockSlider:SetScript("OnValueChanged", function(self, value)
+		value = math.floor(value + 0.5)
+		SyncSliderDisplay(self, value)
+		SuperSwingTimerDB.warriorShieldBlockBarHeight = value
+		ns.WARRIOR_SHIELD_BLOCK_BAR_HEIGHT = value
+	end)
+
+	druidPowerShiftSlider:SetScript("OnValueChanged", function(self, value)
+		value = math.floor(value + 0.5)
+		SyncSliderDisplay(self, value)
+		SuperSwingTimerDB.druidPowerShiftBarHeight = value
+		ns.DRUID_POWER_SHIFT_BAR_HEIGHT = value
+	end)
+
+	druidEnergyTickSlider:SetScript("OnValueChanged", function(self, value)
+		value = math.floor(value + 0.5)
+		SyncSliderDisplay(self, value)
+		SuperSwingTimerDB.druidEnergyTickBarWidth = value
+		ns.DRUID_ENERGY_TICK_BAR_WIDTH = value
+	end)
+
+	rogueAdrenalineRushSlider:SetScript("OnValueChanged", function(self, value)
+		value = math.floor(value + 0.5)
+		SyncSliderDisplay(self, value)
+		SuperSwingTimerDB.rogueAdrenalineRushBarHeight = value
+		ns.ROGUE_ADRENALINE_RUSH_BAR_HEIGHT = value
 	end)
 
 	sparkWidthSlider:SetScript("OnValueChanged", function(self, value)
@@ -2667,6 +3303,9 @@ local function CreatePanel()
 		if showRangedRow and showRangedRow.refresh then
 			showRangedRow.refresh()
 		end
+		if showHunterRangeHelperRow and showHunterRangeHelperRow.refresh then
+			showHunterRangeHelperRow.refresh()
+		end
 		if showEnemyRow and showEnemyRow.refresh then
 			showEnemyRow.refresh()
 		end
@@ -2696,6 +3335,15 @@ local function CreatePanel()
 
 	f.widthSlider = widthSlider
 	f.heightSlider = heightSlider
+	f.hunterCastBarHeightSlider = hunterCastBarHeightSlider
+	f.rogueSndBarHeightSlider = rogueSndBarHeightSlider
+	f.rogueEnergyTickSlider = rogueEnergyTickSlider
+	f.hunterRangeHelperWidthSlider = hunterRangeHelperWidthSlider
+	f.hunterRapidFireSlider = hunterRapidFireSlider
+	f.warriorShieldBlockSlider = warriorShieldBlockSlider
+	f.druidPowerShiftSlider = druidPowerShiftSlider
+	f.druidEnergyTickSlider = druidEnergyTickSlider
+	f.rogueAdrenalineRushSlider = rogueAdrenalineRushSlider
 	f.barTextureRow = barTextureRow
 	f.barLayerRow = barLayerRow
 	f.rangedTextureRow = rangedTextureRow
@@ -2731,6 +3379,7 @@ local function CreatePanel()
 	f.showMHRow = showMHRow
 	f.showOHRow = showOHRow
 	f.showRangedRow = showRangedRow
+	f.showHunterRangeHelperRow = showHunterRangeHelperRow
 	f.showEnemyRow = showEnemyRow
 	f.showWeaveRow = showWeaveRow
 	f.showRogueAssistRow = showRogueAssistRow
@@ -2739,6 +3388,22 @@ local function CreatePanel()
 	f.useClassColorsRow = useClassColorsRow
 	f.weaveFamilyRows = weaveFamilyRows
 	f.colorRows = colorRowsSection
+
+	-- Wrap ns.OnUpdate to animate bars during Test Bars preview.
+	-- Runs once per frame, chaining through the existing class-mod updates.
+	if not ns._testBarsWrapped then
+		local origOnUpdate = ns.OnUpdate
+		ns.OnUpdate = function(elapsed)
+			if ns.barTestActive then
+				AnimateTestBars()
+			end
+			if origOnUpdate then
+				origOnUpdate(elapsed)
+			end
+		end
+		ns._testBarsWrapped = true
+	end
+
 	return f
 end
 
@@ -2775,6 +3440,15 @@ function ns.ToggleConfig()
 		-- Refresh slider values from DB before showing
 		panel.widthSlider:SetValue(SuperSwingTimerDB.barWidth or ns.DB_DEFAULTS.barWidth)
 		panel.heightSlider:SetValue(SuperSwingTimerDB.barHeight or ns.DB_DEFAULTS.barHeight)
+		panel.hunterCastBarHeightSlider:SetValue(SuperSwingTimerDB.hunterCastBarHeight or ns.DB_DEFAULTS.hunterCastBarHeight or 10)
+		panel.rogueSndBarHeightSlider:SetValue(SuperSwingTimerDB.rogueSliceAndDiceBarHeight or ns.DB_DEFAULTS.rogueSliceAndDiceBarHeight or 4)
+		panel.rogueEnergyTickSlider:SetValue(SuperSwingTimerDB.rogueEnergyTickBarWidth or ns.DB_DEFAULTS.rogueEnergyTickBarWidth or 4)
+		panel.hunterRangeHelperWidthSlider:SetValue(SuperSwingTimerDB.hunterRangeHelperWidth or ns.DB_DEFAULTS.hunterRangeHelperWidth or 7)
+		panel.hunterRapidFireSlider:SetValue(SuperSwingTimerDB.hunterRapidFireBarHeight or ns.DB_DEFAULTS.hunterRapidFireBarHeight or 4)
+		panel.warriorShieldBlockSlider:SetValue(SuperSwingTimerDB.warriorShieldBlockBarHeight or ns.DB_DEFAULTS.warriorShieldBlockBarHeight or 4)
+		panel.druidPowerShiftSlider:SetValue(SuperSwingTimerDB.druidPowerShiftBarHeight or ns.DB_DEFAULTS.druidPowerShiftBarHeight or 4)
+		panel.druidEnergyTickSlider:SetValue(SuperSwingTimerDB.druidEnergyTickBarWidth or ns.DB_DEFAULTS.druidEnergyTickBarWidth or 4)
+		panel.rogueAdrenalineRushSlider:SetValue(SuperSwingTimerDB.rogueAdrenalineRushBarHeight or ns.DB_DEFAULTS.rogueAdrenalineRushBarHeight or 4)
 		if panel.barTextureRow and panel.barTextureRow.refresh then
 			panel.barTextureRow.refresh()
 		end
@@ -2862,6 +3536,9 @@ function ns.ToggleConfig()
 		if panel.showRangedRow and panel.showRangedRow.refresh then
 			panel.showRangedRow.refresh()
 		end
+		if panel.showHunterRangeHelperRow and panel.showHunterRangeHelperRow.refresh then
+			panel.showHunterRangeHelperRow.refresh()
+		end
 		if panel.showEnemyRow and panel.showEnemyRow.refresh then
 			panel.showEnemyRow.refresh()
 		end
@@ -2936,6 +3613,15 @@ function ns.ResetConfigDefaults()
 	}
 	SuperSwingTimerDB.barWidth                   = ns.DB_DEFAULTS.barWidth
 	SuperSwingTimerDB.barHeight                  = ns.DB_DEFAULTS.barHeight
+	SuperSwingTimerDB.hunterCastBarHeight        = ns.DB_DEFAULTS.hunterCastBarHeight
+	SuperSwingTimerDB.rogueSliceAndDiceBarHeight = ns.DB_DEFAULTS.rogueSliceAndDiceBarHeight
+	SuperSwingTimerDB.rogueEnergyTickBarWidth   = ns.DB_DEFAULTS.rogueEnergyTickBarWidth
+	SuperSwingTimerDB.warriorShieldBlockBarHeight = ns.DB_DEFAULTS.warriorShieldBlockBarHeight
+	SuperSwingTimerDB.hunterRangeHelperWidth     = ns.DB_DEFAULTS.hunterRangeHelperWidth
+	SuperSwingTimerDB.hunterRapidFireBarHeight   = ns.DB_DEFAULTS.hunterRapidFireBarHeight
+	SuperSwingTimerDB.druidPowerShiftBarHeight   = ns.DB_DEFAULTS.druidPowerShiftBarHeight
+	SuperSwingTimerDB.druidEnergyTickBarWidth    = ns.DB_DEFAULTS.druidEnergyTickBarWidth
+	SuperSwingTimerDB.rogueAdrenalineRushBarHeight = ns.DB_DEFAULTS.rogueAdrenalineRushBarHeight
 	SuperSwingTimerDB.barTexture                 = ns.DB_DEFAULTS.barTexture
 	SuperSwingTimerDB.barTextureLayer            = ns.DB_DEFAULTS.barTextureLayer
 	SuperSwingTimerDB.rangedBarTexture           = ns.DB_DEFAULTS.rangedBarTexture
@@ -2980,6 +3666,7 @@ function ns.ResetConfigDefaults()
 	SuperSwingTimerDB.showMH                     = ns.DB_DEFAULTS.showMH
 	SuperSwingTimerDB.showOH                     = ns.DB_DEFAULTS.showOH
 	SuperSwingTimerDB.showRanged                 = ns.DB_DEFAULTS.showRanged
+	SuperSwingTimerDB.showHunterRangeHelper      = ns.DB_DEFAULTS.showHunterRangeHelper
 	SuperSwingTimerDB.showEnemy                  = ns.DB_DEFAULTS.showEnemy
 	SuperSwingTimerDB.showRogueSinisterAssist    = ns.DB_DEFAULTS.showRogueSinisterAssist
 	SuperSwingTimerDB.showRogueEnergyTick        = ns.DB_DEFAULTS.showRogueEnergyTick
@@ -2999,6 +3686,15 @@ function ns.ResetConfigDefaults()
 	end
 	SuperSwingTimerDB.preClassColors             = nil
 	SuperSwingTimerDB.preClassSparkColor         = nil
+	ns.HUNTER_CAST_BAR_HEIGHT = ns.DB_DEFAULTS.hunterCastBarHeight
+	ns.ROGUE_SLICE_AND_DICE_BAR_HEIGHT = ns.DB_DEFAULTS.rogueSliceAndDiceBarHeight
+	ns.ROGUE_ENERGY_TICK_BAR_WIDTH = ns.DB_DEFAULTS.rogueEnergyTickBarWidth
+	ns.WARRIOR_SHIELD_BLOCK_BAR_HEIGHT = ns.DB_DEFAULTS.warriorShieldBlockBarHeight
+	ns.HUNTER_RANGE_HELPER_WIDTH = ns.DB_DEFAULTS.hunterRangeHelperWidth
+	ns.HUNTER_RAPID_FIRE_BAR_HEIGHT = ns.DB_DEFAULTS.hunterRapidFireBarHeight
+	ns.DRUID_POWER_SHIFT_BAR_HEIGHT = ns.DB_DEFAULTS.druidPowerShiftBarHeight
+	ns.DRUID_ENERGY_TICK_BAR_WIDTH = ns.DB_DEFAULTS.druidEnergyTickBarWidth
+	ns.ROGUE_ADRENALINE_RUSH_BAR_HEIGHT = ns.DB_DEFAULTS.rogueAdrenalineRushBarHeight
 	ns.ApplyBarSize(ns.DB_DEFAULTS.barWidth, ns.DB_DEFAULTS.barHeight)
 	ns.ApplyBarTexture(ns.DB_DEFAULTS.barTexture, ns.DB_DEFAULTS.barTextureLayer)
 	ns.ApplyRangedBarTexture(ns.DB_DEFAULTS.rangedBarTexture, ns.DB_DEFAULTS.barTextureLayer)
@@ -3101,6 +3797,9 @@ function ns.ResetConfigDefaults()
 	end
 	if panel and panel.showRangedRow and panel.showRangedRow.refresh then
 		panel.showRangedRow.refresh()
+	end
+	if panel and panel.showHunterRangeHelperRow and panel.showHunterRangeHelperRow.refresh then
+		panel.showHunterRangeHelperRow.refresh()
 	end
 	if panel and panel.showEnemyRow and panel.showEnemyRow.refresh then
 		panel.showEnemyRow.refresh()

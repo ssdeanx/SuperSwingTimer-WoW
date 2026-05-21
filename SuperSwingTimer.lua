@@ -19,7 +19,7 @@ local function GetCurrentTime()
 	return GetTime()
 end
 
-local LATENCY_REFRESH_INTERVAL = 0.10
+local LATENCY_REFRESH_INTERVAL = 0.05
 local nextLatencyRefreshAt = 0
 
 -- ============================================================
@@ -43,6 +43,7 @@ ns.playerClass         = nil
 ns.classConfig         = nil
 ns.druidFormChangeTime = nil
 ns.playerInCombat      = false
+ns.hunterAutoRepeatActive = false
 
 -- ============================================================
 -- SavedVariables migration
@@ -78,18 +79,28 @@ local function MigrateDB()
 	end
 
 	-- Fresh install
-	if not SuperSwingTimerDB then
+		if not SuperSwingTimerDB then
 		SuperSwingTimerDB = {
-			version                    = 32,
+			version                    = ns.DB_DEFAULTS.version or 43,
 			showMH                     = ns.DB_DEFAULTS.showMH,
 			showOH                     = ns.DB_DEFAULTS.showOH,
 			showRanged                 = ns.DB_DEFAULTS.showRanged,
+			showHunterRangeHelper      = ns.DB_DEFAULTS.showHunterRangeHelper,
 			showEnemy                  = ns.DB_DEFAULTS.showEnemy,
 			showRogueSinisterAssist    = ns.DB_DEFAULTS.showRogueSinisterAssist,
 			showRogueEnergyTick        = ns.DB_DEFAULTS.showRogueEnergyTick,
 			showRogueComboPoints       = ns.DB_DEFAULTS.showRogueComboPoints,
 			showRogueSliceAndDice      = ns.DB_DEFAULTS.showRogueSliceAndDice,
 			showWeaveAssist            = ns.DB_DEFAULTS.showWeaveAssist,
+			showPaladinSealColor       = ns.DB_DEFAULTS.showPaladinSealColor,
+			showPaladinSealLabel       = ns.DB_DEFAULTS.showPaladinSealLabel,
+			showPaladinJudgementMarker = ns.DB_DEFAULTS.showPaladinJudgementMarker,
+			showPaladinTwistFlash      = ns.DB_DEFAULTS.showPaladinTwistFlash,
+			showWarriorRageBar         = ns.DB_DEFAULTS.showWarriorRageBar,
+			showWarriorRageProtection  = ns.DB_DEFAULTS.showWarriorRageProtection,
+			showDruidFormColors        = ns.DB_DEFAULTS.showDruidFormColors,
+			showDruidPowerShiftBar     = ns.DB_DEFAULTS.showDruidPowerShiftBar,
+			showDruidEnergyTickBar     = ns.DB_DEFAULTS.showDruidEnergyTickBar,
 			useClassColors             = ns.DB_DEFAULTS.useClassColors,
 			indicatorBlendMode         = ns.DB_DEFAULTS.indicatorBlendMode,
 			weaveSpellFamilies         = {
@@ -101,6 +112,15 @@ local function MigrateDB()
 			},
 			barWidth                   = ns.DB_DEFAULTS.barWidth,
 			barHeight                  = ns.DB_DEFAULTS.barHeight,
+			hunterCastBarHeight        = ns.DB_DEFAULTS.hunterCastBarHeight,
+			rogueSliceAndDiceBarHeight = ns.DB_DEFAULTS.rogueSliceAndDiceBarHeight,
+			rogueEnergyTickBarWidth    = ns.DB_DEFAULTS.rogueEnergyTickBarWidth,
+			warriorShieldBlockBarHeight = ns.DB_DEFAULTS.warriorShieldBlockBarHeight,
+			hunterRangeHelperWidth     = ns.DB_DEFAULTS.hunterRangeHelperWidth,
+			hunterRapidFireBarHeight   = ns.DB_DEFAULTS.hunterRapidFireBarHeight,
+			druidPowerShiftBarHeight   = ns.DB_DEFAULTS.druidPowerShiftBarHeight,
+			druidEnergyTickBarWidth    = ns.DB_DEFAULTS.druidEnergyTickBarWidth,
+			rogueAdrenalineRushBarHeight = ns.DB_DEFAULTS.rogueAdrenalineRushBarHeight,
 			barTexture                 = ns.DB_DEFAULTS.barTexture,
 			barTextureLayer            = ns.DB_DEFAULTS.barTextureLayer,
 			rangedBarTexture           = ns.DB_DEFAULTS.rangedBarTexture,
@@ -166,12 +186,34 @@ local function MigrateDB()
 	SuperSwingTimerDB.showMH             = (SuperSwingTimerDB.showMH ~= false)
 	SuperSwingTimerDB.showOH             = (SuperSwingTimerDB.showOH ~= false)
 	SuperSwingTimerDB.showRanged         = (SuperSwingTimerDB.showRanged ~= false)
+	SuperSwingTimerDB.showHunterRangeHelper = (SuperSwingTimerDB.showHunterRangeHelper ~= false)
 	SuperSwingTimerDB.showEnemy          = (SuperSwingTimerDB.showEnemy ~= false)
 	SuperSwingTimerDB.showRogueSinisterAssist = (SuperSwingTimerDB.showRogueSinisterAssist ~= false)
 	SuperSwingTimerDB.showRogueEnergyTick = (SuperSwingTimerDB.showRogueEnergyTick ~= false)
 	SuperSwingTimerDB.showRogueComboPoints = (SuperSwingTimerDB.showRogueComboPoints ~= false)
 	SuperSwingTimerDB.showRogueSliceAndDice = (SuperSwingTimerDB.showRogueSliceAndDice ~= false)
 	SuperSwingTimerDB.showWeaveAssist    = (SuperSwingTimerDB.showWeaveAssist ~= false)
+	SuperSwingTimerDB.showPaladinSealColor       = (SuperSwingTimerDB.showPaladinSealColor ~= false)
+	SuperSwingTimerDB.showPaladinSealLabel       = (SuperSwingTimerDB.showPaladinSealLabel ~= false)
+	SuperSwingTimerDB.showPaladinJudgementMarker = (SuperSwingTimerDB.showPaladinJudgementMarker ~= false)
+	SuperSwingTimerDB.showPaladinTwistFlash      = (SuperSwingTimerDB.showPaladinTwistFlash ~= false)
+	SuperSwingTimerDB.showWarriorRageBar         = (SuperSwingTimerDB.showWarriorRageBar ~= false)
+	SuperSwingTimerDB.showDruidFormColors        = (SuperSwingTimerDB.showDruidFormColors ~= false)
+	SuperSwingTimerDB.showWarriorShieldBlockBar  = (SuperSwingTimerDB.showWarriorShieldBlockBar ~= false)
+	-- Phase 1 toggle defaults
+	SuperSwingTimerDB.showSwingFlash            = (SuperSwingTimerDB.showSwingFlash ~= false)
+	SuperSwingTimerDB.showGcdTicker             = (SuperSwingTimerDB.showGcdTicker ~= false)
+	SuperSwingTimerDB.showDruidRageDim          = (SuperSwingTimerDB.showDruidRageDim ~= false)
+	SuperSwingTimerDB.showDruidPowerShiftBar     = (SuperSwingTimerDB.showDruidPowerShiftBar ~= false)
+	SuperSwingTimerDB.showDruidEnergyTickBar     = (SuperSwingTimerDB.showDruidEnergyTickBar ~= false)
+	SuperSwingTimerDB.showRogueEnergyCountdown  = (SuperSwingTimerDB.showRogueEnergyCountdown ~= false)
+	-- Phase 2 toggle defaults
+	SuperSwingTimerDB.showHunterRapidFireBar     = (SuperSwingTimerDB.showHunterRapidFireBar ~= false)
+	SuperSwingTimerDB.showWarriorFlurryCounter   = (SuperSwingTimerDB.showWarriorFlurryCounter ~= false)
+	SuperSwingTimerDB.showRogueAdrenalineRushBar = (SuperSwingTimerDB.showRogueAdrenalineRushBar ~= false)
+	SuperSwingTimerDB.showDruidOmenGlow          = (SuperSwingTimerDB.showDruidOmenGlow ~= false)
+	SuperSwingTimerDB.showShamanWindfuryIcd      = (SuperSwingTimerDB.showShamanWindfuryIcd ~= false)
+	SuperSwingTimerDB.showDruidRavageCue         = (SuperSwingTimerDB.showDruidRavageCue ~= false)
 	-- useClassColors strictly defaults to false unless explicitly true in the DB
 	if SuperSwingTimerDB.useClassColors == nil then
 		SuperSwingTimerDB.useClassColors = false
@@ -581,17 +623,191 @@ local function MigrateDB()
 		}
 		SuperSwingTimerDB.version = 32
 	end
+
+	-- v32 -> v33: add Hunter vertical range-helper defaults and colors.
+	if (SuperSwingTimerDB.version or 0) < 33 then
+		SuperSwingTimerDB.showHunterRangeHelper = (SuperSwingTimerDB.showHunterRangeHelper ~= false)
+		SuperSwingTimerDB.colors = SuperSwingTimerDB.colors or {}
+		for _, colorKey in ipairs({ "hunterRangeMelee", "hunterRangeSweetSpot", "hunterRangeRanged", "hunterRangeOutOfRange" }) do
+			if not SuperSwingTimerDB.colors[colorKey] then
+				local def = ns.DB_DEFAULTS.colors[colorKey]
+				SuperSwingTimerDB.colors[colorKey] = { r = def.r, g = def.g, b = def.b, a = def.a }
+			end
+		end
+		SuperSwingTimerDB.version = 33
+	end
+
+	-- v33 -> v34: Paladin seal twist color from opaque black to transparent red
+	if (SuperSwingTimerDB.version or 0) < 34 then
+		SuperSwingTimerDB.colors = SuperSwingTimerDB.colors or {}
+		local sealTwist = SuperSwingTimerDB.colors.sealTwist
+		local isLegacyBlack = sealTwist
+			and math.abs((sealTwist.r or 0) - 0) < 0.001
+			and math.abs((sealTwist.g or 0) - 0) < 0.001
+			and math.abs((sealTwist.b or 0) - 0) < 0.001
+			and math.abs((sealTwist.a or 1) - 1) < 0.001
+		if not sealTwist or isLegacyBlack then
+			SuperSwingTimerDB.colors.sealTwist = { r = 1, g = 0, b = 0, a = 0.35 }
+		end
+		SuperSwingTimerDB.version = 34
+	end
+
+	-- v34 -> v35: add per-seal color defaults for seal-based MH bar tinting
+	if (SuperSwingTimerDB.version or 0) < 35 then
+		SuperSwingTimerDB.colors = SuperSwingTimerDB.colors or {}
+		for familyKey, defaultColor in pairs(ns.PALADIN_SEAL_COLORS or {}) do
+			local colorKey = "sealColor" .. familyKey
+			if not SuperSwingTimerDB.colors[colorKey] then
+				SuperSwingTimerDB.colors[colorKey] = {
+					r = defaultColor.r,
+					g = defaultColor.g,
+					b = defaultColor.b,
+					a = defaultColor.a,
+				}
+			end
+		end
+	SuperSwingTimerDB.version = 35
+	end
+
+	if (SuperSwingTimerDB.version or 0) < 36 then
+		SuperSwingTimerDB.showWarriorRageBar = ns.DB_DEFAULTS and ns.DB_DEFAULTS.showWarriorRageBar
+		if SuperSwingTimerDB.showWarriorRageBar == nil then
+			SuperSwingTimerDB.showWarriorRageBar = true
+		end
+		SuperSwingTimerDB.colors = SuperSwingTimerDB.colors or {}
+		if not SuperSwingTimerDB.colors.warriorRageBarColor then
+			local default = ns.DB_DEFAULTS and ns.DB_DEFAULTS.colors and ns.DB_DEFAULTS.colors.warriorRageBarColor
+			SuperSwingTimerDB.colors.warriorRageBarColor = default or { r = 0.80, g = 0.20, b = 0.10, a = 0.85 }
+		end
+		SuperSwingTimerDB.version = 36
+	end
+
+	-- v36 -> v37: add druid form colors defaults + form color swatches.
+	if (SuperSwingTimerDB.version or 0) < 37 then
+		SuperSwingTimerDB.showDruidFormColors = true
+		SuperSwingTimerDB.colors = SuperSwingTimerDB.colors or {}
+		if not SuperSwingTimerDB.colors.druidFormBear then
+			SuperSwingTimerDB.colors.druidFormBear = { r = 0.80, g = 0.15, b = 0.10, a = 1.0 }
+		end
+		if not SuperSwingTimerDB.colors.druidFormCat then
+			SuperSwingTimerDB.colors.druidFormCat = { r = 0.90, g = 0.70, b = 0.10, a = 1.0 }
+		end
+		if not SuperSwingTimerDB.colors.druidFormMoonkin then
+			SuperSwingTimerDB.colors.druidFormMoonkin = { r = 0.30, g = 0.55, b = 0.90, a = 1.0 }
+		end
+		SuperSwingTimerDB.version = 37
+	end
+
+	-- v37 -> v38: add warrior Protection spec-hide toggle.
+	if (SuperSwingTimerDB.version or 0) < 38 then
+		if SuperSwingTimerDB.showWarriorRageProtection == nil then
+			SuperSwingTimerDB.showWarriorRageProtection = false
+		end
+		SuperSwingTimerDB.version = 38
+	end
+
+	-- v38 -> v39: Phase 1 quick win toggles + color defaults
+	if (SuperSwingTimerDB.version or 0) < 39 then
+		if SuperSwingTimerDB.showSwingFlash == nil then SuperSwingTimerDB.showSwingFlash = true end
+		if SuperSwingTimerDB.showGcdTicker == nil then SuperSwingTimerDB.showGcdTicker = true end
+		if SuperSwingTimerDB.showDruidRageDim == nil then SuperSwingTimerDB.showDruidRageDim = true end
+		if SuperSwingTimerDB.showRogueEnergyCountdown == nil then SuperSwingTimerDB.showRogueEnergyCountdown = true end
+		SuperSwingTimerDB.colors = SuperSwingTimerDB.colors or {}
+		if not SuperSwingTimerDB.colors.gcdTickerColor then
+			SuperSwingTimerDB.colors.gcdTickerColor = ns.DB_DEFAULTS and ns.DB_DEFAULTS.colors and ns.DB_DEFAULTS.colors.gcdTickerColor or { r = 0.30, g = 0.70, b = 1.00, a = 0.85 }
+		end
+		SuperSwingTimerDB.version = 39
+	end
+
+	-- v39 -> v40: Phase 2 class-specific defaults
+	if (SuperSwingTimerDB.version or 0) < 40 then
+		if SuperSwingTimerDB.showHunterRapidFireBar == nil then SuperSwingTimerDB.showHunterRapidFireBar = true end
+		if SuperSwingTimerDB.showWarriorFlurryCounter == nil then SuperSwingTimerDB.showWarriorFlurryCounter = true end
+		if SuperSwingTimerDB.showRogueAdrenalineRushBar == nil then SuperSwingTimerDB.showRogueAdrenalineRushBar = true end
+		if SuperSwingTimerDB.showDruidOmenGlow == nil then SuperSwingTimerDB.showDruidOmenGlow = true end
+		if SuperSwingTimerDB.showShamanWindfuryIcd == nil then SuperSwingTimerDB.showShamanWindfuryIcd = true end
+		if SuperSwingTimerDB.showWarriorShieldBlockBar == nil then SuperSwingTimerDB.showWarriorShieldBlockBar = true end
+		if SuperSwingTimerDB.showDruidRavageCue == nil then SuperSwingTimerDB.showDruidRavageCue = true end
+		SuperSwingTimerDB.colors = SuperSwingTimerDB.colors or {}
+		local colorDefaults = ns.DB_DEFAULTS and ns.DB_DEFAULTS.colors or {}
+		for _, key in ipairs({ "rapidFireBar", "flurryCounter", "adrenalineRushBar", "omenGlow", "windfuryIcd" }) do
+			if not SuperSwingTimerDB.colors[key] and colorDefaults[key] then
+				SuperSwingTimerDB.colors[key] = { r = colorDefaults[key].r, g = colorDefaults[key].g, b = colorDefaults[key].b, a = colorDefaults[key].a }
+			end
+		end
+		SuperSwingTimerDB.version = 40
+	end
+
+	-- v40 -> v41: Shield Block duration bar + Ravage opener cue defaults
+	if (SuperSwingTimerDB.version or 0) < 41 then
+		SuperSwingTimerDB.colors = SuperSwingTimerDB.colors or {}
+		local colorDefaults = ns.DB_DEFAULTS and ns.DB_DEFAULTS.colors or {}
+		for _, key in ipairs({ "shieldBlockBar", "ravageCue" }) do
+			if not SuperSwingTimerDB.colors[key] and colorDefaults[key] then
+				SuperSwingTimerDB.colors[key] = { r = colorDefaults[key].r, g = colorDefaults[key].g, b = colorDefaults[key].b, a = colorDefaults[key].a }
+			end
+		end
+		SuperSwingTimerDB.version = 41
+	end
+
+	-- v41 -> v42: independent hunterCastBarHeight sizing
+	if (SuperSwingTimerDB.version or 0) < 42 then
+		if SuperSwingTimerDB.hunterCastBarHeight == nil then
+			SuperSwingTimerDB.hunterCastBarHeight = ns.DB_DEFAULTS.hunterCastBarHeight or 10
+		end
+		SuperSwingTimerDB.version = 42
+	end
+
+	-- v42 -> v43: per-class bar heights
+	if (SuperSwingTimerDB.version or 0) < 43 then
+		if SuperSwingTimerDB.rogueSliceAndDiceBarHeight == nil then
+			SuperSwingTimerDB.rogueSliceAndDiceBarHeight = ns.DB_DEFAULTS.rogueSliceAndDiceBarHeight or 4
+		end
+		if SuperSwingTimerDB.rogueEnergyTickBarWidth == nil then
+			SuperSwingTimerDB.rogueEnergyTickBarWidth = ns.DB_DEFAULTS.rogueEnergyTickBarWidth or 4
+		end
+		if SuperSwingTimerDB.warriorShieldBlockBarHeight == nil then
+			SuperSwingTimerDB.warriorShieldBlockBarHeight = ns.DB_DEFAULTS.warriorShieldBlockBarHeight or 4
+		end
+		if SuperSwingTimerDB.hunterRangeHelperWidth == nil then
+			SuperSwingTimerDB.hunterRangeHelperWidth = ns.DB_DEFAULTS.hunterRangeHelperWidth or 7
+		end
+		if SuperSwingTimerDB.hunterRapidFireBarHeight == nil then
+			SuperSwingTimerDB.hunterRapidFireBarHeight = ns.DB_DEFAULTS.hunterRapidFireBarHeight or 4
+		end
+		if SuperSwingTimerDB.druidPowerShiftBarHeight == nil then
+			SuperSwingTimerDB.druidPowerShiftBarHeight = ns.DB_DEFAULTS.druidPowerShiftBarHeight or 4
+		end
+		if SuperSwingTimerDB.druidEnergyTickBarWidth == nil then
+			SuperSwingTimerDB.druidEnergyTickBarWidth = ns.DB_DEFAULTS.druidEnergyTickBarWidth or 4
+		end
+		if SuperSwingTimerDB.rogueAdrenalineRushBarHeight == nil then
+			SuperSwingTimerDB.rogueAdrenalineRushBarHeight = ns.DB_DEFAULTS.rogueAdrenalineRushBarHeight or 4
+		end
+		SuperSwingTimerDB.version = 43
+	end
 end
 
 -- ============================================================
 -- Initialization
 -- ============================================================
+local RegisterSlashCommands
+
 local function OnAddonLoaded()
 	MigrateDB()
 
 	-- Apply DB dimensions to runtime constants
 	ns.BAR_WIDTH   = SuperSwingTimerDB.barWidth or ns.DB_DEFAULTS.barWidth
 	ns.BAR_HEIGHT  = SuperSwingTimerDB.barHeight or ns.DB_DEFAULTS.barHeight
+	ns.HUNTER_CAST_BAR_HEIGHT = SuperSwingTimerDB.hunterCastBarHeight or ns.HUNTER_CAST_BAR_HEIGHT or ns.DB_DEFAULTS.hunterCastBarHeight or 10
+	ns.ROGUE_SLICE_AND_DICE_BAR_HEIGHT = SuperSwingTimerDB.rogueSliceAndDiceBarHeight or ns.ROGUE_SLICE_AND_DICE_BAR_HEIGHT or ns.DB_DEFAULTS.rogueSliceAndDiceBarHeight or 4
+	ns.ROGUE_ENERGY_TICK_BAR_WIDTH = SuperSwingTimerDB.rogueEnergyTickBarWidth or ns.ROGUE_ENERGY_TICK_BAR_WIDTH or ns.DB_DEFAULTS.rogueEnergyTickBarWidth or 4
+	ns.WARRIOR_SHIELD_BLOCK_BAR_HEIGHT = SuperSwingTimerDB.warriorShieldBlockBarHeight or ns.WARRIOR_SHIELD_BLOCK_BAR_HEIGHT or ns.DB_DEFAULTS.warriorShieldBlockBarHeight or 4
+	ns.HUNTER_RANGE_HELPER_WIDTH = SuperSwingTimerDB.hunterRangeHelperWidth or ns.HUNTER_RANGE_HELPER_WIDTH or ns.DB_DEFAULTS.hunterRangeHelperWidth or 7
+	ns.HUNTER_RAPID_FIRE_BAR_HEIGHT = SuperSwingTimerDB.hunterRapidFireBarHeight or ns.HUNTER_RAPID_FIRE_BAR_HEIGHT or ns.DB_DEFAULTS.hunterRapidFireBarHeight or 4
+	ns.DRUID_POWER_SHIFT_BAR_HEIGHT = SuperSwingTimerDB.druidPowerShiftBarHeight or ns.DRUID_POWER_SHIFT_BAR_HEIGHT or ns.DB_DEFAULTS.druidPowerShiftBarHeight or 4
+	ns.DRUID_ENERGY_TICK_BAR_WIDTH = SuperSwingTimerDB.druidEnergyTickBarWidth or ns.DRUID_ENERGY_TICK_BAR_WIDTH or ns.DB_DEFAULTS.druidEnergyTickBarWidth or 4
+	ns.ROGUE_ADRENALINE_RUSH_BAR_HEIGHT = SuperSwingTimerDB.rogueAdrenalineRushBarHeight or ns.ROGUE_ADRENALINE_RUSH_BAR_HEIGHT or ns.DB_DEFAULTS.rogueAdrenalineRushBarHeight or 4
 
 	-- Detect class once
 	local _, class = UnitClass("player")
@@ -615,7 +831,10 @@ local function OnAddonLoaded()
 	-- Create config panel (hidden)
 	ns.InitConfig()
 
-	-- Slash commands
+	RegisterSlashCommands()
+end
+
+RegisterSlashCommands = function()
 	SLASH_SUPERSWINGTIMER1 = "/sst"
 	SLASH_SUPERSWINGTIMER2 = "/super"
 	SLASH_SUPERSWINGTIMER3 = "/superswingtimer"
@@ -623,16 +842,25 @@ local function OnAddonLoaded()
 	SlashCmdList["SUPERSWINGTIMER"] = function(msg)
 		msg = strtrim(msg or ""):lower()
 		if msg == "reset" then
-			ns.ResetConfigDefaults()
-			print("|cff00ccffSuper Swing Timer:|r Settings reset to defaults.")
+			local ok, err = pcall(ns.ResetConfigDefaults)
+			if ok then
+				print("|cff00ccffSuper Swing Timer:|r Settings reset to defaults.")
+			else
+				print("|cff00ccffSuper Swing Timer:|r Could not reset settings: " .. tostring(err))
+			end
 		elseif msg == "help" then
 			print("|cff00ccffSuper Swing Timer:|r /sst, /super, or /superswingtimer - open config panel")
 			print("|cff00ccffSuper Swing Timer:|r /sst reset - restore default settings")
 		else
-			ns.ToggleConfig()
+			local ok, err = pcall(ns.ToggleConfig)
+			if not ok then
+				print("|cff00ccffSuper Swing Timer:|r Could not open config: " .. tostring(err))
+			end
 		end
 	end
 end
+
+RegisterSlashCommands()
 
 -- ============================================================
 -- Event frame
@@ -766,6 +994,9 @@ frame:SetScript("OnEvent", function(self, event, ...)
 			ns.HandleWeavingSpellcast(event, ...)
 		end
 	elseif event == "UNIT_SPELLCAST_DELAYED" then
+		if ns.HandleSpellcastDelayed then
+			ns.HandleSpellcastDelayed(...)
+		end
 		if ns.playerClass == "SHAMAN" and ns.HandleWeavingSpellcast then
 			ns.HandleWeavingSpellcast(event, ...)
 		end
@@ -787,6 +1018,9 @@ frame:SetScript("OnEvent", function(self, event, ...)
 		if ns.RefreshEnemyTarget then
 			ns.RefreshEnemyTarget()
 		end
+		if ns.playerClass == "DRUID" and ns.UpdateDruidRavageCue then
+			ns.UpdateDruidRavageCue(0, true)
+		end
 		if ((ns.playerInCombat == true) or (InCombatLockdown and InCombatLockdown())) and ns.ApplyVisibility then
 			ns.ApplyVisibility()
 		end
@@ -802,6 +1036,12 @@ frame:SetScript("OnEvent", function(self, event, ...)
 		local unit = ...
 		if unit == "player" then
 			ns.SanityCheckTimers()
+			if ns.playerClass == "WARRIOR" and ns.UpdateWarriorShieldBlockBar then
+				ns.UpdateWarriorShieldBlockBar(0, true)
+			end
+			if ns.playerClass == "DRUID" and ns.UpdateDruidRavageCue then
+				ns.UpdateDruidRavageCue(0, true)
+			end
 			if ns.playerClass == "ROGUE" and ns.HandleRogueSliceAndDiceAura then
 				ns.HandleRogueSliceAndDiceAura(unit)
 			end
@@ -810,6 +1050,8 @@ frame:SetScript("OnEvent", function(self, event, ...)
 		local unit, powerType = ...
 		if ns.playerClass == "ROGUE" and unit == "player" and ns.HandleRogueEnergyPowerUpdate and (powerType == nil or powerType == "ENERGY") then
 			ns.HandleRogueEnergyPowerUpdate(unit, powerType)
+		elseif ns.playerClass == "DRUID" and unit == "player" and ns.HandleDruidEnergyPowerUpdate and (powerType == nil or powerType == "ENERGY") then
+			ns.HandleDruidEnergyPowerUpdate(unit, powerType)
 		end
 	elseif event == "UNIT_RANGEDDAMAGE" then
 		local unit = ...
@@ -818,11 +1060,20 @@ frame:SetScript("OnEvent", function(self, event, ...)
 		end
 	elseif event == "SPELL_UPDATE_COOLDOWN" then
 		if ns.playerClass == "HUNTER" and ns.GetAutoShotCooldown then
+			if ns.IsHunterRangedPinnedByMovement and ns.IsHunterRangedPinnedByMovement() then
+				if ns.UpdateCastZoneVisual then
+					ns.UpdateCastZoneVisual()
+				end
+				return
+			end
+			local autoRepeatActive = ns.IsHunterAutoRepeatActive and ns.IsHunterAutoRepeatActive() or (ns.hunterAutoRepeatActive == true)
+			ns.hunterAutoRepeatActive = autoRepeatActive
 			local _, autoShotDuration = ns.GetAutoShotCooldown()
-			if autoShotDuration and autoShotDuration > 0 then
+			local rangedTimerActive = ns.timers.ranged and ns.timers.ranged.state == "swinging"
+			if autoShotDuration and autoShotDuration > 0 and (autoRepeatActive or rangedTimerActive) then
 				if ns.timers.ranged and ns.timers.ranged.state == "swinging" then
 					ns.SyncRangedTimerSpeed(nil, true)
-				else
+				elseif autoRepeatActive then
 					ns.StartRangedSwing()
 				end
 				if ns.ApplyVisibility then
@@ -834,17 +1085,26 @@ frame:SetScript("OnEvent", function(self, event, ...)
 		ns.UpdateOHBar()
 		ns.SanityCheckTimers()
 	elseif event == "PLAYER_EQUIPMENT_CHANGED" then
+		local slot = ...
 		ns.UpdateOHBar()
 		ns.SanityCheckTimers(true)
+		if ns.playerClass == "PALADIN" and slot == 18 and ns.HandlePaladinLibramEquipmentChanged then
+			ns.HandlePaladinLibramEquipmentChanged(slot)
+		end
 	elseif event == "PLAYER_ENTERING_WORLD" then
 		local isInitialLogin, isReloadingUi = ...
 		ns.playerInCombat = false
 		ns.OnPlayerEnteringWorld(isInitialLogin, isReloadingUi)
+		if ns.playerClass == "HUNTER" and ns.IsHunterAutoRepeatActive then
+			ns.hunterAutoRepeatActive = ns.IsHunterAutoRepeatActive()
+		end
 		if ns.RefreshEnemyTarget then
 			ns.RefreshEnemyTarget()
 		end
 		if ns.playerClass == "ROGUE" and ns.HandleRogueEnergyPowerUpdate then
 			ns.HandleRogueEnergyPowerUpdate("player", "ENERGY")
+		elseif ns.playerClass == "DRUID" and ns.HandleDruidEnergyPowerUpdate then
+			ns.HandleDruidEnergyPowerUpdate("player", "ENERGY")
 		end
 		if ns.ClearWeavePreview then
 			ns.ClearWeavePreview()
@@ -856,6 +1116,7 @@ frame:SetScript("OnEvent", function(self, event, ...)
 	elseif event == "START_AUTOREPEAT_SPELL" then
 		-- Hunter starts auto-shooting
 		if ns.playerClass == "HUNTER" then
+			ns.hunterAutoRepeatActive = true
 			if ns.timers.ranged and ns.timers.ranged.state ~= "swinging" then
 				ns.StartRangedSwing()
 			end
@@ -866,7 +1127,12 @@ frame:SetScript("OnEvent", function(self, event, ...)
 			end
 		end
 	elseif event == "STOP_AUTOREPEAT_SPELL" then
-		ns.ResetTimer("ranged")
+		if ns.playerClass == "HUNTER" then
+			ns.hunterAutoRepeatActive = ns.IsHunterAutoRepeatActive and ns.IsHunterAutoRepeatActive(false) or false
+			if ns.UpdateCastZoneVisual then
+				ns.UpdateCastZoneVisual()
+			end
+		end
 		if ns.ApplyVisibility then
 			ns.ApplyVisibility()
 		elseif ns.rangedBar then
@@ -875,9 +1141,21 @@ frame:SetScript("OnEvent", function(self, event, ...)
 	elseif event == "PLAYER_REGEN_DISABLED" then
 		ns.playerInCombat = true
 		ns.ShowBars()
+		if ns.playerClass == "WARRIOR" then
+			if ns.UpdateWarriorRageBar then
+				ns.UpdateWarriorRageBar()
+			end
+			if ns.UpdateWarriorShieldBlockBar then
+				ns.UpdateWarriorShieldBlockBar(0, true)
+			end
+		end
 		ns.StartSanityTicker()
 	elseif event == "PLAYER_REGEN_ENABLED" then
 		ns.playerInCombat = false
+		if ns.playerClass == "WARRIOR" and ns.UpdateWarriorRageBar then
+			ns.UpdateWarriorRageBar()
+		end
+		ns.hunterAutoRepeatActive = false
 		ns.StopSanityTicker()
 		ns.HideBars()
 		if ns.ClearPendingMeleeQueueState then
@@ -887,9 +1165,6 @@ frame:SetScript("OnEvent", function(self, event, ...)
 		ns.ResetTimer("oh")
 		ns.ResetTimer("ranged")
 		ns.ResetTimer("enemy")
-		if ns.ClearHunterCastState then
-			ns.ClearHunterCastState()
-		end
 		ns.lastStoppedMovingAt = nil
 		ns.extraAttackPending = 0
 		if ns.ClearWeavePreview then

@@ -20,10 +20,12 @@ This document stores the API facts we should rely on while building the `/sst` U
 - `GetSpellCooldown(75)` / `GetSpellCooldown("Auto Shot")` for the active Auto Shot cooldown when the client exposes it.
 - `UnitRangedDamage()` for ranged weapon speed; the first return value is the ranged speed, and it reflects ranged haste rather than melee haste.
 - `START_AUTOREPEAT_SPELL` and `STOP_AUTOREPEAT_SPELL` are the auto-shot mode toggles and carry no payload on the current Classic/TBC API.
+- `C_Spell.IsAutoRepeatSpell(75)` / `C_Spell.IsAutoRepeatSpell("Auto Shot")` is the current Blizzard spell-API path for confirming whether Auto Shot is still actively auto-repeating, which is safer than trusting transient stop events by themselves.
+- `IsMounted()` is available on Classic/TBC clients and should override any lingering Hunter auto-repeat state while the player is mounted.
 - `SPELL_UPDATE_COOLDOWN` is a reactive start/resync signal for Auto Shot because it fires when the internal Auto Shot cooldown begins, not when that cooldown finishes; it is useful as a secondary ranged sync hint, but it is not the authoritative `shot landed / can move again` marker.
 - `UnitCastingInfo()` can still expose hunter casts by localized spell name when a stable spell ID is missing, so Auto Shot / Multi-Shot detection should keep the name fallback path alive.
 - Hidden hunter cast-bar helpers should anchor to the same end-of-cycle stop-to-fire window as the ranged red/green zone without rewriting the authoritative ranged swing anchor.
-- Authoritative MH/OH/ranged timers should stay on the raw `GetTimePreciseSec()` / `GetTime()` clock; cached latency belongs in safe-window math (hunter stop-to-fire, weave clip math), not in the stored swing timestamps themselves.
+- Authoritative MH/OH/ranged timers should stay on the addon's `GetTime()`-aligned precise clock (`GetTimePreciseSec()` + one-time offset, with `GetTime()` fallback); cached latency belongs in safe-window math (hunter stop-to-fire, weave clip math), not in the stored swing timestamps themselves.
 
 ## Enemy target timing inputs
 

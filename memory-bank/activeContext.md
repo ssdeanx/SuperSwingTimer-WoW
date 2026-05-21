@@ -1,4 +1,70 @@
+## Active Context Update (2026-05-20 - v0.0.8 bugfix release FINAL)
+
+- Fixed the line-71 crash in `SuperSwingTimer_ClassMods.lua`: a bare `local updateInterval = 0.016` before `ns` existed killed the entire file for every non-hunter class.
+- Fixed Paladin seal twist zone layering: seal textures were routing through the Shaman weave marker system; now use `SetDrawLayer("OVERLAY", 0)` directly.
+- Fixed the missing `end` in `UpdateShamanisticRageBadge()` that caused LSP cascade errors.
+- Fixed the Shaman OnUpdate chain: `prevOnUpdate(elapsed)` was an undefined global. Captured `ns.OnUpdate` directly and added bootstrap call.
+- Fixed `end` indentation at lines 239–241 and OnUpdate body indentation inside `SetupEnhShaman()`.
+- Fixed `strtrim` undefined in UI.lua: added `local strtrim = rawget(_G, "strtrim")` at import block.
+- Tuned latency refresh: `LATENCY_REFRESH_INTERVAL` 5.0s → 0.05s with `RefreshLatencyCache()` in `HandleSpellcastDelayed`.
+- Consolidated CHANGELOG, AGENTS, and memory-bank docs under v0.0.8.
+- Updated ROADMAP.md with Phase 8 completed, corrected Phase 0/Phase 1 to unchecked (still v0.0.9 target), added Phase 9 (LSP Health), Phase 10 (Testing/Automation), Phase 11 (Integration/Ecosystem). Updated execution strategy and effort summary.
+
+## Active Context Update (2026-05-20 - final pass: every class helper bar wired in `/sst`)
+
+- Every buff-duration and helper bar across all 6 classes now has both a show/hide toggle and an adjustable height/width slider in the `/sst` config panel:
+  - **Warrior**: Shield Block Height slider + toggle (existing)
+  - **Hunter**: Rapid Fire Height slider + Range Helper Width slider + toggles (this session)
+  - **Rogue**: SnD Height + Energy Tick Width + Adrenaline Rush Height sliders + toggles (this session)
+  - **Druid**: Power Shift Height + Energy Tick Width sliders + Power Shift/Energy Tick visibility toggles (this session)
+- New DB keys this session: `rogueSliceAndDiceBarHeight`, `rogueEnergyTickBarWidth`, `warriorShieldBlockBarHeight`, `hunterRangeHelperWidth`, `hunterRapidFireBarHeight`, `druidPowerShiftBarHeight`, `druidEnergyTickBarWidth`, `rogueAdrenalineRushBarHeight`, `showDruidPowerShiftBar`, `showDruidEnergyTickBar`.
+- DB migration v43→v44 for the bar-size keys.
+- Updated README class-support tables, CHANGELOG, and memory-bank docs.
+
+## Active Context Update (2026-05-19 - roadmap closure and completion state)
+
+- Closed out the active roadmap phases in `ROADMAP.md`: Phase 6 is now fully checked off, Phase 7 is checked off, and the only remaining broad idea was moved into an explicit archived / future wishlist section instead of leaving an active phase half-open.
+- Refreshed `README.md` and `CHANGELOG.md` so the repository now reads as final-prep / feature-complete, with shipped tank/class-polish features separated from archived wishlist material.
+
 # Active Context
+
+## Active Context Update (2026-05-19 - tank utility and class polish start)
+
+- Implemented the first Phase 6 slice: Warrior now has a real Shield Block duration bar above the MH stack, and Druid now has an amber Ravage opener cue that only shows when Cat Form Ravage is actually usable on the current target.
+- Added the supporting SavedVariables defaults, migration/version bump, config toggles, color swatches, event refresh hooks, and UI on-update wiring, then updated `ROADMAP.md`, `README.md`, and `CHANGELOG.md` so the docs match the current runtime state.
+
+## Active Context Update (2026-05-19 - phase 5 final polish and validation)
+
+- Finished the Phase 5 final-polish pass: replaced the fragile spellcast-success wrapper pattern with an explicit hook registration path, removed the remaining shadowed/unused Lua locals in ClassMods and Config, collapsed the duplicate UI GCD/flash helper definitions, tightened the swing-start fallback so it prefers the last known timer speed before the generic 2.0 fallback, and confirmed the full workspace now passes project-wide diagnostics with zero reported errors.
+- Marked the Rogue Combo Points roadmap item as already wired in Quick Controls and updated the roadmap to reflect the resolved state.
+
+## Active Context Update (2026-05-19 - hunter cast API and latency slice polish)
+
+- Tightened the Hunter cast path again in `SuperSwingTimer_Constants.lua`, `SuperSwingTimer_State.lua`, and `SuperSwingTimer_UI.lua`: live Hunter cast detection now goes through a Classic-safe `UnitCastingInfo()` spell-name-first helper instead of assuming a modern spellID return, the Hunter spellcast start/succeed/delayed paths preserve recovered Hunter spell tokens more safely when event payloads are incomplete, and the dedicated Steady Shot / Aimed Shot bar now paints a trailing latency slice that scales with cached latency and the current cast duration.
+
+## Active Context Update (2026-05-19 - hunter state hardening review follow-up)
+
+- Closed the follow-up hunter review findings in `SuperSwingTimer_State.lua`, `SuperSwingTimer_UI.lua`, `SuperSwingTimer.lua`, and `SuperSwingTimer_ClassMods.lua`: queued Raptor now only affects MH-bar visibility instead of counting as full melee-active state for ranged suppression, hidden stored hunter-cast state now expires cleanly, `STOP_AUTOREPEAT_SPELL` can force a false fallback when no authoritative spell-state query exists, and the localized Raptor name is cached once inside Hunter setup.
+- Re-ran a focused review subagent after those fixes and it reported no remaining concrete hunter issues in those reviewed areas.
+
+## Active Context Update (2026-05-19 - hunter clip-safety and class-color label polish)
+
+- Added one more Hunter precision pass in `SuperSwingTimer.lua`, `SuperSwingTimer_State.lua`, and `SuperSwingTimer_UI.lua`: `UNIT_SPELLCAST_DELAYED` now updates stored Hunter cast timing, and the dedicated hunter cast bar now tints real Steady Shot / Aimed Shot casts by whether they still finish before the next Auto Shot so clip risk is easier to read live.
+- Added a shared bar-label styling path in `SuperSwingTimer_UI.lua`: when `Use Class Colors` is enabled, MH/OH/ranged and the hunter cast bar now show black text with a white outlined backing instead of the old plain white label, improving readability on bright class-colored fills.
+
+## Active Context Update (2026-05-19 - hunter melee handoff and steady cast-bar pass)
+
+- Tightened the Hunter melee/ranged handoff in `SuperSwingTimer_UI.lua`, `SuperSwingTimer_State.lua`, and `SuperSwingTimer_ClassMods.lua`: the Hunter MH bar is now anchored to the ranged stack, only appears for a live MH swing or queued Raptor Strike, queued Raptor uses its own yellow next-attack tint, and the ranged bar is no longer allowed to stay stuck full red after the last ranged cycle expires while the hunter is committed to melee.
+- Expanded the dedicated hunter helper bar in `SuperSwingTimer_Constants.lua` and `SuperSwingTimer_UI.lua` so it still covers the hidden Auto Shot / Multi-Shot window but now also shows real Steady Shot and Aimed Shot cast progress from `UnitCastingInfo()` / stored cast state.
+
+## Active Context Update (2026-05-18 - hunter mount loop fix)
+
+- Tightened the Hunter Auto Shot polish again in `SuperSwingTimer_State.lua` and `SuperSwingTimer.lua`: mounted Hunters are now treated as not auto-repeating via `IsMounted()`, and cooldown resync is blocked while the ranged bar is pinned in the red moving window so mount / long-movement cases no longer make the ranged bar loop repeatedly until the player stops.
+
+## Active Context Update (2026-05-18 - hunter auto-repeat and quick-controls polish)
+
+- Polished the Hunter Auto Shot path in `SuperSwingTimer.lua`, `SuperSwingTimer_State.lua`, and `SuperSwingTimer_UI.lua`: transient `STOP_AUTOREPEAT_SPELL` events no longer hard-reset the ranged timer, cooldown-driven cycle starts now cross-check Blizzard's current auto-repeat spell state first, and the current cycle is allowed to finish cleanly so the red late window can stay visible instead of clunkily resetting while Auto Shot still fires.
+- Polished `/sst` copy/layout in `SuperSwingTimer_Config.lua`: the top Quick Controls area now has explicit `Visibility` and `Key Colors` column headers, a shorter clearer subtitle, and the Hunter red window swatch is labeled `Auto Shot Late` for more intuitive setup wording.
 
 ## Active Context Update (2026-05-18 - rogue helper cleanup follow-up)
 
@@ -338,9 +404,10 @@
 
 ## Current focus
 
-1. In-game validation for the hunter cast bar, warrior queue tinting, and the easier bar drag target.
-2. Any follow-up polish for the weave marker spacing, icon choice, or tooltip copy after client testing.
-3. Memory-bank persistence and production-ready planning notes.
+1. **v0.0.8 bugfix release is shipped** (2026-05-20) — all 7 fixes complete, LSP clean across all source files.
+2. **Next target: v0.0.9** — Phase 0 critical bugs (DB migration chain, nil specialization, OH base color) + Phase 1 quick wins (swing landing flash, GCD ticker, druid rage dimming, rogue energy tick countdown).
+3. **LSP Health (Phase 9)** — sustained zero-warning policy across all Lua files. No new undefined variables, no shadowed locals, no unclosed blocks.
+4. **In-game validation** — next session should test the crash fixes and paladin seal layer changes on a live Classic/TBC client.
 
 ## What we know right now
 
@@ -370,5 +437,7 @@
 
 ## Next steps
 
-- Keep the state engine lean by removing any leftover unused CLEU unpacking when it appears.
-- Preserve the SharedMedia dropdown, cast-spark behavior, and ranged-channel handling as the current working state.
+1. **v0.0.9 Phase 0**: Fix DB_DEFAULTS.version chain, showPaladinSeal* nil-safety, GetSpecialization() nil case, OH base color storage.
+2. **v0.0.9 Phase 1**: Swing landing flash, GCD ticker, druid rage dimming, rogue energy tick countdown.
+3. **In-game validation**: Test v0.0.8 fixes on a live Classic/TBC Anniversary client — confirm crash is gone, paladin seal zones render without shaman code, shamanistic rage badge initializes.
+4. **Phase 9 LSP health**: Maintain zero-warning policy; add `.luarc.json` diagnostic config if needed.
