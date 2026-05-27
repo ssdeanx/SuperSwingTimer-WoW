@@ -1,5 +1,12 @@
 # Active Context
 
+## Active Context Update (2026-05-27 - Enhancement Shaman Windfury crash + projected weave icon)
+
+- Fixed the Enhancement Shaman `UpdateWindfuryIcd()` runtime crash in `SuperSwingTimer_ClassMods.lua` by replacing the brittle raw `UnitBuff()` scan with the shared `GetHelpfulAuraData()` helper and explicit numeric spell-ID checks, which removes the `attempt to compare number with boolean` failure on current Classic/TBC helpful-aura payloads.
+- Replaced the broken self-rebuilding shaman update chain: `UpdateShamanisticRageBadge()` no longer reassigns `ns.OnUpdate` from inside itself. `SetupEnhShaman()` now installs one stable wrapper that refreshes weave visuals plus Flurry / Stormstrike / Shamanistic Rage badges each frame.
+- Updated the active shaman weave display so tracked casts such as Lightning Bolt and Chain Lightning temporarily swap the moving weave spark to the real spell icon and pin it to the projected landing point on the current main-hand swing instead of raw cast-progress, then restore/hide cleanly after the cast ends.
+- Re-ran targeted diagnostics on `SuperSwingTimer_ClassMods.lua` after the fix and confirmed the edited file is clean.
+
 ## Active Context Update (2026-05-20 - v0.0.9 Druid Streamlining & Shaman Weaving Fix)
 
 - Resolved the Shaman weaving cast-by threshold indicator alignment bug by switching triangle marker relative anchors from `"TOP"` / `"BOTTOM"` to `"TOPLEFT"` / `"BOTTOMLEFT"`. This offsets markers correctly from the left-zero boundary using the proportional MH bar width and current spellcast timing plus latency.

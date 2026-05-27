@@ -19,6 +19,7 @@ the shared base timer clock.
 - Accurate current-target enemy swing tracking using `PLAYER_TARGET_CHANGED`, `UnitGUID("target")`, `UnitAttackSpeed("target")`, and hostile target `SWING_DAMAGE` / `SWING_MISSED` combat-log events
 - Rogue MH timing help can expose a latency-adjusted red end-window on the main-hand bar so Sinister Strike can be pressed into the swing landing without changing the authoritative MH timer itself
 - Rogue buff help can expose a slim Slice and Dice duration bar above the main-hand frame so upkeep is readable without obscuring the core swing timer
+- Shaman weave help can keep the upper/lower breakpoint markers visible while also moving the active tracked spell icon to its projected landing point on the current main-hand swing, so players can see at a glance whether Lightning Bolt or Chain Lightning will land before MH
 - Visual red-zone clamping should not rewrite the authoritative ranged swing anchor, and the hunter hidden cast-window helper should stay aligned to that same end-of-cycle stop-to-fire window without changing the core ranged timing path
 - Hunter hidden cast-window helpers should use the same end-of-cycle window as the ranged red/green feedback and keep that window stable for one cycle once it becomes active.
 - Supports both Vanilla and TBC Classic spell IDs

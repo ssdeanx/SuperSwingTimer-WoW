@@ -1,5 +1,11 @@
 # Super Swing Timer Changelog
 
+## 0.0.10 - 2026-05-27
+
+- **Enhancement Shaman Windfury ICD crash fix**: `SuperSwingTimer_ClassMods.lua` no longer scans helpful buffs through the brittle raw `UnitBuff("player", i, "HELPFUL")` tuple path. The Windfury ICD tracker now uses the shared `GetHelpfulAuraData()` helper, guards spell-ID comparisons with explicit numeric checks, and reads the live main-hand swing anchor from `ns.timers.mh.lastSwing` on the addon's aligned clock instead of the nonexistent `ns.GetLastMhSwingTime()` symbol. This fixes the in-game `attempt to compare number with boolean` runtime error reported from `UpdateWindfuryIcd()`.
+- **Stable Shaman update chain**: `UpdateShamanisticRageBadge()` no longer rebuilds `ns.OnUpdate` from inside itself every refresh. Enhancement Shaman now installs one stable wrapper in `SetupEnhShaman()` that updates the weave visuals plus Flurry, Stormstrike, and Shamanistic Rage badges without recursive rewrapping.
+- **Projected-impact weave icon**: while actively casting tracked weave spells such as Lightning Bolt or Chain Lightning, the moving shaman weave spark now swaps to the actual spell icon and pins itself to the spell's projected landing point on the current MH swing rather than sliding by raw cast progress. When the cast stops, succeeds, fails, or is interrupted, the moving icon restores the configured weave spark texture and hides cleanly, while the static top/bottom breakpoint markers stay visible.
+
 ## 0.0.9 - 2026-05-22
 
 - **Paladin seal twist zone preview fix**: UpdateSealBreakpointLine (red twist zone + black reseal marker) and UpdateJudgementMarker (gold judgement CD line) now show during Test Bars preview by falling back to `UnitAttackSpeed("player")` or 2.0s when no swing timer is active — matching the Rogue Sinister Strike cue pattern exactly. Previously the zone and markers hard-returned when `timer.state ~= "swinging"`, hiding them during `/sst` preview and other non-combat states.

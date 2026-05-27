@@ -1,5 +1,13 @@
 # Progress
 
+## Progress Update (2026-05-27 - Enhancement Shaman urgent bugfix)
+
+- Fixed the reported Enhancement Shaman runtime error in `SuperSwingTimer_ClassMods.lua`: `UpdateWindfuryIcd()` now reads helpful auras through `GetHelpfulAuraData()`, only compares numeric spell IDs after a type guard, and uses `ns.timers.mh.lastSwing` / the aligned clock instead of the nonexistent `ns.GetLastMhSwingTime()` path.
+- Reworked the shaman frame-update chain so `UpdateShamanisticRageBadge()` no longer rebuilds `ns.OnUpdate` inside itself. `SetupEnhShaman()` now installs one stable wrapper that refreshes weave visuals and the three shaman badges together.
+- Changed the moving shaman weave spark so active tracked casts use the actual LB / CL / heal spell icon and sit at the projected landing point on the current MH swing, which makes the display answer “will this land before MH?” instead of just showing raw cast-progress.
+- Updated `README.md`, `docs/UI.md`, `docs/swingtimer.md`, `CHANGELOG.md`, and `SuperSwingTimer.toc` to document the new shaman behavior and the v0.0.10 bugfix line.
+- Targeted `get_errors` on `SuperSwingTimer_ClassMods.lua` is clean after the patch.
+
 ## Progress Update (2026-05-20 - v0.0.9 Druid Streamlining & Shaman Weaving Fix)
 
 - **Shaman weaving marker coordinate alignment**: Fixed coordinate offset bug by changing relative anchors of the triangle "cast-by" indicators from `"TOP"` / `"BOTTOM"` to `"TOPLEFT"` / `"BOTTOMLEFT"`. This properly references markers relative to the left margin, solving the issue where the markers shifted incorrectly on different width bars.

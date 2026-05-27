@@ -8,11 +8,10 @@ local UnitPower = rawget(_G, "UnitPower")
 local UnitExists = rawget(_G, "UnitExists")
 local UnitCanAttack = rawget(_G, "UnitCanAttack")
 local UnitIsDead = rawget(_G, "UnitIsDead")
+local UnitAttackSpeed = rawget(_G, "UnitAttackSpeed")
 local IsSpellInRange = rawget(_G, "IsSpellInRange")
-local IsUsableSpell = rawget(_G, "IsUsableSpell")
 local SpellHasRange = rawget(_G, "SpellHasRange")
 local CheckInteractDistance = rawget(_G, "CheckInteractDistance")
-local GetShapeshiftForm = rawget(_G, "GetShapeshiftForm")
 local InCombatLockdown = rawget(_G, "InCombatLockdown")
 local GetTimePreciseSec = rawget(_G, "GetTimePreciseSec")
 local GetTime = rawget(_G, "GetTime")
@@ -1291,6 +1290,28 @@ local function SetupEnhShaman()
 		end
 	end
 
+	local function ApplyWeaveSparkTexture(texture, iconTexture, fallbackTexture, width, height, alpha, color)
+		if not texture then
+			return
+		end
+
+		texture:SetWidth(width)
+		texture:SetHeight(height)
+		texture:SetAlpha(alpha)
+
+		if iconTexture then
+			texture:SetTexture(iconTexture)
+			texture:SetTexCoord(0.07, 0.93, 0.07, 0.93)
+			texture:SetBlendMode("BLEND")
+			texture:SetVertexColor(1, 1, 1, 1)
+		else
+			texture:SetTexture(fallbackTexture)
+			texture:SetTexCoord(0, 1, 0, 1)
+			texture:SetBlendMode(ns.GetIndicatorBlendMode and ns.GetIndicatorBlendMode() or "ADD")
+			texture:SetVertexColor(color.r, color.g, color.b, 1)
+		end
+	end
+
 	local function UpdateWeaveVisuals()
 		if not ns.weaveSpark or not ns.weaveTriangleTop or not ns.weaveTriangleBottom then
 			return
@@ -1332,33 +1353,43 @@ local function SetupEnhShaman()
 			markerPos = barWidth
 		end
 
-		local castTime = math.max(info.castTime or 0, 0)
-		local castRemaining = math.max(info.castRemaining or castTime, 0)
-		local castElapsed = math.max(0, castTime - castRemaining)
-		local sparkPos = castTime > 0 and ((castElapsed / castTime) * barWidth) or 0
-		if sparkPos < 0 then
-			sparkPos = 0
-		elseif sparkPos > (barWidth or sparkPos) then
-			sparkPos = barWidth
-		end
-
 		local color = info.color or { r = 0.7, g = 0.8, b = 1, a = 1 }
 		local iconTexture = info.iconTexture
 		local triangleGap = ns.GetWeaveTriangleGap and ns.GetWeaveTriangleGap() or 2
 		local triangleSize = ns.GetWeaveTriangleSize and ns.GetWeaveTriangleSize() or 14
 		local topFallbackTexture = ns.GetWeaveTriangleTopTexture and ns.GetWeaveTriangleTopTexture() or "Interface\\Buttons\\UI-ScrollBar-ScrollDownButton-Arrow"
 		local bottomFallbackTexture = ns.GetWeaveTriangleBottomTexture and ns.GetWeaveTriangleBottomTexture() or "Interface\\Buttons\\UI-ScrollBar-ScrollUpButton-Arrow"
+		local sparkFallbackTexture = ns.GetWeaveSparkTexture and ns.GetWeaveSparkTexture() or "Interface\\CastingBar\\UI-CastingBar-Spark"
 		local sparkWidth = ns.GetWeaveSparkWidth and ns.GetWeaveSparkWidth() or 14
 		local sparkHeight = ns.GetWeaveSparkHeight and ns.GetWeaveSparkHeight() or 30
 		local clampedSparkHeight = math.max(1, math.min(sparkHeight, (ns.mhBar and ns.mhBar:GetHeight()) or ns.BAR_HEIGHT or sparkHeight))
 		local sparkAlpha = ns.GetWeaveSparkAlpha and ns.GetWeaveSparkAlpha() or 0.95
 		local triangleAlpha = ns.GetWeaveTriangleAlpha and ns.GetWeaveTriangleAlpha() or 1
+		local sparkPos = 0
+		local sparkVisualWidth = sparkWidth
+		local sparkVisualHeight = clampedSparkHeight
+
+		if showSpark then
+			local now = GetCurrentTime()
+			local castRemaining = math.max(info.castRemaining or info.castTime or 0, 0)
+			local projectedImpactTime = now + castRemaining + math.max(info.latency or 0, 0)
+			sparkPos = ((projectedImpactTime - timer.lastSwing) / timer.duration) * barWidth
+			if iconTexture then
+				local iconSize = math.max(clampedSparkHeight, triangleSize)
+				sparkVisualWidth = iconSize
+				sparkVisualHeight = iconSize
+			end
+		end
+
+		if sparkPos < 0 then
+			sparkPos = 0
+		elseif sparkPos > (barWidth or sparkPos) then
+			sparkPos = barWidth
+		end
 
 		ns.weaveSpark:ClearAllPoints()
 		ns.weaveSpark:SetPoint("CENTER", barAnchor, "LEFT", sparkPos, 0)
-		ns.weaveSpark:SetWidth(sparkWidth)
-		ns.weaveSpark:SetHeight(clampedSparkHeight)
-		ns.weaveSpark:SetVertexColor(color.r, color.g, color.b, sparkAlpha)
+		ApplyWeaveSparkTexture(ns.weaveSpark, showSpark and iconTexture or nil, sparkFallbackTexture, sparkVisualWidth, sparkVisualHeight, sparkAlpha, color)
 		if showSpark then
 			ns.weaveSpark:Show()
 		else
@@ -1433,12 +1464,6 @@ local function SetupEnhShaman()
 		ns.weaveTriangleTop = weaveTriangleTop
 		ns.weaveTriangleBottom = weaveTriangleBottom
 		ns.weaveMarker = weaveSpark
-	end
-
-	local origOnUpdate = ns.OnUpdate or function() end
-	ns.OnUpdate = function(elapsed)
-		origOnUpdate(elapsed)
-		UpdateWeaveVisuals()
 	end
 
 	local function GetShamanFlurryStackCount()
@@ -1581,24 +1606,60 @@ local function SetupEnhShaman()
 		else
 			badge:Hide()
 		end
-
-		local prevOnUpdate = ns.OnUpdate
-		ns.OnUpdate = function(elapsed)
-			prevOnUpdate(elapsed)
-			UpdateShamanFlurryBadge()
-			UpdateShamanStormstrikeBadge()
-			UpdateShamanisticRageBadge()
-		end
 	end
-
-	-- Bootstrap: call once so the OnUpdate hook above gets wired up immediately
-	UpdateShamanisticRageBadge()
 
 	-- Phase 2: Shaman Windfury ICD tracker — 3s internal cooldown bar
 	local WINDFURY_BUFF_NAMES = { "Windfury Weapon", "Windfury" }
+	local WINDFURY_BUFF_NAME_LOOKUP = {}
+	for _, windfuryBuffName in ipairs(WINDFURY_BUFF_NAMES) do
+		WINDFURY_BUFF_NAME_LOOKUP[windfuryBuffName] = true
+	end
+	local WINDFURY_BUFF_SPELL_IDS = {
+		[8232] = true,
+		[8233] = true,
+		[8234] = true,
+		[8235] = true,
+		[16316] = true,
+		[16317] = true,
+		[25585] = true,
+		[33757] = true,
+	}
 	local WINDFURY_ICD = 3.0
 	local wfIcdBar = nil
 	local wfLastSwingTime = 0
+	local function PlayerHasWindfuryBuff()
+		for index = 1, 40 do
+			local auraName, _, _, auraSpellId = GetHelpfulAuraData("player", index)
+			if not auraName then
+				break
+			end
+
+			if WINDFURY_BUFF_NAME_LOOKUP[auraName] then
+				return true
+			end
+
+			if type(auraSpellId) == "number" and WINDFURY_BUFF_SPELL_IDS[auraSpellId] then
+				return true
+			end
+		end
+
+		return false
+	end
+
+	local function GetLastMainHandSwingTime()
+		local timer = ns.timers and ns.timers.mh
+		local liveLastSwing = timer and timer.lastSwing
+		if type(liveLastSwing) == "number" and liveLastSwing > 0 then
+			wfLastSwingTime = liveLastSwing
+		end
+
+		if type(wfLastSwingTime) == "number" and wfLastSwingTime > 0 then
+			return wfLastSwingTime
+		end
+
+		return nil
+	end
+
 	ns.UpdateWindfuryIcd = function()
 		if not ns.mhBar then return end
 		local db = SuperSwingTimerDB or ns.DB_DEFAULTS
@@ -1619,33 +1680,23 @@ local function SetupEnhShaman()
 			bg:SetColorTexture(0, 0, 0, 0.5)
 			bg:SetAllPoints(true)
 		end
-		-- Check for Windfury Weapon buff
-		local unitBuffFn = rawget(_G, "UnitBuff")
-		local hasWfBuff = false
-		if unitBuffFn then
-			local i = 1
-			while true do
-				local name, _, _, _, _, _, _, _, _, _, spellId = unitBuffFn("player", i, "HELPFUL")
-				if not name then break end
-				for _, wfName in ipairs(WINDFURY_BUFF_NAMES) do
-					if name == wfName or (spellId and (spellId >= 8232 and spellId <= 8235) or spellId == 16316 or spellId == 16317 or spellId == 25585 or spellId == 33757) then
-						hasWfBuff = true
-						break
-					end
-				end
-				if hasWfBuff then break end
-				i = i + 1
-			end
-		end
-		if not hasWfBuff then
+
+		wfIcdBar:SetHeight((ns.mhBar:GetHeight() or 15))
+
+		if not PlayerHasWindfuryBuff() then
 			wfIcdBar:Hide()
 			return
 		end
-		local now = GetTime()
-		local sinceLastSwing = now - (ns.GetLastMhSwingTime and ns.GetLastMhSwingTime() or wfLastSwingTime)
+
+		local lastSwingTime = GetLastMainHandSwingTime()
+		if not lastSwingTime then
+			wfIcdBar:Hide()
+			return
+		end
+
+		local now = GetCurrentTime()
+		local sinceLastSwing = math.max(now - lastSwingTime, 0)
 		local icdRemaining = math.max(WINDFURY_ICD - sinceLastSwing, 0)
-		-- Track last swing time from ns
-		wfLastSwingTime = ns.GetLastMhSwingTime and ns.GetLastMhSwingTime() or wfLastSwingTime
 		wfIcdBar:SetValue(icdRemaining)
 		if icdRemaining > 2.0 then
 			wfIcdBar:SetStatusBarColor(1, 0, 0, 0.85) -- just procced, red
@@ -1656,6 +1707,20 @@ local function SetupEnhShaman()
 		end
 		wfIcdBar:Show()
 	end
+
+	local previousOnUpdate = ns.OnUpdate or function() end
+	ns.OnUpdate = function(elapsed)
+		previousOnUpdate(elapsed)
+		UpdateWeaveVisuals()
+		UpdateShamanFlurryBadge()
+		UpdateShamanStormstrikeBadge()
+		UpdateShamanisticRageBadge()
+	end
+
+	UpdateWeaveVisuals()
+	UpdateShamanFlurryBadge()
+	UpdateShamanStormstrikeBadge()
+	UpdateShamanisticRageBadge()
 end
 
 local function SetupDruid()
@@ -2182,7 +2247,6 @@ local function SetupHunter()
 end
 
 local function SetupRogue()
-	local UnitAttackSpeed = rawget(_G, "UnitAttackSpeed")
 	local DEFAULT_ROGUE_QUEUE_WINDOW = 0.08
 	local ROGUE_QUEUE_INPUT_CUSHION = 0.03
 	local MAX_ROGUE_QUEUE_WINDOW = 0.22

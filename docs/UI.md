@@ -40,6 +40,7 @@ This document captures the UI direction for `/sst`.
 - Add weave-assist presentation options:
   - show / hide weave overlay
   - tiny upper / lower spell-icon marker pair that follows the spell-haste-adjusted safe swing point
+  - while actively casting a tracked shaman spell, swap the moving weave spark to that spell's icon and pin it to the projected landing point on the current MH swing instead of raw cast-progress, then restore the configured weave spark texture when the cast ends or is interrupted
   - marker size, gap, alpha, and layer controls, with compact spark defaults that stay bar-height aligned instead of becoming a full-height glow
   - color selection by spell family
   - per-family enable / disable toggles for Lightning Bolt, Chain Lightning, Healing Wave, Lesser Healing Wave, and Chain Heal
