@@ -11,7 +11,7 @@ Status: final-prep / feature-complete. The active roadmap phases are closed, and
 | Area | What it covers |
 | --- | --- |
 | Hunter | Auto Shot cooldown sync, a hunter-linked MH bar that only appears for real melee swings or queued Raptor Strike, a yellow Raptor queue tint, configurable movement-safe / late colors, Anniversary-safe auto-repeat state gating, Feign Death ranged reset handling, Readiness refresh handling for Rapid Fire, and a dedicated hunter bar that covers the hidden Auto Shot window plus real Steady Shot / Aimed Shot casts with clip-safety feedback (now accounts for the TBC 0.5s Steady Shot grace period for accurate safe/unsafe timing) and a live latency end slice |
-| Warrior | Heroic Strike and Cleave queue tints, Slam pause/extend timing, a Shield Block duration bar above the MH stack, an Execute-phase `EXEC` badge on the rage bar, and next-melee queue cancellation support |
+| Warrior | Heroic Strike and Cleave queue tints with yellow/green MH bar coloring, Slam pause/extend timing with a live Slam cast bar above the MH bar, a Shield Block duration bar above the MH stack with configurable height and color, an Execute-phase `EXEC` badge on the rage bar, and next-melee queue cancellation support |
 | Druid | Feral MH timing, form reset support, Maul queue tinting, Omen of Clarity glow, Ravage opener cue, a Power Shift duration bar, and an energy-tick timing bar |
 | Paladin | Aura-aware seal breakpoint logic with a proportional-width red twist zone (right-anchored, matching Rogue Sinister Strike pattern) for Seal of Command, Blood, and Martyr timing, plus a GCD-aware reseal marker |
 | Shaman | Lightning Bolt / Chain Lightning / Healing Wave / Lesser Healing Wave / Chain Heal weave markers with per-family toggles |

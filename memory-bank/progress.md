@@ -1,3 +1,13 @@
+# Progress
+
+## Progress Update (2026-05-20 - v0.0.9 Druid Streamlining & Shaman Weaving Fix)
+
+- **Shaman weaving marker coordinate alignment**: Fixed coordinate offset bug by changing relative anchors of the triangle "cast-by" indicators from `"TOP"` / `"BOTTOM"` to `"TOPLEFT"` / `"BOTTOMLEFT"`. This properly references markers relative to the left margin, solving the issue where the markers shifted incorrectly on different width bars.
+- **Excised bloated Druid indicators**: Successfully removed Rip / Mangle helper bars, Tiger's Fury badge, Faerie Fire left-side glow overlay, Omen of Clarity proc highlights, Cat Form Ravage opener glow cues, Bear Form rage-dimming, shapeshift form colors/labels, and extra form settings.
+- **Preserved Bear Form Maul yellow queue**: Retained `DRUID_MAUL_TINT` so the MH bar changes color when Maul is queued, matching combat expectations precisely.
+- **Config cleanup**: Removed retired configuration rows sequentially from `SuperSwingTimer_Config.lua` to maintain safe layout structure and avoid empty rows in the panel options.
+- **Code verification**: Confirmed zero syntax or runtime errors across all edited files, passing diagnostic checks cleanly.
+
 ## Progress Update (2026-05-20 - v0.0.8 bugfix release: crash, layering, LSP cascade, OnUpdate chain)
 
 - **Crash fix (ClassMods.lua line 71)**: Removed a bare `local updateInterval = 0.016` that sat before `ns` existed. When the file loaded, Lua executed it unconditionally, hit the nil `ns` global, and threw an error that silently killed the entire file — blocking all `Setup*()` functions. This is why warriors/druids/paladins/rogues/shamans had zero swing timers.
@@ -15,7 +25,7 @@
 - **All 8 helper bars** across 6 classes now have configurable size sliders and show/hide toggles in `/sst`. This session added:
 
   | Class | Bar | Size control | Toggle |
-  |-------|-----|-------------|--------|
+  | :--- | :--- | :--- | :--- |
   | Warrior | Shield Block | Height slider | ✅ existing |
   | Hunter | Rapid Fire | Height slider | ✅ existing |
   | Hunter | Range Helper | Width slider | ✅ existing |
@@ -34,8 +44,6 @@
 
 - Audited the roadmap against the verified runtime state and closed the remaining active phase gaps: `Prot warrior enemy-bar helpers` was marked complete because the shipped enemy swing bar already covers the tanking/kiting target-swing use-case, `Hunter / other-class polish` was moved into an archived / future wishlist section as a deliberately broad idea, and Phase 7 was marked complete.
 - Updated `README.md`, `CHANGELOG.md`, and the memory-bank notes so the repository now presents as final-prep / feature-complete instead of half-open.
-
-# Progress
 
 ## Progress Update (2026-05-19 - tank utility and class polish start)
 

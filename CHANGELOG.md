@@ -1,5 +1,15 @@
 # Super Swing Timer Changelog
 
+## 0.0.9 - 2026-05-22
+
+- **Paladin seal twist zone preview fix**: UpdateSealBreakpointLine (red twist zone + black reseal marker) and UpdateJudgementMarker (gold judgement CD line) now show during Test Bars preview by falling back to `UnitAttackSpeed("player")` or 2.0s when no swing timer is active — matching the Rogue Sinister Strike cue pattern exactly. Previously the zone and markers hard-returned when `timer.state ~= "swinging"`, hiding them during `/sst` preview and other non-combat states.
+- **Paladin seal zone UI wiring**: exported `ns.UpdatePaladinSealZone` and added refresh calls to `ApplyBarColors`, `ApplyBarWidth`, `ApplyVisibility`, and `ApplyMinimalMode` — matching the same 5-path approach the Rogue cue uses.
+- **Paladin twist families expanded**: added RIGHTEOUSNESS to `PALADIN_SEAL_TWIST_FAMILIES` per TBC research confirming you can twist from Seal of Righteousness → Command in the 0.4s window.
+- **Warrior Slam bar repositioned**: the Slam cast bar now sits above the MH bar instead of below, keeping it grouped with the Shield Block bar in the overhead helper area instead of sharing space with the rage bar stack.
+- **Warrior Shield Block bar live refresh**: exports to `ns.warriorShieldBlockBar` and reapplies texture, width, and color from the current config on every update call (not just at creation time). Config changes to texture, bar width, Shield Block height slider, and shield block color now take effect immediately without a reload.
+- **Warrior bar color wiring**: the warrior rage bar and Shield Block bar now refresh from `ApplyBarColors` so color swatch changes in `/sst` apply live.
+- **Warrior rage bar positioning**: confirmed the rage bar anchors below OH when dual-wielding (or below MH otherwise) with a 4px gap, placing it cleanly below the MH, OH, Slam, and Shield Block bar stack.
+
 ## 0.0.8 - 2026-05-20
 
 - **Every class helper bar now has `/sst` controls**: added configurable size sliders (height for horizontal bars, width for vertical bars) and show/hide visibility toggles for all 8 helper bars across 6 classes — Warrior Shield Block Height, Hunter Rapid Fire Height + Range Helper Width, Rogue SnD Height + Energy Tick Width + Adrenaline Rush Height, Druid Power Shift Height + Energy Tick Width, plus Druid Power Shift and Energy Tick visibility toggles. All wired through DB defaults, runtime apply, and config panel refresh.

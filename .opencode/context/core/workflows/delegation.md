@@ -100,8 +100,11 @@ Create `.tmp/context/{session-id}/bundle.md` with:
 ### Success criteria
 - [ ] {verifiable condition}
 
-### Out of scope
-- {what NOT to touch}
+### Out of scope (what NOT to touch)
+- {Prevents scope creep — be explicit}
+
+### Negative space (ruled out approaches)
+- {Approaches rejected and why — saves receiver from re-exploring dead ends}
 
 ## Constraints
 - {must follow project conventions}
@@ -133,16 +136,50 @@ Every delegated task MUST have a timeout:
 Every handoff between agents MUST follow this contract format.
 This prevents the cascade of errors from one agent to the next.
 
+**The handoff is where context disappears.** Multi-agent systems break at boundaries — the receiving agent doesn't see the reasoning, dead ends, or constraints. A structured contract prevents this.
+
+### What to pass vs what to skip
+
+| PASS to the receiving agent | SKIP (stays with sender) |
+|---|---|
+| **Goal** — why the work exists, one sentence | Orchestrator's internal reasoning chain |
+| **Current state** — files modified, decisions locked, what's true right now | Full exploration history and tool call logs |
+| **Success criteria** — Definition of Done, verifiable conditions | Intermediate dead-end attempts (summarize the key lesson only) |
+| **Prior decisions** — what was tried, what worked, what was rejected and WHY. This is the highest-value part. | Instructions for other subagents (causes cross-agent interference) |
+| **Negative space** — what was explicitly ruled out | Raw conversation transcript from sender's session |
+| **Next steps** — ordered, with known risks or open questions | Full failure logs from past attempts (distill to one line) |
+| **Failure policy** — retry, fallback, or escalate | Anything already captured in PRDs, ADRs, issues, or commits — reference by path/URL |
+
 ### 3.1 Handoff contract template
 
 ```markdown
 ## HANDOFF: {From Agent} → {To Agent}
+
+### Objective
+{Why this work exists — one sentence the receiver can repeat back}
 
 ### Deliverable
 {What the from-agent produced — file paths, data structures, interfaces}
 
 ### Contract
 {What the to-agent must receive — function signatures, expected inputs, output format}
+
+### Prior decisions
+- {What was tried, what worked, what was rejected and why}
+- {Highest-value section — without this the receiver re-derives everything}
+
+### Negative space (what was ruled out)
+- {Explicitly discarded approaches, dead ends, why}
+- {Saves the receiver from exploring the same dead ends}
+
+### Current state
+- {Files modified, decisions locked, tests passing/failing, open changes}
+
+### Next steps
+- {Ordered steps with known risks, what the receiver should do first}
+
+### Open questions
+{Questions that arose during from-agent's work — genuine blockers}
 
 ### Verification
 - [ ] From-agent: all success criteria met
@@ -151,11 +188,8 @@ This prevents the cascade of errors from one agent to the next.
 - [ ] Gate: tests pass on from-agent's output
 [Only if gate passes → proceed to to-agent]
 
-### Design decisions made
-{Any decisions the from-agent made that the to-agent needs to know}
-
-### Open questions
-{Questions that arose during from-agent's work}
+### References
+{Paths/URLs to PRDs, ADRs, issues — NOT re-stated here}
 ```
 
 ### 3.2 Handoff sequence patterns
@@ -167,6 +201,72 @@ This prevents the cascade of errors from one agent to the next.
 | **Fan-in** | A, B, C → D | D aggregates independent work from A/B/C |
 | **Pipeline** | A → B, B → C, C → D | Sequential pipeline with intermediate artifacts |
 | **Parallel** | A∥B∥C → D | Independent work, all consumed by D |
+
+### 3.3 Context Handoff Protocol (70% rule)
+
+Trigger a structured handoff **before** context capacity is exhausted — not when you're already out of room.
+
+```
+Context threshold       Behavior
+─────────────────────────────────────────────────────
+< 50%                   Continue working normally
+50-70%                  Start planning next handoff (what to include, what to omit)
+70% (TRIGGER)           Write handoff artifact NOW while there's room to think
+80%+                    STOP — you don't have room to write a good handoff
+```
+
+**Handoff trigger condition:** ≥70% context usage (estimated). At 80% you can't write a quality handoff — the artifact itself will be degraded.
+
+**Handoff file format:**
+```
+.tmp/context/{session-id}/handoff.md
+```
+
+**Resume protocol:**
+```
+1. New session reads the handoff file
+2. Confirms: objective + done + pending
+3. Asks ONE clarifying question if blockers exist
+4. Proceeds directly — never re-does completed steps
+```
+
+### 3.4 Mermaid-as-contract (visual workflow definitions)
+
+For complex multi-step delegations, include a Mermaid flowchart in the context bundle that defines the workflow visually. This gives the receiving agent a full decision tree before writing code.
+
+**When to use:**
+- Multi-agent pipelines with branching logic
+- Tasks with conditional paths (if X, do A; if Y, do B)
+- Any delegation that would benefit from a shared visual reference
+
+**Template:**
+```mermaid
+flowchart TD
+    START([Start]) --> AGENT_A[Agent A: Research]
+    AGENT_A --> DECIDE{Findings complete?}
+    DECIDE -->|Yes| AGENT_B[Agent B: Implement]
+    DECIDE -->|No| AGENT_A_RETRY[Agent A: Re-search]
+    AGENT_A_RETRY --> AGENT_A
+    AGENT_B --> AGENT_C[Agent C: Verify]
+    AGENT_C -->|Pass| FINISH([Done])
+    AGENT_C -->|Fail| AGENT_B
+
+    classDef startend fill:#2ecc71,stroke:#27ae60,color:#fff
+    classDef agent fill:#3498db,stroke:#2980b9,color:#fff
+    classDef decision fill:#f39c12,stroke:#e67e22,color:#fff
+    class START,FINISH startend
+    class AGENT_A,AGENT_B,AGENT_C agent
+    class DECIDE decision
+```
+
+**Mermaid conventions for delegation:**
+- `[Rectangle]` = agent action step
+- `{Diamond}` = decision point (always a question ending in `?`)
+- `([Stadium])` = start/end node
+- `|Yes|`/`|No|` / `|Pass|`/`|Fail|` = branch labels
+- `subgraph ... end` = logical grouping (parallel teams, phases)
+- Keep under 15 nodes — split into multiple diagrams if larger
+- Use `classDef` for semantic coloring (green=done, blue=agent, yellow=decision, red=error)
 
 ---
 
@@ -263,6 +363,30 @@ For complex multi-step features, use subagent roles:
 | **Implementer** | Writing code changes | `coder` or `build` |
 | **Verifier** | Checking output matches spec | `reviewer` or `oracle` |
 | **QA** | Running tests, verifying edge cases | `Tester` |
+
+### 6.3 Budget and depth limits
+
+Prevent runaway delegation with three layers of protection:
+
+**Layer 1 — Per-agent task budget:**
+```
+Research agent:     max 3 delegated subtasks per session
+Implement agent:    max 5 delegated subtasks per session
+Verifier agent:     max 2 delegated subtasks per session
+```
+
+**Layer 2 — Depth limit (delegation chain depth):**
+```
+Level 0:  Orchestrator (root session)
+Level 1:  First-level subagents
+Level 2:  Subagents-of-subagents
+MAX:      Level 2 — beyond this, do the work directly, don't delegate further
+```
+
+**Layer 3 — Hard enforcement:**
+- Budget exhaustion → deny further delegation, return error to caller
+- Depth exceeded → agent must complete subtask itself, cannot re-delegate
+- Circular delegation detection — track which agents have been visited; reject revisit
 
 ---
 
@@ -398,4 +522,4 @@ Create `.tmp/delegation-log/{session-id}.md` for each delegation session:
 
 ---
 
-**🔄 Sync hook:** If delegation patterns, context bundle structure, subagent routing, handoff contracts, coordination patterns, recovery strategies, or audit logging change, update this file. Master protocol → `standards/code.md`
+**🔄 Sync hook:** If delegation patterns, context bundle structure, subagent routing, handoff contracts, coordination patterns, recovery strategies, context handoff protocol (70% rule), Mermaid-as-contract templates, budget/depth limits, or audit logging change, update this file. Master protocol → `standards/code.md`

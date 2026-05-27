@@ -574,10 +574,12 @@ function ns.SyncRangedTimerSpeed(now, force)
 			local drift = math.abs((t.lastSwing or autoShotStart) - autoShotStart)
 			t.duration = autoShotDuration
 			t.speed = autoShotDuration
+			-- Always invalidate hidden cast window cache on speed change;
+			-- stale window bounds from old duration cause the hunter bar to miss its window
+			t.hiddenCastWindowStart = nil
+			t.hiddenCastWindowDuration = nil
 			if drift > 0.01 then
 				t.lastSwing = autoShotStart
-				t.hiddenCastWindowStart = nil
-				t.hiddenCastWindowDuration = nil
 			end
 		else
 			ns.RescaleTimer("ranged", autoShotDuration)
@@ -586,7 +588,11 @@ function ns.SyncRangedTimerSpeed(now, force)
 		return
 	end
 
-	local rangedSpeedValue = UnitRangedDamage("player")
+	-- On TBC Classic 2.5.5 (Legion-based client) UnitRangedDamage may return
+	-- min damage (not weapon speed). Prefer the cached t.speed which was last
+	-- set from GetSpellCooldown(75), and fall back to UnitRangedDamage only
+	-- when no cached speed exists.
+	local rangedSpeedValue = (t.speed and t.speed > 0) and t.speed or UnitRangedDamage("player")
 	if rangedSpeedValue and rangedSpeedValue > 0 then
 		ns.RescaleTimer("ranged", rangedSpeedValue)
 		t.hastePercent = currentRangedHaste
@@ -617,8 +623,9 @@ function ns.StartSwing(slot, _, startTime)
 			t.lastSwing = (autoShotStart and autoShotStart > 0) and autoShotStart or now
 			t.hastePercent = rangedHastePercent
 		else
-			local s = UnitRangedDamage("player")
-			speed = (s and s > 0) and s or ((t.speed and t.speed > 0) and t.speed or 2.0)
+			-- Prefer cached speed; UnitRangedDamage may return min damage on TBC Classic 2.5.5
+			local s = (t.speed and t.speed > 0) and t.speed or UnitRangedDamage("player")
+			speed = (s and s > 0) and s or 2.0
 			t.lastSwing = now
 			t.hastePercent = rangedHastePercent
 		end

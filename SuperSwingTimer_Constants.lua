@@ -299,10 +299,15 @@ ns.PALADIN_SEAL_FAMILIES = {
 
 ns.PALADIN_SEAL_LOOKUP = {}
 ns.PALADIN_SEAL_NAME_LOOKUP = {}
+-- Twist families identify which active seal should trigger the end-of-swing
+-- twist zone and reseal marker. You can twist FROM Command or Righteousness,
+-- and when Blood/Martyr is active you're mid-cycle and still need the zone
+-- to time the next Command → Blood resequence.
 ns.PALADIN_SEAL_TWIST_FAMILIES = {
-	COMMAND = true,
-	BLOOD = true,
-	MARTYR = true,
+	COMMAND = true,       -- twist to Blood/Martyr in 0.4s window
+	RIGHTEOUSNESS = true, -- twist to Command in 0.4s window
+	BLOOD = true,         -- mid-cycle: reseal Command at GCD, Blood at window
+	MARTYR = true,        -- mid-cycle: reseal at GCD, twist at window
 }
 
 -- PALADIN_JUDGEMENT_SPELLS: spell IDs for the Judgement ability.
@@ -489,9 +494,10 @@ addSpellNamesToLookup(ns.RESET_RANGED_SWING_SPELLS)
 
 -- Druid form aura IDs (trigger MH timer reset on apply)
 ns.DRUID_FORM_IDS = {
-	[768]  = "Cat",   -- Cat Form
-	[5487] = "Bear",  -- Bear Form
-	[9634] = "DireBear", -- Dire Bear Form
+	[768]   = "Cat",       -- Cat Form
+	[5487]  = "Bear",      -- Bear Form
+	[9634]  = "DireBear",  -- Dire Bear Form
+	[24858] = "Moonkin",   -- Moonkin Form (TBC)
 }
 
 -- Druid form bar colors (form ID -> color). Uses GetShapeshiftForm() return values.
@@ -581,6 +587,10 @@ ns.DB_DEFAULTS = {
 	showDruidRavageCue         = true,
 	showDruidPowerShiftBar     = true,
 	showDruidEnergyTickBar     = true,
+	showDruidTigerFuryBadge    = true,
+	showDruidFaerieFireBadge   = true,
+	showDruidMangleTimer       = true,
+	showDruidRipTracker        = true,
 	useClassColors             = false,
 	weaveSpellFamilies         = {
 
@@ -671,6 +681,9 @@ ns.DB_DEFAULTS = {
 		flurryCounter       = { r = 1.0, g = 0.75, b = 0.10, a = 1.0 },
 		adrenalineRushBar   = { r = 1.0, g = 0.40, b = 0.10, a = 0.85 },
 		omenGlow            = { r = 0.20, g = 1.0, b = 0.30, a = 0.80 },
+		druidEnergyTick     = { r = 1.0, g = 0.82, b = 0.18, a = 1.0 },
+		druidMangleTimer    = { r = 0.40, g = 0.20, b = 0.80, a = 0.90 },
+		druidRipTracker     = { r = 0.90, g = 0.10, b = 0.30, a = 0.90 },
 		windfuryIcd         = { r = 0.85, g = 0.45, b = 0.0, a = 0.80 },
 	},
 	positions                  = {

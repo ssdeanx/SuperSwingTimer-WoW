@@ -1,3 +1,13 @@
+# Active Context
+
+## Active Context Update (2026-05-20 - v0.0.9 Druid Streamlining & Shaman Weaving Fix)
+
+- Resolved the Shaman weaving cast-by threshold indicator alignment bug by switching triangle marker relative anchors from `"TOP"` / `"BOTTOM"` to `"TOPLEFT"` / `"BOTTOMLEFT"`. This offsets markers correctly from the left-zero boundary using the proportional MH bar width and current spellcast timing plus latency.
+- Completely streamlined the Feral Druid options by stripping out bloated, non-essential status rows and visual indicators (such as the Mangle debuff bar, Rip bleed bar, Omen of Clarity procs, Tiger's Fury badge, Faerie Fire left glow, shapeshift form colors/labels, and Bear rage-dimming).
+- Retained only the core swing timber status bars and the signature Bear Form Maul yellow queue overlay (`DRUID_MAUL_TINT`) to provide a high-frequency, minimal, high-refresh-rate utility for Druids.
+- Cleared out retired configuration controls sequentially inside `SuperSwingTimer_Config.lua` to maintain safe column limits and preserve subsection header collapses.
+- Verified that all edited code paths pass diagnostic checks end-to-end.
+
 ## Active Context Update (2026-05-20 - v0.0.8 bugfix release FINAL)
 
 - Fixed the line-71 crash in `SuperSwingTimer_ClassMods.lua`: a bare `local updateInterval = 0.016` before `ns` existed killed the entire file for every non-hunter class.
@@ -25,8 +35,6 @@
 
 - Closed out the active roadmap phases in `ROADMAP.md`: Phase 6 is now fully checked off, Phase 7 is checked off, and the only remaining broad idea was moved into an explicit archived / future wishlist section instead of leaving an active phase half-open.
 - Refreshed `README.md` and `CHANGELOG.md` so the repository now reads as final-prep / feature-complete, with shipped tank/class-polish features separated from archived wishlist material.
-
-# Active Context
 
 ## Active Context Update (2026-05-19 - tank utility and class polish start)
 

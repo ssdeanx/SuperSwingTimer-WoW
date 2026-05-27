@@ -786,6 +786,42 @@ local function MigrateDB()
 		end
 		SuperSwingTimerDB.version = 43
 	end
+
+	-- v43 -> v44: druid energy tick color swatch, TF/FF badge toggles
+	if (SuperSwingTimerDB.version or 0) < 44 then
+		SuperSwingTimerDB.colors = SuperSwingTimerDB.colors or {}
+		local colorDefaults = ns.DB_DEFAULTS and ns.DB_DEFAULTS.colors or {}
+		if not SuperSwingTimerDB.colors.druidEnergyTick and colorDefaults.druidEnergyTick then
+			SuperSwingTimerDB.colors.druidEnergyTick = {
+				r = colorDefaults.druidEnergyTick.r,
+				g = colorDefaults.druidEnergyTick.g,
+				b = colorDefaults.druidEnergyTick.b,
+				a = colorDefaults.druidEnergyTick.a,
+			}
+		end
+		if SuperSwingTimerDB.showDruidTigerFuryBadge == nil then SuperSwingTimerDB.showDruidTigerFuryBadge = true end
+		if SuperSwingTimerDB.showDruidFaerieFireBadge == nil then SuperSwingTimerDB.showDruidFaerieFireBadge = true end
+		SuperSwingTimerDB.version = 44
+	end
+
+	-- v44 -> v45: Druid Mangle debuff timer + Rip duration bar
+	if (SuperSwingTimerDB.version or 0) < 45 then
+		SuperSwingTimerDB.colors = SuperSwingTimerDB.colors or {}
+		local colorDefaults = ns.DB_DEFAULTS and ns.DB_DEFAULTS.colors or {}
+		for _, key in ipairs({ "druidMangleTimer", "druidRipTracker" }) do
+			if not SuperSwingTimerDB.colors[key] and colorDefaults[key] then
+				SuperSwingTimerDB.colors[key] = {
+					r = colorDefaults[key].r,
+					g = colorDefaults[key].g,
+					b = colorDefaults[key].b,
+					a = colorDefaults[key].a,
+				}
+			end
+		end
+		if SuperSwingTimerDB.showDruidMangleTimer == nil then SuperSwingTimerDB.showDruidMangleTimer = true end
+		if SuperSwingTimerDB.showDruidRipTracker == nil then SuperSwingTimerDB.showDruidRipTracker = true end
+		SuperSwingTimerDB.version = 45
+	end
 end
 
 -- ============================================================
@@ -1171,13 +1207,13 @@ frame:SetScript("OnEvent", function(self, event, ...)
 			ns.ClearWeavePreview()
 		end
 	elseif event == "UPDATE_SHAPESHIFT_FORM" then
-		-- Druid form label update handled via classmod callback
+		-- Druid form label update: fire for ALL forms, not just Caster.
+		-- CLEU also fires for form changes but UPDATE_SHAPESHIFT_FORM is more
+		-- reliable for immediate feedback. Pass the form index directly;
+		-- OnDruidFormChange handles both spell IDs (from CLEU) and form indices.
 		if ns.OnDruidFormChange then
-			-- Fire with current form; exact aura handled via CLEU
 			local form = GetShapeshiftForm and GetShapeshiftForm() or 0
-			if form == 0 then
-				ns.OnDruidFormChange(0)
-			end
+			ns.OnDruidFormChange(form)
 		end
 	end
 end)

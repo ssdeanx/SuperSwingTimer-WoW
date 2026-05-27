@@ -217,6 +217,7 @@ local function SetupRetPaladin()
 				local alpha = (ns.mhBarBaseColor and ns.mhBarBaseColor.a) or 1
 				ns.mhBar:SetStatusBarColor(sealColor.r, sealColor.g, sealColor.b, alpha)
 			end
+			ns.paladinLastSealColor = true
 			-- Update seal label on MH bar (controlled by its own toggle)
 			local showSealLabel = SuperSwingTimerDB and SuperSwingTimerDB.showPaladinSealLabel ~= false
 			if showSealLabel then
@@ -256,8 +257,13 @@ local function SetupRetPaladin()
 			return
 		end
 
+		-- Preview fallback matching Rogue Sinister Strike pattern:
+		-- show the zone during Test Bars even without an active swing timer.
+		local previewActive = ns.barTestActive == true
 		local timer = ns.timers and ns.timers.mh
-		if not timer or timer.state ~= "swinging" or not timer.duration or timer.duration <= 0 then
+		local activeSwing = timer and timer.state == "swinging" and timer.duration and timer.duration > 0
+
+		if not activeSwing and not previewActive then
 			sealZone:Hide()
 			if sealResealLine then
 				sealResealLine:Hide()
@@ -283,8 +289,23 @@ local function SetupRetPaladin()
 			return
 		end
 
-		local duration = timer.duration
-		if duration <= 0 then
+		-- Resolve duration and lastSwing — real timer when swinging, preview fallback when testing
+		local now = GetCurrentTime()
+		local duration
+		local lastSwing
+		if activeSwing then
+			duration = timer.duration
+			lastSwing = timer.lastSwing
+		else
+			local mainHandSpeed = type(UnitAttackSpeed) == "function" and UnitAttackSpeed("player") or nil
+			duration = (type(mainHandSpeed) == "number" and mainHandSpeed > 0) and mainHandSpeed
+			        or (timer and timer.duration and timer.duration > 0 and timer.duration)
+			        or 2.0
+			-- Simulate swing starting ~1s ago so the zone is positioned mid-swing
+			lastSwing = now - 1.0
+		end
+
+		if not duration or duration <= 0 then
 			sealZone:Hide()
 			if sealResealLine then
 				sealResealLine:Hide()
@@ -308,7 +329,6 @@ local function SetupRetPaladin()
 			return
 		end
 
-		local now = GetCurrentTime()
 		local gcdStart, gcdDuration
 		if GetSpellCooldown then
 			gcdStart, gcdDuration = GetSpellCooldown(GCD_SPELL_ID)
@@ -324,7 +344,7 @@ local function SetupRetPaladin()
 			return
 		end
 
-		local swingElapsed = math.max(0, now - (timer.lastSwing or now))
+		local swingElapsed = math.max(0, now - (lastSwing or now))
 		local resealTick = (swingElapsed + gcdRemaining) / duration
 		while resealTick > 1 do
 			resealTick = resealTick - 1
@@ -357,8 +377,12 @@ local function SetupRetPaladin()
 			return
 		end
 
+		-- Preview fallback matching the twist zone + Rogue pattern
+		local previewActive = ns.barTestActive == true
 		local timer = ns.timers and ns.timers.mh
-		if not timer or timer.state ~= "swinging" or not timer.duration or timer.duration <= 0 then
+		local activeSwing = timer and timer.state == "swinging" and timer.duration and timer.duration > 0
+
+		if not activeSwing and not previewActive then
 			jgMarker:Hide()
 			return
 		end
@@ -374,16 +398,10 @@ local function SetupRetPaladin()
 			end
 		end
 
-		if type(jgStart) ~= "number" or type(jgDuration) ~= "number" or jgDuration <= 0 then
-			jgMarker:Hide()
-			return
-		end
-
 		local now = GetCurrentTime()
-		local jgRemaining = (jgStart + jgDuration) - now
-		if jgRemaining <= 0 then
-			jgMarker:Hide()
-			return
+		local jgRemaining
+		if type(jgStart) == "number" and type(jgDuration) == "number" and jgDuration > 0 then
+			jgRemaining = (jgStart + jgDuration) - now
 		end
 
 		local barWidth = (ns.mhBar and ns.mhBar:GetWidth()) or (ns.mhBar and ns.mhBar.barWidth) or ns.BAR_WIDTH or 0
@@ -392,13 +410,35 @@ local function SetupRetPaladin()
 			return
 		end
 
-		local duration = timer.duration
-		if duration <= 0 then
+		-- Resolve duration and lastSwing
+		local duration
+		local lastSwing
+		if activeSwing then
+			duration = timer.duration
+			lastSwing = timer.lastSwing
+		else
+			local mainHandSpeed = type(UnitAttackSpeed) == "function" and UnitAttackSpeed("player") or nil
+			duration = (type(mainHandSpeed) == "number" and mainHandSpeed > 0) and mainHandSpeed
+			        or (timer and timer.duration and timer.duration > 0 and timer.duration)
+			        or 2.0
+			lastSwing = now - 0.5
+			-- Preview: if no real judgement CD, simulate one at the 75% position
+			if not jgRemaining or jgRemaining <= 0 then
+				jgRemaining = duration * 0.75
+			end
+		end
+
+		if not duration or duration <= 0 then
 			jgMarker:Hide()
 			return
 		end
 
-		local swingElapsed = math.max(0, now - (timer.lastSwing or now))
+		if not jgRemaining or jgRemaining <= 0 then
+			jgMarker:Hide()
+			return
+		end
+
+		local swingElapsed = math.max(0, now - (lastSwing or now))
 		-- Position the marker where the swing will be when Judgement CD comes back
 		local jgTick = (swingElapsed + jgRemaining) / duration
 		while jgTick > 1 do
@@ -528,6 +568,10 @@ local function SetupRetPaladin()
 		-- For now this is a read-only detection that stores the result for visual feedback
 	end
 
+	-- Expose the seal breakpoint-line update so ApplyBarColors (UI.lua) can call it
+	-- directly, matching the Rogue Sinister Strike pattern (ns.UpdateRogueSinisterAssistVisual).
+	ns.UpdatePaladinSealZone = UpdateSealBreakpointLine
+
 	-- Seal twist zone: proportional-width filled zone at the RIGHT edge of the MH bar,
 	-- showing the latency-aware end-of-swing window for seal twisting.
 	-- Keeps a separate thin reseal marker at the GCD-based position.
@@ -589,6 +633,7 @@ local function SetupRetPaladin()
 			UpdatePaladinLibramSwapBadge()
 			CheckTwistSuccess()
 		end
+		-- Force initial update of seal zone and markers
 		UpdateSealColorAndLabel()
 		UpdateSealBreakpointLine()
 		UpdateJudgementMarker()
@@ -868,9 +913,9 @@ local function SetupWarrior()
 			warriorSlamBar = CreateFrame("StatusBar", nil, ns.mhBar)
 			warriorSlamBar:SetStatusBarTexture(ns.GetBarTexture and ns.GetBarTexture() or "Interface\\TargetingFrame\\UI-StatusBar")
 			warriorSlamBar:SetSize((ns.mhBar:GetWidth() or ns.BAR_WIDTH or 240), 4)
-			warriorSlamBar:SetPoint("TOP", ns.mhBar, "BOTTOM", 0, -2)
-			warriorSlamBar:SetFrameStrata(ns.mhBar:GetFrameStrata())
-			warriorSlamBar:SetFrameLevel((ns.mhBar:GetFrameLevel() or 0) + 1)
+			warriorSlamBar:SetPoint("BOTTOM", ns.mhBar, "TOP", 0, 2)
+			warriorSlamBar:SetFrameStrata((ns.mhBar and ns.mhBar:GetFrameStrata()) or "MEDIUM")
+			warriorSlamBar:SetFrameLevel(((ns.mhBar and ns.mhBar:GetFrameLevel()) or 0) + 1)
 			warriorSlamBar:EnableMouse(false)
 			warriorSlamBar:SetMinMaxValues(0, 1)
 			warriorSlamBar:SetValue(0)
@@ -989,16 +1034,11 @@ local function SetupWarrior()
 
 		if not shieldBlockBar then
 			shieldBlockBar = CreateFrame("StatusBar", nil, ns.mhBar)
-			shieldBlockBar:SetStatusBarTexture(ns.GetBarTexture and ns.GetBarTexture() or "Interface\\TargetingFrame\\UI-StatusBar")
-			shieldBlockBar:SetSize((ns.mhBar and ns.mhBar:GetWidth()) or ns.BAR_WIDTH or 240, ns.WARRIOR_SHIELD_BLOCK_BAR_HEIGHT or 4)
 			shieldBlockBar:SetPoint("BOTTOMLEFT", ns.mhBar, "TOPLEFT", 0, 2)
 			shieldBlockBar:SetPoint("BOTTOMRIGHT", ns.mhBar, "TOPRIGHT", 0, 2)
-			shieldBlockBar:SetFrameStrata(ns.mhBar:GetFrameStrata())
-			shieldBlockBar:SetFrameLevel((ns.mhBar:GetFrameLevel() or 0) + 1)
+			shieldBlockBar:SetFrameStrata((ns.mhBar and ns.mhBar:GetFrameStrata()) or "MEDIUM")
+			shieldBlockBar:SetFrameLevel(((ns.mhBar and ns.mhBar:GetFrameLevel()) or 0) + 1)
 			shieldBlockBar:EnableMouse(false)
-
-			local shieldColor = ns.GetBarColor and ns.GetBarColor("shieldBlockBar") or { r = 0.20, g = 0.55, b = 1.00, a = 0.90 }
-			shieldBlockBar:SetStatusBarColor(shieldColor.r or 0.20, shieldColor.g or 0.55, shieldColor.b or 1.00, shieldColor.a or 0.90)
 
 			local backgroundTexture = shieldBlockBar.backgroundTexture or shieldBlockBar:CreateTexture(nil, "BACKGROUND")
 			backgroundTexture:SetAllPoints(true)
@@ -1041,7 +1081,15 @@ local function SetupWarrior()
 			shieldBlockBar:SetMinMaxValues(0, 1)
 			shieldBlockBar:SetValue(0)
 			shieldBlockBar:Hide()
+			-- Export for UI.lua apply-function access
+			ns.warriorShieldBlockBar = shieldBlockBar
 		end
+
+		-- Refresh styling every frame (picks up config color/texture/width changes live)
+		shieldBlockBar:SetStatusBarTexture(ns.GetBarTexture and ns.GetBarTexture() or "Interface\\TargetingFrame\\UI-StatusBar")
+		shieldBlockBar:SetSize((ns.mhBar and ns.mhBar:GetWidth()) or ns.BAR_WIDTH or 240, ns.WARRIOR_SHIELD_BLOCK_BAR_HEIGHT or 4)
+		local shieldColor = ns.GetBarColor and ns.GetBarColor("shieldBlockBar") or { r = 0.20, g = 0.55, b = 1.00, a = 0.90 }
+		shieldBlockBar:SetStatusBarColor(shieldColor.r or 0.20, shieldColor.g or 0.55, shieldColor.b or 1.00, shieldColor.a or 0.90)
 
 		shieldBlockUpdateTimer = shieldBlockUpdateTimer + (elapsed or 0)
 		if not force and shieldBlockUpdateTimer < shieldBlockUpdateInterval then
@@ -1074,8 +1122,8 @@ local function SetupWarrior()
 		)
 		bar:SetMinMaxValues(0, 100)
 		bar:SetValue(0)
-		bar:SetFrameStrata(ns.mhBar:GetFrameStrata())
-		bar:SetFrameLevel((ns.mhBar:GetFrameLevel() or 0) + 1)
+		bar:SetFrameStrata((ns.mhBar and ns.mhBar:GetFrameStrata()) or "MEDIUM")
+		bar:SetFrameLevel(((ns.mhBar and ns.mhBar:GetFrameLevel()) or 0) + 1)
 		bar:EnableMouse(false)
 		local statusBarTexture = bar:GetStatusBarTexture()
 		if statusBarTexture then
@@ -1318,12 +1366,12 @@ local function SetupEnhShaman()
 		end
 
 		ns.weaveTriangleTop:ClearAllPoints()
-		ns.weaveTriangleTop:SetPoint("BOTTOM", barAnchor, "TOP", markerPos, triangleGap)
+		ns.weaveTriangleTop:SetPoint("BOTTOM", barAnchor, "TOPLEFT", markerPos, triangleGap)
 		ApplyWeaveMarkerTexture(ns.weaveTriangleTop, iconTexture, topFallbackTexture, triangleSize, triangleAlpha, color)
 		ns.weaveTriangleTop:Show()
 
 		ns.weaveTriangleBottom:ClearAllPoints()
-		ns.weaveTriangleBottom:SetPoint("TOP", barAnchor, "BOTTOM", markerPos, -triangleGap)
+		ns.weaveTriangleBottom:SetPoint("TOP", barAnchor, "BOTTOMLEFT", markerPos, -triangleGap)
 		ApplyWeaveMarkerTexture(ns.weaveTriangleBottom, iconTexture, bottomFallbackTexture, triangleSize, triangleAlpha, color)
 		ns.weaveTriangleBottom:Show()
 		if ns.weaveMarker then
@@ -1712,528 +1760,12 @@ local function SetupDruid()
 		end)
 	end
 
-	-- Show current form in the MH bar label.
-	ns.OnDruidFormChange = function(formSpellId)
-		if not ns.mhBar then return end
-		local label
-		if formSpellId == 0 then
-			label = "Caster"
-		else
-			label = ns.DRUID_FORM_IDS[formSpellId] or "Melee"
-		end
-		if ns.SetBarLabelText then
-			ns.SetBarLabelText(ns.mhBar, label, true)
-		else
-			ns.mhBar.labelText:SetText(label)
-		end
-	end
 
-	-- Apply form-based bar colors (overrides base MH/OH color when enabled).
-	ns.UpdateDruidFormColors = function()
-		if not ns.mhBar then return end
-		local db = SuperSwingTimerDB
-		local enabled = db and db.showDruidFormColors
-		if not enabled then
-			-- Toggle off: restore base colors from ApplyBarColors.
-			local mhC = ns.mhBarBaseColor
-			if mhC then ns.mhBar:SetStatusBarColor(mhC.r, mhC.g, mhC.b, mhC.a or 1) end
-			if ns.ohBar then
-				local ohC = ns.ohBaseColor or ns.ohBarBaseColor
-				if ohC then ns.ohBar:SetStatusBarColor(ohC.r, ohC.g, ohC.b, ohC.a or 1) end
-			end
-			return
-		end
-		local form = (GetShapeshiftForm and GetShapeshiftForm()) or 0
-		-- Use DB color if user customized it, else fall back to DRUID_FORM_COLORS defaults.
-		local c
-		if form == 1 then
-			c = db and db.colors and db.colors.druidFormBear
-			if not c then c = ns.DRUID_FORM_COLORS and ns.DRUID_FORM_COLORS[1] end
-		elseif form == 2 then
-			c = db and db.colors and db.colors.druidFormCat
-			if not c then c = ns.DRUID_FORM_COLORS and ns.DRUID_FORM_COLORS[2] end
-		elseif form == 4 then
-			c = db and db.colors and db.colors.druidFormMoonkin
-			if not c then c = ns.DRUID_FORM_COLORS and ns.DRUID_FORM_COLORS[4] end
-		end
-		if c then
-			ns.mhBar:SetStatusBarColor(c.r, c.g, c.b, c.a or 1)
-			if ns.ohBar then
-				ns.ohBar:SetStatusBarColor(c.r, c.g, c.b, c.a or 1)
-			end
-		else
-			-- Caster or unknown form: restore base.
-			local mhC = ns.mhBarBaseColor
-			if mhC then ns.mhBar:SetStatusBarColor(mhC.r, mhC.g, mhC.b, mhC.a or 1) end
-			if ns.ohBar then
-				local ohC = ns.ohBaseColor or ns.ohBarBaseColor
-				if ohC then ns.ohBar:SetStatusBarColor(ohC.r, ohC.g, ohC.b, ohC.a or 1) end
-			end
-		end
-	end
 
-	-- Refresh form colors on form change.
-	local origOnDruidFormChange = ns.OnDruidFormChange
-	ns.OnDruidFormChange = function(formSpellId)
-		if origOnDruidFormChange then origOnDruidFormChange(formSpellId) end
-		if ns.DRUID_FORM_IDS and ns.DRUID_FORM_IDS[formSpellId] == "Cat" then
-			ns.druidPowerShiftStartTime = GetCurrentTime()
-			ns.druidEnergyTickStartTime = GetCurrentTime()
-			ns.druidLastEnergy = UnitPower and UnitPower("player") or ns.druidLastEnergy
-		end
-		if ns.UpdateDruidFormColors then ns.UpdateDruidFormColors() end
-	end
 
-	local ravageCue = nil
-	local ravageUpdateTimer = 0
-	local ravageUpdateInterval = 0.05
 
-	local function IsRavageReady()
-		local ravageSpellToken = ns.RAVAGE_NAME or ns.RAVAGE_ID
-		if not ravageSpellToken then
-			return false
-		end
 
-		if GetShapeshiftForm and GetShapeshiftForm() ~= 2 then
-			return false
-		end
 
-		if not UnitExists or not UnitExists("target") then
-			return false
-		end
-		if UnitIsDead and UnitIsDead("target") then
-			return false
-		end
-		if UnitCanAttack and not UnitCanAttack("player", "target") then
-			return false
-		end
-
-		if type(IsUsableSpell) == "function" then
-			local ok, usable = pcall(IsUsableSpell, ravageSpellToken)
-			if not ok or not usable then
-				return false
-			end
-		end
-
-		if type(IsSpellInRange) == "function" then
-			local ok, inRange = pcall(IsSpellInRange, ravageSpellToken, "target")
-			if ok and inRange ~= nil and inRange ~= 1 then
-				return false
-			end
-		end
-
-		return true
-	end
-
-	ns.UpdateDruidRavageCue = function(elapsed, force)
-		if not ns.mhBar then
-			return
-		end
-
-		local db = SuperSwingTimerDB or ns.DB_DEFAULTS
-		if not db or db.showDruidRavageCue == false then
-			if ravageCue then
-				ravageCue:Hide()
-			end
-			return
-		end
-
-		if not ravageCue then
-			local cueParent = GetOverlayParent(ns.mhBar)
-			ravageCue = cueParent:CreateTexture(nil, "OVERLAY")
-			ravageCue:SetAllPoints(true)
-			ravageCue:SetBlendMode("ADD")
-			ravageCue:SetColorTexture(1, 0.72, 0.16, 0)
-			ravageCue:Hide()
-		end
-
-		ravageUpdateTimer = ravageUpdateTimer + (elapsed or 0)
-		if not force and ravageUpdateTimer < ravageUpdateInterval then
-			return
-		end
-		ravageUpdateTimer = 0
-
-		local cueColor = ns.GetBarColor and ns.GetBarColor("ravageCue") or { r = 1.00, g = 0.72, b = 0.16, a = 0.28 }
-		if IsRavageReady() then
-			ravageCue:SetColorTexture(cueColor.r or 1.00, cueColor.g or 0.72, cueColor.b or 0.16, cueColor.a or 0.28)
-			ravageCue:Show()
-		else
-			ravageCue:Hide()
-		end
-	end
-
-	ns.OnBarsCreated = function()
-		-- Set initial label from current shapeshift form
-		local getShapeshiftForm = rawget(_G, "GetShapeshiftForm")
-		local form = (getShapeshiftForm and getShapeshiftForm()) or 0
-		if form == 0 and ns.mhBar then
-			if ns.SetBarLabelText then
-				ns.SetBarLabelText(ns.mhBar, "Caster", true)
-			else
-				ns.mhBar.labelText:SetText("Caster")
-			end
-		end
-	end
-
-	-- Phase 2: Druid Omen of Clarity proc glow (green bar flash)
-	local omenBuff = nil
-	local omenFadeTimer = 0
-	ns.UpdateDruidOmenGlow = function(elapsed)
-		if not ns.mhBar then return end
-		local db = SuperSwingTimerDB or ns.DB_DEFAULTS
-		if not db or db.showDruidOmenGlow == false then
-			if omenBuff then omenBuff:Hide() end
-			return
-		end
-		if not omenBuff then
-			omenBuff = CreateFrame("Frame", nil, ns.mhBar)
-			omenBuff:SetAllPoints(true)
-			omenBuff.tex = omenBuff:CreateTexture(nil, "OVERLAY")
-			omenBuff.tex:SetAllPoints(true)
-			omenBuff.tex:SetColorTexture(0, 1, 0, 0) -- start transparent
-		end
-		local unitAuraFn = rawget(_G, "UnitAura")
-		local hasOoc = false
-		if unitAuraFn then
-			local i = 1
-			while true do
-				local name, _, _, _, _, _, _, _, _, _, spellId = unitAuraFn("player", i, "HELPFUL")
-				if not name then break end
-				if spellId == 16864 or name == "Omen of Clarity" or name == "Clearcasting" then
-					hasOoc = true
-					break
-				end
-				i = i + 1
-			end
-		end
-		omenFadeTimer = (omenFadeTimer or 0) + (elapsed or 0)
-		if hasOoc then
-			omenFadeTimer = 0
-			omenBuff.tex:SetColorTexture(0, 1, 0, 0.25)
-			omenBuff.tex:Show()
-		else
-			if omenFadeTimer < 0.5 then
-				local fadeAlpha = math.max(0.25 - (omenFadeTimer / 2), 0)
-				omenBuff.tex:SetColorTexture(0, 1, 0, fadeAlpha)
-			else
-				omenBuff:Hide()
-			end
-		end
-	end
-
-	local TIGER_FURY_REFRESH_INTERVAL = 0.1
-	local TIGER_FURY_DURATION = 6.0
-	local tigerFuryBadge = nil
-	local tigerFuryTimer = 0
-	local druidPowerShiftBar = nil
-	local druidPowerShiftTimer = 0
-	local DRUID_POWER_SHIFT_DURATION = 1.5
-	local druidEnergyTickBar = nil
-	local druidEnergyTickCountdown = nil
-	local druidEnergyUpdateTimer = 0
-	local DRUID_ENERGY_TICK_DURATION = 2.0
-	local FAERIE_FIRE_SCAN_TOKEN = nil
-	local druidFaerieFireBadge = nil
-
-	local function GetDruidTigerFuryAuraData()
-		local unitAuraFn = rawget(_G, "UnitAura")
-		if not unitAuraFn then
-			return nil
-		end
-
-		for index = 1, 40 do
-			local auraName, _, _, _, _, expirationTime, _, _, _, _, auraSpellId = unitAuraFn("player", index, "HELPFUL")
-			if not auraName then
-				break
-			end
-			if auraSpellId == ns.DRUID_TIGER_FURY_ID or auraName == ns.DRUID_TIGER_FURY_NAME then
-				return auraName, expirationTime
-			end
-		end
-
-		return nil
-	end
-
-	local function GetDruidTigerFuryCooldown()
-		local spellCooldownFn = rawget(_G, "GetSpellCooldown")
-		if not spellCooldownFn then
-			return nil
-		end
-
-		local startTime, duration = spellCooldownFn(ns.DRUID_TIGER_FURY_ID)
-		if type(startTime) ~= "number" or type(duration) ~= "number" or duration <= 0 then
-			return nil
-		end
-
-		local remaining = (startTime + duration) - GetCurrentTime()
-		if remaining <= 0 then
-			return nil
-		end
-
-		return remaining, duration
-	end
-
-	local function UpdateDruidTigerFuryBadge(elapsed)
-		if not ns.mhBar then
-			return
-		end
-
-		if not tigerFuryBadge then
-			tigerFuryBadge = ns.mhBar:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-			tigerFuryBadge:SetPoint("TOPLEFT", ns.mhBar, "TOPRIGHT", 3, 2)
-			tigerFuryBadge:SetJustifyH("LEFT")
-			tigerFuryBadge:SetFont("Fonts\\FRIZQT__.TTF", 9, "OUTLINE")
-			tigerFuryBadge:SetTextColor(1.0, 0.75, 0.10, 0.95)
-		end
-
-		tigerFuryTimer = tigerFuryTimer + (elapsed or 0)
-		if tigerFuryTimer < TIGER_FURY_REFRESH_INTERVAL then return end
-		tigerFuryTimer = 0
-
-		local auraName, expirationTime = GetDruidTigerFuryAuraData()
-		if auraName then
-			local remaining = math.max((expirationTime or (GetCurrentTime() + TIGER_FURY_DURATION)) - GetCurrentTime(), 0)
-			tigerFuryBadge:SetText(string.format("TF %.0fs", remaining))
-			tigerFuryBadge:Show()
-			return
-		end
-
-		local remainingCD = GetDruidTigerFuryCooldown()
-		if remainingCD then
-			tigerFuryBadge:SetText(string.format("TF %.0fs", remainingCD))
-			tigerFuryBadge:Show()
-		else
-			tigerFuryBadge:Hide()
-		end
-	end
-
-	local function UpdateDruidPowerShiftBar(elapsed)
-		if not ns.mhBar then
-			return
-		end
-
-		local db = SuperSwingTimerDB
-		if not db or db.showDruidPowerShiftBar == false then
-			if druidPowerShiftBar then
-				druidPowerShiftBar:Hide()
-			end
-			return
-		end
-
-		druidPowerShiftTimer = druidPowerShiftTimer + (elapsed or 0)
-		if druidPowerShiftTimer < 0.05 then
-			return
-		end
-		druidPowerShiftTimer = 0
-
-		local formFn = rawget(_G, "GetShapeshiftForm")
-		if not formFn or formFn() ~= 2 then
-			if druidPowerShiftBar then
-				druidPowerShiftBar:Hide()
-			end
-			return
-		end
-
-		if not druidPowerShiftBar then
-			druidPowerShiftBar = CreateFrame("StatusBar", nil, ns.mhBar)
-			druidPowerShiftBar:SetStatusBarTexture(ns.GetBarTexture and ns.GetBarTexture() or "Interface\\TargetingFrame\\UI-StatusBar")
-			druidPowerShiftBar:SetSize((ns.mhBar:GetWidth() or ns.BAR_WIDTH or 240), ns.DRUID_POWER_SHIFT_BAR_HEIGHT or 4)
-			druidPowerShiftBar:SetPoint("TOP", ns.mhBar, "BOTTOM", 0, -2)
-			druidPowerShiftBar:SetFrameStrata(ns.mhBar:GetFrameStrata())
-			druidPowerShiftBar:SetFrameLevel((ns.mhBar:GetFrameLevel() or 0) + 1)
-			druidPowerShiftBar:EnableMouse(false)
-			druidPowerShiftBar:SetMinMaxValues(0, DRUID_POWER_SHIFT_DURATION)
-			druidPowerShiftBar:SetValue(0)
-			local bg = druidPowerShiftBar:CreateTexture(nil, "BACKGROUND")
-			bg:SetColorTexture(0, 0, 0, 0.5)
-			bg:SetAllPoints(true)
-			local label = druidPowerShiftBar:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-			label:SetPoint("LEFT", druidPowerShiftBar, "RIGHT", 2, 0)
-			label:SetJustifyH("LEFT")
-			label:SetFont("Fonts\\FRIZQT__.TTF", 9, "OUTLINE")
-			label:SetTextColor(0.45, 0.85, 1.0, 0.95)
-			druidPowerShiftBar.label = label
-		end
-
-		local startTime = ns.druidPowerShiftStartTime or 0
-		local remaining = DRUID_POWER_SHIFT_DURATION - (GetCurrentTime() - startTime)
-		if remaining <= 0 then
-			druidPowerShiftBar:Hide()
-			return
-		end
-
-		druidPowerShiftBar:SetMinMaxValues(0, DRUID_POWER_SHIFT_DURATION)
-		druidPowerShiftBar:SetValue(remaining)
-		druidPowerShiftBar:Show()
-		if druidPowerShiftBar.label then
-			druidPowerShiftBar.label:SetText(string.format("PS %.1fs", remaining))
-		end
-	end
-
-	local function EnsureDruidEnergyTickBar()
-		local db = SuperSwingTimerDB
-		if not db or db.showDruidEnergyTickBar == false then
-			if druidEnergyTickBar then
-				druidEnergyTickBar:Hide()
-			end
-			return nil
-		end
-
-		if druidEnergyTickBar then
-			return druidEnergyTickBar
-		end
-
-		druidEnergyTickBar = CreateFrame("StatusBar", nil, ns.mhBar)
-		druidEnergyTickBar:SetStatusBarTexture(ns.GetBarTexture and ns.GetBarTexture() or "Interface\\TargetingFrame\\UI-StatusBar")
-		druidEnergyTickBar:SetSize(ns.DRUID_ENERGY_TICK_BAR_WIDTH or 4, (ns.mhBar and ns.mhBar:GetHeight()) or 15)
-		druidEnergyTickBar:SetPoint("TOPRIGHT", ns.mhBar, "TOPLEFT", -3, 0)
-		druidEnergyTickBar:SetFrameStrata(ns.mhBar:GetFrameStrata())
-		druidEnergyTickBar:SetFrameLevel((ns.mhBar:GetFrameLevel() or 0) + 1)
-		druidEnergyTickBar:EnableMouse(false)
-		druidEnergyTickBar:SetMinMaxValues(0, DRUID_ENERGY_TICK_DURATION)
-		druidEnergyTickBar:SetValue(0)
-		local bg = druidEnergyTickBar:CreateTexture(nil, "BACKGROUND")
-		bg:SetColorTexture(0, 0, 0, 0.5)
-		bg:SetAllPoints(true)
-		return druidEnergyTickBar
-	end
-
-	local function UpdateDruidEnergyTickVisual(elapsed)
-		if not ns.mhBar then
-			return
-		end
-
-		druidEnergyUpdateTimer = druidEnergyUpdateTimer + (elapsed or 0)
-		if druidEnergyUpdateTimer < 0.05 then
-			return
-		end
-		druidEnergyUpdateTimer = 0
-
-		local formFn = rawget(_G, "GetShapeshiftForm")
-		if not formFn or formFn() ~= 2 then
-			if druidEnergyTickBar then
-				druidEnergyTickBar:SetAlpha(0)
-				druidEnergyTickBar:SetValue(0)
-			end
-			if druidEnergyTickCountdown then
-				druidEnergyTickCountdown:Hide()
-			end
-			return
-		end
-
-		local tickBar = EnsureDruidEnergyTickBar()
-		if not tickBar then
-			return
-		end
-
-		if not druidEnergyTickCountdown then
-			druidEnergyTickCountdown = tickBar:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-			druidEnergyTickCountdown:SetPoint("LEFT", tickBar, "RIGHT", 2, 0)
-			druidEnergyTickCountdown:SetJustifyH("LEFT")
-			druidEnergyTickCountdown:SetFont("Fonts\\FRIZQT__.TTF", 9, "OUTLINE")
-			druidEnergyTickCountdown:SetTextColor(1.0, 0.82, 0.18, 0.95)
-		end
-
-		local startTime = ns.druidEnergyTickStartTime or GetCurrentTime()
-		local elapsedSinceTick = GetCurrentTime() - startTime
-		local progress = (elapsedSinceTick % DRUID_ENERGY_TICK_DURATION) / DRUID_ENERGY_TICK_DURATION
-		tickBar:SetMinMaxValues(0, DRUID_ENERGY_TICK_DURATION)
-		tickBar:SetValue(progress)
-		tickBar:SetAlpha(1)
-		tickBar:SetStatusBarColor(1.0, 0.82, 0.18, 1)
-		if druidEnergyTickCountdown then
-			druidEnergyTickCountdown:SetText(string.format("%.1fs", DRUID_ENERGY_TICK_DURATION - (elapsedSinceTick % DRUID_ENERGY_TICK_DURATION)))
-			druidEnergyTickCountdown:Show()
-		end
-	end
-
-	local function FindFaerieFireSpellToken()
-		if FAERIE_FIRE_SCAN_TOKEN then
-			return FAERIE_FIRE_SCAN_TOKEN
-		end
-
-		local getSpellBookItemName = rawget(_G, "GetSpellBookItemName")
-		local bookType = rawget(_G, "BOOKTYPE_SPELL") or "spell"
-		if not getSpellBookItemName then
-			return nil
-		end
-
-		for index = 1, 200 do
-			local name = getSpellBookItemName(index, bookType)
-			if not name then
-				break
-			end
-			if string.find(name, "Faerie Fire", 1, true) then
-				FAERIE_FIRE_SCAN_TOKEN = name
-				return FAERIE_FIRE_SCAN_TOKEN
-			end
-		end
-
-		return nil
-	end
-
-	local function UpdateDruidFaerieFireBadge()
-		if not ns.mhBar then
-			return
-		end
-
-		if not druidFaerieFireBadge then
-			druidFaerieFireBadge = ns.mhBar:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-			druidFaerieFireBadge:SetPoint("TOPLEFT", ns.mhBar, "TOPRIGHT", 3, -8)
-			druidFaerieFireBadge:SetJustifyH("LEFT")
-			druidFaerieFireBadge:SetFont("Fonts\\FRIZQT__.TTF", 9, "OUTLINE")
-			druidFaerieFireBadge:SetTextColor(1.0, 0.88, 0.2, 0.95)
-		end
-
-		local ffToken = FindFaerieFireSpellToken()
-		if not ffToken then
-			druidFaerieFireBadge:Hide()
-			return
-		end
-
-		local usable = true
-		local usableFn = rawget(_G, "IsUsableSpell")
-		if usableFn then
-			local ok, result = pcall(usableFn, ffToken)
-			usable = ok and result
-		end
-		local canAttack = not UnitCanAttack or UnitCanAttack("player", "target")
-		local hasTarget = UnitExists and UnitExists("target")
-		if usable and canAttack and hasTarget then
-			druidFaerieFireBadge:SetText("FF")
-			druidFaerieFireBadge:Show()
-		else
-			druidFaerieFireBadge:Hide()
-		end
-	end
-
-	ns.HandleDruidEnergyPowerUpdate = function(unit, powerType)
-		if unit ~= "player" then
-			return
-		end
-		if powerType and powerType ~= "ENERGY" then
-			return
-		end
-		local formFn = rawget(_G, "GetShapeshiftForm")
-		if not formFn or formFn() ~= 2 then
-			return
-		end
-
-		local currentEnergy = (UnitPower and UnitPower("player")) or 0
-		local previousEnergy = ns.druidLastEnergy
-		if previousEnergy ~= nil and currentEnergy > previousEnergy then
-			ns.druidEnergyTickStartTime = GetCurrentTime()
-		end
-		ns.druidLastEnergy = currentEnergy
-		if not ns.druidEnergyTickStartTime then
-			ns.druidEnergyTickStartTime = GetCurrentTime()
-		end
-	end
-
-	ns.UpdateDruidTigerFuryBadge = UpdateDruidTigerFuryBadge
-	ns.UpdateDruidPowerShiftBar = UpdateDruidPowerShiftBar
-	ns.UpdateDruidEnergyTickVisual = UpdateDruidEnergyTickVisual
-	ns.UpdateDruidFaerieFireBadge = UpdateDruidFaerieFireBadge
 end
 
 local function SetupHunter()
@@ -2644,27 +2176,8 @@ local function SetupHunter()
 			return
 		end
 
-		local spellCooldownFn = rawget(_G, "GetSpellCooldown")
-		if spellCooldownFn then
-			local startCD, durationCD = spellCooldownFn(RAPID_FIRE_SPELL_ID)
-			if durationCD and durationCD > 0 then
-				local remainingCD = math.max((startCD + durationCD) - now, 0)
-				if remainingCD > 0 then
-					rapidFireBar:SetMinMaxValues(0, durationCD)
-					rapidFireBar:SetValue(remainingCD)
-					if rapidFireBar.label then
-						rapidFireBar.label:SetText(string.format("%.0fs", remainingCD))
-					end
-					rapidFireBar:Show()
-				else
-					rapidFireBar:Hide()
-				end
-			else
-				rapidFireBar:Hide()
-			end
-		else
-			rapidFireBar:Hide()
-		end
+		-- No active aura — hide bar. Only show during Rapid Fire's DURATION, not its cooldown.
+		rapidFireBar:Hide()
 	end
 end
 
@@ -2868,8 +2381,8 @@ local function SetupRogue()
 		bar:SetSize(width, (ns.mhBar and ns.mhBar:GetHeight()) or ns.BAR_HEIGHT or 15)
 		bar:SetMinMaxValues(0, 1)
 		bar:SetValue(0)
-		bar:SetFrameStrata(ns.mhBar:GetFrameStrata())
-		bar:SetFrameLevel((ns.mhBar:GetFrameLevel() or 0) + 1)
+		bar:SetFrameStrata((ns.mhBar and ns.mhBar:GetFrameStrata()) or "MEDIUM")
+		bar:SetFrameLevel(((ns.mhBar and ns.mhBar:GetFrameLevel()) or 0) + 1)
 		bar:EnableMouse(false)
 
 		local statusBarTexture = bar:GetStatusBarTexture()
@@ -3308,8 +2821,8 @@ local function SetupRogue()
 			)
 			sndBar:SetMinMaxValues(0, 1)
 			sndBar:SetValue(0)
-			sndBar:SetFrameStrata(ns.mhBar:GetFrameStrata())
-			sndBar:SetFrameLevel((ns.mhBar:GetFrameLevel() or 0) + 1)
+			sndBar:SetFrameStrata((ns.mhBar and ns.mhBar:GetFrameStrata()) or "MEDIUM")
+			sndBar:SetFrameLevel(((ns.mhBar and ns.mhBar:GetFrameLevel()) or 0) + 1)
 			sndBar:EnableMouse(false)
 			local statusBarTexture = sndBar:GetStatusBarTexture()
 			if statusBarTexture then
@@ -3503,6 +3016,8 @@ function ns.InitClassMods()
 	ns.UpdateDruidQueueTint = nil
 	ns.ClearDruidQueueTint = nil
 	ns.UpdateDruidRavageCue = nil
+	ns.UpdateDruidMangleTimer = nil
+	ns.UpdateDruidRipTracker = nil
 	ns.UpdateHunterQueueTint = nil
 	ns.ClearHunterQueueTint = nil
 	ns.UpdateHunterRangeHelperColor = nil

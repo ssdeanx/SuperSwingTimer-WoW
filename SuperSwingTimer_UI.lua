@@ -359,10 +359,9 @@ local function GetLiveHunterCastInfo()
 end
 
 local function GetHunterHiddenCastWindowFromRangedTimer(now)
-	if IsHunterMeleeActive() then
-		return nil, nil
-	end
-
+	-- NOTE: The hidden cast window depends only on the ranged timer, not melee state.
+	-- Hunters can have both MH and ranged swings active simultaneously, and the
+	-- Auto Shot cast window should always be available for the cast bar to render.
 	local t = ns.timers and ns.timers.ranged
 	if not t or t.state ~= "swinging" or not t.duration or t.duration <= 0 then
 		return nil, nil
@@ -377,8 +376,10 @@ local function GetHunterHiddenCastWindowFromRangedTimer(now)
 		elseif now <= storedWindowEnd then
 			return storedWindowStart, t.hiddenCastWindowDuration
 		elseif ns.isMoving == true and now >= storedWindowStart then
-			t.hiddenCastWindowStart = now
-			return t.hiddenCastWindowStart, t.hiddenCastWindowDuration
+			-- Moving past cached window: recompute from live timer instead of
+			-- shifting the start forward, which can push the window past the real swing end
+			t.hiddenCastWindowStart = nil
+			t.hiddenCastWindowDuration = nil
 		else
 			t.hiddenCastWindowStart = nil
 			t.hiddenCastWindowDuration = nil
@@ -648,6 +649,9 @@ local function CreateHunterCastBar()
 	local f = CreateBar("SuperSwingTimerHunterCastBar", nil, ns.HUNTER_CAST_BAR_HEIGHT or 10)
 	local rangedBar = ns.rangedBar
 	if not rangedBar then
+		-- No ranged bar yet — hide until bars are fully initialized
+		f:SetAlpha(0)
+		ns.hunterCastBar = f
 		return f
 	end
 	local overlayFrame = ns.GetOverlayFrame and ns.GetOverlayFrame(f) or f
@@ -1062,7 +1066,7 @@ UpdateHunterMeleeBarAnchor = function(_, force)
 		return
 	end
 
-	if not force and ns.mhBar.hunterAnchorTarget == ns.rangedBar then
+	if ns.mhBar.hunterAnchorTarget == ns.rangedBar then
 		return
 	end
 
@@ -1327,19 +1331,22 @@ local function UpdateRangedBar(elapsed)
 	-- Movement clipping in cast window
 	local cooldownEnd = t.lastSwing + t.duration - rangedWindowLead
 	local elapsed_time = now - t.lastSwing
-	if elapsed_time >= t.duration and not ShouldKeepHunterRangedTimerActive(now) then
+	-- Small grace buffer (~2 frames) prevents the timer from resetting one frame
+	-- before the hunter cast window has a chance to display, which would clear
+	-- hiddenCastWindowStart/Duration before ShouldShowHunterCastBar can use them.
+	local resetGraceBuffer = 0.03
+	if elapsed_time >= t.duration + resetGraceBuffer and not ShouldKeepHunterRangedTimerActive(now) then
 		ns.ResetTimer("ranged")
 		ResetBarDisplay(f)
 		return
 	end
 	if now >= cooldownEnd then
-		local barAlpha = (ns.rangedBarBaseColor and ns.rangedBarBaseColor.a) or 1
-		if safeStop then
-			local safeColor = GetAutoShotWindowColor("autoShotSafe", { r = 0.2, g = 0.78, b = 0.25, a = 0.4 })
-			f:SetStatusBarColor(safeColor.r or 0.2, safeColor.g or 0.78, safeColor.b or 0.25, barAlpha)
+		-- Keep the ranged bar's own fill color; cast overlay handles safe/unsafe tint
+		local c = ns.rangedBarBaseColor
+		if c then
+			f:SetStatusBarColor(c.r, c.g, c.b, c.a or 1)
 		else
-			local unsafeColor = GetAutoShotWindowColor("autoShotUnsafe", { r = 1, g = 0, b = 0, a = 0.4 })
-			f:SetStatusBarColor(unsafeColor.r or 1, unsafeColor.g or 0, unsafeColor.b or 0, barAlpha)
+			f:SetStatusBarColor(0, 0, 0, 1)
 		end
 		if ns.isMoving then
 			local castBoundaryElapsed = math.max(t.duration - rangedWindowLead, 0)
@@ -1493,6 +1500,9 @@ function ns.ApplyBarSize(width, height)
 	end
 	if ns.UpdateRogueSliceAndDiceVisual then
 		ns.UpdateRogueSliceAndDiceVisual()
+	end
+	if ns.UpdatePaladinSealZone then
+		ns.UpdatePaladinSealZone()
 	end
 end
 
@@ -2072,6 +2082,9 @@ function ns.ApplyMinimalMode(enabled)
 	if ns.UpdateHunterRangeHelperVisual then
 		ns.UpdateHunterRangeHelperVisual()
 	end
+	if ns.UpdatePaladinSealZone then
+		ns.UpdatePaladinSealZone()
+	end
 end
 
 function ns.ApplyVisibility()
@@ -2160,6 +2173,9 @@ function ns.ApplyVisibility()
 	if ns.UpdateRogueSliceAndDiceVisual then
 		ns.UpdateRogueSliceAndDiceVisual()
 	end
+	if ns.UpdatePaladinSealZone then
+		ns.UpdatePaladinSealZone()
+	end
 end
 
 function ns.ApplyBarColors()
@@ -2210,6 +2226,12 @@ function ns.ApplyBarColors()
 	if ns.UpdateWarriorQueueTint then
 		ns.UpdateWarriorQueueTint()
 	end
+	if ns.UpdateWarriorRageBar then
+		ns.UpdateWarriorRageBar()
+	end
+	if ns.UpdateWarriorShieldBlockBar then
+		ns.UpdateWarriorShieldBlockBar(0, true)
+	end
 	if ns.UpdateDruidQueueTint then
 		ns.UpdateDruidQueueTint()
 	end
@@ -2252,28 +2274,14 @@ function ns.ApplyBarColors()
 	if ns.UpdatePaladinSealVisual then
 		ns.UpdatePaladinSealVisual()
 	end
+	-- Also refresh the paladin seal twist zone position (matches Rogue pattern)
+	if ns.UpdatePaladinSealZone then
+		ns.UpdatePaladinSealZone()
+	end
 	if ns.RefreshBarLabelStyles then
 		ns.RefreshBarLabelStyles()
 	end
-	if ns.UpdateDruidFormColors then
-		ns.UpdateDruidFormColors()
-	end
-	-- Phase 1: Druid rage dimming — dim MH bar when below 15 rage in bear form
-	if ns.playerClass == "DRUID" and ns.mhBar then
-		local db = SuperSwingTimerDB or ns.DB_DEFAULTS
-		if db and db.showDruidRageDim ~= false then
-			local GetShapeshiftForm = rawget(_G, "GetShapeshiftForm")
-			local form = (GetShapeshiftForm and GetShapeshiftForm()) or 0
-			if form == 1 then
-				local UnitPower = rawget(_G, "UnitPower")
-				local rage = (UnitPower and UnitPower("player", 1)) or 100
-				if rage < 15 then
-					local _, _, _, baseAlpha = ns.mhBar:GetStatusBarColor()
-					ns.mhBar:SetStatusBarColor(0.7, 0.15, 0.10, math.min(baseAlpha or 1, 0.40))
-				end
-			end
-		end
-	end
+
 end
 
 -- ============================================================
@@ -2281,52 +2289,6 @@ end
 -- NOTE: ApplyBarColors also applies rage dim on config change;
 -- this per-frame path handles dynamic rage changes in combat.
 -- ============================================================
-do
-	local druidRageTimer = 0
-	local rageDimActive = false
-	function ns.UpdateDruidRageDim(elapsed)
-		if ns.playerClass ~= "DRUID" or not ns.mhBar then
-			rageDimActive = false
-			return
-		end
-		local db = SuperSwingTimerDB or ns.DB_DEFAULTS
-		if not db or db.showDruidRageDim == false then
-			if rageDimActive then
-				rageDimActive = false
-				if ns.UpdateDruidFormColors then ns.UpdateDruidFormColors() end
-			end
-			return
-		end
-		druidRageTimer = (druidRageTimer or 0) + (elapsed or 0)
-		if druidRageTimer < 0.2 then return end
-		druidRageTimer = 0
-
-		local GetShapeshiftForm = rawget(_G, "GetShapeshiftForm")
-		local form = (GetShapeshiftForm and GetShapeshiftForm()) or 0
-		if form ~= 1 then
-			if rageDimActive then
-				rageDimActive = false
-				if ns.UpdateDruidFormColors then ns.UpdateDruidFormColors() end
-			end
-			return
-		end
-		local UnitPower = rawget(_G, "UnitPower")
-		local rage = (UnitPower and UnitPower("player", 1)) or 100
-		if rage < 15 then
-			if not rageDimActive then
-				local _, _, _, a = ns.mhBar:GetStatusBarColor()
-				ns.mhBar:SetStatusBarColor(0.7, 0.15, 0.10, math.min(a or 1, 0.40))
-				rageDimActive = true
-			end
-		else
-			if rageDimActive then
-				rageDimActive = false
-				if ns.UpdateDruidFormColors then ns.UpdateDruidFormColors() end
-			end
-		end
-	end
-end
-
 -- ============================================================
 -- OnUpdate dispatcher (called from bootstrap frame)
 -- ============================================================
@@ -2350,18 +2312,8 @@ function ns.OnUpdate(elapsed)
 	if ns.UpdateWarriorFlurry then ns.UpdateWarriorFlurry(elapsed) end
 	-- Phase 2: Rogue Adrenaline Rush bar
 	if ns.UpdateRogueAdrenalineRush then ns.UpdateRogueAdrenalineRush(elapsed) end
-	-- Phase 2: Druid Omen of Clarity proc glow
-	if ns.UpdateDruidOmenGlow then ns.UpdateDruidOmenGlow(elapsed) end
-	if ns.UpdateDruidTigerFuryBadge then ns.UpdateDruidTigerFuryBadge(elapsed) end
-	if ns.UpdateDruidPowerShiftBar then ns.UpdateDruidPowerShiftBar(elapsed) end
-	if ns.UpdateDruidEnergyTickVisual then ns.UpdateDruidEnergyTickVisual(elapsed) end
-	if ns.UpdateDruidFaerieFireBadge then ns.UpdateDruidFaerieFireBadge(elapsed) end
-	-- Phase 2: Druid Ravage opener cue
-	if ns.UpdateDruidRavageCue then ns.UpdateDruidRavageCue(elapsed) end
 	-- Phase 2: Shaman Windfury ICD tracker
 	if ns.UpdateWindfuryIcd then ns.UpdateWindfuryIcd() end
-	-- Phase 1: Druid rage dim — throttled live refresh every ~200ms for rage changes
-	ns.UpdateDruidRageDim(elapsed)
 end
 
 -- ============================================================
