@@ -11,11 +11,14 @@ This document captures the UI direction for `/sst`.
 ## Layout patterns to keep
 
 - Use compact row helpers for toggles, sliders with editable numeric fields, text inputs, and dropdown selector rows.
+- Keep the non-quick rows on a stronger `label above control` layout so wide sliders, dropdowns, texture fields, and action rows remain readable even when the row uses most of the panel width.
 - Prefer data-driven refresh helpers so live preview updates stay in one place.
 - Use a small subtitle under the title to explain what the panel controls.
 - Avoid one dense vertical wall of controls; sectioning is the readability win.
-- Keep the first interactive row in each collapsible section clearly below the section header so slider or row clicks never also hit the collapse toggle.
+- Keep the first interactive row in each collapsible section clearly below the section header so slider or row clicks never also hit the collapse toggle, and stack later rows from their real runtime widget heights instead of brittle fixed Y offsets.
 - Keep the top section as a two-column quick-control area with explicit column headers: left `Visibility`, right `Key Colors`, and use compact non-overlapping row spacing so the Rogue/Hunter quick rows do not crash into each other.
+- Keep the Quick Controls column labels on their own measured line below the section header; the first compact row should start only after the label height has been accounted for.
+- Create class-specific Appearance helper sliders only for the active class instead of creating every class row and hiding the wrong ones later.
 - Keep the quick color swatches visually strong: prefer flat high-contrast preview tiles over washed-out stock button art so the chosen bar colors are readable in the config panel.
 - Keep the default live profile slimmer: 15px for the main shared bars, 8px for the derived OH bar, a slim 3-4px Rogue Slice and Dice helper above MH, and a default spark height that matches the slimmer main bars while still clamping to each host frame.
 
@@ -40,7 +43,7 @@ This document captures the UI direction for `/sst`.
 - Add weave-assist presentation options:
   - show / hide weave overlay
   - tiny upper / lower spell-icon marker pair that follows the spell-haste-adjusted safe swing point
-  - while actively casting a tracked shaman spell, swap the moving weave spark to that spell's icon and pin it to the projected landing point on the current MH swing instead of raw cast-progress, then restore the configured weave spark texture when the cast ends or is interrupted
+  - while actively casting a tracked shaman spell, swap the moving weave spark to that spell's icon and move the icon pair plus center spark from the safe breakpoint toward the projected landing point on the current MH swing, then restore the configured weave spark texture when the cast ends or is interrupted
   - marker size, gap, alpha, and layer controls, with compact spark defaults that stay bar-height aligned instead of becoming a full-height glow
   - color selection by spell family
   - per-family enable / disable toggles for Lightning Bolt, Chain Lightning, Healing Wave, Lesser Healing Wave, and Chain Heal

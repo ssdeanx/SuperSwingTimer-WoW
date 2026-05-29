@@ -1,5 +1,20 @@
 # Progress
 
+## Progress Update (2026-05-28 - `/sst` width usage + class-only slider creation)
+
+- **Class-only Appearance sliders**: stopped creating Hunter / Rogue / Warrior helper sliders for the wrong class in `SuperSwingTimer_Config.lua`. Those rows are now instantiated only for the active class, which is stronger than the prior hide-after-creation approach and fixes leaked off-class sliders such as Rogue SnD / tick rows showing up on Hunter.
+- **Better width usage in main sections**: widened the core row builders so texture pickers, browser path fields, dropdown rows, color swatches, and action rows use the available section width instead of leaving the right half of the panel mostly empty.
+- **Quick Controls header spacing**: pushed the quick-column labels lower under the section header and based the first row start on the real label height so the top section should stop drawing text into the header band.
+- **Validation**: `get_errors` on `SuperSwingTimer_Config.lua` returned clean after the follow-up patch.
+
+## Progress Update (2026-05-28 - shaman weave motion + /sst crash/layout pass)
+
+- **Shaman weave cast motion**: changed the active weave presentation so the tracked spell icon pair and center spark no longer sit at one fixed projected-impact point for the whole cast. The visuals now start at the safe breakpoint and travel toward projected impact as cast progress advances, making it much easier to tell whether the cast stays ahead of the MH swing.
+- **`/sst` runtime crash fix**: guarded the stale `panel.druidPowerShiftSlider` / `panel.druidEnergyTickSlider` references in `SuperSwingTimer_Config.lua`, removing the line-3352 nil-index error when opening the config panel after the Druid control cleanup.
+- **`/sst` overlap fix**: added a shared section reflow pass in `SuperSwingTimer_Config.lua` so the `Appearance`, `Shaman Weave Assist`, `General Behavior`, and `Weave Families` sections stack rows from their actual widget heights instead of brittle fixed Y offsets. Also anchored compact-slider edit boxes to their sliders so reflowing does not leave the numeric boxes behind. Follow-up polish now widens the slider row layout budget and re-runs the section reflow after live header collapse/expand plus every `/sst` open-path refresh.
+- **`/sst` slider readability cleanup**: replaced the old narrow slider anchors with real labeled slider-row containers, so each slider now has a readable title above it and uses the available panel width with the numeric entry field on the right instead of tiny unlabelled strips.
+- **Validation**: targeted `get_errors` on `SuperSwingTimer_Config.lua`, `SuperSwingTimer_ClassMods.lua`, and `SuperSwingTimer_Weaving.lua` returned clean after the patch.
+
 ## Progress Update (2026-05-27 - Enhancement Shaman urgent bugfix)
 
 - Fixed the reported Enhancement Shaman runtime error in `SuperSwingTimer_ClassMods.lua`: `UpdateWindfuryIcd()` now reads helpful auras through `GetHelpfulAuraData()`, only compares numeric spell IDs after a type guard, and uses `ns.timers.mh.lastSwing` / the aligned clock instead of the nonexistent `ns.GetLastMhSwingTime()` path.

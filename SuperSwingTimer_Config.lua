@@ -193,9 +193,91 @@ local function SetRowsShown(rows, shown)
 
 	for _, row in ipairs(rows) do
 		if row then
-			row:SetShown(shown)
+			if row.SetShown then
+				row:SetShown(shown)
+			elseif shown and row.Show then
+				row:Show()
+			elseif not shown and row.Hide then
+				row:Hide()
+			end
 		end
 	end
+end
+
+local function RememberRowLayoutInsets(row)
+	if not row or row._layoutInsetsStored then
+		return
+	end
+
+	local leftInset = nil
+	local rightInset = nil
+	local pointCount = row.GetNumPoints and row:GetNumPoints() or 0
+	for index = 1, pointCount do
+		local _, _, relativePoint, xOfs = row:GetPoint(index)
+		if relativePoint == "TOPLEFT" then
+			leftInset = xOfs
+		elseif relativePoint == "TOPRIGHT" then
+			rightInset = -(xOfs or 0)
+		end
+	end
+
+	row._layoutLeftInset = leftInset or 20
+	row._layoutRightInset = rightInset
+	row._layoutInsetsStored = true
+end
+
+local function GetRowLayoutHeight(row)
+	if not row then
+		return 0
+	end
+
+	if row.layoutHeight and row.layoutHeight > 0 then
+		return row.layoutHeight
+	end
+
+	local height = row.GetHeight and row:GetHeight() or 0
+	if row.text and row.text.GetStringHeight then
+		height = math.max(height, row.text:GetStringHeight() + 8)
+	end
+
+	return height
+end
+
+local function PositionRowAtY(parent, row, topY)
+	if not parent or not row then
+		return
+	end
+
+	RememberRowLayoutInsets(row)
+	row:ClearAllPoints()
+	row:SetPoint("TOPLEFT", parent, "TOPLEFT", row._layoutLeftInset or 20, topY)
+	if row._layoutRightInset ~= nil then
+		row:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -(row._layoutRightInset or 20), topY)
+	end
+end
+
+local function PositionRowBetween(parent, row, leftX, rightX, topY)
+	if not parent or not row then
+		return
+	end
+
+	row:ClearAllPoints()
+	row:SetPoint("TOPLEFT", parent, "TOPLEFT", leftX, topY)
+	row:SetPoint("TOPRIGHT", parent, "TOPLEFT", rightX, topY)
+end
+
+local function SetRowClassRequirement(row, classToken)
+	if row then
+		row.requiredClass = classToken
+	end
+	return row
+end
+
+local function AppendRow(rows, row)
+	if row then
+		rows[#rows + 1] = row
+	end
+	return row
 end
 
 local BAR_COLOR_KEYS = { "mh", "oh", "ranged" }
@@ -444,128 +526,135 @@ end
 -- ============================================================
 -- Widget builders
 -- ============================================================
-local function CreateSlider(parent, label, minVal, maxVal, step, yOffset)
-	local slider = CreateFrame("Slider", nil, parent, "OptionsSliderTemplate")
-	slider:SetPoint("TOPLEFT", parent, "TOPLEFT", 20, yOffset)
-	slider:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -600, yOffset)
+local function CreateLabeledSliderRow(parent, label, minVal, maxVal, step, yOffset, options)
+	options = options or {}
+	local leftInset = options.leftInset or 20
+	local rightInset = options.rightInset or 20
+	local valueBoxWidth = options.valueBoxWidth or 58
+	local row = CreateFrame("Frame", nil, parent)
+	row:SetPoint("TOPLEFT", parent, "TOPLEFT", leftInset, yOffset)
+	row:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -rightInset, yOffset)
+	row:SetHeight(options.rowHeight or 84)
+	row.layoutHeight = row:GetHeight()
+	row:EnableMouse(true)
+	row.hover = AddRowHoverHighlight(row)
+
+	local text = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+	text:SetPoint("TOPLEFT", row, "TOPLEFT", 0, 0)
+	text:SetPoint("TOPRIGHT", row, "TOPRIGHT", -(valueBoxWidth + 12), 0)
+	text:SetJustifyH("LEFT")
+	text:SetJustifyV("TOP")
+	text:SetText(label)
+	if text.SetTextColor then
+		text:SetTextColor(1, 0.82, 0.05, 1)
+	end
+	row.text = text
+
+	local slider = CreateFrame("Slider", nil, row, "OptionsSliderTemplate")
+	slider:SetPoint("TOPLEFT", row, "TOPLEFT", 0, -30)
+	slider:SetPoint("TOPRIGHT", row, "TOPRIGHT", -(valueBoxWidth + 12), -30)
 	slider:SetMinMaxValues(minVal, maxVal)
 	slider:SetValueStep(step)
 	slider:SetObeyStepOnDrag(true)
-	slider:SetHeight(17)
-
-	slider.Text:SetText(label)
-	slider.Text:SetPoint("TOPLEFT", slider, "TOPLEFT", 0, 0)
-	slider.Low:SetText(tostring(minVal))
-	slider.High:SetText(tostring(maxVal))
-	slider.formatValue = function(value)
-		return FormatSliderValue(step, value)
+	slider:SetHeight(16)
+	if slider.Text then
+		slider.Text:SetText("")
+	end
+	if slider.Low then
+		slider.Low:SetText(FormatSliderValue(step, minVal))
+		slider.Low:ClearAllPoints()
+		slider.Low:SetPoint("TOPLEFT", slider, "BOTTOMLEFT", -2, 0)
+	end
+	if slider.High then
+		slider.High:SetText(FormatSliderValue(step, maxVal))
+		slider.High:ClearAllPoints()
+		slider.High:SetPoint("TOPRIGHT", slider, "BOTTOMRIGHT", 2, 0)
 	end
 
-	-- Value label below the slider
-	local valText = slider:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-	valText:SetPoint("TOP", slider, "BOTTOM", 0, -2)
-	slider.valueText = valText
-
-	local valueBox = CreateFrame("EditBox", nil, parent, "InputBoxTemplate")
-	valueBox:SetSize(54, 20)
-	valueBox:SetPoint("LEFT", slider, "RIGHT", 8, 0)
-	valueBox:SetPoint("TOP", slider, "TOP", 0, -1)
+	local valueBox = CreateFrame("EditBox", nil, row, "InputBoxTemplate")
+	valueBox:SetSize(valueBoxWidth, 20)
+	valueBox:SetPoint("TOPRIGHT", row, "TOPRIGHT", 0, -24)
 	valueBox:SetAutoFocus(false)
-	valueBox:SetMaxLetters(8)
+	valueBox:SetMaxLetters(options.maxLetters or 8)
 	valueBox:SetJustifyH("CENTER")
+
+	row.sliderWidget = slider
+	row.valueBox = valueBox
+	row.valueText = nil
+	row.formatValue = function(value)
+		return FormatSliderValue(step, value)
+	end
+	row.GetValue = function(self)
+		return self.sliderWidget:GetValue()
+	end
+	row.SetValue = function(self, value)
+		self.sliderWidget:SetValue(value)
+	end
+	row.SetScript = function(self, scriptType, handler)
+		if scriptType == "OnValueChanged" then
+			self.sliderWidget:SetScript(scriptType, function(_, value, ...)
+				handler(self, value, ...)
+			end)
+		else
+			self.sliderWidget:SetScript(scriptType, handler)
+		end
+	end
+
 	valueBox:SetScript("OnEnterPressed", function(self)
 		local parsed = NormalizeSliderValue(self:GetText(), minVal, maxVal, step)
 		if parsed ~= nil then
-			slider:SetValue(parsed)
+			row:SetValue(parsed)
 		end
 		self:ClearFocus()
-		SyncSliderDisplay(slider, slider:GetValue())
+		SyncSliderDisplay(row, row:GetValue())
 	end)
 	valueBox:SetScript("OnEscapePressed", function(self)
 		self:ClearFocus()
-		SyncSliderDisplay(slider, slider:GetValue())
+		SyncSliderDisplay(row, row:GetValue())
 	end)
 	valueBox:SetScript("OnEditFocusGained", function(self)
 		self:HighlightText()
 	end)
 	valueBox:SetScript("OnEditFocusLost", function(self)
-		SyncSliderDisplay(slider, slider:GetValue())
+		SyncSliderDisplay(row, row:GetValue())
 	end)
-	slider.valueBox = valueBox
-	AddControlTooltip(slider, label, string.format("Drag or type a value to change %s.", label))
+
+	AddControlTooltip(row, label, string.format("Drag or type a value to change %s.", label))
 	AddControlTooltip(valueBox, label, string.format("Type a value for %s.", label))
+	SyncSliderDisplay(row, row:GetValue())
 
-	SyncSliderDisplay(slider, slider:GetValue())
+	return row
+end
 
-	return slider
+local function CreateSlider(parent, label, minVal, maxVal, step, yOffset)
+	return CreateLabeledSliderRow(parent, label, minVal, maxVal, step, yOffset, {
+		leftInset = 20,
+		rightInset = 20,
+		valueBoxWidth = 58,
+		maxLetters = 8,
+		rowHeight = 72,
+	})
 end
 
 -- ------------------------------------------------------------
--- Compact slider for multi-column layout (accepts left/right insets)
+-- Compact slider now reuses the same readable full-width row pattern.
 -- ------------------------------------------------------------
 local function CreateCompactSlider(parent, label, minVal, maxVal, step, yOffset, leftInset, rightInset)
-	leftInset = leftInset or 20
-	rightInset = rightInset or 370
-	local slider = CreateFrame("Slider", nil, parent, "OptionsSliderTemplate")
-	slider:SetPoint("TOPLEFT", parent, "TOPLEFT", leftInset, yOffset)
-	slider:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -rightInset, yOffset)
-	slider:SetMinMaxValues(minVal, maxVal)
-	slider:SetValueStep(step)
-	slider:SetObeyStepOnDrag(true)
-	slider:SetHeight(17)
-
-	slider.Text:SetText(label)
-	slider.Text:SetPoint("TOPLEFT", slider, "TOPLEFT", 0, 0)
-	slider.Low:SetText(tostring(minVal))
-	slider.High:SetText(tostring(maxVal))
-	slider.formatValue = function(value)
-		return FormatSliderValue(step, value)
-	end
-
-	-- Value label below the slider
-	local valText = slider:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-	valText:SetPoint("TOP", slider, "BOTTOM", 0, -2)
-	slider.valueText = valText
-
-	-- Compact edit box at the column's right edge
-	local valueBox = CreateFrame("EditBox", nil, parent, "InputBoxTemplate")
-	valueBox:SetSize(46, 18)
-	valueBox:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -rightInset + 4, yOffset - 1)
-	valueBox:SetAutoFocus(false)
-	valueBox:SetMaxLetters(6)
-	valueBox:SetJustifyH("CENTER")
-	valueBox:SetScript("OnEnterPressed", function(self)
-		local parsed = NormalizeSliderValue(self:GetText(), minVal, maxVal, step)
-		if parsed ~= nil then
-			slider:SetValue(parsed)
-		end
-		self:ClearFocus()
-		SyncSliderDisplay(slider, slider:GetValue())
-	end)
-	valueBox:SetScript("OnEscapePressed", function(self)
-		self:ClearFocus()
-		SyncSliderDisplay(slider, slider:GetValue())
-	end)
-	valueBox:SetScript("OnEditFocusGained", function(self)
-		self:HighlightText()
-	end)
-	valueBox:SetScript("OnEditFocusLost", function(self)
-		SyncSliderDisplay(slider, slider:GetValue())
-	end)
-	slider.valueBox = valueBox
-	AddControlTooltip(slider, label, string.format("Drag or type to change %s.", label))
-	AddControlTooltip(valueBox, label, string.format("Type a value for %s.", label))
-
-	SyncSliderDisplay(slider, slider:GetValue())
-
-	return slider
+	return CreateLabeledSliderRow(parent, label, minVal, maxVal, step, yOffset, {
+		leftInset = 20,
+		rightInset = 20,
+		valueBoxWidth = 52,
+		maxLetters = 6,
+		rowHeight = 72,
+	})
 end
 
 local function CreateColorButton(parent, label, colorKey, yOffset, options)
 	options = options or {}
 	local leftInset = options.leftInset or 20
 	local rightInset = options.rightInset or 20
-	local rowHeight = options.rowHeight or 44
+	local compactLayout = options.compact == true
+	local rowHeight = options.rowHeight or (compactLayout and 32 or 58)
 	local buttonWidth = options.buttonWidth or 180
 	local getColor = options.getColor or function()
 		return ns.GetBarColor(colorKey)
@@ -576,17 +665,33 @@ local function CreateColorButton(parent, label, colorKey, yOffset, options)
 	row:SetPoint("TOPLEFT", parent, "TOPLEFT", leftInset, yOffset)
 	row:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -rightInset, yOffset)
 	row:SetHeight(rowHeight)
+	row.layoutHeight = rowHeight
 	row:EnableMouse(true)
 	row.hover = AddRowHoverHighlight(row)
 
 	local text = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
 	text:SetPoint("TOPLEFT", row, "TOPLEFT", 0, 0)
 	text:SetText(label)
+	if not compactLayout then
+		text:SetPoint("TOPRIGHT", row, "TOPRIGHT", 0, 0)
+		text:SetJustifyH("LEFT")
+		text:SetJustifyV("TOP")
+		if text.SetTextColor then
+			text:SetTextColor(1, 0.82, 0.05, 1)
+		end
+	end
 
 	local btn = CreateFrame("Button", nil, row)
 	btn:SetSize(buttonWidth, 20)
-	btn:SetPoint("BOTTOMRIGHT", row, "BOTTOMRIGHT", 0, 0)
-	text:SetPoint("RIGHT", btn, "LEFT", -12, 0)
+	if compactLayout then
+		btn:SetPoint("BOTTOMRIGHT", row, "BOTTOMRIGHT", 0, 0)
+		text:SetPoint("RIGHT", btn, "LEFT", -12, 0)
+	else
+		btn:ClearAllPoints()
+		btn:SetPoint("BOTTOMLEFT", row, "BOTTOMLEFT", 0, 0)
+		btn:SetPoint("BOTTOMRIGHT", row, "BOTTOMRIGHT", 0, 0)
+		btn:SetHeight(24)
+	end
 
 	local border = btn:CreateTexture(nil, "BACKGROUND")
 	border:SetPoint("TOPLEFT", btn, "TOPLEFT", -1, 1)
@@ -1228,13 +1333,20 @@ local function CreateTexturePathRow(parent, label, yOffset, getTexture, applyTex
 	local row = CreateFrame("Frame", nil, parent)
 	row:SetPoint("TOPLEFT", parent, "TOPLEFT", 20, yOffset)
 	row:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -20, yOffset)
-	row:SetHeight(52)
+	row:SetHeight(68)
+	row.layoutHeight = 68
 	row:EnableMouse(true)
 	row.hover = AddRowHoverHighlight(row)
 
 	local text = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
 	text:SetPoint("TOPLEFT", row, "TOPLEFT", 0, 0)
+	text:SetPoint("TOPRIGHT", row, "TOPRIGHT", 0, 0)
+	text:SetJustifyH("LEFT")
+	text:SetJustifyV("TOP")
 	text:SetText(label)
+	if text.SetTextColor then
+		text:SetTextColor(1, 0.82, 0.05, 1)
+	end
 
 	local function Refresh()
 		local path = getTexture()
@@ -1257,8 +1369,9 @@ local function CreateTexturePathRow(parent, label, yOffset, getTexture, applyTex
 	if options.mode == "browser" then
 		local defaultTexture = options.defaultTexture or getTexture() or ns.DB_DEFAULTS.sparkTexture
 		local pathBox = CreateFrame("EditBox", nil, row, "InputBoxTemplate")
-		pathBox:SetSize(236, 20)
-		pathBox:SetPoint("BOTTOMRIGHT", row, "BOTTOMRIGHT", -30, 0)
+		pathBox:SetHeight(20)
+		pathBox:SetPoint("BOTTOMLEFT", row, "BOTTOMLEFT", 0, 0)
+		pathBox:SetPoint("BOTTOMRIGHT", row, "BOTTOMRIGHT", -34, 0)
 		pathBox:SetAutoFocus(false)
 		pathBox:SetMaxLetters(260)
 		pathBox:SetScript("OnEnterPressed", function(self)
@@ -1323,8 +1436,9 @@ local function CreateTexturePathRow(parent, label, yOffset, getTexture, applyTex
 		local defaultTexture = options.defaultTexture or getTexture() or ns.DB_DEFAULTS.barTexture
 
 		local pickerButton = CreateOptionalBackdropFrame("Button", nil, row)
+		pickerButton:SetPoint("BOTTOMLEFT", row, "BOTTOMLEFT", 0, 0)
 		pickerButton:SetPoint("BOTTOMRIGHT", row, "BOTTOMRIGHT", 0, 0)
-		pickerButton:SetSize(320, 24)
+		pickerButton:SetHeight(24)
 		SetFrameBackdrop(pickerButton, {
 			bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
 			edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
@@ -1409,15 +1523,14 @@ local function CreateTexturePathRow(parent, label, yOffset, getTexture, applyTex
 
 	local preview = row:CreateTexture(nil, "ARTWORK")
 	preview:SetSize(18, 18)
-	preview:SetPoint("BOTTOMRIGHT", row, "BOTTOMRIGHT", -282, 0)
+	preview:SetPoint("BOTTOMLEFT", row, "BOTTOMLEFT", 0, 1)
 	preview:SetTexture(getTexture())
 	row.preview = preview
-	text:SetPoint("RIGHT", preview, "LEFT", -8, 0)
 
 	local dropdown = CreateFrame("Frame", nil, row, "UIDropDownMenuTemplate")
 	dropdown:SetPoint("BOTTOMRIGHT", row, "BOTTOMRIGHT", 0, -1)
 	if UIDropDownMenu_SetWidth then
-		UIDropDownMenu_SetWidth(dropdown, 260)
+		UIDropDownMenu_SetWidth(dropdown, 320)
 	end
 	row.dropdown = dropdown
 	row:SetScript("OnMouseUp", function(_, mouseButton)
@@ -1530,20 +1643,26 @@ local function CreateCycleRow(parent, label, yOffset, options, getValue, applyVa
 	local row = CreateFrame("Frame", nil, parent)
 	row:SetPoint("TOPLEFT", parent, "TOPLEFT", 20, yOffset)
 	row:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -20, yOffset)
-	row:SetHeight(52)
+	row:SetHeight(62)
+	row.layoutHeight = 62
 	row:EnableMouse(true)
 	row.hover = AddRowHoverHighlight(row)
 
 	local text = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
 	text:SetPoint("TOPLEFT", row, "TOPLEFT", 0, 0)
+	text:SetPoint("TOPRIGHT", row, "TOPRIGHT", 0, 0)
+	text:SetJustifyH("LEFT")
+	text:SetJustifyV("TOP")
 	text:SetText(label)
+	if text.SetTextColor then
+		text:SetTextColor(1, 0.82, 0.05, 1)
+	end
 
 	local dropdown = CreateFrame("Frame", nil, row, "UIDropDownMenuTemplate")
 	dropdown:SetPoint("BOTTOMRIGHT", row, "BOTTOMRIGHT", 0, -1)
 	if UIDropDownMenu_SetWidth then
-		UIDropDownMenu_SetWidth(dropdown, 180)
+		UIDropDownMenu_SetWidth(dropdown, 220)
 	end
-	text:SetPoint("RIGHT", dropdown, "LEFT", -8, 0)
 
 	local function Refresh()
 		if UIDropDownMenu_SetText then
@@ -1591,18 +1710,28 @@ local function CreateToggleRow(parent, label, yOffset, getValue, applyValue, opt
 	options = options or {}
 	local leftInset = options.leftInset or 20
 	local rightInset = options.rightInset or 20
-	local rowHeight = options.rowHeight or 40
+	local compactLayout = options.compact == true
+	local rowHeight = options.rowHeight or (compactLayout and 40 or 56)
 	local tooltipText = options.tooltipText or string.format("Toggle %s on or off.", label)
 	local row = CreateFrame("Frame", nil, parent)
 	row:SetPoint("TOPLEFT", parent, "TOPLEFT", leftInset, yOffset)
 	row:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -rightInset, yOffset)
 	row:SetHeight(rowHeight)
+	row.layoutHeight = rowHeight
 	row:EnableMouse(true)
 	row.hover = AddRowHoverHighlight(row)
 
 	local text = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
 	text:SetPoint("TOPLEFT", row, "TOPLEFT", 0, 0)
 	text:SetText(label)
+	if not compactLayout then
+		text:SetPoint("TOPRIGHT", row, "TOPRIGHT", -34, 0)
+		text:SetJustifyH("LEFT")
+		text:SetJustifyV("TOP")
+		if text.SetTextColor then
+			text:SetTextColor(1, 0.82, 0.05, 1)
+		end
+	end
 
 	local toggle = CreateFrame("CheckButton", nil, row, "UICheckButtonTemplate")
 	toggle:SetPoint("BOTTOMRIGHT", row, "BOTTOMRIGHT", 0, 0)
@@ -1610,7 +1739,9 @@ local function CreateToggleRow(parent, label, yOffset, getValue, applyValue, opt
 	toggle:SetScript("OnClick", function(self)
 		applyValue(self:GetChecked() == true)
 	end)
-	text:SetPoint("RIGHT", toggle, "LEFT", -8, 0)
+	if compactLayout then
+		text:SetPoint("RIGHT", toggle, "LEFT", -8, 0)
+	end
 
 	row:SetScript("OnMouseUp", function(_, mouseButton)
 		if mouseButton == "LeftButton" then
@@ -1633,13 +1764,20 @@ local function CreateActionRow(parent, label, buttonText, yOffset, onClick, tool
 	local row = CreateFrame("Frame", nil, parent)
 	row:SetPoint("TOPLEFT", parent, "TOPLEFT", 20, yOffset)
 	row:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -20, yOffset)
-	row:SetHeight(40)
+	row:SetHeight(56)
+	row.layoutHeight = 56
 	row:EnableMouse(true)
 	row.hover = AddRowHoverHighlight(row)
 
 	local text = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
 	text:SetPoint("TOPLEFT", row, "TOPLEFT", 0, 0)
+	text:SetPoint("TOPRIGHT", row, "TOPRIGHT", -130, 0)
+	text:SetJustifyH("LEFT")
+	text:SetJustifyV("TOP")
 	text:SetText(label)
+	if text.SetTextColor then
+		text:SetTextColor(1, 0.82, 0.05, 1)
+	end
 
 	local btn = CreateFrame("Button", nil, row, "UIPanelButtonTemplate")
 	btn:SetSize(120, 22)
@@ -1672,6 +1810,7 @@ local function CreateSectionHeader(parent, label, yOffset, options)
 	row:SetPoint("TOPLEFT", parent, "TOPLEFT", 20, yOffset)
 	row:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -20, yOffset)
 	row:SetHeight(24)
+	row.layoutHeight = 30
 	row:EnableMouse(true)
 	row:RegisterForClicks("LeftButtonUp")
 	row:Show()
@@ -1742,6 +1881,9 @@ local function CreateDescriptionText(parent, text, yOffset)
 	font:SetJustifyV("TOP")
 	font:SetWordWrap(true)
 	font:SetText(text)
+	local descriptionHeight = math.max(math.ceil((font:GetStringHeight() or 0) + 6), 42)
+	row:SetHeight(descriptionHeight)
+	row.layoutHeight = descriptionHeight
 
 	row.text = font
 	return row
@@ -1752,6 +1894,7 @@ local function CreateWeaveFamilyRow(parent, abbrev, label, yOffset)
 	row:SetPoint("TOPLEFT", parent, "TOPLEFT", 20, yOffset)
 	row:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -20, yOffset)
 	row:SetHeight(40)
+	row.layoutHeight = 40
 	row:EnableMouse(true)
 	row.hover = AddRowHoverHighlight(row)
 
@@ -1879,14 +2022,16 @@ local function CreatePanel()
 		weaveFamilies = false,
 	}
 	local barVisibilityRows = {}
+	local quickToggleRows = {}
+	local quickColorRows = {}
 	local mhOhRows = {}
 	local shamanRows = {}
 	local generalRows = {}
 	local colorRowsSection = {}
 	local weaveFamiliesRows = {}
 	local cfg = ns.classConfig or {}
-	local quickToggleOptions = { leftInset = 20, rightInset = 410, rowHeight = 30 }
-	local quickColorOptions = { leftInset = 410, rightInset = 20, rowHeight = 30, buttonWidth = 122 }
+	local quickToggleOptions = { leftInset = 20, rightInset = 360, rowHeight = 32, compact = true }
+	local quickColorOptions = { leftInset = 360, rightInset = 20, rowHeight = 32, buttonWidth = 160, compact = true }
 	local quickToggleY = -66
 	local quickColorY = -66
 	local quickRowStep = -30
@@ -1901,11 +2046,13 @@ local function CreatePanel()
 	local quickToggleLabel = content:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
 	quickToggleLabel:SetPoint("TOPLEFT", content, "TOPLEFT", quickToggleOptions.leftInset, -32)
 	quickToggleLabel:SetText("Visibility")
+	quickToggleLabel.layoutHeight = math.max(math.ceil((quickToggleLabel:GetStringHeight() or 12)), 14)
 	barVisibilityRows[#barVisibilityRows + 1] = quickToggleLabel
 
 	local quickColorLabel = content:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
 	quickColorLabel:SetPoint("TOPLEFT", content, "TOPLEFT", quickColorOptions.leftInset, -32)
 	quickColorLabel:SetText("Key Colors")
+	quickColorLabel.layoutHeight = math.max(math.ceil((quickColorLabel:GetStringHeight() or 12)), 14)
 	barVisibilityRows[#barVisibilityRows + 1] = quickColorLabel
 
 	local function AddQuickToggle(label, getValue, applyValue, options)
@@ -1920,6 +2067,7 @@ local function CreatePanel()
 		end
 		local row = CreateToggleRow(content, label, quickToggleY, getValue, applyValue, rowOptions)
 		quickToggleY = quickToggleY + quickRowStep
+		quickToggleRows[#quickToggleRows + 1] = row
 		barVisibilityRows[#barVisibilityRows + 1] = row
 		return row
 	end
@@ -1932,6 +2080,7 @@ local function CreatePanel()
 		options.buttonWidth = quickColorOptions.buttonWidth
 		local row = CreateColorButton(content, label, colorKey, quickColorY, options)
 		quickColorY = quickColorY + quickRowStep
+		quickColorRows[#quickColorRows + 1] = row
 		barVisibilityRows[#barVisibilityRows + 1] = row
 		colorRowsSection[#colorRowsSection + 1] = row
 		return row
@@ -2429,9 +2578,10 @@ local function CreatePanel()
 		})
 	end
 
+	local ReflowConfigSections
 	local quickSectionBottomY = math.min(quickToggleY, quickColorY)
-	-- Use a 60px padding below the Quick Controls section so the MH/OH header
-	-- always sits well clear of the last row, even on dense class configs.
+	-- Keep the legacy offset helper alive for row creation, but the real panel
+	-- layout now comes from the section reflow below instead of these raw Y values.
 	local postQuickYOffset = (quickSectionBottomY - 60) - (-230)
 	local function PostQuickY(y)
 		return y + postQuickYOffset
@@ -2457,35 +2607,61 @@ local function CreatePanel()
 	heightSlider:SetValue(SuperSwingTimerDB.barHeight or ns.DB_DEFAULTS.barHeight)
 	SyncSliderDisplay(heightSlider, heightSlider:GetValue())
 
-	local hunterCastBarHeightSlider = CreateSlider(content, "Hunter Cast Bar Height", 4, 30, 2, PostQuickY(ShiftY(-100)))
-	hunterCastBarHeightSlider:SetValue(SuperSwingTimerDB.hunterCastBarHeight or ns.DB_DEFAULTS.hunterCastBarHeight or 10)
-	SyncSliderDisplay(hunterCastBarHeightSlider, hunterCastBarHeightSlider:GetValue())
+	local hunterCastBarHeightSlider = nil
+	if ns.playerClass == "HUNTER" then
+		hunterCastBarHeightSlider = CreateSlider(content, "Hunter Cast Bar Height", 4, 30, 2, PostQuickY(ShiftY(-100)))
+		SetRowClassRequirement(hunterCastBarHeightSlider, "HUNTER")
+		hunterCastBarHeightSlider:SetValue(SuperSwingTimerDB.hunterCastBarHeight or ns.DB_DEFAULTS.hunterCastBarHeight or 10)
+		SyncSliderDisplay(hunterCastBarHeightSlider, hunterCastBarHeightSlider:GetValue())
+	end
 
-	local rogueSndBarHeightSlider = CreateSlider(content, "Rogue SnD Height", 2, 20, 1, PostQuickY(ShiftY(-115)))
-	rogueSndBarHeightSlider:SetValue(SuperSwingTimerDB.rogueSliceAndDiceBarHeight or ns.DB_DEFAULTS.rogueSliceAndDiceBarHeight or 4)
-	SyncSliderDisplay(rogueSndBarHeightSlider, rogueSndBarHeightSlider:GetValue())
+	local rogueSndBarHeightSlider = nil
+	if ns.playerClass == "ROGUE" then
+		rogueSndBarHeightSlider = CreateSlider(content, "Rogue SnD Height", 2, 20, 1, PostQuickY(ShiftY(-115)))
+		SetRowClassRequirement(rogueSndBarHeightSlider, "ROGUE")
+		rogueSndBarHeightSlider:SetValue(SuperSwingTimerDB.rogueSliceAndDiceBarHeight or ns.DB_DEFAULTS.rogueSliceAndDiceBarHeight or 4)
+		SyncSliderDisplay(rogueSndBarHeightSlider, rogueSndBarHeightSlider:GetValue())
+	end
 
-	local rogueEnergyTickSlider = CreateSlider(content, "Rogue Tick Width", 2, 20, 1, PostQuickY(ShiftY(-140)))
-	rogueEnergyTickSlider:SetValue(SuperSwingTimerDB.rogueEnergyTickBarWidth or ns.DB_DEFAULTS.rogueEnergyTickBarWidth or 4)
-	SyncSliderDisplay(rogueEnergyTickSlider, rogueEnergyTickSlider:GetValue())
+	local rogueEnergyTickSlider = nil
+	if ns.playerClass == "ROGUE" then
+		rogueEnergyTickSlider = CreateSlider(content, "Rogue Tick Width", 2, 20, 1, PostQuickY(ShiftY(-140)))
+		SetRowClassRequirement(rogueEnergyTickSlider, "ROGUE")
+		rogueEnergyTickSlider:SetValue(SuperSwingTimerDB.rogueEnergyTickBarWidth or ns.DB_DEFAULTS.rogueEnergyTickBarWidth or 4)
+		SyncSliderDisplay(rogueEnergyTickSlider, rogueEnergyTickSlider:GetValue())
+	end
 
-	local hunterRangeHelperWidthSlider = CreateSlider(content, "Range Helper Width", 2, 20, 1, PostQuickY(ShiftY(-160)))
-	hunterRangeHelperWidthSlider:SetValue(SuperSwingTimerDB.hunterRangeHelperWidth or ns.DB_DEFAULTS.hunterRangeHelperWidth or 7)
-	SyncSliderDisplay(hunterRangeHelperWidthSlider, hunterRangeHelperWidthSlider:GetValue())
+	local hunterRangeHelperWidthSlider = nil
+	if ns.playerClass == "HUNTER" then
+		hunterRangeHelperWidthSlider = CreateSlider(content, "Range Helper Width", 2, 20, 1, PostQuickY(ShiftY(-160)))
+		SetRowClassRequirement(hunterRangeHelperWidthSlider, "HUNTER")
+		hunterRangeHelperWidthSlider:SetValue(SuperSwingTimerDB.hunterRangeHelperWidth or ns.DB_DEFAULTS.hunterRangeHelperWidth or 7)
+		SyncSliderDisplay(hunterRangeHelperWidthSlider, hunterRangeHelperWidthSlider:GetValue())
+	end
 
-	local hunterRapidFireSlider = CreateSlider(content, "Rapid Fire Height", 2, 20, 1, PostQuickY(ShiftY(-180)))
-	hunterRapidFireSlider:SetValue(SuperSwingTimerDB.hunterRapidFireBarHeight or ns.DB_DEFAULTS.hunterRapidFireBarHeight or 4)
-	SyncSliderDisplay(hunterRapidFireSlider, hunterRapidFireSlider:GetValue())
+	local hunterRapidFireSlider = nil
+	if ns.playerClass == "HUNTER" then
+		hunterRapidFireSlider = CreateSlider(content, "Rapid Fire Height", 2, 20, 1, PostQuickY(ShiftY(-180)))
+		SetRowClassRequirement(hunterRapidFireSlider, "HUNTER")
+		hunterRapidFireSlider:SetValue(SuperSwingTimerDB.hunterRapidFireBarHeight or ns.DB_DEFAULTS.hunterRapidFireBarHeight or 4)
+		SyncSliderDisplay(hunterRapidFireSlider, hunterRapidFireSlider:GetValue())
+	end
 
-	local warriorShieldBlockSlider = CreateSlider(content, "Shield Block Height", 2, 20, 1, PostQuickY(ShiftY(-200)))
-	warriorShieldBlockSlider:SetValue(SuperSwingTimerDB.warriorShieldBlockBarHeight or ns.DB_DEFAULTS.warriorShieldBlockBarHeight or 4)
-	SyncSliderDisplay(warriorShieldBlockSlider, warriorShieldBlockSlider:GetValue())
+	local warriorShieldBlockSlider = nil
+	if ns.playerClass == "WARRIOR" then
+		warriorShieldBlockSlider = CreateSlider(content, "Shield Block Height", 2, 20, 1, PostQuickY(ShiftY(-200)))
+		SetRowClassRequirement(warriorShieldBlockSlider, "WARRIOR")
+		warriorShieldBlockSlider:SetValue(SuperSwingTimerDB.warriorShieldBlockBarHeight or ns.DB_DEFAULTS.warriorShieldBlockBarHeight or 4)
+		SyncSliderDisplay(warriorShieldBlockSlider, warriorShieldBlockSlider:GetValue())
+	end
 
-
-
-	local rogueAdrenalineRushSlider = CreateSlider(content, "Adrenaline Rush Height", 2, 20, 1, PostQuickY(ShiftY(-260)))
-	rogueAdrenalineRushSlider:SetValue(SuperSwingTimerDB.rogueAdrenalineRushBarHeight or ns.DB_DEFAULTS.rogueAdrenalineRushBarHeight or 4)
-	SyncSliderDisplay(rogueAdrenalineRushSlider, rogueAdrenalineRushSlider:GetValue())
+	local rogueAdrenalineRushSlider = nil
+	if ns.playerClass == "ROGUE" then
+		rogueAdrenalineRushSlider = CreateSlider(content, "Adrenaline Rush Height", 2, 20, 1, PostQuickY(ShiftY(-260)))
+		SetRowClassRequirement(rogueAdrenalineRushSlider, "ROGUE")
+		rogueAdrenalineRushSlider:SetValue(SuperSwingTimerDB.rogueAdrenalineRushBarHeight or ns.DB_DEFAULTS.rogueAdrenalineRushBarHeight or 4)
+		SyncSliderDisplay(rogueAdrenalineRushSlider, rogueAdrenalineRushSlider:GetValue())
+	end
 
 	local barTextureRow = CreateTexturePathRow(
 		content,
@@ -2684,41 +2860,39 @@ local function CreatePanel()
 		SyncSliderDisplay(self, value)
 		ns.ApplyBarBorderSize(value)
 	end)
-	mhOhRows[1] = widthSlider
-	mhOhRows[2] = heightSlider
-	mhOhRows[3] = hunterCastBarHeightSlider
-	mhOhRows[4] = rogueSndBarHeightSlider
-	mhOhRows[5] = rogueEnergyTickSlider
-	mhOhRows[6] = hunterRangeHelperWidthSlider
-	mhOhRows[7] = hunterRapidFireSlider
-	mhOhRows[8] = warriorShieldBlockSlider
-	mhOhRows[9] = rogueAdrenalineRushSlider
-	mhOhRows[10] = barTextureRow
-	mhOhRows[11] = barLayerRow
-	mhOhRows[12] = rangedTextureRow
-	mhOhRows[13] = sparkTextureRow
-	mhOhRows[14] = sparkAlphaSlider
-	mhOhRows[15] = sparkColorRow
-	mhOhRows[16] = sparkLayerRow
-	mhOhRows[17] = sparkWidthSlider
-	mhOhRows[18] = sparkHeightSlider
-	mhOhRows[19] = backgroundColorRow
-	mhOhRows[20] = backgroundAlphaSlider
-	mhOhRows[21] = indicatorBlendModeRow
-	mhOhRows[22] = barBorderColorRow
-	mhOhRows[23] = barBorderSlider
+	AppendRow(mhOhRows, widthSlider)
+	AppendRow(mhOhRows, heightSlider)
+	AppendRow(mhOhRows, hunterCastBarHeightSlider)
+	AppendRow(mhOhRows, rogueSndBarHeightSlider)
+	AppendRow(mhOhRows, rogueEnergyTickSlider)
+	AppendRow(mhOhRows, hunterRangeHelperWidthSlider)
+	AppendRow(mhOhRows, hunterRapidFireSlider)
+	AppendRow(mhOhRows, warriorShieldBlockSlider)
+	AppendRow(mhOhRows, rogueAdrenalineRushSlider)
+	AppendRow(mhOhRows, barTextureRow)
+	AppendRow(mhOhRows, barLayerRow)
+	AppendRow(mhOhRows, rangedTextureRow)
+	AppendRow(mhOhRows, sparkTextureRow)
+	AppendRow(mhOhRows, sparkAlphaSlider)
+	AppendRow(mhOhRows, sparkColorRow)
+	AppendRow(mhOhRows, sparkLayerRow)
+	AppendRow(mhOhRows, sparkWidthSlider)
+	AppendRow(mhOhRows, sparkHeightSlider)
+	AppendRow(mhOhRows, backgroundColorRow)
+	AppendRow(mhOhRows, backgroundAlphaSlider)
+	AppendRow(mhOhRows, indicatorBlendModeRow)
+	AppendRow(mhOhRows, barBorderColorRow)
+	AppendRow(mhOhRows, barBorderSlider)
 	SetRowsShown(mhOhRows, not sectionCollapsed.mhOh)
 	-- Class-specific visibility (overrides SetRowsShown for per-class sliders)
 	local function ApplyMHOhClassVisibility()
 		local collapsed = sectionCollapsed.mhOh or false
 		local show = not collapsed
-		hunterCastBarHeightSlider:SetShown(show and ns.playerClass == "HUNTER")
-		rogueSndBarHeightSlider:SetShown(show and ns.playerClass == "ROGUE")
-		rogueEnergyTickSlider:SetShown(show and ns.playerClass == "ROGUE")
-		hunterRangeHelperWidthSlider:SetShown(show and ns.playerClass == "HUNTER")
-		hunterRapidFireSlider:SetShown(show and ns.playerClass == "HUNTER")
-		warriorShieldBlockSlider:SetShown(show and ns.playerClass == "WARRIOR")
-		rogueAdrenalineRushSlider:SetShown(show and ns.playerClass == "ROGUE")
+		for _, row in ipairs(mhOhRows) do
+			if row and row.requiredClass then
+				row:SetShown(show and ns.playerClass == row.requiredClass)
+			end
+		end
 	end
 	ApplyMHOhClassVisibility()
 	-- Override header OnClick and refresh so collapse/expand re-applies class filtering
@@ -2731,6 +2905,9 @@ local function CreatePanel()
 		if mhOhHeader.arrow then
 			mhOhHeader.arrow:SetText(collapsed and "+" or "-")
 		end
+		if ReflowConfigSections then
+			ReflowConfigSections()
+		end
 	end)
 	mhOhHeader.refresh = function()
 		local collapsed = sectionCollapsed.mhOh or false
@@ -2739,6 +2916,9 @@ local function CreatePanel()
 		end
 		SetRowsShown(mhOhRows, not collapsed)
 		ApplyMHOhClassVisibility()
+		if ReflowConfigSections then
+			ReflowConfigSections()
+		end
 	end
 
 	local shamanHeader = CreateSectionHeader(content, "Shaman Weave Assist", PostQuickY(-750), {
@@ -2916,61 +3096,75 @@ local function CreatePanel()
 		ns.ApplyBarSize(widthSlider:GetValue(), value)
 	end)
 
-	hunterCastBarHeightSlider:SetScript("OnValueChanged", function(self, value)
-		value = math.floor(value + 0.5)
-		SyncSliderDisplay(self, value)
-		SuperSwingTimerDB.hunterCastBarHeight = value
-		ns.HUNTER_CAST_BAR_HEIGHT = value
-		ns.ApplyBarSize(widthSlider:GetValue(), heightSlider:GetValue())
-	end)
+	if hunterCastBarHeightSlider then
+		hunterCastBarHeightSlider:SetScript("OnValueChanged", function(self, value)
+			value = math.floor(value + 0.5)
+			SyncSliderDisplay(self, value)
+			SuperSwingTimerDB.hunterCastBarHeight = value
+			ns.HUNTER_CAST_BAR_HEIGHT = value
+			ns.ApplyBarSize(widthSlider:GetValue(), heightSlider:GetValue())
+		end)
+	end
 
-	rogueSndBarHeightSlider:SetScript("OnValueChanged", function(self, value)
-		value = math.floor(value + 0.5)
-		SyncSliderDisplay(self, value)
-		SuperSwingTimerDB.rogueSliceAndDiceBarHeight = value
-		ns.ROGUE_SLICE_AND_DICE_BAR_HEIGHT = value
-		ns.ApplyBarSize(widthSlider:GetValue(), heightSlider:GetValue())
-	end)
+	if rogueSndBarHeightSlider then
+		rogueSndBarHeightSlider:SetScript("OnValueChanged", function(self, value)
+			value = math.floor(value + 0.5)
+			SyncSliderDisplay(self, value)
+			SuperSwingTimerDB.rogueSliceAndDiceBarHeight = value
+			ns.ROGUE_SLICE_AND_DICE_BAR_HEIGHT = value
+			ns.ApplyBarSize(widthSlider:GetValue(), heightSlider:GetValue())
+		end)
+	end
 
-	rogueEnergyTickSlider:SetScript("OnValueChanged", function(self, value)
-		value = math.floor(value + 0.5)
-		SyncSliderDisplay(self, value)
-		SuperSwingTimerDB.rogueEnergyTickBarWidth = value
-		ns.ROGUE_ENERGY_TICK_BAR_WIDTH = value
-	end)
+	if rogueEnergyTickSlider then
+		rogueEnergyTickSlider:SetScript("OnValueChanged", function(self, value)
+			value = math.floor(value + 0.5)
+			SyncSliderDisplay(self, value)
+			SuperSwingTimerDB.rogueEnergyTickBarWidth = value
+			ns.ROGUE_ENERGY_TICK_BAR_WIDTH = value
+		end)
+	end
 
-	hunterRangeHelperWidthSlider:SetScript("OnValueChanged", function(self, value)
-		value = math.floor(value + 0.5)
-		SyncSliderDisplay(self, value)
-		SuperSwingTimerDB.hunterRangeHelperWidth = value
-		ns.HUNTER_RANGE_HELPER_WIDTH = value
-		if ns.UpdateHunterRangeHelperVisual then
-			ns.UpdateHunterRangeHelperVisual()
-		end
-	end)
+	if hunterRangeHelperWidthSlider then
+		hunterRangeHelperWidthSlider:SetScript("OnValueChanged", function(self, value)
+			value = math.floor(value + 0.5)
+			SyncSliderDisplay(self, value)
+			SuperSwingTimerDB.hunterRangeHelperWidth = value
+			ns.HUNTER_RANGE_HELPER_WIDTH = value
+			if ns.UpdateHunterRangeHelperVisual then
+				ns.UpdateHunterRangeHelperVisual()
+			end
+		end)
+	end
 
-	hunterRapidFireSlider:SetScript("OnValueChanged", function(self, value)
-		value = math.floor(value + 0.5)
-		SyncSliderDisplay(self, value)
-		SuperSwingTimerDB.hunterRapidFireBarHeight = value
-		ns.HUNTER_RAPID_FIRE_BAR_HEIGHT = value
-	end)
+	if hunterRapidFireSlider then
+		hunterRapidFireSlider:SetScript("OnValueChanged", function(self, value)
+			value = math.floor(value + 0.5)
+			SyncSliderDisplay(self, value)
+			SuperSwingTimerDB.hunterRapidFireBarHeight = value
+			ns.HUNTER_RAPID_FIRE_BAR_HEIGHT = value
+		end)
+	end
 
-	warriorShieldBlockSlider:SetScript("OnValueChanged", function(self, value)
-		value = math.floor(value + 0.5)
-		SyncSliderDisplay(self, value)
-		SuperSwingTimerDB.warriorShieldBlockBarHeight = value
-		ns.WARRIOR_SHIELD_BLOCK_BAR_HEIGHT = value
-	end)
+	if warriorShieldBlockSlider then
+		warriorShieldBlockSlider:SetScript("OnValueChanged", function(self, value)
+			value = math.floor(value + 0.5)
+			SyncSliderDisplay(self, value)
+			SuperSwingTimerDB.warriorShieldBlockBarHeight = value
+			ns.WARRIOR_SHIELD_BLOCK_BAR_HEIGHT = value
+		end)
+	end
 
 
 
-	rogueAdrenalineRushSlider:SetScript("OnValueChanged", function(self, value)
-		value = math.floor(value + 0.5)
-		SyncSliderDisplay(self, value)
-		SuperSwingTimerDB.rogueAdrenalineRushBarHeight = value
-		ns.ROGUE_ADRENALINE_RUSH_BAR_HEIGHT = value
-	end)
+	if rogueAdrenalineRushSlider then
+		rogueAdrenalineRushSlider:SetScript("OnValueChanged", function(self, value)
+			value = math.floor(value + 0.5)
+			SyncSliderDisplay(self, value)
+			SuperSwingTimerDB.rogueAdrenalineRushBarHeight = value
+			ns.ROGUE_ADRENALINE_RUSH_BAR_HEIGHT = value
+		end)
+	end
 
 	sparkWidthSlider:SetScript("OnValueChanged", function(self, value)
 		value = math.floor(value + 0.5)
@@ -3118,6 +3312,139 @@ local function CreatePanel()
 			weaveFamiliesHeader.refresh()
 		end
 	end
+
+	local function LayoutSectionRows(header, rows, topY, options)
+		if not header or not header:IsShown() then
+			return topY
+		end
+
+		options = options or {}
+		local gapAfterHeader = options.gapAfterHeader or 16
+		local rowSpacing = options.rowSpacing or 10
+
+		PositionRowAtY(content, header, topY)
+		local nextY = topY - GetRowLayoutHeight(header) - gapAfterHeader
+		for _, row in ipairs(rows or {}) do
+			if row and row:IsShown() then
+				PositionRowAtY(content, row, nextY)
+				nextY = nextY - GetRowLayoutHeight(row) - rowSpacing
+			end
+		end
+
+		return nextY
+	end
+
+	local function ReflowQuickControls()
+		local headerTopY = -10
+		PositionRowAtY(content, barVisibilityHeader, headerTopY)
+		local headerBottomY = headerTopY - GetRowLayoutHeight(barVisibilityHeader)
+
+		if sectionCollapsed.barVisibility then
+			SetRowsShown(barVisibilityRows, false)
+			quickSectionBottomY = headerBottomY
+			return headerBottomY
+		end
+
+		SetRowsShown(barVisibilityRows, true)
+		local contentWidth = content:GetWidth() or 720
+		local outerInset = 20
+		local gutter = 24
+		local usableWidth = math.max(contentWidth - (outerInset * 2) - gutter, 320)
+		local columnWidth = math.floor(usableWidth / 2)
+		local leftColumnLeft = outerInset
+		local leftColumnRight = leftColumnLeft + columnWidth
+		local rightColumnLeft = leftColumnRight + gutter
+		local rightColumnRight = contentWidth - outerInset
+
+		quickToggleLabel:ClearAllPoints()
+		quickToggleLabel:SetPoint("TOPLEFT", content, "TOPLEFT", leftColumnLeft, headerBottomY - 14)
+		quickColorLabel:ClearAllPoints()
+		quickColorLabel:SetPoint("TOPLEFT", content, "TOPLEFT", rightColumnLeft, headerBottomY - 14)
+
+		local labelHeight = math.max(GetRowLayoutHeight(quickToggleLabel), GetRowLayoutHeight(quickColorLabel))
+		local leftY = headerBottomY - 14 - labelHeight - 10
+		for _, row in ipairs(quickToggleRows) do
+			if row and row:IsShown() then
+				PositionRowBetween(content, row, leftColumnLeft, leftColumnRight, leftY)
+				leftY = leftY - GetRowLayoutHeight(row) - 8
+			end
+		end
+
+		local rightY = headerBottomY - 14 - labelHeight - 10
+		for _, row in ipairs(quickColorRows) do
+			if row and row:IsShown() then
+				PositionRowBetween(content, row, rightColumnLeft, rightColumnRight, rightY)
+				rightY = rightY - GetRowLayoutHeight(row) - 8
+			end
+		end
+
+		quickSectionBottomY = math.min(leftY, rightY)
+		return quickSectionBottomY
+	end
+
+	ReflowConfigSections = function()
+		local sectionY = ReflowQuickControls() - 26
+		sectionY = LayoutSectionRows(mhOhHeader, mhOhRows, sectionY, {
+			gapAfterHeader = 22,
+			rowSpacing = 14,
+		})
+
+		if shamanHeader:IsShown() then
+			sectionY = LayoutSectionRows(shamanHeader, shamanRows, sectionY - 8, {
+				gapAfterHeader = 22,
+				rowSpacing = 14,
+			})
+		end
+
+		sectionY = LayoutSectionRows(generalHeader, generalRows, sectionY - 8, {
+			gapAfterHeader = 20,
+			rowSpacing = 14,
+		})
+
+		if weaveFamiliesHeader:IsShown() then
+			sectionY = LayoutSectionRows(weaveFamiliesHeader, weaveFamiliesRows, sectionY - 8, {
+				gapAfterHeader = 20,
+				rowSpacing = 12,
+			})
+		end
+
+		local contentHeight = math.max(math.ceil(-sectionY) + 120, 2200)
+		content:SetHeight(contentHeight)
+	end
+
+	local function AttachHeaderReflow(header)
+		if not header then
+			return
+		end
+
+		local originalOnClick = header:GetScript("OnClick")
+		if originalOnClick then
+			header:SetScript("OnClick", function(self, ...)
+				originalOnClick(self, ...)
+				if ReflowConfigSections then
+					ReflowConfigSections()
+				end
+			end)
+		end
+
+		local originalRefresh = header.refresh
+		header.refresh = function(...)
+			if originalRefresh then
+				originalRefresh(...)
+			end
+			if ReflowConfigSections then
+				ReflowConfigSections()
+			end
+		end
+	end
+
+	AttachHeaderReflow(barVisibilityHeader)
+	AttachHeaderReflow(shamanHeader)
+	AttachHeaderReflow(generalHeader)
+	AttachHeaderReflow(weaveFamiliesHeader)
+
+	ReflowConfigSections()
+	f.ReflowConfigSections = ReflowConfigSections
 
 	-- Reset button
 	local resetBtn = CreateFrame("Button", nil, f)
@@ -3343,15 +3670,33 @@ function ns.ToggleConfig()
 		-- Refresh slider values from DB before showing
 		panel.widthSlider:SetValue(SuperSwingTimerDB.barWidth or ns.DB_DEFAULTS.barWidth)
 		panel.heightSlider:SetValue(SuperSwingTimerDB.barHeight or ns.DB_DEFAULTS.barHeight)
-		panel.hunterCastBarHeightSlider:SetValue(SuperSwingTimerDB.hunterCastBarHeight or ns.DB_DEFAULTS.hunterCastBarHeight or 10)
-		panel.rogueSndBarHeightSlider:SetValue(SuperSwingTimerDB.rogueSliceAndDiceBarHeight or ns.DB_DEFAULTS.rogueSliceAndDiceBarHeight or 4)
-		panel.rogueEnergyTickSlider:SetValue(SuperSwingTimerDB.rogueEnergyTickBarWidth or ns.DB_DEFAULTS.rogueEnergyTickBarWidth or 4)
-		panel.hunterRangeHelperWidthSlider:SetValue(SuperSwingTimerDB.hunterRangeHelperWidth or ns.DB_DEFAULTS.hunterRangeHelperWidth or 7)
-		panel.hunterRapidFireSlider:SetValue(SuperSwingTimerDB.hunterRapidFireBarHeight or ns.DB_DEFAULTS.hunterRapidFireBarHeight or 4)
-		panel.warriorShieldBlockSlider:SetValue(SuperSwingTimerDB.warriorShieldBlockBarHeight or ns.DB_DEFAULTS.warriorShieldBlockBarHeight or 4)
-		panel.druidPowerShiftSlider:SetValue(SuperSwingTimerDB.druidPowerShiftBarHeight or ns.DB_DEFAULTS.druidPowerShiftBarHeight or 4)
-		panel.druidEnergyTickSlider:SetValue(SuperSwingTimerDB.druidEnergyTickBarWidth or ns.DB_DEFAULTS.druidEnergyTickBarWidth or 4)
-		panel.rogueAdrenalineRushSlider:SetValue(SuperSwingTimerDB.rogueAdrenalineRushBarHeight or ns.DB_DEFAULTS.rogueAdrenalineRushBarHeight or 4)
+		if panel.hunterCastBarHeightSlider then
+			panel.hunterCastBarHeightSlider:SetValue(SuperSwingTimerDB.hunterCastBarHeight or ns.DB_DEFAULTS.hunterCastBarHeight or 10)
+		end
+		if panel.rogueSndBarHeightSlider then
+			panel.rogueSndBarHeightSlider:SetValue(SuperSwingTimerDB.rogueSliceAndDiceBarHeight or ns.DB_DEFAULTS.rogueSliceAndDiceBarHeight or 4)
+		end
+		if panel.rogueEnergyTickSlider then
+			panel.rogueEnergyTickSlider:SetValue(SuperSwingTimerDB.rogueEnergyTickBarWidth or ns.DB_DEFAULTS.rogueEnergyTickBarWidth or 4)
+		end
+		if panel.hunterRangeHelperWidthSlider then
+			panel.hunterRangeHelperWidthSlider:SetValue(SuperSwingTimerDB.hunterRangeHelperWidth or ns.DB_DEFAULTS.hunterRangeHelperWidth or 7)
+		end
+		if panel.hunterRapidFireSlider then
+			panel.hunterRapidFireSlider:SetValue(SuperSwingTimerDB.hunterRapidFireBarHeight or ns.DB_DEFAULTS.hunterRapidFireBarHeight or 4)
+		end
+		if panel.warriorShieldBlockSlider then
+			panel.warriorShieldBlockSlider:SetValue(SuperSwingTimerDB.warriorShieldBlockBarHeight or ns.DB_DEFAULTS.warriorShieldBlockBarHeight or 4)
+		end
+		if panel.druidPowerShiftSlider then
+			panel.druidPowerShiftSlider:SetValue(SuperSwingTimerDB.druidPowerShiftBarHeight or ns.DB_DEFAULTS.druidPowerShiftBarHeight or 4)
+		end
+		if panel.druidEnergyTickSlider then
+			panel.druidEnergyTickSlider:SetValue(SuperSwingTimerDB.druidEnergyTickBarWidth or ns.DB_DEFAULTS.druidEnergyTickBarWidth or 4)
+		end
+		if panel.rogueAdrenalineRushSlider then
+			panel.rogueAdrenalineRushSlider:SetValue(SuperSwingTimerDB.rogueAdrenalineRushBarHeight or ns.DB_DEFAULTS.rogueAdrenalineRushBarHeight or 4)
+		end
 		if panel.barTextureRow and panel.barTextureRow.refresh then
 			panel.barTextureRow.refresh()
 		end
@@ -3390,6 +3735,9 @@ function ns.ToggleConfig()
 		end
 		if panel.indicatorBlendModeRow and panel.indicatorBlendModeRow.refresh then
 			panel.indicatorBlendModeRow.refresh()
+		end
+		if panel.ReflowConfigSections then
+			panel.ReflowConfigSections()
 		end
 		if panel.weaveFamilyRows then
 			for _, row in ipairs(panel.weaveFamilyRows) do

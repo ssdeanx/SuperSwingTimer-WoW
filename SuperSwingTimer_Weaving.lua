@@ -236,6 +236,10 @@ local function BuildDisplayInfo(spellInfo)
 	local safeStartIn = nextSwingExpiration - now - latency - effectiveCastTime
 	local clipAmount = math_max(0, (now + latency + castRemaining) - nextSwingExpiration)
 	local safe = safeStartIn > 0 and clipAmount <= 0
+	local castProgress = 0
+	if isCasting and effectiveCastTime > 0 then
+		castProgress = math_max(0, math.min(1, 1 - (castRemaining / effectiveCastTime)))
+	end
 	local spellLabel = spellInfo.spellName or spellInfo.abbrev or "Weave"
 	local text
 
@@ -262,6 +266,7 @@ local function BuildDisplayInfo(spellInfo)
 		spellAbbrev = spellInfo.abbrev,
 		castTime = effectiveCastTime,
 		castRemaining = castRemaining,
+		castProgress = castProgress,
 		latency = latency,
 		nextSwingExpiration = nextSwingExpiration,
 		safeStartIn = safeStartIn,

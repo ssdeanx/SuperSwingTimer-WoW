@@ -1,5 +1,20 @@
 # Active Context
 
+## Active Context Update (2026-05-28 - `/sst` row-width + class-only slider follow-up)
+
+- Tightened the `/sst` config panel again in `SuperSwingTimer_Config.lua`: Hunter / Rogue / Warrior helper sliders in Appearance are now only created for the active class instead of being instantiated for every class and then hidden later, which removes the leaked off-class slider rows the user was still seeing in-game.
+- Reworked the main config row builders so the standard Appearance / Shaman / General rows use more of the panel width: texture pickers now span the row width, browser path boxes fill the row minus the browse button, cycle rows use wider dropdowns, and default toggle/action rows now keep the label above the control instead of cramming everything into the far-left side.
+- Quick Controls remains the compact two-column area, but its `Visibility` / `Key Colors` labels now sit with explicit vertical space below the section header before the first compact rows begin, preventing the section title from colliding with the column labels.
+- Re-ran targeted diagnostics on `SuperSwingTimer_Config.lua` after the follow-up and the file remains clean.
+
+## Active Context Update (2026-05-28 - shaman weave motion + /sst layout fix)
+
+- Updated the Enhancement Shaman weave visuals so active tracked casts no longer stay pinned to one fixed projected-impact point. `SuperSwingTimer_Weaving.lua` now exposes normalized cast progress, and `SuperSwingTimer_ClassMods.lua` moves the weave icon pair plus center spark from the safe cast-start breakpoint toward the projected landing point across the current MH swing.
+- Fixed the `/sst` open-path runtime error in `SuperSwingTimer_Config.lua` by guarding the stale `panel.druidPowerShiftSlider` / `panel.druidEnergyTickSlider` refresh calls that survived the Druid streamlining pass.
+- Reworked the `/sst` section layout for `Appearance`, `Shaman Weave Assist`, `General Behavior`, and `Weave Families` so those sections are reflowed from real widget heights instead of brittle hard-coded Y offsets, which removes the overlapping header/slider issue from the current live panel. Follow-up polish now re-runs that section reflow when the relevant headers collapse/expand and whenever `/sst` is reopened, so the spacing stays correct during real config use instead of only on initial panel creation.
+- Replaced the old tiny `OptionsSliderTemplate` anchors in `SuperSwingTimer_Config.lua` with labeled full-width slider rows that put the title above the control, keep the numeric entry box on the right side of the same row, and stop wasting the panel width with 100px-wide slider strips.
+- Re-ran targeted diagnostics on `SuperSwingTimer_Config.lua`, `SuperSwingTimer_ClassMods.lua`, and `SuperSwingTimer_Weaving.lua`; all three edited files are clean.
+
 ## Active Context Update (2026-05-27 - Enhancement Shaman Windfury crash + projected weave icon)
 
 - Fixed the Enhancement Shaman `UpdateWindfuryIcd()` runtime crash in `SuperSwingTimer_ClassMods.lua` by replacing the brittle raw `UnitBuff()` scan with the shared `GetHelpfulAuraData()` helper and explicit numeric spell-ID checks, which removes the `attempt to compare number with boolean` failure on current Classic/TBC helpful-aura payloads.

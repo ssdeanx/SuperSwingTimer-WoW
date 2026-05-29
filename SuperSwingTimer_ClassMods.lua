@@ -1366,6 +1366,7 @@ local function SetupEnhShaman()
 		local sparkAlpha = ns.GetWeaveSparkAlpha and ns.GetWeaveSparkAlpha() or 0.95
 		local triangleAlpha = ns.GetWeaveTriangleAlpha and ns.GetWeaveTriangleAlpha() or 1
 		local sparkPos = 0
+		local markerVisualPos = markerPos
 		local sparkVisualWidth = sparkWidth
 		local sparkVisualHeight = clampedSparkHeight
 
@@ -1373,7 +1374,10 @@ local function SetupEnhShaman()
 			local now = GetCurrentTime()
 			local castRemaining = math.max(info.castRemaining or info.castTime or 0, 0)
 			local projectedImpactTime = now + castRemaining + math.max(info.latency or 0, 0)
-			sparkPos = ((projectedImpactTime - timer.lastSwing) / timer.duration) * barWidth
+			local impactPos = ((projectedImpactTime - timer.lastSwing) / timer.duration) * barWidth
+			local castProgress = math.max(0, math.min(info.castProgress or 0, 1))
+			markerVisualPos = markerPos + ((impactPos - markerPos) * castProgress)
+			sparkPos = markerVisualPos
 			if iconTexture then
 				local iconSize = math.max(clampedSparkHeight, triangleSize)
 				sparkVisualWidth = iconSize
@@ -1387,6 +1391,12 @@ local function SetupEnhShaman()
 			sparkPos = barWidth
 		end
 
+		if markerVisualPos < 0 then
+			markerVisualPos = 0
+		elseif markerVisualPos > (barWidth or markerVisualPos) then
+			markerVisualPos = barWidth
+		end
+
 		ns.weaveSpark:ClearAllPoints()
 		ns.weaveSpark:SetPoint("CENTER", barAnchor, "LEFT", sparkPos, 0)
 		ApplyWeaveSparkTexture(ns.weaveSpark, showSpark and iconTexture or nil, sparkFallbackTexture, sparkVisualWidth, sparkVisualHeight, sparkAlpha, color)
@@ -1397,12 +1407,12 @@ local function SetupEnhShaman()
 		end
 
 		ns.weaveTriangleTop:ClearAllPoints()
-		ns.weaveTriangleTop:SetPoint("BOTTOM", barAnchor, "TOPLEFT", markerPos, triangleGap)
+		ns.weaveTriangleTop:SetPoint("BOTTOM", barAnchor, "TOPLEFT", markerVisualPos, triangleGap)
 		ApplyWeaveMarkerTexture(ns.weaveTriangleTop, iconTexture, topFallbackTexture, triangleSize, triangleAlpha, color)
 		ns.weaveTriangleTop:Show()
 
 		ns.weaveTriangleBottom:ClearAllPoints()
-		ns.weaveTriangleBottom:SetPoint("TOP", barAnchor, "BOTTOMLEFT", markerPos, -triangleGap)
+		ns.weaveTriangleBottom:SetPoint("TOP", barAnchor, "BOTTOMLEFT", markerVisualPos, -triangleGap)
 		ApplyWeaveMarkerTexture(ns.weaveTriangleBottom, iconTexture, bottomFallbackTexture, triangleSize, triangleAlpha, color)
 		ns.weaveTriangleBottom:Show()
 		if ns.weaveMarker then
