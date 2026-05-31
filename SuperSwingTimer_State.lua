@@ -6,6 +6,7 @@ local GetTime = rawget(_G, "GetTime")
 local UnitAttackSpeed = rawget(_G, "UnitAttackSpeed")
 local UnitRangedDamage = rawget(_G, "UnitRangedDamage")
 local GetSpellCooldown = rawget(_G, "GetSpellCooldown")
+local C_Spell = rawget(_G, "C_Spell")
 local CombatLogGetCurrentEventInfo = rawget(_G, "CombatLogGetCurrentEventInfo")
 local C_Timer = rawget(_G, "C_Timer")
 local UnitGUID = rawget(_G, "UnitGUID")
@@ -14,7 +15,6 @@ local UnitCanAttack = rawget(_G, "UnitCanAttack")
 local UnitName = rawget(_G, "UnitName")
 local GetNetStats = rawget(_G, "GetNetStats")
 local GetRangedHaste = rawget(_G, "GetRangedHaste") or rawget(_G, "GetHaste")
-local C_Spell = rawget(_G, "C_Spell")
 local IsMounted = rawget(_G, "IsMounted")
 local pcall = pcall
 
@@ -24,6 +24,7 @@ end
 
 ns.cachedLatency = ns.cachedLatency or 0
 local RANGED_START_DEDUPE_WINDOW = 0.25
+local WARRIOR_OVERPOWER_PROC_WINDOW = 5.0
 
 -- ============================================================
 -- Timer State
@@ -65,6 +66,9 @@ ns.lastResolvedHunterCastToken = nil
 ns.lastResolvedHunterCastAt = nil
 ns.preventSwingReset = false
 ns.pauseSwingTime = nil
+ns.lastGcdTime = nil
+ns.gcdDuration = 1.5
+ns.gcdActive = false
 ns.warriorQueuedMeleeSpell = nil
 ns.druidQueuedMeleeSpell = nil
 ns.hunterQueuedMeleeSpell = nil
@@ -105,18 +109,34 @@ function ns.RefreshLatencyCache()
 end
 
 function ns.GetAutoShotCooldown()
-	if type(GetSpellCooldown) ~= "function" then
-		return nil, nil
-	end
+	local startTime
+	local duration
+	local enabled
 
-	local startTime, duration, enabled = GetSpellCooldown(ns.AUTO_SHOT_ID)
-	if (not duration or duration <= 0) and ns.GetSpellInfo then
-		local autoShotName = ns.GetSpellInfo(ns.AUTO_SHOT_ID)
-		if autoShotName then
-			startTime, duration, enabled = GetSpellCooldown(autoShotName)
+	if C_Spell and type(C_Spell.GetSpellCooldown) == "function" then
+		local ok, cooldownInfo = pcall(C_Spell.GetSpellCooldown, ns.AUTO_SHOT_ID)
+		if ok and type(cooldownInfo) == "table" then
+			startTime = tonumber(cooldownInfo.startTime or cooldownInfo.start_time)
+			duration = tonumber(cooldownInfo.duration)
+			enabled = cooldownInfo.isEnabled
+			if enabled == nil then
+				enabled = cooldownInfo.enabled
+			end
 		end
 	end
-	if enabled == 1 and startTime and duration and duration > 0 then
+
+	if (not duration or duration <= 0) and type(GetSpellCooldown) == "function" then
+		startTime, duration, enabled = GetSpellCooldown(ns.AUTO_SHOT_ID)
+		if (not duration or duration <= 0) and ns.GetSpellInfo then
+			local autoShotName = ns.GetSpellInfo(ns.AUTO_SHOT_ID)
+			if autoShotName then
+				startTime, duration, enabled = GetSpellCooldown(autoShotName)
+			end
+		end
+	end
+
+	local isEnabled = enabled == nil or enabled == 1 or enabled == true
+	if isEnabled and startTime and duration and duration > 0 then
 		return startTime, duration
 	end
 
@@ -214,6 +234,31 @@ function ns.HasActiveTimers()
 			return true
 		end
 	end
+
+	-- Normal spellcasting must also keep the update loop alive so cast-driven
+	-- visuals (especially Shaman weave assist) continue to animate even when no
+	-- melee/ranged swing timer is currently active.
+	if ns.casting then
+		return true
+	end
+
+	-- Warrior combat visuals (rage bar + Shield Block bar) need the update loop
+	-- even when no swing timer is active yet; otherwise the bars can fail to
+	-- refresh during combat until another timer starts.
+	if ns.playerClass == "WARRIOR" and ns.playerInCombat == true then
+		local db = SuperSwingTimerDB or ns.DB_DEFAULTS
+		if db and (db.showWarriorRageBar ~= false or db.showWarriorShieldBlockBar ~= false) then
+			return true
+		end
+	end
+
+	if ns.playerClass == "DRUID" and ns.playerInCombat == true and ns.IsDruidCatFormActive and ns.IsDruidCatFormActive() then
+		local db = SuperSwingTimerDB or ns.DB_DEFAULTS
+		if db and db.showDruidEnergyTickBar ~= false then
+			return true
+		end
+	end
+
 	if ns.channeling then
 		return true
 	end
@@ -285,11 +330,12 @@ local function ClearPendingMeleeQueueState()
 		ns.ClearDruidQueueTint()
 	elseif ns.playerClass == "HUNTER" and ns.ClearHunterQueueTint then
 		ns.ClearHunterQueueTint()
-	else
-		ns.warriorQueuedMeleeSpell = nil
-		ns.druidQueuedMeleeSpell = nil
-		ns.hunterQueuedMeleeSpell = nil
 	end
+
+	-- Always hard-clear queue state so stale values cannot survive callback drift.
+	ns.warriorQueuedMeleeSpell = nil
+	ns.druidQueuedMeleeSpell = nil
+	ns.hunterQueuedMeleeSpell = nil
 end
 
 local function LookupContains(lookup, spellValue)
@@ -495,6 +541,17 @@ function ns.OnPlayerEnteringWorld()
 	ns.isMoving = false
 	ns.lastStoppedMovingAt = nil
 	ns.druidFormChangeTime = nil
+	ns.casting = false
+	ns.channeling = false
+	ns.channelingSpellId = nil
+	ns.currentCastSpellId = nil
+	ns.currentCastStartTime = nil
+	ns.lastGcdTime = nil
+	ns.gcdDuration = 1.5
+	ns.gcdActive = false
+	ns.preventSwingReset = false
+	ns.pauseSwingTime = nil
+	ns.warriorOverpowerProcUntil = nil
 	ns.RefreshLatencyCache()
 	ClearHunterCastState(true)
 	if ns.ClearWeavePreview then
@@ -724,6 +781,59 @@ end
 
 local HUNTER_FEIGN_DEATH_ID = 5384
 local HUNTER_FEIGN_DEATH_NAME = ns.GetSpellInfo and (ns.GetSpellInfo(HUNTER_FEIGN_DEATH_ID) or "Feign Death") or "Feign Death"
+local GCD_QUERY_SPELL_ID = 61304
+
+local function QuerySpellCooldown(spellToken)
+	if C_Spell and type(C_Spell.GetSpellCooldown) == "function" then
+		local ok, cooldownInfo = pcall(C_Spell.GetSpellCooldown, spellToken)
+		if ok and type(cooldownInfo) == "table" then
+			local startTime = tonumber(cooldownInfo.startTime or cooldownInfo.start_time)
+			local duration = tonumber(cooldownInfo.duration)
+			local enabled = cooldownInfo.isEnabled
+			if enabled == nil then
+				enabled = cooldownInfo.enabled
+			end
+			if (enabled == nil or enabled == true or enabled == 1)
+				and type(startTime) == "number"
+				and type(duration) == "number"
+				and duration > 0 then
+				return startTime, duration
+			end
+		end
+	end
+
+	local legacyGetSpellCooldown = rawget(_G, "GetSpellCooldown")
+	if type(legacyGetSpellCooldown) == "function" then
+		local startTime, duration, enabled = legacyGetSpellCooldown(spellToken)
+		if (enabled == nil or enabled == true or enabled == 1)
+			and type(startTime) == "number"
+			and type(duration) == "number"
+			and duration > 0 then
+			return startTime, duration
+		end
+	end
+
+	return nil, nil
+end
+
+local function RefreshGcdWindow(now, allowFallback)
+	local queryNow = now or GetCurrentTime()
+	local startTime, duration = QuerySpellCooldown(GCD_QUERY_SPELL_ID)
+	if type(startTime) == "number" and type(duration) == "number" and duration > 0 then
+		ns.lastGcdTime = (startTime > 0 and startTime) or queryNow
+		ns.gcdDuration = duration
+		ns.gcdActive = true
+		return
+	end
+
+	if allowFallback then
+		ns.lastGcdTime = queryNow
+		ns.gcdDuration = 1.5
+		ns.gcdActive = true
+	else
+		ns.gcdActive = false
+	end
+end
 
 local function IsHunterFeignDeathSpell(spellValue)
 	if spellValue == nil then
@@ -791,10 +901,9 @@ function ns.HandleSpellcastStart(unit, castGUIDOrSpellName, spellId)
 	ns.RefreshLatencyCache()
 	local now = GetCurrentTime()
 
-	-- GCD tracking: record when any player cast starts (1.5s fixed GCD in Classic/TBC)
-	ns.lastGcdTime = now
-	ns.gcdDuration = 1.5
-	ns.gcdActive = true
+	-- Track the live GCD window with Anniversary-safe cooldown queries and a
+	-- fixed-duration fallback only when the API has not populated yet.
+	RefreshGcdWindow(now, true)
 	local castWindow = math.max(ns.CAST_WINDOW or 0.5, 0.01)
 	local spellToken = ResolveSpellcastEventSpell(castGUIDOrSpellName, spellId)
 	local isHunterCastSpell = ns.playerClass == "HUNTER" and ns.IsHunterCastSpell and ns.IsHunterCastSpell(spellToken)
@@ -825,9 +934,9 @@ function ns.HandleSpellcastStart(unit, castGUIDOrSpellName, spellId)
 	ns.RefreshUpdateLoop()
 end
 
--- Track GCD for the GCD ticker bar (Classic/TBC: 1.5s fixed).
--- Using 1.5s as the canonical GCD duration for all melee classes.
--- Reset by HandleSpellcastStop when the global cooldown window expires.
+-- Track GCD for the GCD ticker bar.
+-- Prefer the live cooldown query for spell 61304, with a 1.5s fallback when
+-- the client has not populated the cooldown yet.
 local GCD_DURATION = 1.5
 function ns.GetGcdDuration()
 	return GCD_DURATION
@@ -836,6 +945,7 @@ end
 function ns.HandleSpellcastChannelStart(unit, castGUIDOrSpellName, spellId)
 	if unit ~= "player" then return end
 	ns.RefreshLatencyCache()
+	RefreshGcdWindow(GetCurrentTime(), true)
 	local spellToken = ResolveSpellcastEventSpell(castGUIDOrSpellName, spellId)
 	local spellIdNumber = tonumber(spellToken)
 	ns.casting = true
@@ -861,8 +971,6 @@ function ns.HandleSpellcastStop(unit)
 		ClearHunterCastState()
 	end
 	ns.preventSwingReset = false
-	-- GCD ends when cast stops (OnUpdate handles visual tail decay)
-	ns.gcdActive = false
 	ns.RefreshUpdateLoop()
 end
 
@@ -937,6 +1045,7 @@ function ns.HandleSpellcastInterruptedOrFailed(unit, castGUIDOrSpellName, spellI
 		ClearHunterCastState()
 	end
 	ns.preventSwingReset = false
+	RefreshGcdWindow(now, false)
 	ns.RefreshUpdateLoop()
 end
 
@@ -1023,7 +1132,15 @@ end
 
 -- Main CLEU handler. Called from the bootstrap OnEvent.
 function ns.HandleCLEU()
+	if type(CombatLogGetCurrentEventInfo) ~= "function" then
+		return
+	end
+
 	local _, subEvent, _, sourceGUID, _, _, _, targetGUID, _, _, _, cleuArg12, cleuArg13, _, cleuArg15, _, _, _, _, _, cleuArg21 = CombatLogGetCurrentEventInfo()
+	if not subEvent then
+		return
+	end
+
 	ns.RefreshLatencyCache()
 	local eventTime = GetCurrentTime()
 
@@ -1058,8 +1175,12 @@ function ns.HandleCLEU()
 			end
 
 		elseif subEvent == "SWING_MISSED" then
+			local missType = cleuArg12
 			local isOffHandAttack = cleuArg13
 			local slot = isOffHandAttack and "oh" or "mh"
+			if ns.playerClass == "WARRIOR" and missType == "DODGE" then
+				ns.warriorOverpowerProcUntil = eventTime + WARRIOR_OVERPOWER_PROC_WINDOW
+			end
 			if (ns.extraAttackPending or 0) > 0 then
 				ns.extraAttackPending = ns.extraAttackPending - 1
 			else
@@ -1083,9 +1204,13 @@ function ns.HandleCLEU()
 
 		elseif (subEvent == "SPELL_DAMAGE" or subEvent == "SPELL_MISSED") and sourceGUID == currentPlayerGUID then
 			local spellId = cleuArg12
+			local missType = cleuArg15
 			if IsQueuedMeleeHitForPlayerClass(spellId) then
 				ns.StartSwing("mh", nil, eventTime)
 				if ns.OnMeleeSwing then ns.OnMeleeSwing("mh") end
+				if ns.playerClass == "WARRIOR" and subEvent == "SPELL_MISSED" and missType == "DODGE" then
+					ns.warriorOverpowerProcUntil = eventTime + WARRIOR_OVERPOWER_PROC_WINDOW
+				end
 			elseif ns.RESET_RANGED_SWING_SPELLS and ns.RESET_RANGED_SWING_SPELLS[spellId] then
 				if ns.StartRangedSwing(eventTime) and ns.OnRangedSwing then
 					ns.OnRangedSwing()
@@ -1130,6 +1255,7 @@ function ns.HandleSpellcastSucceeded(unit, castGUIDOrSpellName, spellId)
 	if unit ~= "player" then return end
 	ns.RefreshLatencyCache()
 	local now = GetCurrentTime()
+	RefreshGcdWindow(now, true)
 	local spellToken = ResolveSpellcastEventSpell(castGUIDOrSpellName, spellId)
 	if ns.playerClass == "HUNTER" and not (ns.IsHunterCastSpell and ns.IsHunterCastSpell(spellToken)) then
 		local liveSpell = ns.currentCastSpellId
@@ -1154,6 +1280,8 @@ function ns.HandleSpellcastSucceeded(unit, castGUIDOrSpellName, spellId)
 
 	if ns.PAUSE_SWING_SPELLS and (ns.PAUSE_SWING_SPELLS[spellToken] or (spellIdNumber and ns.PAUSE_SWING_SPELLS[spellIdNumber])) and ns.pauseSwingTime then
 		ns.AdjustSwingTimesAfterPause(now)
+	elseif ns.playerClass == "WARRIOR" and ns.WARRIOR_OVERPOWER_ID and (spellToken == ns.WARRIOR_OVERPOWER_ID or spellIdNumber == ns.WARRIOR_OVERPOWER_ID or spellToken == ns.WARRIOR_OVERPOWER_NAME) then
+		ns.warriorOverpowerProcUntil = nil
 	elseif ns.playerClass == "HUNTER" and ns.IsHunterCastSpell and ns.IsHunterCastSpell(spellToken) then
 		local isAutoShotSpell = ns.IsAutoShotSpell and ns.IsAutoShotSpell(spellToken)
 		if not isAutoShotSpell then

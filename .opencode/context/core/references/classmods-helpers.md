@@ -1,8 +1,8 @@
 # ClassMods Helper Registry
 
-Source: `SuperSwingTimer_ClassMods.lua` (3132 lines)
+Source: `SuperSwingTimer_ClassMods.lua` (3154 lines)
 
-Dispatch: `ns.InitClassMods()` at line 3494 — clears all callbacks, then calls Setup* based on `ns.playerClass`.
+Dispatch: `ns.InitClassMods()` at line 3073 — clears all callbacks, then calls Setup* based on `ns.playerClass`.
 
 ## Shared utilities (lines 1–159)
 
@@ -22,7 +22,7 @@ Dispatch: `ns.InitClassMods()` at line 3494 — clears all callbacks, then calls
 - `DRUID_POWER_SHIFT_DURATION = 1.5` (ClassMods.lua:1930)
 - `DRUID_ENERGY_TICK_DURATION = 2.0` (ClassMods.lua:1934)
 
-## SetupRetPaladin() (lines 166–623)
+## SetupRetPaladin() (lines 165–668)
 
 ### Callbacks registered on `ns`
 | Callback | Implementation |
@@ -60,7 +60,7 @@ Dispatch: `ns.InitClassMods()` at line 3494 — clears all callbacks, then calls
 | `UpdateSealColorAndLabel()` | Applies per-seal color to MH bar + optional seal name label |
 | `UpdateSealBreakpointLine()` | Positional update for twist zone + reseal line |
 
-## SetupWarrior() (lines 625–1222)
+## SetupWarrior() (lines 669–1222*)
 
 ### Callbacks registered on `ns`
 | Callback | Implementation |
@@ -94,7 +94,7 @@ Dispatch: `ns.InitClassMods()` at line 3494 — clears all callbacks, then calls
 - Flurry: 3 charges, each swing consumes 1, charge counter decrements on swing
 - Shield Block: 10s duration, 10s base CD (+ Shield Mastery talent reduction)
 
-## SetupEnhShaman() (lines 1223–1612)
+## SetupEnhShaman() (lines 1270–1727*)
 
 ### Callbacks registered on `ns`
 | Callback | Implementation |
@@ -125,71 +125,40 @@ Dispatch: `ns.InitClassMods()` at line 3494 — clears all callbacks, then calls
 - Marker position: `((timer.duration - castWindow) / timer.duration) * barWidth`
 - Windfury ICD: 3 seconds
 
-## SetupDruid() (lines 1613–2240)
+## SetupDruid() (lines 1728–1836)
+
+**Note:** v0.0.9 Druid streamlining pass removed form colors/labels, Omen glow, Tiger's Fury badge, Faerie Fire badge, Power Shift bar, Energy tick bar, and Rage dim. Ravage cue and Mangle/Rip trackers also disabled in current code (`ns.UpdateDruidRavageCue = nil` at line 3084). Reference only Maul queue tint and spellcast hooks remain.
 
 ### Callbacks registered on `ns`
 | Callback | Implementation |
 |----------|---------------|
-| `ns.OnMeleeSwing` | Clears queue tint, updates form color |
-| `ns.OnDruidFormChange` | Re-applies form-specific color to MH bar, resets power shift + energy tick timers |
-| `ns.OnBarsCreated` | Creates Ravage cue overlay |
+| `ns.OnMeleeSwing` | Clears queue tint, restores base MH color |
 | `ns.UpdateDruidQueueTint` | Sets `DRUID_MAUL_TINT` on MH bar |
-| `ns.ClearDruidQueueTint` | Clears Maul tint |
-| `ns.UpdateDruidRavageCue` | Shows amber glow when Ravage usable |
-| `ns.UpdateDruidFormColors` | Re-applies form tint to MH bar |
-| `ns.UpdateDruidOmenGlow` | Green flash on Omen of Clarity proc |
-| `ns.UpdateDruidTigerFuryBadge` | Shows Tiger's Fury uptime badge |
-| `ns.UpdateDruidPowerShiftBar` | Updates Power Shift duration bar under MH |
-| `ns.UpdateDruidEnergyTickVisual` | Updates energy tick progress left of MH |
-| `ns.UpdateDruidFaerieFireBadge` | Shows Faerie Fire debuff badge on target |
+| `ns.ClearDruidQueueTint` | Clears Maul tint, restores base MH color |
+| `ns.RegisterSpellcastSucceededHook` | Detects Maul queued via `IsCurrentSpell` |
 
 ### Helpers
 
 | Helper | Frame | Description |
 |--------|-------|-------------|
-| Form color | `ns.mhBar` | Direct color override per form (Bear=red, Cat=gold, Moonkin=blue) |
-| Form label | `ns.mhBar` | "Bear", "Cat", "Moonkin" text |
-| Maul queue tint | `ns.mhBar` | Amber tint when Maul queued |
-| Ravage cue | `ns.druidRavageCue` | Amber glow overlay when Ravage usable in Cat Form |
-| Omen glow | `ns.mhBar` | Green flash when Omen of Clarity procs |
-| Rage dim | `ns.mhBar` | 40% alpha in Bear form when < 15 rage |
-| Power Shift bar | `druidPowerShiftBar` (local) | Duration bar under MH: 1.5s fill, shows "PS X.Xs" label |
-| Energy tick bar | `druidEnergyTickBar` (local) | Vertical bar left of MH: 2s energy tick cadence with countdown text |
-| Tiger's Fury badge | (text on MH bar) | Shows TF remaining duration |
-| Faerie Fire badge | (text on MH bar) | Shows FF debuff active on target |
+| Maul queue tint | `ns.mhBar` | Amber/bear-yellow tint when Maul queued (`DRUID_MAUL_TINT = { r=1.0, g=0.78, b=0.10 }`) |
+| Form change handler | `ns.OnDruidFormChange` | Applies `DRUID_FORM_CHANGE_DELAY_BONUS` (Constants.lua) to MH timer |
 
 ### Key functions
 | Function | Description |
 |----------|-------------|
-| `UpdateFormColor()` | Sets MH bar color based on `GetShapeshiftForm()`: 1=Bear, 3=Cat, 4=Moonkin |
-| `UpdateFormLabel()` | Shows form name text on MH bar |
-| `UpdateRavageCue()` | Checks Cat Form + behind target + energy ≥ Ravage cost + Ravage usable |
-| `MaulQueued` state | `ns.druidQueuedMeleeSpell` tracks if Maul is queued |
-| Omen proc | Flash MH bar green for Omen of Clarity (Spell ID 16864) proc |
-| Rage dim | Below 15 rage in Bear form → set MH bar alpha to 0.4 |
-| `UpdateDruidPowerShiftBar()` | 1.5s fill bar under MH, tracks `ns.druidPowerShiftStartTime` |
-| `EnsureDruidEnergyTickBar()` | Creates 4px-wide vertical bar left of MH with countdown text |
-| `UpdateDruidEnergyTickVisual()` | 2s energy tick cadence, resets on `ns.druidEnergyTickStartTime` |
+| `FindCurrentQueuedSpell(spellSet)` | Scans `IsCurrentSpell` for Maul in `ns.DRUID_MAUL_SPELLS` |
+| `RestoreMainHandColor()` | Resets MH bar to saved `mh` color or `{0,0,0,1}` |
+| `UpdateDruidQueueTint()` | Applies Maul yellow tint; clears on queued spell end |
+| `ApplyDruidQueueTint(spellValue)` | Sets queue tint from `UNIT_SPELLCAST_SUCCEEDED` hook |
 
 ### Druid state variables
-- `ns.druidPowerShiftStartTime` — start time of current Power Shift window
-- `ns.druidEnergyTickStartTime` — start time of current energy tick window
+- `ns.druidQueuedMeleeSpell` — currently queued Maul spell ID or nil
 
 ### Timing
-- Power Shift window: 1.5s (DRUID_POWER_SHIFT_DURATION)
-- Energy tick cadence: 2.0s (DRUID_ENERGY_TICK_DURATION)
+- Form reset delay: `DRUID_FORM_CHANGE_DELAY_BONUS` (Constants.lua) added to MH timer on form change
 
-### Form IDs
-- Bear = 768 (GetShapeshiftForm returns 1)
-- Cat = 5487 (GetShapeshiftForm returns 3)
-- Moonkin = 24858 (GetShapeshiftForm returns 4)
-
-### Form colors
-- Bear: `colors.druidFormBear` → `{0.80,0.15,0.10,1.0}`
-- Cat: `colors.druidFormCat` → `{0.90,0.70,0.10,1.0}`
-- Moonkin: `colors.druidFormMoonkin` → `{0.30,0.55,0.90,1.0}`
-
-## SetupHunter() (lines 2223–2658)
+## SetupHunter() (lines 1838–2250)
 
 ### Callbacks registered on `ns`
 | Callback | Implementation |
@@ -227,7 +196,7 @@ Dispatch: `ns.InitClassMods()` at line 3494 — clears all callbacks, then calls
 - Rapid Fire: 15s buff duration, 40s (5m with talents) CD
 - Range helper refreshes on `UNIT_RANGEDDAMAGE`, `PLAYER_STOPPED_MOVING`, `PLAYER_STARTED_MOVING`
 
-## SetupRogue() (lines 2659–3476)
+## SetupRogue() (lines 2251–3069)
 
 ### Callbacks registered on `ns`
 | Callback | Implementation |
@@ -291,8 +260,8 @@ Dispatch: `ns.InitClassMods()` at line 3494 — clears all callbacks, then calls
 | `ns.paladinLibramLastItemId` | item ID | Paladin | Last libram in relic slot |
 | `ns.paladinLibramSwapStartTime` | number | Paladin | Time of last libram swap |
 | `ns.hunterFeigningDeath` | boolean | Hunter | FD state flag |
-| `ns.druidPowerShiftStartTime` | number | Druid | Start time of Power Shift window |
-| `ns.druidEnergyTickStartTime` | number | Druid | Start time of energy tick window |
+| `ns.druidPowerShiftStartTime` | number | Druid | Start time of Power Shift window (legacy — feature stripped in v0.0.9) |
+| `ns.druidEnergyTickStartTime` | number | Druid | Start time of energy tick window (legacy — feature stripped in v0.0.9) |
 
 ## Event hooks registered by ClassMods
 Dispatched from main event handler in `SuperSwingTimer.lua`:
@@ -304,11 +273,11 @@ Dispatched from main event handler in `SuperSwingTimer.lua`:
 - `UNIT_SPELLCAST_START/SUCCEEDED/DELAYED/FAILED` → (cast detection per class)
 
 ## OnUpdate class hooks
-Last section of ClassMods.lua (line 3477+) registers class-specific `OnUpdate` handlers that run every frame:
+Last section of ClassMods.lua (line 3070+) registers class-specific `OnUpdate` handlers that run every frame:
 - Paladin: seal breakpoint line + judgement marker position
 - Warrior: rage bar updater (throttled)
 - Shaman: weave visual updater
-- Druid: form color + ravage cue
+- Druid: queue tint recheck (minimal — form color/ravage cue stripped in v0.0.9)
 - Hunter: range helper refresh
 - Rogue: energy tick + SnD + SS cue + CP strip
 

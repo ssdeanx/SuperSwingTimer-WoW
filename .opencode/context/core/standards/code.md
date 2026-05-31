@@ -166,3 +166,6 @@ This project uses a layered workflow system. When starting a task, reference:
 3. `workflows/quality-gates.md` — Verify quality at every stage
 4. `workflows/review.md` — Code review with parallel agents
 5. `workflows/delegation.md` — Delegate with structured handoffs (if needed)
+
+---
+**🔄 Sync hook:** If MUST/SHOULD rules, architecture diagram, file roles, key file index, or master sync protocol table change, update this file. Master protocol is this file.

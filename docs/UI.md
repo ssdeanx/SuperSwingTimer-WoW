@@ -17,7 +17,7 @@ This document captures the UI direction for `/sst`.
 - Avoid one dense vertical wall of controls; sectioning is the readability win.
 - Keep the first interactive row in each collapsible section clearly below the section header so slider or row clicks never also hit the collapse toggle, and stack later rows from their real runtime widget heights instead of brittle fixed Y offsets.
 - Keep the top section as a two-column quick-control area with explicit column headers: left `Visibility`, right `Key Colors`, and use compact non-overlapping row spacing so the Rogue/Hunter quick rows do not crash into each other.
-- Keep the Quick Controls column labels on their own measured line below the section header; the first compact row should start only after the label height has been accounted for.
+- Keep the Quick Controls column labels on their own measured line below the section header; the first compact row should start only after the label height has been accounted for, with a little extra gap so the first swatch/toggle row does not visually kiss the title.
 - Create class-specific Appearance helper sliders only for the active class instead of creating every class row and hiding the wrong ones later.
 - Keep the quick color swatches visually strong: prefer flat high-contrast preview tiles over washed-out stock button art so the chosen bar colors are readable in the config panel.
 - Keep the default live profile slimmer: 15px for the main shared bars, 8px for the derived OH bar, a slim 3-4px Rogue Slice and Dice helper above MH, and a default spark height that matches the slimmer main bars while still clamping to each host frame.
@@ -43,10 +43,12 @@ This document captures the UI direction for `/sst`.
 - Add weave-assist presentation options:
   - show / hide weave overlay
   - tiny upper / lower spell-icon marker pair that follows the spell-haste-adjusted safe swing point
-  - while actively casting a tracked shaman spell, swap the moving weave spark to that spell's icon and move the icon pair plus center spark from the safe breakpoint toward the projected landing point on the current MH swing, then restore the configured weave spark texture when the cast ends or is interrupted
+  - while actively casting a tracked shaman spell, keep the upper/lower breakpoint markers fixed at the safe cast-start point, swap the moving weave spark to that spell's icon, and move that live icon from the cast-start position toward the projected landing point on the current MH swing while rescaling with current haste/buffs, then restore the configured weave spark texture when the cast ends or is interrupted
   - marker size, gap, alpha, and layer controls, with compact spark defaults that stay bar-height aligned instead of becoming a full-height glow
   - color selection by spell family
   - per-family enable / disable toggles for Lightning Bolt, Chain Lightning, Healing Wave, Lesser Healing Wave, and Chain Heal
+- Keep an Enhancement Shaman Flame Shock helper bar above MH: a thin 6px duration bar that tracks your own Flame Shock on the current target and hides when no valid target debuff is present.
+- In Quick Controls, expose independent Shaman helper checkboxes so players can disable `Lightning Shield Tracker` and `Flame Shock Bar` separately without disabling weave assist.
 - Texture selection for the MH/OH and ranged bars should use a scrolling full-preview list that stretches each bar texture behind its label, keeps a fixed-height visible window with scroll support, and stays focused on bar-style textures from Blizzard fallbacks, WeakAuras bars, and any installed LibSharedMedia statusbar packs. The spark row and the shaman weave spark row should stay on the dedicated thumbnail browser seeded with the Normal `Square_FullWhite` preset, while the collapsed bar rows show the current texture as a miniature preview bar instead of a small icon.
 - The enemy bar should be toggleable from `/sst`, default to red, store its own anchor, expose its own color swatch, and follow the same preview / lock-drag flow as the other primary bars.
 - Auto Shot safe/unsafe feedback should expose its own color swatches in `/sst` so players can tune both the ranged cast-window fill and the overlay tint without changing the base ranged-bar color.

@@ -257,8 +257,8 @@ flowchart TD
 | Rogue energy tick | `ROGUE_ENERGY_TICK_BAR_WIDTH` | DB `rogueEnergyTickBarWidth` (default 4) | width `4px` |
 | Rogue Adrenaline Rush | `ROGUE_ADRENALINE_RUSH_BAR_HEIGHT` | DB `rogueAdrenalineRushBarHeight` (default 4) | `4px` |
 | Warrior Shield Block | `WARRIOR_SHIELD_BLOCK_BAR_HEIGHT` | DB `warriorShieldBlockBarHeight` (default 4) | `4px` |
-| Druid Power Shift | `DRUID_POWER_SHIFT_BAR_HEIGHT` | DB `druidPowerShiftBarHeight` (default 4) | `4px` |
-| Druid energy tick | `DRUID_ENERGY_TICK_BAR_WIDTH` | DB `druidEnergyTickBarWidth` (default 4) | width `4px` |
+| Druid Power Shift | `DRUID_POWER_SHIFT_BAR_HEIGHT` | DB `druidPowerShiftBarHeight` (default 4) | `4px` (legacy — feature stripped in v0.0.9) |
+| Druid energy tick | `DRUID_ENERGY_TICK_BAR_WIDTH` | DB `druidEnergyTickBarWidth` (default 4) | width `4px` (legacy — feature stripped in v0.0.9) |
 
 Runtime overrides (SuperSwingTimer.lua:800-810): After migration, `OnAddonLoaded` copies DB values to `ns.*` constants, preferring DB → `ns.*` fallback → `ns.DB_DEFAULTS.*`.
 
@@ -346,20 +346,20 @@ Full migration changelog: `references/db-migrations.md`
 | `hunterRangeRanged` | `{0.20,0.55,1.00,1}` | Hunter range — shootable |
 | `hunterRangeOutOfRange` | `{0.50,0.50,0.50,1}` | Hunter range — out of range |
 | `shieldBlockBar` | `{0.20,0.55,1.00,0.90}` | Shield Block duration bar |
-| `ravageCue` | `{1.00,0.72,0.16,0.28}` | Cat form Ravage cue |
+| `ravageCue` | `{1.00,0.72,0.16,0.28}` | Cat form Ravage cue (legacy — handler stripped v0.0.9) |
 | `gcdTickerColor` | `{0.30,0.70,1.00,0.85}` | GCD ticker bar (inside colors table) |
 | `warriorRageBarColor` | `{0.80,0.20,0.10,0.85}` | Warrior rage bar (top-level DB key) |
-| `druidFormBear` | `{0.80,0.15,0.10,1.0}` | Druid Bear form tint |
-| `druidFormCat` | `{0.90,0.70,0.10,1.0}` | Druid Cat form tint |
-| `druidFormMoonkin` | `{0.30,0.55,0.90,1.0}` | Druid Moonkin form tint |
+| `druidFormBear` | `{0.80,0.15,0.10,1.0}` | Druid Bear form tint (legacy — handler stripped v0.0.9) |
+| `druidFormCat` | `{0.90,0.70,0.10,1.0}` | Druid Cat form tint (legacy — handler stripped v0.0.9) |
+| `druidFormMoonkin` | `{0.30,0.55,0.90,1.0}` | Druid Moonkin form tint (legacy — handler stripped v0.0.9) |
 | `rapidFireBar` | `{0.15,0.85,0.45,0.85}` | Hunter Rapid Fire bar |
 | `flurryCounter` | `{1.0,0.75,0.10,1.0}` | Warrior Flurry counter |
 | `adrenalineRushBar` | `{1.0,0.40,0.10,0.85}` | Rogue Adrenaline Rush bar |
-| `omenGlow` | `{0.20,1.0,0.30,0.80}` | Omen of Clarity proc glow |
+| `omenGlow` | `{0.20,1.0,0.30,0.80}` | Omen of Clarity proc glow (legacy — handler stripped v0.0.9) |
 | `windfuryIcd` | `{0.85,0.45,0.0,0.80}` | Windfury ICD indicator |
 | `sparkColor` | `{1,1,1,1}` | Main swing spark |
 
-> **Note on color key structure**: Some color keys live at `DB_DEFAULTS.colors.*` (e.g. `colors.mh`, `colors.rogueSinister`) while others like `warriorRageBarColor`, `shieldBlockBar`, `ravageCue` exist at the `DB_DEFAULTS` top level but are read through `ns.GetBarColor(key)` which checks `db.colors[key]` first. Both patterns work; the config panel references them by their DB key name. See `references/db-migrations.md` for the full key listing.
+> **Note on color key structure**: Some color keys live at `DB_DEFAULTS.colors.*` (e.g. `colors.mh`, `colors.rogueSinister`) while others like `warriorRageBarColor`, `shieldBlockBar`, `ravageCue` exist at the `DB_DEFAULTS` top level but are read through `ns.GetBarColor(key)` which checks `db.colors[key]` first. Both patterns work; the config panel references them by their DB key name. See `references/db-migrations.md` for the full key listing. (Ravage cue and Druid form colors are legacy — handlers stripped in v0.0.9; DB keys preserved for migration safety.)
 
 ---
 **🔄 Sync hook:** If ANY timing constant, clock model, latency math, bar height formula, or default color changes in the `.lua` source, update this file immediately. Master protocol → `standards/code.md`

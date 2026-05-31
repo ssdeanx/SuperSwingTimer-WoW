@@ -1,28 +1,73 @@
-# WoW Classic Lua API Notes
+# WoW Classic Lua Quick Notes
 
-## Swing timing
+This file is the fast-entry checklist.
+Use the other reference files for the full details.
 
-- `CombatLogGetCurrentEventInfo()` supplies the live combat-log payload.
-- `SWING_DAMAGE` and `SWING_MISSED` drive white-hit timing and off-hand detection.
-- `UNIT_ATTACK_SPEED` reflects current melee weapon speed and should be treated as the source of truth for active melee haste.
-- `GetMeleeHaste()` provides the current melee-haste percentage for parry scaling and related swing adjustments.
-- `UnitRangedDamage()` provides the current ranged speed.
+## ASCII quick-start map
 
-## Casting and channels
+```ascii
++-----------------------+
+| Need answer fast?     |
++-----------------------+
+| API behavior/timing   | -> api-core.md
+| UI/widgets/layers     | -> ui-frames-and-widgets.md
+| XML/templates/FrameXML| -> framexml-and-xml.md
+| runtime taint/perf/SV | -> runtime-safety.md
+| branch differences    | -> compatibility-matrix.md
+| event parsing details | -> event-payload-cheatsheet.md
+| in-game test steps    | -> verification-playbooks.md
+| operator triage route | -> operator-cheatsheet.md
+| class ownership map   | -> class-quickmaps.md
+| first 5 min incident  | -> incident-first-5-minutes.md
++-----------------------+
+```
 
-- `UnitCastingInfo()` provides cast start and end timestamps for cast-time spells.
-- `UnitChannelInfo()` provides channel start and end timestamps for channel spells.
-- `UnitSpellHaste()` should be used for cast-time breakpoint calculations and live weave-marker updates.
+## Start here
 
-## Timing and latency
+- API and timing details: `api-core.md`
+- `CreateFrame`, widgets, layers, and handlers: `ui-frames-and-widgets.md`
+- XML, templates, and Blizzard source: `framexml-and-xml.md`
+- current external links: `research-links.md`
+- current repo architecture: `superswingtimer.md`
+- live incident routing: `operator-cheatsheet.md`
+- class-specific jump map: `class-quickmaps.md`
+- bug triage first five minutes: `incident-first-5-minutes.md`
 
-- `GetTimePreciseSec()` is useful for frame-accurate UI motion.
-- `GetTime()` remains acceptable when the addon is already using that clock consistently.
-- Cached network latency should be refreshed while the timer is active so the end of swing stays responsive.
+## Fast rules
 
-## Addon design reminders
+- Confirm Classic/TBC API signatures before relying on memory.
+- Keep white-hit timing, cast timing, channel timing, and UI drawing separate.
+- Use `OnUpdate` for live bar motion; use `C_Timer` for one-shot or low-frequency work.
+- Reuse frames where possible.
+- Keep draw-layer decisions explicit.
+- Treat cached latency as predictive math, not as a reason to rewrite every base timestamp.
 
-- Keep white-hit timing separate from spell timing.
-- Keep melee and ranged timer sections independent.
-- Keep channel spells such as hunter Volley on the ranged side.
-- Avoid binding unused CLEU locals; use `_` or `select()` for only the values that are actually consumed.
+## Most-used APIs
+
+- `CombatLogGetCurrentEventInfo()`
+- `UnitAttackSpeed()`
+- `UnitRangedDamage()`
+- `GetMeleeHaste()`
+- `UnitSpellHaste()`
+- `UnitCastingInfo()`
+- `UnitChannelInfo()`
+- `GetSpellCooldown()`
+- `GetNetStats()`
+- `GetTimePreciseSec()` / `GetTime()`
+
+## Most-used UI entry points
+
+- `CreateFrame()`
+- `Frame:SetScript()`
+- `Frame:RegisterEvent()`
+- `Frame:CreateTexture()`
+- `Frame:CreateFontString()`
+- `StatusBar:SetStatusBarTexture()`
+- `LayeredRegion:SetDrawLayer()`
+
+## Common gotchas
+
+- `GetSpellCooldown()` is not always immediately updated on the same cast-success frame.
+- `UnitCastingInfo()` and `UnitChannelInfo()` are related, but not interchangeable.
+- `OnUpdate` stops when the frame or its parent is hidden.
+- A visible frame can still have an invisible region because of alpha, anchors, draw layer, or frame strata.

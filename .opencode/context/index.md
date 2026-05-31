@@ -6,7 +6,7 @@ WoW Classic/TBC swing-timer addon (Lua). Tracks MH/OH/ranged/enemy swing timers 
 ## Source of truth
 - **`AGENTS.md`** (root) — file map, file responsibilities, working rules, changelog
 - **`memory-bank/`** — projectBrief, systemPatterns, techContext, activeContext, copilot-rules, progress
-- **`SuperSwingTimer.toc`** — addon metadata, load order (v0.0.8)
+- **`SuperSwingTimer.toc`** — addon metadata, load order (v0.0.10)
 - **`.opencode/`** — agent instructions and modular rules
 
 ## Context loading flow

@@ -1,6 +1,7 @@
 local _, ns = ...
 
 local math_max = math.max
+local math_min = math.min
 local GetTimePreciseSec = rawget(_G, "GetTimePreciseSec")
 local GetTime = rawget(_G, "GetTime")
 local GetNetStats = rawget(_G, "GetNetStats")
@@ -100,7 +101,10 @@ ns.weaveState = ns.weaveState or {
 	lastSpellId = nil,
 	isCasting = false,
 	spellCastTime = 0,
+	baseSpellCastTime = 0,
 	spellExpirationTime = nil,
+	castStartTime = nil,
+	castStartSwingFraction = nil,
 	spellHaste = 0,
 	cachedLatency = 0,
 }
@@ -203,12 +207,57 @@ local function GetDefaultSpellInfo()
 	return state.trackedSpellCatalog[1]
 end
 
+local function ClampFraction(value)
+	if type(value) ~= "number" then
+		return 0
+	end
+
+	return math_max(0, math_min(value, 1))
+end
+
+local function CaptureWeaveCastTiming(state, spellInfo)
+	if not state or not spellInfo then
+		return
+	end
+
+	local now = GetClock()
+	local _, _, startTimeMs, endTimeMs = nil, nil, nil, nil
+	if type(ns.GetUnitCastingSpellInfo) == "function" then
+		_, _, startTimeMs, endTimeMs = ns.GetUnitCastingSpellInfo("player")
+	end
+
+	local castStartTime = (type(startTimeMs) == "number" and startTimeMs > 0) and (startTimeMs / 1000) or now
+	state.castStartTime = castStartTime
+	state.baseSpellCastTime = math_max(spellInfo.castTime or 0, 0)
+
+	if type(endTimeMs) == "number" and type(startTimeMs) == "number" and endTimeMs > startTimeMs then
+		state.spellExpirationTime = endTimeMs / 1000
+	else
+		local spellHaste = state.spellHaste or GetSpellHastePercent()
+		local hasteMultiplier = 1 + (math_max(spellHaste, 0) / 100)
+		local effectiveCastTime = math_max(0, spellInfo.castTime / hasteMultiplier)
+		state.spellExpirationTime = castStartTime + effectiveCastTime
+	end
+
+	local timer = ns.timers and ns.timers.mh
+	if timer and timer.state == "swinging" and timer.duration and timer.duration > 0 then
+		state.castStartSwingFraction = ClampFraction((castStartTime - timer.lastSwing) / timer.duration)
+	else
+		state.castStartSwingFraction = nil
+	end
+end
+
 local function BuildDisplayInfo(spellInfo)
 	if not spellInfo then
 		return nil
 	end
 
 	local state = ns.weaveState
+	local timer = ns.timers and ns.timers.mh
+	if not timer or timer.state ~= "swinging" or not timer.duration or timer.duration <= 0 then
+		return nil
+	end
+
 	local nextSwingExpiration = GetNextSwingExpiration()
 	if not nextSwingExpiration then
 		return nil
@@ -219,17 +268,29 @@ local function BuildDisplayInfo(spellInfo)
 	local spellHaste = state.spellHaste or GetSpellHastePercent()
 	local hasteMultiplier = 1 + (math_max(spellHaste, 0) / 100)
 	local effectiveCastTime = math_max(0, spellInfo.castTime / hasteMultiplier)
-	local castRemaining = effectiveCastTime
 	local isCasting = state.isCasting and state.currentSpellId == spellInfo.spellId
+	local castStartTime = type(state.castStartTime) == "number" and state.castStartTime or nil
+	local castElapsed = castStartTime and math_max(now - castStartTime, 0) or 0
+	local castRemaining = effectiveCastTime
 
 	if isCasting then
-		local _, _, _, _, endTime = UnitCastingInfo("player")
+		local _, _, _, startTimeMs, endTime = UnitCastingInfo("player")
 		if not endTime and UnitChannelInfo then
 			local _, _, _, _, channelEndTime = UnitChannelInfo("player")
 			endTime = channelEndTime
 		end
-		if endTime then
+		if type(startTimeMs) == "number" and startTimeMs > 0 then
+			castStartTime = startTimeMs / 1000
+			state.castStartTime = castStartTime
+			castElapsed = math_max(now - castStartTime, 0)
+		end
+		if type(state.baseSpellCastTime) == "number" and state.baseSpellCastTime > 0 then
+			local baseHastedCastTime = math_max(state.baseSpellCastTime / hasteMultiplier, 0.01)
+			castRemaining = math_max(baseHastedCastTime - castElapsed, 0)
+		elseif type(endTime) == "number" then
 			castRemaining = math_max(0, (endTime / 1000) - now)
+		elseif type(state.spellExpirationTime) == "number" then
+			castRemaining = math_max(0, state.spellExpirationTime - now)
 		end
 	end
 
@@ -238,8 +299,23 @@ local function BuildDisplayInfo(spellInfo)
 	local safe = safeStartIn > 0 and clipAmount <= 0
 	local castProgress = 0
 	if isCasting and effectiveCastTime > 0 then
-		castProgress = math_max(0, math.min(1, 1 - (castRemaining / effectiveCastTime)))
+		castProgress = ClampFraction(castElapsed / effectiveCastTime)
 	end
+
+	local markerFraction = ClampFraction((timer.duration - (effectiveCastTime + latency)) / timer.duration)
+	local currentSwingFraction = ClampFraction((now - timer.lastSwing) / timer.duration)
+	local projectedImpactFraction = ClampFraction(((now + castRemaining + latency) - timer.lastSwing) / timer.duration)
+	local castStartSwingFraction = state.castStartSwingFraction
+	if castStartSwingFraction == nil and type(state.castStartTime) == "number" then
+		castStartSwingFraction = ClampFraction((state.castStartTime - timer.lastSwing) / timer.duration)
+	end
+
+	local sparkFraction = nil
+	if isCasting then
+		local liveStartFraction = castStartSwingFraction or currentSwingFraction
+		sparkFraction = ClampFraction(liveStartFraction + ((projectedImpactFraction - liveStartFraction) * castProgress))
+	end
+
 	local spellLabel = spellInfo.spellName or spellInfo.abbrev or "Weave"
 	local text
 
@@ -265,14 +341,21 @@ local function BuildDisplayInfo(spellInfo)
 		iconTexture = spellInfo.iconTexture,
 		spellAbbrev = spellInfo.abbrev,
 		castTime = effectiveCastTime,
+		baseSpellCastTime = state.baseSpellCastTime,
 		castRemaining = castRemaining,
 		castProgress = castProgress,
+		castElapsed = castElapsed,
 		latency = latency,
 		nextSwingExpiration = nextSwingExpiration,
 		safeStartIn = safeStartIn,
 		clipAmount = clipAmount,
 		safe = safe,
 		isCasting = isCasting,
+		markerFraction = markerFraction,
+		currentSwingFraction = currentSwingFraction,
+		castStartSwingFraction = castStartSwingFraction,
+		projectedImpactFraction = projectedImpactFraction,
+		sparkFraction = sparkFraction,
 		text = text,
 		color = color,
 	}
@@ -307,35 +390,66 @@ function ns.HandleWeavingSpellcast(event, unit, castGUIDOrSpellName, spellId)
 
 	local spellToken = spellId ~= nil and spellId or castGUIDOrSpellName
 	local spellInfo = GetTrackedSpellInfo(spellToken)
+	if not spellInfo and type(ns.GetUnitCastingSpellInfo) == "function" and
+		(event == "UNIT_SPELLCAST_START" or event == "UNIT_SPELLCAST_DELAYED" or event == "UNIT_SPELLCAST_CHANNEL_START") then
+		local liveSpellToken = ns.GetUnitCastingSpellInfo("player")
+		if liveSpellToken then
+			spellInfo = GetTrackedSpellInfo(liveSpellToken)
+		end
+	end
+
 	if event == "UNIT_SPELLCAST_START" or event == "UNIT_SPELLCAST_DELAYED" or event == "UNIT_SPELLCAST_CHANNEL_START" then
 		if spellInfo then
 			state.isCasting = true
 			state.currentSpellId = spellInfo.spellId
 			state.lastSpellId = spellInfo.spellId
+			CaptureWeaveCastTiming(state, spellInfo)
+		elseif event == "UNIT_SPELLCAST_DELAYED" and state.isCasting and state.currentSpellId then
+			local currentSpellInfo = GetTrackedSpellInfo(state.currentSpellId)
+			if currentSpellInfo then
+				CaptureWeaveCastTiming(state, currentSpellInfo)
+			end
 		else
 			state.isCasting = false
 			state.currentSpellId = nil
+			state.currentSpellName = nil
+			state.spellCastTime = 0
+			state.castStartTime = nil
+			state.castStartSwingFraction = nil
+			state.spellExpirationTime = nil
+			state.baseSpellCastTime = 0
 		end
 	elseif event == "UNIT_SPELLCAST_SUCCEEDED" then
 		if spellInfo then
 			state.isCasting = false
-			state.currentSpellId = spellInfo.spellId
 			state.lastSpellId = spellInfo.spellId
 		end
+		state.currentSpellId = nil
+		state.currentSpellName = nil
+		state.spellCastTime = 0
+		state.castStartTime = nil
+		state.castStartSwingFraction = nil
+		state.spellExpirationTime = nil
+		state.baseSpellCastTime = 0
 	elseif event == "UNIT_SPELLCAST_STOP" or event == "UNIT_SPELLCAST_INTERRUPTED" or event == "UNIT_SPELLCAST_FAILED" or event == "UNIT_SPELLCAST_CHANNEL_STOP" then
 		state.isCasting = false
 		if spellInfo then
 			state.lastSpellId = spellInfo.spellId
 		end
-		if state.currentSpellId == (spellInfo and spellInfo.spellId) then
-			state.currentSpellId = nil
-		end
+		state.currentSpellId = nil
+		state.currentSpellName = nil
+		state.spellCastTime = 0
+		state.castStartTime = nil
+		state.castStartSwingFraction = nil
+		state.spellExpirationTime = nil
+		state.baseSpellCastTime = 0
 	end
 
 	if spellInfo then
 		state.currentSpellName = spellInfo.spellName
 		state.spellCastTime = spellInfo.castTime
-		state.spellExpirationTime = nil
+	elseif not state.isCasting then
+		state.spellCastTime = 0
 	end
 end
 
@@ -346,8 +460,12 @@ function ns.ClearWeavePreview()
 
 	ns.weaveState.isCasting = false
 	ns.weaveState.currentSpellId = nil
+	ns.weaveState.currentSpellName = nil
 	ns.weaveState.spellCastTime = 0
+	ns.weaveState.baseSpellCastTime = 0
 	ns.weaveState.spellExpirationTime = nil
+	ns.weaveState.castStartTime = nil
+	ns.weaveState.castStartSwingFraction = nil
 	for _, texture in ipairs({ ns.weaveSpark, ns.weaveTriangleTop, ns.weaveTriangleBottom }) do
 		if texture then
 			texture:Hide()

@@ -37,15 +37,15 @@ flowchart LR
 
 | Setup function | Line | Class | Helpers created |
 |---------------|------|-------|-----------------|
-| `SetupRetPaladin()` | 166 | Paladin | Seal twist zone, reseal line, judgement marker, reckoning badge, libram swap badge |
-| `SetupWarrior()` | 625 | Warrior | Rage bar, Shield Block bar, Flurry counter, Execute badge, Enrage badge |
-| `SetupEnhShaman()` | 1223 | Shaman | Weave spark, triangle top/bottom, Windfury ICD bar, Flurry badge |
-| `SetupDruid()` | 1613 | Druid | Form color/label, Maul tint, Ravage cue, Power Shift bar, Energy Tick bar, Tiger's Fury badge, Faerie Fire badge, Omen glow, Rage dim |
-| `SetupHunter()` | 2239 | Hunter | Range helper bar, Rapid Fire bar, Raptor tint, cast bar latency slice |
-| `SetupRogue()` | 2671 | Rogue | SS cue zone, energy tick bar, energy total bar, combo point strip, SnD bar, AR bar, BF/CB badges |
+| `SetupRetPaladin()` | 165 | Paladin | Seal twist zone, reseal line, judgement marker, reckoning badge, libram swap badge |
+| `SetupWarrior()` | 669 | Warrior | Rage bar, Shield Block bar, Flurry counter, Execute badge, Enrage badge |
+| `SetupEnhShaman()` | 1270 | Shaman | Weave spark, triangle top/bottom, Windfury ICD bar, Flurry badge |
+| `SetupDruid()` | 1728 | Druid | Maul queue tint, spellcast hooks |
+| `SetupHunter()` | 1838 | Hunter | Range helper bar, Rapid Fire bar, Raptor tint, cast bar latency slice |
+| `SetupRogue()` | 2251 | Rogue | SS cue zone, energy tick bar, energy total bar, combo point strip, SnD bar, AR bar, BF/CB badges |
 
 ## Callbacks cleared and re-registered per class
-See dispatch at `ns.InitClassMods()` line 3494:
+See dispatch at `ns.InitClassMods()` line 3073:
 - Clears: `ns.OnBarsCreated`, `ns.OnDruidFormChange`, `ns.OnMeleeSwing`, `ns.OnRangedSwing`
 - Clears: `ns.Update*QueueTint`, `ns.Clear*QueueTint`, `ns.Update*Color`, `ns.Update*Visual`
 - Clears: `ns.Handle*` event listeners

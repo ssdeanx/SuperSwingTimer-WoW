@@ -79,9 +79,9 @@ local function MigrateDB()
 	end
 
 	-- Fresh install
-		if not SuperSwingTimerDB then
+	if not SuperSwingTimerDB then
 		SuperSwingTimerDB = {
-			version                    = ns.DB_DEFAULTS.version or 43,
+			version                    = ns.DB_DEFAULTS.version or 47,
 			showMH                     = ns.DB_DEFAULTS.showMH,
 			showOH                     = ns.DB_DEFAULTS.showOH,
 			showRanged                 = ns.DB_DEFAULTS.showRanged,
@@ -98,8 +98,6 @@ local function MigrateDB()
 			showPaladinTwistFlash      = ns.DB_DEFAULTS.showPaladinTwistFlash,
 			showWarriorRageBar         = ns.DB_DEFAULTS.showWarriorRageBar,
 			showWarriorRageProtection  = ns.DB_DEFAULTS.showWarriorRageProtection,
-			showDruidFormColors        = ns.DB_DEFAULTS.showDruidFormColors,
-			showDruidPowerShiftBar     = ns.DB_DEFAULTS.showDruidPowerShiftBar,
 			showDruidEnergyTickBar     = ns.DB_DEFAULTS.showDruidEnergyTickBar,
 			useClassColors             = ns.DB_DEFAULTS.useClassColors,
 			indicatorBlendMode         = ns.DB_DEFAULTS.indicatorBlendMode,
@@ -118,7 +116,6 @@ local function MigrateDB()
 			warriorShieldBlockBarHeight = ns.DB_DEFAULTS.warriorShieldBlockBarHeight,
 			hunterRangeHelperWidth     = ns.DB_DEFAULTS.hunterRangeHelperWidth,
 			hunterRapidFireBarHeight   = ns.DB_DEFAULTS.hunterRapidFireBarHeight,
-			druidPowerShiftBarHeight   = ns.DB_DEFAULTS.druidPowerShiftBarHeight,
 			druidEnergyTickBarWidth    = ns.DB_DEFAULTS.druidEnergyTickBarWidth,
 			rogueAdrenalineRushBarHeight = ns.DB_DEFAULTS.rogueAdrenalineRushBarHeight,
 			barTexture                 = ns.DB_DEFAULTS.barTexture,
@@ -198,22 +195,19 @@ local function MigrateDB()
 	SuperSwingTimerDB.showPaladinJudgementMarker = (SuperSwingTimerDB.showPaladinJudgementMarker ~= false)
 	SuperSwingTimerDB.showPaladinTwistFlash      = (SuperSwingTimerDB.showPaladinTwistFlash ~= false)
 	SuperSwingTimerDB.showWarriorRageBar         = (SuperSwingTimerDB.showWarriorRageBar ~= false)
-	SuperSwingTimerDB.showDruidFormColors        = (SuperSwingTimerDB.showDruidFormColors ~= false)
 	SuperSwingTimerDB.showWarriorShieldBlockBar  = (SuperSwingTimerDB.showWarriorShieldBlockBar ~= false)
 	-- Phase 1 toggle defaults
 	SuperSwingTimerDB.showSwingFlash            = (SuperSwingTimerDB.showSwingFlash ~= false)
 	SuperSwingTimerDB.showGcdTicker             = (SuperSwingTimerDB.showGcdTicker ~= false)
-	SuperSwingTimerDB.showDruidRageDim          = (SuperSwingTimerDB.showDruidRageDim ~= false)
-	SuperSwingTimerDB.showDruidPowerShiftBar     = (SuperSwingTimerDB.showDruidPowerShiftBar ~= false)
 	SuperSwingTimerDB.showDruidEnergyTickBar     = (SuperSwingTimerDB.showDruidEnergyTickBar ~= false)
 	SuperSwingTimerDB.showRogueEnergyCountdown  = (SuperSwingTimerDB.showRogueEnergyCountdown ~= false)
 	-- Phase 2 toggle defaults
 	SuperSwingTimerDB.showHunterRapidFireBar     = (SuperSwingTimerDB.showHunterRapidFireBar ~= false)
 	SuperSwingTimerDB.showWarriorFlurryCounter   = (SuperSwingTimerDB.showWarriorFlurryCounter ~= false)
 	SuperSwingTimerDB.showRogueAdrenalineRushBar = (SuperSwingTimerDB.showRogueAdrenalineRushBar ~= false)
-	SuperSwingTimerDB.showDruidOmenGlow          = (SuperSwingTimerDB.showDruidOmenGlow ~= false)
 	SuperSwingTimerDB.showShamanWindfuryIcd      = (SuperSwingTimerDB.showShamanWindfuryIcd ~= false)
-	SuperSwingTimerDB.showDruidRavageCue         = (SuperSwingTimerDB.showDruidRavageCue ~= false)
+	SuperSwingTimerDB.showShamanLightningTracker = (SuperSwingTimerDB.showShamanLightningTracker ~= false)
+	SuperSwingTimerDB.showShamanFlameShockBar    = (SuperSwingTimerDB.showShamanFlameShockBar ~= false)
 	-- useClassColors strictly defaults to false unless explicitly true in the DB
 	if SuperSwingTimerDB.useClassColors == nil then
 		SuperSwingTimerDB.useClassColors = false
@@ -251,576 +245,366 @@ local function MigrateDB()
 	SuperSwingTimerDB.sparkAlpha = SuperSwingTimerDB.sparkColor.a or SuperSwingTimerDB.sparkAlpha or
 	ns.DB_DEFAULTS.sparkAlpha
 
-	-- v2 â†’ v3: bar dimensions + colors
-	if (SuperSwingTimerDB.version or 0) < 3 then
-		SuperSwingTimerDB.barWidth  = SuperSwingTimerDB.barWidth or ns.DB_DEFAULTS.barWidth
-		SuperSwingTimerDB.barHeight = SuperSwingTimerDB.barHeight or ns.DB_DEFAULTS.barHeight
-		SuperSwingTimerDB.colors    = SuperSwingTimerDB.colors or {}
-		for key, def in pairs(ns.DB_DEFAULTS.colors) do
-			if not SuperSwingTimerDB.colors[key] then
-				SuperSwingTimerDB.colors[key] = { r = def.r, g = def.g, b = def.b, a = def.a }
+	local migrations = {
+		{ version = 3, apply = function(db)
+			db.barWidth = db.barWidth or ns.DB_DEFAULTS.barWidth
+			db.barHeight = db.barHeight or ns.DB_DEFAULTS.barHeight
+			db.colors = db.colors or {}
+			for key, def in pairs(ns.DB_DEFAULTS.colors) do
+				if not db.colors[key] then
+					db.colors[key] = { r = def.r, g = def.g, b = def.b, a = def.a }
+				end
 			end
-		end
-		SuperSwingTimerDB.version = 3
-	end
-
-	-- v3 â†’ v5: bar texture selection
-	if (SuperSwingTimerDB.version or 0) < 5 then
-		SuperSwingTimerDB.barTexture = SuperSwingTimerDB.barTexture or ns.DB_DEFAULTS.barTexture
-		SuperSwingTimerDB.version = 5
-	end
-
-	-- v5 â†’ v6: spark texture and sizing
-	if (SuperSwingTimerDB.version or 0) < 6 then
-		SuperSwingTimerDB.sparkTexture     = SuperSwingTimerDB.sparkTexture or ns.DB_DEFAULTS.sparkTexture
-		SuperSwingTimerDB.weaveMarkerLayer = SuperSwingTimerDB.weaveMarkerLayer or ns.DB_DEFAULTS.weaveMarkerLayer
-		SuperSwingTimerDB.sparkWidth       = SuperSwingTimerDB.sparkWidth or ns.DB_DEFAULTS.sparkWidth
-		SuperSwingTimerDB.sparkHeight      = SuperSwingTimerDB.sparkHeight or ns.DB_DEFAULTS.sparkHeight
-		SuperSwingTimerDB.version          = 6
-	end
-
-	-- v6 â†’ v7: texture layers, alpha controls, and UI quality-of-life settings
-	if (SuperSwingTimerDB.version or 0) < 7 then
-		SuperSwingTimerDB.barTextureLayer = SuperSwingTimerDB.barTextureLayer or ns.DB_DEFAULTS.barTextureLayer
-		SuperSwingTimerDB.sparkTextureLayer = SuperSwingTimerDB.sparkTextureLayer or ns.DB_DEFAULTS.sparkTextureLayer
-		SuperSwingTimerDB.barBackgroundAlpha = SuperSwingTimerDB.barBackgroundAlpha ~= nil and
-		SuperSwingTimerDB.barBackgroundAlpha or ns.DB_DEFAULTS.barBackgroundAlpha
-		SuperSwingTimerDB.sparkAlpha = SuperSwingTimerDB.sparkAlpha ~= nil and SuperSwingTimerDB.sparkAlpha or
-		ns.DB_DEFAULTS.sparkAlpha
-		SuperSwingTimerDB.minimalMode = SuperSwingTimerDB.minimalMode == true
-		SuperSwingTimerDB.lockBars = SuperSwingTimerDB.lockBars == true
-		SuperSwingTimerDB.version = 7
-	end
-
-	-- v7 â†’ v8: weave spark and dual triangle marker settings
-	if (SuperSwingTimerDB.version or 0) < 8 then
-		SuperSwingTimerDB.weaveSparkTexture = SuperSwingTimerDB.weaveSparkTexture or ns.DB_DEFAULTS.weaveSparkTexture
-		SuperSwingTimerDB.weaveSparkTextureLayer = SuperSwingTimerDB.weaveSparkTextureLayer or
-		ns.DB_DEFAULTS.weaveSparkTextureLayer
-		SuperSwingTimerDB.weaveSparkWidth = SuperSwingTimerDB.weaveSparkWidth or ns.DB_DEFAULTS.weaveSparkWidth
-		SuperSwingTimerDB.weaveSparkHeight = SuperSwingTimerDB.weaveSparkHeight or ns.DB_DEFAULTS.weaveSparkHeight
-		SuperSwingTimerDB.weaveSparkAlpha = SuperSwingTimerDB.weaveSparkAlpha ~= nil and
-		SuperSwingTimerDB.weaveSparkAlpha or ns.DB_DEFAULTS.weaveSparkAlpha
-		SuperSwingTimerDB.weaveTriangleTopTexture = SuperSwingTimerDB.weaveTriangleTopTexture or
-		ns.DB_DEFAULTS.weaveTriangleTopTexture
-		SuperSwingTimerDB.weaveTriangleBottomTexture = SuperSwingTimerDB.weaveTriangleBottomTexture or
-		ns.DB_DEFAULTS.weaveTriangleBottomTexture
-		SuperSwingTimerDB.weaveTriangleTextureLayer = SuperSwingTimerDB.weaveTriangleTextureLayer or
-		ns.DB_DEFAULTS.weaveTriangleTextureLayer
-		SuperSwingTimerDB.weaveTriangleSize = SuperSwingTimerDB.weaveTriangleSize or ns.DB_DEFAULTS.weaveTriangleSize
-		SuperSwingTimerDB.weaveTriangleGap = SuperSwingTimerDB.weaveTriangleGap or ns.DB_DEFAULTS.weaveTriangleGap
-		SuperSwingTimerDB.weaveTriangleAlpha = SuperSwingTimerDB.weaveTriangleAlpha ~= nil and
-		SuperSwingTimerDB.weaveTriangleAlpha or ns.DB_DEFAULTS.weaveTriangleAlpha
-		SuperSwingTimerDB.version = 8
-	end
-
-	-- v8 â†’ v9: visible default bar colors for fresh installs / old black saves
-	if (SuperSwingTimerDB.version or 0) < 9 then
-		SuperSwingTimerDB.colors = SuperSwingTimerDB.colors or {}
-		for key, def in pairs(ns.DB_DEFAULTS.colors) do
-			local color = SuperSwingTimerDB.colors[key]
-			if not color or (color.r == 0 and color.g == 0 and color.b == 0 and (color.a == nil or color.a == 1)) then
-				SuperSwingTimerDB.colors[key] = { r = def.r, g = def.g, b = def.b, a = def.a }
+		end },
+		{ version = 5, apply = function(db)
+			db.barTexture = db.barTexture or ns.DB_DEFAULTS.barTexture
+		end },
+		{ version = 6, apply = function(db)
+			db.sparkTexture = db.sparkTexture or ns.DB_DEFAULTS.sparkTexture
+			db.weaveMarkerLayer = db.weaveMarkerLayer or ns.DB_DEFAULTS.weaveMarkerLayer
+			db.sparkWidth = db.sparkWidth or ns.DB_DEFAULTS.sparkWidth
+			db.sparkHeight = db.sparkHeight or ns.DB_DEFAULTS.sparkHeight
+		end },
+		{ version = 7, apply = function(db)
+			db.barTextureLayer = db.barTextureLayer or ns.DB_DEFAULTS.barTextureLayer
+			db.sparkTextureLayer = db.sparkTextureLayer or ns.DB_DEFAULTS.sparkTextureLayer
+			db.barBackgroundAlpha = db.barBackgroundAlpha ~= nil and db.barBackgroundAlpha or ns.DB_DEFAULTS.barBackgroundAlpha
+			db.sparkAlpha = db.sparkAlpha ~= nil and db.sparkAlpha or ns.DB_DEFAULTS.sparkAlpha
+			db.minimalMode = db.minimalMode == true
+			db.lockBars = db.lockBars == true
+		end },
+		{ version = 8, apply = function(db)
+			db.weaveSparkTexture = db.weaveSparkTexture or ns.DB_DEFAULTS.weaveSparkTexture
+			db.weaveSparkTextureLayer = db.weaveSparkTextureLayer or ns.DB_DEFAULTS.weaveSparkTextureLayer
+			db.weaveSparkWidth = db.weaveSparkWidth or ns.DB_DEFAULTS.weaveSparkWidth
+			db.weaveSparkHeight = db.weaveSparkHeight or ns.DB_DEFAULTS.weaveSparkHeight
+			db.weaveSparkAlpha = db.weaveSparkAlpha ~= nil and db.weaveSparkAlpha or ns.DB_DEFAULTS.weaveSparkAlpha
+			db.weaveTriangleTopTexture = db.weaveTriangleTopTexture or ns.DB_DEFAULTS.weaveTriangleTopTexture
+			db.weaveTriangleBottomTexture = db.weaveTriangleBottomTexture or ns.DB_DEFAULTS.weaveTriangleBottomTexture
+			db.weaveTriangleTextureLayer = db.weaveTriangleTextureLayer or ns.DB_DEFAULTS.weaveTriangleTextureLayer
+			db.weaveTriangleSize = db.weaveTriangleSize or ns.DB_DEFAULTS.weaveTriangleSize
+			db.weaveTriangleGap = db.weaveTriangleGap or ns.DB_DEFAULTS.weaveTriangleGap
+			db.weaveTriangleAlpha = db.weaveTriangleAlpha ~= nil and db.weaveTriangleAlpha or ns.DB_DEFAULTS.weaveTriangleAlpha
+		end },
+		{ version = 9, apply = function(db)
+			db.colors = db.colors or {}
+			for key, def in pairs(ns.DB_DEFAULTS.colors) do
+				local color = db.colors[key]
+				if not color or (color.r == 0 and color.g == 0 and color.b == 0 and (color.a == nil or color.a == 1)) then
+					db.colors[key] = { r = def.r, g = def.g, b = def.b, a = def.a }
+				end
 			end
-		end
-		SuperSwingTimerDB.version = 9
-	end
-
-	-- v9 -> v10: restore the original dark gray bar palette unless the user already custom-tuned colors
-	if (SuperSwingTimerDB.version or 0) < 10 then
-		SuperSwingTimerDB.colors = SuperSwingTimerDB.colors or {}
-		local colors = SuperSwingTimerDB.colors
-		if IsVisibleDefaultColor(colors.mh) or not colors.mh then
+		end },
+		{ version = 10, apply = function(db)
+			db.colors = db.colors or {}
+			local colors = db.colors
+			if IsVisibleDefaultColor(colors.mh) or not colors.mh then colors.mh = { r = 0, g = 0, b = 0, a = 1 } end
+			if IsVisibleDefaultColor(colors.oh) or not colors.oh then colors.oh = { r = 0, g = 0, b = 0, a = 1 } end
+			if IsVisibleDefaultColor(colors.ranged) or not colors.ranged then colors.ranged = { r = 0, g = 0, b = 0, a = 1 } end
+		end },
+		{ version = 11, apply = function(db)
+			local function UpgradeWeaveDefault(currentValue, oldDefault, newDefault)
+				if currentValue == nil or currentValue == oldDefault then return newDefault end
+				return currentValue
+			end
+			db.weaveSparkWidth = UpgradeWeaveDefault(db.weaveSparkWidth, 14, ns.DB_DEFAULTS.weaveSparkWidth)
+			db.weaveSparkHeight = UpgradeWeaveDefault(db.weaveSparkHeight, 30, ns.DB_DEFAULTS.weaveSparkHeight)
+			db.weaveTriangleSize = UpgradeWeaveDefault(db.weaveTriangleSize, 14, ns.DB_DEFAULTS.weaveTriangleSize)
+			db.weaveTriangleGap = UpgradeWeaveDefault(db.weaveTriangleGap, 2, ns.DB_DEFAULTS.weaveTriangleGap)
+			db.weaveSpellFamilies = db.weaveSpellFamilies or {}
+			for key, def in pairs(ns.DB_DEFAULTS.weaveSpellFamilies) do
+				if db.weaveSpellFamilies[key] == nil then db.weaveSpellFamilies[key] = def end
+			end
+		end },
+		{ version = 12, apply = function(db)
+			db.useClassColors = (db.useClassColors ~= false)
+			db.indicatorBlendMode = db.indicatorBlendMode or ns.DB_DEFAULTS.indicatorBlendMode
+		end },
+		{ version = 13, apply = function(db)
+			db.rangedBarTexture = db.rangedBarTexture or ns.DB_DEFAULTS.rangedBarTexture
+		end },
+		{ version = 14, apply = function(db)
+			db.colors = db.colors or {}
+			local sealTwist = db.colors.sealTwist
+			local isLegacySealTwist = sealTwist and math.abs((sealTwist.r or 0) - 0) < 0.001 and math.abs((sealTwist.g or 0) - 0.8) < 0.001 and math.abs((sealTwist.b or 0) - 1) < 0.001 and math.abs((sealTwist.a or 0) - 0.4) < 0.001
+			if not sealTwist or isLegacySealTwist then
+				db.colors.sealTwist = { r = 0, g = 0, b = 0, a = 1 }
+			elseif sealTwist.a == nil then
+				sealTwist.a = 1
+			end
+		end },
+		{ version = 15, apply = function(db)
+			if db.sparkTexture == nil or db.sparkTexture == "Interface\\CastingBar\\UI-CastingBar-Spark" then db.sparkTexture = ns.DB_DEFAULTS.sparkTexture end
+			if db.weaveSparkTexture == nil or db.weaveSparkTexture == "Interface\\CastingBar\\UI-CastingBar-Spark" then db.weaveSparkTexture = ns.DB_DEFAULTS.weaveSparkTexture end
+			if not db.sparkColor then
+				db.sparkColor = { r = ns.DB_DEFAULTS.sparkColor.r, g = ns.DB_DEFAULTS.sparkColor.g, b = ns.DB_DEFAULTS.sparkColor.b, a = db.sparkAlpha or ns.DB_DEFAULTS.sparkColor.a }
+			elseif db.sparkColor.a == nil then
+				db.sparkColor.a = db.sparkAlpha or ns.DB_DEFAULTS.sparkColor.a
+			end
+			db.sparkAlpha = db.sparkColor.a or db.sparkAlpha or ns.DB_DEFAULTS.sparkAlpha
+		end },
+		{ version = 16, apply = function(db)
+			local function UpgradeThinDefault(currentValue, oldDefault, newDefault)
+				if currentValue == nil or currentValue == oldDefault then return newDefault end
+				return currentValue
+			end
+			db.sparkWidth = UpgradeThinDefault(db.sparkWidth, 20, ns.DB_DEFAULTS.sparkWidth)
+			db.sparkHeight = UpgradeThinDefault(db.sparkHeight, 44, ns.DB_DEFAULTS.sparkHeight)
+			db.weaveSparkWidth = UpgradeThinDefault(db.weaveSparkWidth, 10, ns.DB_DEFAULTS.weaveSparkWidth)
+			db.weaveSparkHeight = UpgradeThinDefault(db.weaveSparkHeight, 24, ns.DB_DEFAULTS.weaveSparkHeight)
+			db.weaveTriangleSize = UpgradeThinDefault(db.weaveTriangleSize, 10, ns.DB_DEFAULTS.weaveTriangleSize)
+		end },
+		{ version = 17, apply = function(db)
+			if db.sparkWidth == nil or db.sparkWidth == 3 then db.sparkWidth = ns.DB_DEFAULTS.sparkWidth end
+		end },
+		{ version = 18, apply = function(db)
+			if db.sparkWidth == nil or db.sparkWidth == 3 then db.sparkWidth = ns.DB_DEFAULTS.sparkWidth end
+		end },
+		{ version = 19, apply = function(db)
+			db.barBorderSize = db.barBorderSize or ns.DB_DEFAULTS.barBorderSize
+		end },
+		{ version = 20, apply = function(db)
+			db.barBackgroundColor = db.barBackgroundColor or {
+				r = ns.DB_DEFAULTS.barBackgroundColor.r,
+				g = ns.DB_DEFAULTS.barBackgroundColor.g,
+				b = ns.DB_DEFAULTS.barBackgroundColor.b,
+				a = db.barBackgroundAlpha ~= nil and db.barBackgroundAlpha or ns.DB_DEFAULTS.barBackgroundColor.a,
+			}
+			db.barBorderColor = db.barBorderColor or {
+				r = ns.DB_DEFAULTS.barBorderColor.r,
+				g = ns.DB_DEFAULTS.barBorderColor.g,
+				b = ns.DB_DEFAULTS.barBorderColor.b,
+				a = ns.DB_DEFAULTS.barBorderColor.a,
+			}
+		end },
+		{ version = 21, apply = function(_db) end },
+		{ version = 22, apply = function(db)
+			db.colors = db.colors or {}
+			local colors = db.colors
 			colors.mh = { r = 0, g = 0, b = 0, a = 1 }
-		end
-		if IsVisibleDefaultColor(colors.oh) or not colors.oh then
 			colors.oh = { r = 0, g = 0, b = 0, a = 1 }
-		end
-		if IsVisibleDefaultColor(colors.ranged) or not colors.ranged then
 			colors.ranged = { r = 0, g = 0, b = 0, a = 1 }
-		end
-		SuperSwingTimerDB.version = 10
-	end
-
-	-- v10 -> v11: smaller default weave markers and per-family weave toggles
-	if (SuperSwingTimerDB.version or 0) < 11 then
-		local function UpgradeWeaveDefault(currentValue, oldDefault, newDefault)
-			if currentValue == nil or currentValue == oldDefault then
-				return newDefault
+			db.sparkColor = { r = 1, g = 1, b = 1, a = 1 }
+			db.useClassColors = false
+		end },
+		{ version = 23, apply = function(_db) end },
+		{ version = 24, apply = function(_db) end },
+		{ version = 25, apply = function(db)
+			if db.sparkWidth == nil or math.abs((db.sparkWidth or 0) - 4) < 0.001 then db.sparkWidth = ns.DB_DEFAULTS.sparkWidth end
+		end },
+		{ version = 26, apply = function(db)
+			db.colors = db.colors or {}
+			local colors = db.colors
+			colors.autoShotSafe = colors.autoShotSafe or { r = ns.DB_DEFAULTS.colors.autoShotSafe.r, g = ns.DB_DEFAULTS.colors.autoShotSafe.g, b = ns.DB_DEFAULTS.colors.autoShotSafe.b, a = ns.DB_DEFAULTS.colors.autoShotSafe.a }
+			colors.autoShotUnsafe = colors.autoShotUnsafe or { r = ns.DB_DEFAULTS.colors.autoShotUnsafe.r, g = ns.DB_DEFAULTS.colors.autoShotUnsafe.g, b = ns.DB_DEFAULTS.colors.autoShotUnsafe.b, a = ns.DB_DEFAULTS.colors.autoShotUnsafe.a }
+		end },
+		{ version = 27, apply = function(db)
+			db.showRogueSinisterAssist = (db.showRogueSinisterAssist ~= false)
+			db.colors = db.colors or {}
+			db.colors.rogueSinister = db.colors.rogueSinister or { r = ns.DB_DEFAULTS.colors.rogueSinister.r, g = ns.DB_DEFAULTS.colors.rogueSinister.g, b = ns.DB_DEFAULTS.colors.rogueSinister.b, a = ns.DB_DEFAULTS.colors.rogueSinister.a }
+		end },
+		{ version = 28, apply = function(db)
+			if db.barHeight == nil or math.abs((db.barHeight or 0) - 20) < 0.001 then db.barHeight = ns.DB_DEFAULTS.barHeight end
+			if db.sparkHeight == nil or math.abs((db.sparkHeight or 0) - 20) < 0.001 then db.sparkHeight = ns.DB_DEFAULTS.sparkHeight end
+			db.showRogueEnergyTick = (db.showRogueEnergyTick ~= false)
+			db.colors = db.colors or {}
+			db.colors.rogueEnergyTick = db.colors.rogueEnergyTick or { r = ns.DB_DEFAULTS.colors.rogueEnergyTick.r, g = ns.DB_DEFAULTS.colors.rogueEnergyTick.g, b = ns.DB_DEFAULTS.colors.rogueEnergyTick.b, a = ns.DB_DEFAULTS.colors.rogueEnergyTick.a }
+		end },
+		{ version = 29, apply = function(db)
+			db.colors = db.colors or {}
+			local rogueCue = db.colors.rogueSinister
+			if rogueCue and math.abs((rogueCue.r or 0) - 1) < 0.001 and math.abs((rogueCue.g or 0) - 0) < 0.001 and math.abs((rogueCue.b or 0) - 0) < 0.001 and math.abs((rogueCue.a or 0) - 0.45) < 0.001 then rogueCue.a = ns.DB_DEFAULTS.colors.rogueSinister.a end
+		end },
+		{ version = 30, apply = function(db)
+			db.showRogueSliceAndDice = (db.showRogueSliceAndDice ~= false)
+			db.colors = db.colors or {}
+			db.colors.rogueSliceAndDice = db.colors.rogueSliceAndDice or { r = ns.DB_DEFAULTS.colors.rogueSliceAndDice.r, g = ns.DB_DEFAULTS.colors.rogueSliceAndDice.g, b = ns.DB_DEFAULTS.colors.rogueSliceAndDice.b, a = ns.DB_DEFAULTS.colors.rogueSliceAndDice.a }
+		end },
+		{ version = 31, apply = function(db)
+			db.colors = db.colors or {}
+			db.colors.rogueEnergyTotal = db.colors.rogueEnergyTotal or { r = ns.DB_DEFAULTS.colors.rogueEnergyTotal.r, g = ns.DB_DEFAULTS.colors.rogueEnergyTotal.g, b = ns.DB_DEFAULTS.colors.rogueEnergyTotal.b, a = ns.DB_DEFAULTS.colors.rogueEnergyTotal.a }
+		end },
+		{ version = 32, apply = function(db)
+			db.showRogueComboPoints = (db.showRogueComboPoints ~= false)
+			db.colors = db.colors or {}
+			db.colors.rogueComboPoints = db.colors.rogueComboPoints or { r = ns.DB_DEFAULTS.colors.rogueComboPoints.r, g = ns.DB_DEFAULTS.colors.rogueComboPoints.g, b = ns.DB_DEFAULTS.colors.rogueComboPoints.b, a = ns.DB_DEFAULTS.colors.rogueComboPoints.a }
+		end },
+		{ version = 33, apply = function(db)
+			db.showHunterRangeHelper = (db.showHunterRangeHelper ~= false)
+			db.colors = db.colors or {}
+			for _, colorKey in ipairs({ "hunterRangeMelee", "hunterRangeSweetSpot", "hunterRangeRanged", "hunterRangeOutOfRange" }) do
+				if not db.colors[colorKey] then
+					local def = ns.DB_DEFAULTS.colors[colorKey]
+					db.colors[colorKey] = { r = def.r, g = def.g, b = def.b, a = def.a }
+				end
 			end
-			return currentValue
-		end
-
-		SuperSwingTimerDB.weaveSparkWidth = UpgradeWeaveDefault(SuperSwingTimerDB.weaveSparkWidth, 14,
-			ns.DB_DEFAULTS.weaveSparkWidth)
-		SuperSwingTimerDB.weaveSparkHeight = UpgradeWeaveDefault(SuperSwingTimerDB.weaveSparkHeight, 30,
-			ns.DB_DEFAULTS.weaveSparkHeight)
-		SuperSwingTimerDB.weaveTriangleSize = UpgradeWeaveDefault(SuperSwingTimerDB.weaveTriangleSize, 14,
-			ns.DB_DEFAULTS.weaveTriangleSize)
-		SuperSwingTimerDB.weaveTriangleGap = UpgradeWeaveDefault(SuperSwingTimerDB.weaveTriangleGap, 2,
-			ns.DB_DEFAULTS.weaveTriangleGap)
-
-		SuperSwingTimerDB.weaveSpellFamilies = SuperSwingTimerDB.weaveSpellFamilies or {}
-		for key, def in pairs(ns.DB_DEFAULTS.weaveSpellFamilies) do
-			if SuperSwingTimerDB.weaveSpellFamilies[key] == nil then
-				SuperSwingTimerDB.weaveSpellFamilies[key] = def
+		end },
+		{ version = 34, apply = function(db)
+			db.colors = db.colors or {}
+			local sealTwist = db.colors.sealTwist
+			local isLegacyBlack = sealTwist and math.abs((sealTwist.r or 0) - 0) < 0.001 and math.abs((sealTwist.g or 0) - 0) < 0.001 and math.abs((sealTwist.b or 0) - 0) < 0.001 and math.abs((sealTwist.a or 1) - 1) < 0.001
+			if not sealTwist or isLegacyBlack then db.colors.sealTwist = { r = 1, g = 0, b = 0, a = 0.35 } end
+		end },
+		{ version = 35, apply = function(db)
+			db.colors = db.colors or {}
+			for familyKey, defaultColor in pairs(ns.PALADIN_SEAL_COLORS or {}) do
+				local colorKey = "sealColor" .. familyKey
+				if not db.colors[colorKey] then
+					db.colors[colorKey] = { r = defaultColor.r, g = defaultColor.g, b = defaultColor.b, a = defaultColor.a }
+				end
 			end
-		end
-
-		SuperSwingTimerDB.version = 11
-	end
-
-	-- v11 -> v12: add indicator glow mode and class-color default toggle
-	if (SuperSwingTimerDB.version or 0) < 12 then
-		SuperSwingTimerDB.useClassColors = (SuperSwingTimerDB.useClassColors ~= false)
-		SuperSwingTimerDB.indicatorBlendMode = SuperSwingTimerDB.indicatorBlendMode or ns.DB_DEFAULTS.indicatorBlendMode
-		SuperSwingTimerDB.version = 12
-	end
-
-	-- v12 -> v13: separate ranged texture selection for hunters
-	if (SuperSwingTimerDB.version or 0) < 13 then
-		SuperSwingTimerDB.rangedBarTexture = SuperSwingTimerDB.rangedBarTexture or ns.DB_DEFAULTS.rangedBarTexture
-		SuperSwingTimerDB.version = 13
-	end
-
-	-- v13 -> v14: seal twist becomes an opaque breakpoint line by default
-	if (SuperSwingTimerDB.version or 0) < 14 then
-		SuperSwingTimerDB.colors = SuperSwingTimerDB.colors or {}
-		local sealTwist = SuperSwingTimerDB.colors.sealTwist
-		local isLegacySealTwist = sealTwist and math.abs((sealTwist.r or 0) - 0) < 0.001
-			and math.abs((sealTwist.g or 0) - 0.8) < 0.001
-			and math.abs((sealTwist.b or 0) - 1) < 0.001
-			and math.abs((sealTwist.a or 0) - 0.4) < 0.001
-
-		if not sealTwist or isLegacySealTwist then
-			SuperSwingTimerDB.colors.sealTwist = { r = 0, g = 0, b = 0, a = 1 }
-		elseif sealTwist.a == nil then
-			sealTwist.a = 1
-		end
-
-		SuperSwingTimerDB.version = 14
-	end
-
-	-- v14 -> v15: spark browser defaults and WeakAuras indicator textures
-	if (SuperSwingTimerDB.version or 0) < 15 then
-		if SuperSwingTimerDB.sparkTexture == nil or SuperSwingTimerDB.sparkTexture == "Interface\\CastingBar\\UI-CastingBar-Spark" then
-			SuperSwingTimerDB.sparkTexture = ns.DB_DEFAULTS.sparkTexture
-		end
-		if SuperSwingTimerDB.weaveSparkTexture == nil or SuperSwingTimerDB.weaveSparkTexture == "Interface\\CastingBar\\UI-CastingBar-Spark" then
-			SuperSwingTimerDB.weaveSparkTexture = ns.DB_DEFAULTS.weaveSparkTexture
-		end
-		if not SuperSwingTimerDB.sparkColor then
-			SuperSwingTimerDB.sparkColor = {
-				r = ns.DB_DEFAULTS.sparkColor.r,
-				g = ns.DB_DEFAULTS.sparkColor.g,
-				b = ns.DB_DEFAULTS.sparkColor.b,
-				a = SuperSwingTimerDB.sparkAlpha or ns.DB_DEFAULTS.sparkColor.a,
-			}
-		elseif SuperSwingTimerDB.sparkColor.a == nil then
-			SuperSwingTimerDB.sparkColor.a = SuperSwingTimerDB.sparkAlpha or ns.DB_DEFAULTS.sparkColor.a
-		end
-		SuperSwingTimerDB.sparkAlpha = SuperSwingTimerDB.sparkColor.a or SuperSwingTimerDB.sparkAlpha or
-		ns.DB_DEFAULTS.sparkAlpha
-		SuperSwingTimerDB.version = 15
-	end
-
-	-- v15 -> v16: compact spark sizes and thinner weave markers for the final release polish.
-	if (SuperSwingTimerDB.version or 0) < 16 then
-		local function UpgradeThinDefault(currentValue, oldDefault, newDefault)
-			if currentValue == nil or currentValue == oldDefault then
-				return newDefault
+		end },
+		{ version = 36, apply = function(db)
+			db.showWarriorRageBar = ns.DB_DEFAULTS and ns.DB_DEFAULTS.showWarriorRageBar
+			if db.showWarriorRageBar == nil then db.showWarriorRageBar = true end
+			db.colors = db.colors or {}
+			if not db.colors.warriorRageBarColor then
+				local default = ns.DB_DEFAULTS and ns.DB_DEFAULTS.colors and ns.DB_DEFAULTS.colors.warriorRageBarColor
+				db.colors.warriorRageBarColor = default or { r = 0.80, g = 0.20, b = 0.10, a = 0.85 }
 			end
-			return currentValue
-		end
-
-		SuperSwingTimerDB.sparkWidth = UpgradeThinDefault(SuperSwingTimerDB.sparkWidth, 20, ns.DB_DEFAULTS.sparkWidth)
-		SuperSwingTimerDB.sparkHeight = UpgradeThinDefault(SuperSwingTimerDB.sparkHeight, 44, ns.DB_DEFAULTS.sparkHeight)
-		SuperSwingTimerDB.weaveSparkWidth = UpgradeThinDefault(SuperSwingTimerDB.weaveSparkWidth, 10,
-			ns.DB_DEFAULTS.weaveSparkWidth)
-		SuperSwingTimerDB.weaveSparkHeight = UpgradeThinDefault(SuperSwingTimerDB.weaveSparkHeight, 24,
-			ns.DB_DEFAULTS.weaveSparkHeight)
-		SuperSwingTimerDB.weaveTriangleSize = UpgradeThinDefault(SuperSwingTimerDB.weaveTriangleSize, 10,
-			ns.DB_DEFAULTS.weaveTriangleSize)
-
-		SuperSwingTimerDB.version = 16
-	end
-
-	-- v16 -> v17: bring the base spark width back up to 4px for the final polish pass.
-	if (SuperSwingTimerDB.version or 0) < 17 then
-		if SuperSwingTimerDB.sparkWidth == nil or SuperSwingTimerDB.sparkWidth == 3 then
-			SuperSwingTimerDB.sparkWidth = ns.DB_DEFAULTS.sparkWidth
-		end
-		SuperSwingTimerDB.version = 17
-	end
-
-	-- v17 -> v18: keep the spark width at the 4px final-release default for installs
-	-- that were already on the prior release before the width correction landed.
-	if (SuperSwingTimerDB.version or 0) < 18 then
-		if SuperSwingTimerDB.sparkWidth == nil or SuperSwingTimerDB.sparkWidth == 3 then
-			SuperSwingTimerDB.sparkWidth = ns.DB_DEFAULTS.sparkWidth
-		end
-		SuperSwingTimerDB.version = 18
-	end
-
-	-- v18 -> v19: persist the configurable border size for the final UI polish pass.
-	if (SuperSwingTimerDB.version or 0) < 19 then
-		SuperSwingTimerDB.barBorderSize = SuperSwingTimerDB.barBorderSize or ns.DB_DEFAULTS.barBorderSize
-		SuperSwingTimerDB.version = 19
-	end
-
-	-- v19 -> v20: add configurable bar background and border colors.
-	if (SuperSwingTimerDB.version or 0) < 20 then
-		SuperSwingTimerDB.barBackgroundColor = SuperSwingTimerDB.barBackgroundColor or {
-			r = ns.DB_DEFAULTS.barBackgroundColor.r,
-			g = ns.DB_DEFAULTS.barBackgroundColor.g,
-			b = ns.DB_DEFAULTS.barBackgroundColor.b,
-			a = SuperSwingTimerDB.barBackgroundAlpha ~= nil and SuperSwingTimerDB.barBackgroundAlpha or
-			ns.DB_DEFAULTS.barBackgroundColor.a,
-		}
-		SuperSwingTimerDB.barBorderColor = SuperSwingTimerDB.barBorderColor or {
-			r = ns.DB_DEFAULTS.barBorderColor.r,
-			g = ns.DB_DEFAULTS.barBorderColor.g,
-			b = ns.DB_DEFAULTS.barBorderColor.b,
-			a = ns.DB_DEFAULTS.barBorderColor.a,
-		}
-		SuperSwingTimerDB.version = 20
-	end
-
-	-- v20 -> v21: change default colors to black (0,0,0)
-	-- This resolves the "Yellow Bar" conflict where default bars looked like Heroic Strike indicators.
-	if (SuperSwingTimerDB.version or 0) < 21 then
-		SuperSwingTimerDB.version = 21
-	end
-
-	-- v21 -> v22: enforce white spark color and black bar defaults for final release.
-	-- Also ensures useClassColors strictly defaults to false unless changed.
-	if (SuperSwingTimerDB.version or 0) < 22 then
-		SuperSwingTimerDB.colors = SuperSwingTimerDB.colors or {}
-		local colors = SuperSwingTimerDB.colors
-		colors.mh = { r = 0, g = 0, b = 0, a = 1 }
-		colors.oh = { r = 0, g = 0, b = 0, a = 1 }
-		colors.ranged = { r = 0, g = 0, b = 0, a = 1 }
-		SuperSwingTimerDB.sparkColor = { r = 1, g = 1, b = 1, a = 1 }
-		SuperSwingTimerDB.useClassColors = false
-		SuperSwingTimerDB.version = 22
-	end
-
-	-- v22 -> v23: version bump for the final release line.
-	if (SuperSwingTimerDB.version or 0) < 23 then
-		SuperSwingTimerDB.version = 23
-	end
-	if (SuperSwingTimerDB.version or 0) < 24 then
-		SuperSwingTimerDB.version = 24
-	end
-
-	-- v24 -> v25: add the enemy bar defaults and bring the stock spark width back to 3px.
-	if (SuperSwingTimerDB.version or 0) < 25 then
-		if SuperSwingTimerDB.sparkWidth == nil or math.abs((SuperSwingTimerDB.sparkWidth or 0) - 4) < 0.001 then
-			SuperSwingTimerDB.sparkWidth = ns.DB_DEFAULTS.sparkWidth
-		end
-		SuperSwingTimerDB.version = 25
-	end
-
-	-- v25 -> v26: add configurable Auto Shot safe/unsafe colors.
-	if (SuperSwingTimerDB.version or 0) < 26 then
-		SuperSwingTimerDB.colors = SuperSwingTimerDB.colors or {}
-		local colors = SuperSwingTimerDB.colors
-		colors.autoShotSafe = colors.autoShotSafe or {
-			r = ns.DB_DEFAULTS.colors.autoShotSafe.r,
-			g = ns.DB_DEFAULTS.colors.autoShotSafe.g,
-			b = ns.DB_DEFAULTS.colors.autoShotSafe.b,
-			a = ns.DB_DEFAULTS.colors.autoShotSafe.a,
-		}
-		colors.autoShotUnsafe = colors.autoShotUnsafe or {
-			r = ns.DB_DEFAULTS.colors.autoShotUnsafe.r,
-			g = ns.DB_DEFAULTS.colors.autoShotUnsafe.g,
-			b = ns.DB_DEFAULTS.colors.autoShotUnsafe.b,
-			a = ns.DB_DEFAULTS.colors.autoShotUnsafe.a,
-		}
-		SuperSwingTimerDB.version = 26
-	end
-
-	-- v26 -> v27: add Rogue Sinister Strike helper defaults and color.
-	if (SuperSwingTimerDB.version or 0) < 27 then
-		SuperSwingTimerDB.showRogueSinisterAssist = (SuperSwingTimerDB.showRogueSinisterAssist ~= false)
-		SuperSwingTimerDB.colors = SuperSwingTimerDB.colors or {}
-		SuperSwingTimerDB.colors.rogueSinister = SuperSwingTimerDB.colors.rogueSinister or {
-			r = ns.DB_DEFAULTS.colors.rogueSinister.r,
-			g = ns.DB_DEFAULTS.colors.rogueSinister.g,
-			b = ns.DB_DEFAULTS.colors.rogueSinister.b,
-			a = ns.DB_DEFAULTS.colors.rogueSinister.a,
-		}
-		SuperSwingTimerDB.version = 27
-	end
-
-	-- v27 -> v28: slimmer default bar profile and Rogue energy tick helper.
-	if (SuperSwingTimerDB.version or 0) < 28 then
-		if SuperSwingTimerDB.barHeight == nil or math.abs((SuperSwingTimerDB.barHeight or 0) - 20) < 0.001 then
-			SuperSwingTimerDB.barHeight = ns.DB_DEFAULTS.barHeight
-		end
-		if SuperSwingTimerDB.sparkHeight == nil or math.abs((SuperSwingTimerDB.sparkHeight or 0) - 20) < 0.001 then
-			SuperSwingTimerDB.sparkHeight = ns.DB_DEFAULTS.sparkHeight
-		end
-		SuperSwingTimerDB.showRogueEnergyTick = (SuperSwingTimerDB.showRogueEnergyTick ~= false)
-		SuperSwingTimerDB.colors = SuperSwingTimerDB.colors or {}
-		SuperSwingTimerDB.colors.rogueEnergyTick = SuperSwingTimerDB.colors.rogueEnergyTick or {
-			r = ns.DB_DEFAULTS.colors.rogueEnergyTick.r,
-			g = ns.DB_DEFAULTS.colors.rogueEnergyTick.g,
-			b = ns.DB_DEFAULTS.colors.rogueEnergyTick.b,
-			a = ns.DB_DEFAULTS.colors.rogueEnergyTick.a,
-		}
-		SuperSwingTimerDB.version = 28
-	end
-
-	-- v28 -> v29: soften untouched Rogue SS cue alpha.
-	if (SuperSwingTimerDB.version or 0) < 29 then
-		SuperSwingTimerDB.colors = SuperSwingTimerDB.colors or {}
-		local rogueCue = SuperSwingTimerDB.colors.rogueSinister
-		if rogueCue
-			and math.abs((rogueCue.r or 0) - 1) < 0.001
-			and math.abs((rogueCue.g or 0) - 0) < 0.001
-			and math.abs((rogueCue.b or 0) - 0) < 0.001
-			and math.abs((rogueCue.a or 0) - 0.45) < 0.001 then
-			rogueCue.a = ns.DB_DEFAULTS.colors.rogueSinister.a
-		end
-		SuperSwingTimerDB.version = 29
-	end
-
-	-- v29 -> v30: add Rogue Slice and Dice helper defaults and color.
-	if (SuperSwingTimerDB.version or 0) < 30 then
-		SuperSwingTimerDB.showRogueSliceAndDice = (SuperSwingTimerDB.showRogueSliceAndDice ~= false)
-		SuperSwingTimerDB.colors = SuperSwingTimerDB.colors or {}
-		SuperSwingTimerDB.colors.rogueSliceAndDice = SuperSwingTimerDB.colors.rogueSliceAndDice or {
-			r = ns.DB_DEFAULTS.colors.rogueSliceAndDice.r,
-			g = ns.DB_DEFAULTS.colors.rogueSliceAndDice.g,
-			b = ns.DB_DEFAULTS.colors.rogueSliceAndDice.b,
-			a = ns.DB_DEFAULTS.colors.rogueSliceAndDice.a,
-		}
-		SuperSwingTimerDB.version = 30
-	end
-
-	-- v30 -> v31: add Rogue total-energy battery color.
-	if (SuperSwingTimerDB.version or 0) < 31 then
-		SuperSwingTimerDB.colors = SuperSwingTimerDB.colors or {}
-		SuperSwingTimerDB.colors.rogueEnergyTotal = SuperSwingTimerDB.colors.rogueEnergyTotal or {
-			r = ns.DB_DEFAULTS.colors.rogueEnergyTotal.r,
-			g = ns.DB_DEFAULTS.colors.rogueEnergyTotal.g,
-			b = ns.DB_DEFAULTS.colors.rogueEnergyTotal.b,
-			a = ns.DB_DEFAULTS.colors.rogueEnergyTotal.a,
-		}
-		SuperSwingTimerDB.version = 31
-	end
-
-	-- v31 -> v32: add Rogue combo-point helper defaults and color.
-	if (SuperSwingTimerDB.version or 0) < 32 then
-		SuperSwingTimerDB.showRogueComboPoints = (SuperSwingTimerDB.showRogueComboPoints ~= false)
-		SuperSwingTimerDB.colors = SuperSwingTimerDB.colors or {}
-		SuperSwingTimerDB.colors.rogueComboPoints = SuperSwingTimerDB.colors.rogueComboPoints or {
-			r = ns.DB_DEFAULTS.colors.rogueComboPoints.r,
-			g = ns.DB_DEFAULTS.colors.rogueComboPoints.g,
-			b = ns.DB_DEFAULTS.colors.rogueComboPoints.b,
-			a = ns.DB_DEFAULTS.colors.rogueComboPoints.a,
-		}
-		SuperSwingTimerDB.version = 32
-	end
-
-	-- v32 -> v33: add Hunter vertical range-helper defaults and colors.
-	if (SuperSwingTimerDB.version or 0) < 33 then
-		SuperSwingTimerDB.showHunterRangeHelper = (SuperSwingTimerDB.showHunterRangeHelper ~= false)
-		SuperSwingTimerDB.colors = SuperSwingTimerDB.colors or {}
-		for _, colorKey in ipairs({ "hunterRangeMelee", "hunterRangeSweetSpot", "hunterRangeRanged", "hunterRangeOutOfRange" }) do
-			if not SuperSwingTimerDB.colors[colorKey] then
-				local def = ns.DB_DEFAULTS.colors[colorKey]
-				SuperSwingTimerDB.colors[colorKey] = { r = def.r, g = def.g, b = def.b, a = def.a }
+		end },
+		{ version = 37, apply = function(db)
+			db.showDruidFormColors = true
+			db.colors = db.colors or {}
+			if not db.colors.druidFormBear then db.colors.druidFormBear = { r = 0.80, g = 0.15, b = 0.10, a = 1.0 } end
+			if not db.colors.druidFormCat then db.colors.druidFormCat = { r = 0.90, g = 0.70, b = 0.10, a = 1.0 } end
+			if not db.colors.druidFormMoonkin then db.colors.druidFormMoonkin = { r = 0.30, g = 0.55, b = 0.90, a = 1.0 } end
+		end },
+		{ version = 38, apply = function(db)
+			if db.showWarriorRageProtection == nil then db.showWarriorRageProtection = false end
+		end },
+		{ version = 39, apply = function(db)
+			if db.showSwingFlash == nil then db.showSwingFlash = true end
+			if db.showGcdTicker == nil then db.showGcdTicker = true end
+			if db.showDruidRageDim == nil then db.showDruidRageDim = true end
+			if db.showRogueEnergyCountdown == nil then db.showRogueEnergyCountdown = true end
+			db.colors = db.colors or {}
+			if not db.colors.gcdTickerColor then
+				db.colors.gcdTickerColor = (ns.DB_DEFAULTS and ns.DB_DEFAULTS.colors and ns.DB_DEFAULTS.colors.gcdTickerColor) or { r = 0.30, g = 0.70, b = 1.00, a = 0.85 }
 			end
-		end
-		SuperSwingTimerDB.version = 33
-	end
-
-	-- v33 -> v34: Paladin seal twist color from opaque black to transparent red
-	if (SuperSwingTimerDB.version or 0) < 34 then
-		SuperSwingTimerDB.colors = SuperSwingTimerDB.colors or {}
-		local sealTwist = SuperSwingTimerDB.colors.sealTwist
-		local isLegacyBlack = sealTwist
-			and math.abs((sealTwist.r or 0) - 0) < 0.001
-			and math.abs((sealTwist.g or 0) - 0) < 0.001
-			and math.abs((sealTwist.b or 0) - 0) < 0.001
-			and math.abs((sealTwist.a or 1) - 1) < 0.001
-		if not sealTwist or isLegacyBlack then
-			SuperSwingTimerDB.colors.sealTwist = { r = 1, g = 0, b = 0, a = 0.35 }
-		end
-		SuperSwingTimerDB.version = 34
-	end
-
-	-- v34 -> v35: add per-seal color defaults for seal-based MH bar tinting
-	if (SuperSwingTimerDB.version or 0) < 35 then
-		SuperSwingTimerDB.colors = SuperSwingTimerDB.colors or {}
-		for familyKey, defaultColor in pairs(ns.PALADIN_SEAL_COLORS or {}) do
-			local colorKey = "sealColor" .. familyKey
-			if not SuperSwingTimerDB.colors[colorKey] then
-				SuperSwingTimerDB.colors[colorKey] = {
-					r = defaultColor.r,
-					g = defaultColor.g,
-					b = defaultColor.b,
-					a = defaultColor.a,
+		end },
+		{ version = 40, apply = function(db)
+			if db.showHunterRapidFireBar == nil then db.showHunterRapidFireBar = true end
+			if db.showWarriorFlurryCounter == nil then db.showWarriorFlurryCounter = true end
+			if db.showRogueAdrenalineRushBar == nil then db.showRogueAdrenalineRushBar = true end
+			if db.showDruidOmenGlow == nil then db.showDruidOmenGlow = true end
+			if db.showShamanWindfuryIcd == nil then db.showShamanWindfuryIcd = true end
+			if db.showWarriorShieldBlockBar == nil then db.showWarriorShieldBlockBar = true end
+			if db.showDruidRavageCue == nil then db.showDruidRavageCue = true end
+			db.colors = db.colors or {}
+			local colorDefaults = ns.DB_DEFAULTS and ns.DB_DEFAULTS.colors or {}
+			for _, key in ipairs({ "rapidFireBar", "flurryCounter", "adrenalineRushBar", "omenGlow", "windfuryIcd" }) do
+				if not db.colors[key] and colorDefaults[key] then
+					db.colors[key] = { r = colorDefaults[key].r, g = colorDefaults[key].g, b = colorDefaults[key].b, a = colorDefaults[key].a }
+				end
+			end
+		end },
+		{ version = 41, apply = function(db)
+			db.colors = db.colors or {}
+			local colorDefaults = ns.DB_DEFAULTS and ns.DB_DEFAULTS.colors or {}
+			for _, key in ipairs({ "shieldBlockBar", "ravageCue" }) do
+				if not db.colors[key] and colorDefaults[key] then
+					db.colors[key] = { r = colorDefaults[key].r, g = colorDefaults[key].g, b = colorDefaults[key].b, a = colorDefaults[key].a }
+				end
+			end
+		end },
+		{ version = 42, apply = function(db)
+			if db.hunterCastBarHeight == nil then db.hunterCastBarHeight = ns.DB_DEFAULTS.hunterCastBarHeight or 10 end
+		end },
+		{ version = 43, apply = function(db)
+			if db.rogueSliceAndDiceBarHeight == nil then db.rogueSliceAndDiceBarHeight = ns.DB_DEFAULTS.rogueSliceAndDiceBarHeight or 4 end
+			if db.rogueEnergyTickBarWidth == nil then db.rogueEnergyTickBarWidth = ns.DB_DEFAULTS.rogueEnergyTickBarWidth or 4 end
+			if db.warriorShieldBlockBarHeight == nil then db.warriorShieldBlockBarHeight = ns.DB_DEFAULTS.warriorShieldBlockBarHeight or 4 end
+			if db.hunterRangeHelperWidth == nil then db.hunterRangeHelperWidth = ns.DB_DEFAULTS.hunterRangeHelperWidth or 7 end
+			if db.hunterRapidFireBarHeight == nil then db.hunterRapidFireBarHeight = ns.DB_DEFAULTS.hunterRapidFireBarHeight or 4 end
+			if db.druidPowerShiftBarHeight == nil then db.druidPowerShiftBarHeight = ns.DB_DEFAULTS.druidPowerShiftBarHeight or 4 end
+			if db.druidEnergyTickBarWidth == nil then db.druidEnergyTickBarWidth = ns.DB_DEFAULTS.druidEnergyTickBarWidth or 4 end
+			if db.rogueAdrenalineRushBarHeight == nil then db.rogueAdrenalineRushBarHeight = ns.DB_DEFAULTS.rogueAdrenalineRushBarHeight or 4 end
+		end },
+		{ version = 44, apply = function(db)
+			db.showDruidTigerFuryBadge = (db.showDruidTigerFuryBadge ~= false)
+			db.showDruidFaerieFireBadge = (db.showDruidFaerieFireBadge ~= false)
+			db.colors = db.colors or {}
+			local colorDefaults = ns.DB_DEFAULTS and ns.DB_DEFAULTS.colors or {}
+			if not db.colors.druidEnergyTick and colorDefaults.druidEnergyTick then
+				db.colors.druidEnergyTick = {
+					r = colorDefaults.druidEnergyTick.r,
+					g = colorDefaults.druidEnergyTick.g,
+					b = colorDefaults.druidEnergyTick.b,
+					a = colorDefaults.druidEnergyTick.a,
 				}
 			end
-		end
-	SuperSwingTimerDB.version = 35
-	end
-
-	if (SuperSwingTimerDB.version or 0) < 36 then
-		SuperSwingTimerDB.showWarriorRageBar = ns.DB_DEFAULTS and ns.DB_DEFAULTS.showWarriorRageBar
-		if SuperSwingTimerDB.showWarriorRageBar == nil then
-			SuperSwingTimerDB.showWarriorRageBar = true
-		end
-		SuperSwingTimerDB.colors = SuperSwingTimerDB.colors or {}
-		if not SuperSwingTimerDB.colors.warriorRageBarColor then
-			local default = ns.DB_DEFAULTS and ns.DB_DEFAULTS.colors and ns.DB_DEFAULTS.colors.warriorRageBarColor
-			SuperSwingTimerDB.colors.warriorRageBarColor = default or { r = 0.80, g = 0.20, b = 0.10, a = 0.85 }
-		end
-		SuperSwingTimerDB.version = 36
-	end
-
-	-- v36 -> v37: add druid form colors defaults + form color swatches.
-	if (SuperSwingTimerDB.version or 0) < 37 then
-		SuperSwingTimerDB.showDruidFormColors = true
-		SuperSwingTimerDB.colors = SuperSwingTimerDB.colors or {}
-		if not SuperSwingTimerDB.colors.druidFormBear then
-			SuperSwingTimerDB.colors.druidFormBear = { r = 0.80, g = 0.15, b = 0.10, a = 1.0 }
-		end
-		if not SuperSwingTimerDB.colors.druidFormCat then
-			SuperSwingTimerDB.colors.druidFormCat = { r = 0.90, g = 0.70, b = 0.10, a = 1.0 }
-		end
-		if not SuperSwingTimerDB.colors.druidFormMoonkin then
-			SuperSwingTimerDB.colors.druidFormMoonkin = { r = 0.30, g = 0.55, b = 0.90, a = 1.0 }
-		end
-		SuperSwingTimerDB.version = 37
-	end
-
-	-- v37 -> v38: add warrior Protection spec-hide toggle.
-	if (SuperSwingTimerDB.version or 0) < 38 then
-		if SuperSwingTimerDB.showWarriorRageProtection == nil then
-			SuperSwingTimerDB.showWarriorRageProtection = false
-		end
-		SuperSwingTimerDB.version = 38
-	end
-
-	-- v38 -> v39: Phase 1 quick win toggles + color defaults
-	if (SuperSwingTimerDB.version or 0) < 39 then
-		if SuperSwingTimerDB.showSwingFlash == nil then SuperSwingTimerDB.showSwingFlash = true end
-		if SuperSwingTimerDB.showGcdTicker == nil then SuperSwingTimerDB.showGcdTicker = true end
-		if SuperSwingTimerDB.showDruidRageDim == nil then SuperSwingTimerDB.showDruidRageDim = true end
-		if SuperSwingTimerDB.showRogueEnergyCountdown == nil then SuperSwingTimerDB.showRogueEnergyCountdown = true end
-		SuperSwingTimerDB.colors = SuperSwingTimerDB.colors or {}
-		if not SuperSwingTimerDB.colors.gcdTickerColor then
-			SuperSwingTimerDB.colors.gcdTickerColor = ns.DB_DEFAULTS and ns.DB_DEFAULTS.colors and ns.DB_DEFAULTS.colors.gcdTickerColor or { r = 0.30, g = 0.70, b = 1.00, a = 0.85 }
-		end
-		SuperSwingTimerDB.version = 39
-	end
-
-	-- v39 -> v40: Phase 2 class-specific defaults
-	if (SuperSwingTimerDB.version or 0) < 40 then
-		if SuperSwingTimerDB.showHunterRapidFireBar == nil then SuperSwingTimerDB.showHunterRapidFireBar = true end
-		if SuperSwingTimerDB.showWarriorFlurryCounter == nil then SuperSwingTimerDB.showWarriorFlurryCounter = true end
-		if SuperSwingTimerDB.showRogueAdrenalineRushBar == nil then SuperSwingTimerDB.showRogueAdrenalineRushBar = true end
-		if SuperSwingTimerDB.showDruidOmenGlow == nil then SuperSwingTimerDB.showDruidOmenGlow = true end
-		if SuperSwingTimerDB.showShamanWindfuryIcd == nil then SuperSwingTimerDB.showShamanWindfuryIcd = true end
-		if SuperSwingTimerDB.showWarriorShieldBlockBar == nil then SuperSwingTimerDB.showWarriorShieldBlockBar = true end
-		if SuperSwingTimerDB.showDruidRavageCue == nil then SuperSwingTimerDB.showDruidRavageCue = true end
-		SuperSwingTimerDB.colors = SuperSwingTimerDB.colors or {}
-		local colorDefaults = ns.DB_DEFAULTS and ns.DB_DEFAULTS.colors or {}
-		for _, key in ipairs({ "rapidFireBar", "flurryCounter", "adrenalineRushBar", "omenGlow", "windfuryIcd" }) do
-			if not SuperSwingTimerDB.colors[key] and colorDefaults[key] then
-				SuperSwingTimerDB.colors[key] = { r = colorDefaults[key].r, g = colorDefaults[key].g, b = colorDefaults[key].b, a = colorDefaults[key].a }
+		end },
+		{ version = 45, apply = function(db)
+			db.showDruidMangleTimer = (db.showDruidMangleTimer ~= false)
+			db.showDruidRipTracker = (db.showDruidRipTracker ~= false)
+			db.colors = db.colors or {}
+			local colorDefaults = ns.DB_DEFAULTS and ns.DB_DEFAULTS.colors or {}
+			for _, key in ipairs({ "druidMangleTimer", "druidRipTracker" }) do
+				if not db.colors[key] and colorDefaults[key] then
+					db.colors[key] = {
+						r = colorDefaults[key].r,
+						g = colorDefaults[key].g,
+						b = colorDefaults[key].b,
+						a = colorDefaults[key].a,
+					}
+				end
 			end
-		end
-		SuperSwingTimerDB.version = 40
-	end
-
-	-- v40 -> v41: Shield Block duration bar + Ravage opener cue defaults
-	if (SuperSwingTimerDB.version or 0) < 41 then
-		SuperSwingTimerDB.colors = SuperSwingTimerDB.colors or {}
-		local colorDefaults = ns.DB_DEFAULTS and ns.DB_DEFAULTS.colors or {}
-		for _, key in ipairs({ "shieldBlockBar", "ravageCue" }) do
-			if not SuperSwingTimerDB.colors[key] and colorDefaults[key] then
-				SuperSwingTimerDB.colors[key] = { r = colorDefaults[key].r, g = colorDefaults[key].g, b = colorDefaults[key].b, a = colorDefaults[key].a }
-			end
-		end
-		SuperSwingTimerDB.version = 41
-	end
-
-	-- v41 -> v42: independent hunterCastBarHeight sizing
-	if (SuperSwingTimerDB.version or 0) < 42 then
-		if SuperSwingTimerDB.hunterCastBarHeight == nil then
-			SuperSwingTimerDB.hunterCastBarHeight = ns.DB_DEFAULTS.hunterCastBarHeight or 10
-		end
-		SuperSwingTimerDB.version = 42
-	end
-
-	-- v42 -> v43: per-class bar heights
-	if (SuperSwingTimerDB.version or 0) < 43 then
-		if SuperSwingTimerDB.rogueSliceAndDiceBarHeight == nil then
-			SuperSwingTimerDB.rogueSliceAndDiceBarHeight = ns.DB_DEFAULTS.rogueSliceAndDiceBarHeight or 4
-		end
-		if SuperSwingTimerDB.rogueEnergyTickBarWidth == nil then
-			SuperSwingTimerDB.rogueEnergyTickBarWidth = ns.DB_DEFAULTS.rogueEnergyTickBarWidth or 4
-		end
-		if SuperSwingTimerDB.warriorShieldBlockBarHeight == nil then
-			SuperSwingTimerDB.warriorShieldBlockBarHeight = ns.DB_DEFAULTS.warriorShieldBlockBarHeight or 4
-		end
-		if SuperSwingTimerDB.hunterRangeHelperWidth == nil then
-			SuperSwingTimerDB.hunterRangeHelperWidth = ns.DB_DEFAULTS.hunterRangeHelperWidth or 7
-		end
-		if SuperSwingTimerDB.hunterRapidFireBarHeight == nil then
-			SuperSwingTimerDB.hunterRapidFireBarHeight = ns.DB_DEFAULTS.hunterRapidFireBarHeight or 4
-		end
-		if SuperSwingTimerDB.druidPowerShiftBarHeight == nil then
-			SuperSwingTimerDB.druidPowerShiftBarHeight = ns.DB_DEFAULTS.druidPowerShiftBarHeight or 4
-		end
-		if SuperSwingTimerDB.druidEnergyTickBarWidth == nil then
-			SuperSwingTimerDB.druidEnergyTickBarWidth = ns.DB_DEFAULTS.druidEnergyTickBarWidth or 4
-		end
-		if SuperSwingTimerDB.rogueAdrenalineRushBarHeight == nil then
-			SuperSwingTimerDB.rogueAdrenalineRushBarHeight = ns.DB_DEFAULTS.rogueAdrenalineRushBarHeight or 4
-		end
-		SuperSwingTimerDB.version = 43
-	end
-
-	-- v43 -> v44: druid energy tick color swatch, TF/FF badge toggles
-	if (SuperSwingTimerDB.version or 0) < 44 then
-		SuperSwingTimerDB.colors = SuperSwingTimerDB.colors or {}
-		local colorDefaults = ns.DB_DEFAULTS and ns.DB_DEFAULTS.colors or {}
-		if not SuperSwingTimerDB.colors.druidEnergyTick and colorDefaults.druidEnergyTick then
-			SuperSwingTimerDB.colors.druidEnergyTick = {
-				r = colorDefaults.druidEnergyTick.r,
-				g = colorDefaults.druidEnergyTick.g,
-				b = colorDefaults.druidEnergyTick.b,
-				a = colorDefaults.druidEnergyTick.a,
-			}
-		end
-		if SuperSwingTimerDB.showDruidTigerFuryBadge == nil then SuperSwingTimerDB.showDruidTigerFuryBadge = true end
-		if SuperSwingTimerDB.showDruidFaerieFireBadge == nil then SuperSwingTimerDB.showDruidFaerieFireBadge = true end
-		SuperSwingTimerDB.version = 44
-	end
-
-	-- v44 -> v45: Druid Mangle debuff timer + Rip duration bar
-	if (SuperSwingTimerDB.version or 0) < 45 then
-		SuperSwingTimerDB.colors = SuperSwingTimerDB.colors or {}
-		local colorDefaults = ns.DB_DEFAULTS and ns.DB_DEFAULTS.colors or {}
-		for _, key in ipairs({ "druidMangleTimer", "druidRipTracker" }) do
-			if not SuperSwingTimerDB.colors[key] and colorDefaults[key] then
-				SuperSwingTimerDB.colors[key] = {
-					r = colorDefaults[key].r,
-					g = colorDefaults[key].g,
-					b = colorDefaults[key].b,
-					a = colorDefaults[key].a,
+		end },
+		{ version = 46, apply = function(db)
+			if db.showShamanLightningTracker == nil then db.showShamanLightningTracker = true end
+			db.colors = db.colors or {}
+			local colorDefaults = ns.DB_DEFAULTS and ns.DB_DEFAULTS.colors or {}
+			if not db.colors.shamanLightningShield and colorDefaults.shamanLightningShield then
+				db.colors.shamanLightningShield = {
+					r = colorDefaults.shamanLightningShield.r,
+					g = colorDefaults.shamanLightningShield.g,
+					b = colorDefaults.shamanLightningShield.b,
+					a = colorDefaults.shamanLightningShield.a,
 				}
 			end
+		end },
+		{ version = 47, apply = function(db)
+			if db.showShamanFlameShockBar == nil then db.showShamanFlameShockBar = true end
+			if db.showDruidEnergyTickBar == nil then db.showDruidEnergyTickBar = true end
+			if db.druidEnergyTickBarWidth == nil then db.druidEnergyTickBarWidth = ns.DB_DEFAULTS.druidEnergyTickBarWidth or 4 end
+			db.colors = db.colors or {}
+			local colorDefaults = ns.DB_DEFAULTS and ns.DB_DEFAULTS.colors or {}
+			if not db.colors.druidEnergyTick and colorDefaults.druidEnergyTick then
+				db.colors.druidEnergyTick = {
+					r = colorDefaults.druidEnergyTick.r,
+					g = colorDefaults.druidEnergyTick.g,
+					b = colorDefaults.druidEnergyTick.b,
+					a = colorDefaults.druidEnergyTick.a,
+				}
+			end
+			db.showDruidTigerFuryBadge = nil
+			db.showDruidFaerieFireBadge = nil
+			db.showDruidMangleTimer = nil
+			db.showDruidRipTracker = nil
+			db.showDruidFormColors = nil
+			db.showDruidRageDim = nil
+			db.showDruidPowerShiftBar = nil
+			db.showDruidOmenGlow = nil
+			db.showDruidRavageCue = nil
+			db.druidPowerShiftBarHeight = nil
+			db.colors.druidFormBear = nil
+			db.colors.druidFormCat = nil
+			db.colors.druidFormMoonkin = nil
+			db.colors.omenGlow = nil
+			db.colors.ravageCue = nil
+			db.colors.druidMangleTimer = nil
+			db.colors.druidRipTracker = nil
+		end },
+	}
+
+	local currentVersion = tonumber(SuperSwingTimerDB.version) or 0
+	for _, migration in ipairs(migrations) do
+		if currentVersion < migration.version then
+			migration.apply(SuperSwingTimerDB)
+			currentVersion = migration.version
+			SuperSwingTimerDB.version = migration.version
 		end
-		if SuperSwingTimerDB.showDruidMangleTimer == nil then SuperSwingTimerDB.showDruidMangleTimer = true end
-		if SuperSwingTimerDB.showDruidRipTracker == nil then SuperSwingTimerDB.showDruidRipTracker = true end
-		SuperSwingTimerDB.version = 45
 	end
 end
 
@@ -841,7 +625,6 @@ local function OnAddonLoaded()
 	ns.WARRIOR_SHIELD_BLOCK_BAR_HEIGHT = SuperSwingTimerDB.warriorShieldBlockBarHeight or ns.WARRIOR_SHIELD_BLOCK_BAR_HEIGHT or ns.DB_DEFAULTS.warriorShieldBlockBarHeight or 4
 	ns.HUNTER_RANGE_HELPER_WIDTH = SuperSwingTimerDB.hunterRangeHelperWidth or ns.HUNTER_RANGE_HELPER_WIDTH or ns.DB_DEFAULTS.hunterRangeHelperWidth or 7
 	ns.HUNTER_RAPID_FIRE_BAR_HEIGHT = SuperSwingTimerDB.hunterRapidFireBarHeight or ns.HUNTER_RAPID_FIRE_BAR_HEIGHT or ns.DB_DEFAULTS.hunterRapidFireBarHeight or 4
-	ns.DRUID_POWER_SHIFT_BAR_HEIGHT = SuperSwingTimerDB.druidPowerShiftBarHeight or ns.DRUID_POWER_SHIFT_BAR_HEIGHT or ns.DB_DEFAULTS.druidPowerShiftBarHeight or 4
 	ns.DRUID_ENERGY_TICK_BAR_WIDTH = SuperSwingTimerDB.druidEnergyTickBarWidth or ns.DRUID_ENERGY_TICK_BAR_WIDTH or ns.DB_DEFAULTS.druidEnergyTickBarWidth or 4
 	ns.ROGUE_ADRENALINE_RUSH_BAR_HEIGHT = SuperSwingTimerDB.rogueAdrenalineRushBarHeight or ns.ROGUE_ADRENALINE_RUSH_BAR_HEIGHT or ns.DB_DEFAULTS.rogueAdrenalineRushBarHeight or 4
 
@@ -933,9 +716,13 @@ local function RegisterEvents()
 		frame:RegisterEvent("SPELLS_CHANGED")
 	end
 
-	if cfg.melee and ns.playerClass == "ROGUE" then
+	if cfg.melee and (ns.playerClass == "ROGUE" or ns.playerClass == "DRUID") then
 		frame:RegisterEvent("UNIT_POWER_UPDATE")
 		frame:RegisterEvent("UNIT_POWER_FREQUENT")
+	end
+
+	if cfg.melee and ns.playerClass == "DRUID" then
+		frame:RegisterEvent("UPDATE_SHAPESHIFT_FORM")
 	end
 
 	if cfg.ranged then
@@ -945,10 +732,6 @@ local function RegisterEvents()
 		frame:RegisterEvent("STOP_AUTOREPEAT_SPELL")
 		frame:RegisterEvent("PLAYER_STARTED_MOVING")
 		frame:RegisterEvent("PLAYER_STOPPED_MOVING")
-	end
-
-	if cfg.melee and ns.playerClass == "DRUID" then
-		frame:RegisterEvent("UPDATE_SHAPESHIFT_FORM")
 	end
 
 	frame:RegisterEvent("PLAYER_ENTERING_WORLD")
@@ -1054,8 +837,8 @@ frame:SetScript("OnEvent", function(self, event, ...)
 		if ns.RefreshEnemyTarget then
 			ns.RefreshEnemyTarget()
 		end
-		if ns.playerClass == "DRUID" and ns.UpdateDruidRavageCue then
-			ns.UpdateDruidRavageCue(0, true)
+		if ns.playerClass == "SHAMAN" and ns.UpdateShamanFlameShockBar then
+			ns.UpdateShamanFlameShockBar(true)
 		end
 		if ((ns.playerInCombat == true) or (InCombatLockdown and InCombatLockdown())) and ns.ApplyVisibility then
 			ns.ApplyVisibility()
@@ -1072,15 +855,17 @@ frame:SetScript("OnEvent", function(self, event, ...)
 		local unit = ...
 		if unit == "player" then
 			ns.SanityCheckTimers()
+			if ns.playerClass == "SHAMAN" and ns.UpdateLightningShieldVisual then
+				ns.UpdateLightningShieldVisual()
+			end
 			if ns.playerClass == "WARRIOR" and ns.UpdateWarriorShieldBlockBar then
 				ns.UpdateWarriorShieldBlockBar(0, true)
-			end
-			if ns.playerClass == "DRUID" and ns.UpdateDruidRavageCue then
-				ns.UpdateDruidRavageCue(0, true)
 			end
 			if ns.playerClass == "ROGUE" and ns.HandleRogueSliceAndDiceAura then
 				ns.HandleRogueSliceAndDiceAura(unit)
 			end
+		elseif unit == "target" and ns.playerClass == "SHAMAN" and ns.UpdateShamanFlameShockBar then
+			ns.UpdateShamanFlameShockBar(true)
 		end
 	elseif event == "UNIT_POWER_UPDATE" or event == "UNIT_POWER_FREQUENT" then
 		local unit, powerType = ...
@@ -1190,6 +975,20 @@ frame:SetScript("OnEvent", function(self, event, ...)
 		ns.playerInCombat = false
 		if ns.playerClass == "WARRIOR" and ns.UpdateWarriorRageBar then
 			ns.UpdateWarriorRageBar()
+		end
+		ns.warriorOverpowerProcUntil = nil
+		ns.casting = false
+		ns.channeling = false
+		ns.channelingSpellId = nil
+		ns.currentCastSpellId = nil
+		ns.currentCastStartTime = nil
+		ns.lastGcdTime = nil
+		ns.gcdDuration = ns.GetGcdDuration and ns.GetGcdDuration() or 1.5
+		ns.gcdActive = false
+		ns.preventSwingReset = false
+		ns.pauseSwingTime = nil
+		if ns.ClearHunterCastState then
+			ns.ClearHunterCastState(true)
 		end
 		ns.hunterAutoRepeatActive = false
 		ns.StopSanityTicker()

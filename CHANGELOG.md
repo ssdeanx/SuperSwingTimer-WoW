@@ -1,11 +1,52 @@
 # Super Swing Timer Changelog
 
+## v0.1.2 - 2026-05-30
+
+- **Shaman weave reliability**: `UpdateWeaveVisuals()` now attempts an on-demand `OnBarsCreated()` recovery before bailing when weave textures are missing, so weave markers/spark can recover if bar overlays are rebuilt or late-created.
+- **Shaman Flame Shock bar**: added a new thin 6px status bar above MH that tracks the remaining duration of your own Flame Shock on the current target (player-filtered debuff scan, target-change refresh, target aura refresh, and shared visibility refresh integration).
+- **Shaman constants**: added rank-safe Flame Shock spell-ID lookup table for Classic/TBC (`8050`, `8052`, `8053`, `10447`, `10448`, `29228`, `25457`) plus localized fallback name resolution.
+- **Shaman Lightning Shield reliability**: fixed the shield tracker aura wiring to read spell IDs from the shared `GetHelpfulAuraData()` helper correctly, added immediate `UNIT_AURA` player refresh hooks, and removed an `OnBarsCreated()` early-return edge case that could skip creating the shield tracker container if weave textures already existed.
+- **Unlocked camera behavior**: while bars are unlocked, right-click over bars now explicitly forwards to `MouselookStart()` / `MouselookStop()` so camera look still works; left-click drag behavior is unchanged.
+- **Shaman helper UI wiring**: Flame Shock helper now has a full DB-backed Quick Controls checkbox (`Flame Shock Bar`) with runtime hide/show gating, migration defaults, and reset-defaults support.
+- **Shaman checkbox polish**: renamed the existing Lightning Shield quick toggle label to `Lightning Shield Tracker` for clearer intent while keeping existing functionality and color swatch behavior.
+- **Shaman tracker sizing polish**: Lightning Shield charge tracker now matches MH height in single-bar mode and expands to the full MH+OH stack height (including the inter-bar gap) when OH is visible.
+- **Shaman shield detection hardening**: Lightning/Water shield tracker matching now uses both spell IDs and normalized aura-name fallback tables so tracker updates still work when Classic/TBC aura payloads omit or vary spell IDs.
+- **Water/Mana shield compatibility**: expanded Water Shield ID coverage (including rank IDs and observed alternate aura mappings), plus alias-safe name matching (`Water Shield` / `Mana Shield`) to avoid no-show edge cases from client/build variance.
+- **Druid de-bloat cleanup**: removed stale post-streamline Druid badge/timer defaults and migration writes (`showDruidTigerFuryBadge`, `showDruidFaerieFireBadge`, `showDruidMangleTimer`, `showDruidRipTracker`, plus associated Mangle/Rip color seeding) so stripped features are no longer reintroduced into SavedVariables on fresh or old profiles.
+- **Right-click camera reliability (unlocked bars)**: switched unlocked-bar right-click handling to world-style `TurnOrActionStart()` / `TurnOrActionStop()` with `MouselookStart()` / `MouselookStop()` fallback and per-frame active-state guards, so right-click camera movement works while bars remain left-draggable.
+- **Combat camera safety guard**: bars now force `EnableMouse(false)` during combat regardless of lock state, so swing frames cannot intercept mouse input and disrupt camera movement mid-fight. Left-drag repositioning remains available out of combat when bars are unlocked.
+- **Out-of-combat right-click pass-through**: draggable status bars now opt into `SetPropagateMouseClicks(true)` when available, so right-click camera/world input can pass through the bars naturally while preserving left-click drag handling when unlocked.
+- **Right-click fallback bugfix**: fixed propagate-click capability detection in bar handlers by tracking explicit support (`sstHasPropagateMouseClicks`) instead of method-presence checks on frame scripts, restoring correct fallback camera behavior on clients without click propagation.
+- **Input fallback hardening**: upgraded right-click camera fallback path with safe guarded wrappers (`pcall` around turn/mouselook start/stop), visibility-aware mouse gating (`IsShown` + alpha), and auto-cleanup of active camera fallback state when bars are mouse-disabled, reducing edge-case input drift.
+- **CLEU fallback guard**: hardened `ns.HandleCLEU()` entrypoint with API-availability and payload-shape checks so malformed or unavailable `CombatLogGetCurrentEventInfo` states cannot hard-fail runtime dispatch.
+- **Migration ladder refactor**: converted `MigrateDB()` from a long sequential `if (version < X)` ladder into an ordered table-driven migration pipeline, preserving behavior while making future migration edits safer and easier to audit.
+
+## v0.1.1 - 2026-05-30
+
+- **Shaman Lightning Shield tracker**: 3 thin vertical rectangles (5px, 1px gap) to the left of the MH bar that fill with class color per active shield charge. Water Shield forces light blue. Configurable toggle + color swatch in Quick Controls.
+- **Shaman weave dual-wield support**: bottom triangle anchors below OH bar when dual-wielding. OH spark mirrors MH spark during casts.
+- **Paladin class colors fix**: per-seal MH bar color and label now skip when "Use Class Colors" is enabled, preserving the class color on the bar.
+- **Rogue Slice and Dice height**: wired `GetRogueSliceAndDiceBarHeight` into `ApplyBarSize` so SnD bar respects the proper derived height formula.
+- **Misc**: v0.1.1 version bump.
+
+## v0.1.0 - 2026-05-30
+
+- **Camera right-click fix**: bars now disable mouse capture when locked, so right-click camera movement passes through the swing timer frames instead of being blocked. Unlock bars to reposition, lock to play. Added `ns.ApplyLockBars()` to handle mouse state on all draggable bars.
+- **Lock Bars at top**: moved the Lock Bars toggle into the Quick Controls section (left column, below Use Class Colors) for fast one-click access without scrolling to General Behavior.
+- **Quick Controls spacing**: increased the measured gap below the `Visibility` / `Key Colors` column headers so the labels have more breathing room above the first swatch and toggle rows.
+- **Shaman weave spark overhaul**: the weave cast spark now uses a solid white `Square_FullWhite` texture with red vertex coloring during active casts so it reads clearly. The spark renders directly on the MH bar at a higher draw layer (`OVERLAY, 5`) so it cannot get buried behind the bar fill. Spark position now anchors to `ns.mhBar` directly for precise alignment.
+- **Slider track backgrounds**: added a visible 4px gray track line behind every `/sst` slider so the slider range is always readable even when the Blizzard template track is thin or invisible.
+
 ## 0.0.10 - 2026-05-27
 
 - **`/sst` width-usage follow-up**: widened the standard config row builders so the Appearance / Shaman / General sections stop wasting the right half of the panel. Texture preview rows now span the row width, texture-path inputs fill the row minus the browse button, dropdown rows use wider selectors, and the default toggle / action rows keep the label above the control instead of cramming everything into the far-left side.
 - **Class-only helper slider creation**: Hunter / Rogue / Warrior helper-size sliders in Appearance are now created only for the active class instead of being instantiated for every class and hidden later, which fixes off-class rows such as Rogue Slice and Dice / tick sliders still appearing on Hunter.
 - **Quick Controls header spacing**: the top `Visibility` / `Key Colors` column labels now sit below the Quick Controls header with measured spacing before the first compact row, reducing the header/text collision that could still happen in the live panel.
+- **Quick Controls title-gap follow-up**: added a little more measured vertical space between the `Visibility` / `Key Colors` titles and the first compact swatch/toggle rows, which fixes the remaining slight overlap where the first quick-color bar still felt too close to the title line.
 - **Shaman weave cast motion polish**: active tracked weave casts no longer leave the spell icon pinned at one constant projected-impact point for the whole cast. The weave icon pair and center spark now begin at the safe cast-start breakpoint and travel across the MH swing as the cast completes, finishing at the projected landing point so Enhancement Shamans can watch the cast stay ahead of the MH spark in real time.
+- **Shaman weave live-position follow-up**: the safe upper/lower breakpoint markers are fixed again, while the moving spell icon now starts from the real cast-start position on the MH swing and travels toward projected landing. The weave cast-state path also falls back to the live casting API when event spell tokens are incomplete, which makes Lightning Bolt / Chain Lightning motion begin immediately instead of looking pinned to the helper breakpoint.
+- **Shaman weave haste-rescale follow-up**: the moving weave icon now drives from elapsed cast time against the current haste-adjusted cast duration each frame, so haste/buff changes mid-cast rescale the icon position instead of leaving it visually frozen or stale.
+- **Shaman weave readability polish**: the live cast spark/icon now gets a tiny forward bias while it moves, so the active Lightning Bolt / Chain Lightning position reads as motion immediately instead of visually hugging the fixed helper marker on the first frames.
 - **`/sst` Druid slider crash fix**: opening the config panel no longer throws `attempt to index field druidPowerShiftSlider` from `SuperSwingTimer_Config.lua`. The stale refresh calls for removed Druid slider widgets are now guarded, matching the current streamlined Druid panel.
 - **`/sst` section layout reflow**: the Appearance, Shaman Weave Assist, General Behavior, and Weave Families sections now stack rows from their real runtime widget heights instead of brittle fixed Y offsets, which stops slider rows and helper text from overlapping section headers.
 - **Enhancement Shaman Windfury ICD crash fix**: `SuperSwingTimer_ClassMods.lua` no longer scans helpful buffs through the brittle raw `UnitBuff("player", i, "HELPFUL")` tuple path. The Windfury ICD tracker now uses the shared `GetHelpfulAuraData()` helper, guards spell-ID comparisons with explicit numeric checks, and reads the live main-hand swing anchor from `ns.timers.mh.lastSwing` on the addon's aligned clock instead of the nonexistent `ns.GetLastMhSwingTime()` symbol. This fixes the in-game `attempt to compare number with boolean` runtime error reported from `UpdateWindfuryIcd()`.

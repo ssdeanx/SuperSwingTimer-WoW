@@ -1,8 +1,8 @@
 # DB Migration Changelog (`SuperSwingTimerDB.version`)
 
-Source: `SuperSwingTimer.lua:245–748`
+Source: `SuperSwingTimer.lua:180–823`
 
-Current version: **43** (as of v0.0.8)
+Current version: **45** (as of v0.0.10)
 
 ## Version timeline
 
@@ -48,6 +48,8 @@ timeline
     v40→41 : Shield Block + Ravage defaults
     v41→42 : Independent hunterCastBarHeight
     v42→43 : Per-class bar height sliders
+    v43→44 : Druid Tiger's Fury + Faerie Fire badge toggles + druidEnergyTick color
+    v44→45 : Druid Mangle debuff timer + Rip duration bar
 ```
 
 ## Migration chain (detailed)
@@ -94,6 +96,8 @@ timeline
 | **v40→41** | Shield Block + Ravage defaults | `colors.shieldBlockBar`, `colors.ravageCue` |
 | **v41→42** | Independent hunterCastBarHeight | `hunterCastBarHeight` (default 10) |
 | **v42→43** | Per-class bar height/width sliders | `rogueSliceAndDiceBarHeight` (4), `rogueEnergyTickBarWidth` (4), `warriorShieldBlockBarHeight` (4), `hunterRangeHelperWidth` (7), `hunterRapidFireBarHeight` (4), `druidPowerShiftBarHeight` (4), `druidEnergyTickBarWidth` (4), `rogueAdrenalineRushBarHeight` (4) |
+| **v43→44** | Druid Tiger's Fury + Faerie Fire badges + druidEnergyTick color | `colors.druidEnergyTick`, `showDruidTigerFuryBadge` (true), `showDruidFaerieFireBadge` (true) |
+| **v44→45** | Druid Mangle debuff timer + Rip tracker | `colors.druidMangleTimer`, `colors.druidRipTracker`, `showDruidMangleTimer` (true), `showDruidRipTracker` (true) |
 
 ## DB key categories
 
@@ -135,18 +139,18 @@ flowchart LR
 | `showRogueComboPoints` | true | v32 |
 | `showRogueAdrenalineRushBar` | true | v40 |
 | `showWarriorFlurryCounter` | true | v40 |
-| `showDruidOmenGlow` | true | v40 |
+| `showDruidOmenGlow` | true | v40 (legacy — Druid streamlining v0.0.9 stripped handler) |
 | `showSwingFlash` | true | v39 |
 | `showGcdTicker` | true | v39 |
-| `showDruidRageDim` | true | v39 |
+| `showDruidRageDim` | true | v39 (legacy — Druid streamlining v0.0.9 stripped handler) |
 | `showRogueEnergyCountdown` | true | v39 |
 | `showWarriorRageBar` | true | v36 |
 | `showWarriorRageProtection` | false | v38 |
 | `showWarriorShieldBlockBar` | true | v40 |
-| `showDruidRavageCue` | true | v40 |
-| `showDruidPowerShiftBar` | true | v43 |
-| `showDruidEnergyTickBar` | true | v43 |
-| `showDruidFormColors` | true | v37 |
+| `showDruidRavageCue` | true | v40 (legacy — Druid streamlining v0.0.9 stripped handler; set to nil) |
+| `showDruidPowerShiftBar` | true | v43 (legacy — Druid streamlining v0.0.9 stripped handler) |
+| `showDruidEnergyTickBar` | true | v43 (legacy — Druid streamlining v0.0.9 stripped handler) |
+| `showDruidFormColors` | true | v37 (legacy — Druid streamlining v0.0.9 stripped handler) |
 | `showPaladinSealColor` | true | v34 |
 | `showPaladinSealLabel` | true | v34 |
 | `showPaladinJudgementMarker` | true | v34 |

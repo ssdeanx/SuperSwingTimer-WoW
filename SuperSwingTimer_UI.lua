@@ -2,6 +2,10 @@ local _, ns = ...
 
 local CreateFrame = rawget(_G, "CreateFrame")
 local UIParent = rawget(_G, "UIParent")
+local MouselookStart = rawget(_G, "MouselookStart")
+local MouselookStop = rawget(_G, "MouselookStop")
+local TurnOrActionStart = rawget(_G, "TurnOrActionStart")
+local TurnOrActionStop = rawget(_G, "TurnOrActionStop")
 local InCombatLockdown = rawget(_G, "InCombatLockdown")
 local GetTimePreciseSec = rawget(_G, "GetTimePreciseSec")
 local GetTime = rawget(_G, "GetTime")
@@ -17,6 +21,38 @@ local function GetCurrentTime()
 		return GetTimePreciseSec()
 	end
 	return GetTime()
+end
+
+local function SafeStartRightCamera()
+	if TurnOrActionStart then
+		local ok = pcall(TurnOrActionStart)
+		if ok then
+			return true
+		end
+	end
+	if MouselookStart then
+		local ok = pcall(MouselookStart)
+		if ok then
+			return true
+		end
+	end
+	return false
+end
+
+local function SafeStopRightCamera()
+	if TurnOrActionStop then
+		local ok = pcall(TurnOrActionStop)
+		if ok then
+			return true
+		end
+	end
+	if MouselookStop then
+		local ok = pcall(MouselookStop)
+		if ok then
+			return true
+		end
+	end
+	return false
 end
 
 local function GetSparkBlendMode()
@@ -469,8 +505,11 @@ local function CreateBar(frameName, width, height)
 	f:SetSize(width or ns.BAR_WIDTH, height or ns.BAR_HEIGHT)
 	f:SetPoint("CENTER", UIParent, "CENTER", 0, -100)
 	f:SetMovable(true)
-	f:EnableMouse(true)
-	f:RegisterForDrag("LeftButton")
+	f:EnableMouse(false)  -- mouse enabled later by ns.ApplyLockBars() when unlocked
+	f.sstHasPropagateMouseClicks = (type(f.SetPropagateMouseClicks) == "function")
+	if f.sstHasPropagateMouseClicks then
+		f:SetPropagateMouseClicks(true)
+	end
 	f:SetClampedToScreen(true)
 	f:SetHitRectInsets(-50, -50, -50, -50)
 	f:SetStatusBarTexture(ns.GetBarTexture())
@@ -1167,7 +1206,35 @@ function ns.RestoreAllBarPositions()
 end
 
 -- ============================================================
--- Drag handling (anchor bar only â€” OH follows MH automatically)
+-- Lock/unlock bars â€" controls mouse capture to prevent blocked
+-- right-click camera movement when bars are locked.
+-- ============================================================
+function ns.ApplyLockBars()
+	local locked = ns.AreBarsLocked()
+	local inCombat = (ns.inCombat == true) or (InCombatLockdown and InCombatLockdown())
+	for _, bar in ipairs({ ns.mhBar, ns.ohBar, ns.rangedBar, ns.enemyBar }) do
+		if bar then
+			local isHunterMH = (ns.playerClass == "HUNTER" and bar == ns.mhBar)
+			-- Only enable mouse when unlocked AND the bar is actually visible
+			-- AND never during combat, so camera movement cannot be blocked.
+			local isVisible = ((bar:IsShown() and bar:GetAlpha() > 0) or ns.barTestActive)
+			if inCombat or locked or isHunterMH or not isVisible then
+				bar:EnableMouse(false)
+				bar:RegisterForDrag()
+				if bar.sstRightCameraActive then
+					SafeStopRightCamera()
+					bar.sstRightCameraActive = nil
+				end
+			else
+				bar:EnableMouse(true)
+				bar:RegisterForDrag("LeftButton")
+			end
+		end
+	end
+end
+
+-- ============================================================
+-- Drag handling (anchor bar only â€" OH follows MH automatically)
 -- ============================================================
 local function AttachDrag(frame, slot)
 	local function StartDrag(self)
@@ -1192,19 +1259,32 @@ local function AttachDrag(frame, slot)
 		StopDrag(self)
 	end)
 	frame:SetScript("OnMouseDown", function(self, button)
-		if button == "LeftButton" then
+		if button == "LeftButton" and not ns.AreBarsLocked() then
 			StartDrag(self)
+		elseif button == "RightButton" and not ns.AreBarsLocked() then
+			if not self.sstHasPropagateMouseClicks and SafeStartRightCamera() then
+				self.sstRightCameraActive = true
+			end
 		end
 	end)
 	frame:SetScript("OnMouseUp", function(self, button)
 		if button == "LeftButton" then
-			StopDrag(self)
+			if self.isMoving then
+				StopDrag(self)
+			end
+		elseif button == "RightButton" and self.sstRightCameraActive then
+			SafeStopRightCamera()
+			self.sstRightCameraActive = nil
 		end
 	end)
 	frame:SetScript("OnHide", function(self)
 		if self.isMoving then
 			self:StopMovingOrSizing()
 			self.isMoving = false
+		end
+		if self.sstRightCameraActive then
+			SafeStopRightCamera()
+			self.sstRightCameraActive = nil
 		end
 	end)
 end
@@ -1451,7 +1531,7 @@ function ns.ApplyBarSize(width, height)
 			elseif bar == ns.ohBar then
 				barHeight = GetOffHandBarHeight(height)
 			elseif bar == ns.rogueSliceAndDiceBar then
-				barHeight = ns.ROGUE_SLICE_AND_DICE_BAR_HEIGHT or 4
+				barHeight = GetRogueSliceAndDiceBarHeight(height)
 			end
 			bar:SetSize(width, barHeight)
 			bar.barWidth = width
@@ -1503,6 +1583,12 @@ function ns.ApplyBarSize(width, height)
 	end
 	if ns.UpdatePaladinSealZone then
 		ns.UpdatePaladinSealZone()
+	end
+	if ns.UpdateWarriorShieldBlockBar then
+		ns.UpdateWarriorShieldBlockBar(0, true)
+	end
+	if ns.UpdateHunterRapidFire then
+		ns.UpdateHunterRapidFire(0, true)
 	end
 end
 
@@ -1567,6 +1653,12 @@ function ns.ApplyBarTexture(texturePath, layer)
 	if ns.UpdateRogueComboPointVisual then
 		ns.UpdateRogueComboPointVisual()
 	end
+	if ns.UpdateHunterRapidFire then
+		ns.UpdateHunterRapidFire(0, true)
+	end
+	if ns.UpdateWarriorShieldBlockBar then
+		ns.UpdateWarriorShieldBlockBar(0, true)
+	end
 end
 
 function ns.ApplyRangedBarTexture(texturePath, layer)
@@ -1591,6 +1683,9 @@ function ns.ApplyRangedBarTexture(texturePath, layer)
 	end
 	if ns.UpdateCastZoneVisual then
 		ns.UpdateCastZoneVisual()
+	end
+	if ns.UpdateHunterRapidFire then
+		ns.UpdateHunterRapidFire(0, true)
 	end
 end
 
@@ -1825,6 +1920,9 @@ local function UpdateGcdTicker(elapsed)
 	local now = GetCurrentTime()
 	local gcdStart = ns.lastGcdTime
 	if not gcdStart or not ns.gcdActive or (now - gcdStart) >= (ns.gcdDuration or 1.5) then
+		if gcdStart and (now - gcdStart) >= (ns.gcdDuration or 1.5) then
+			ns.gcdActive = false
+		end
 		f:SetAlpha(0); f:Hide()
 		return
 	end
@@ -1967,11 +2065,7 @@ function ns.ApplyWeaveSparkSettings(texturePath, width, height, layer, alpha)
 	for _, texture in ipairs({ ns.weaveSpark }) do
 		if texture then
 			texture:SetTexture(texturePath)
-			if ns.SetTextureLayerAboveBar then
-				ns.SetTextureLayerAboveBar(texture, layer, ns.GetBarTextureLayer())
-			else
-				texture:SetDrawLayer(layer)
-			end
+			texture:SetDrawLayer(layer, 5)  -- high sublayer so spark renders above bar fill
 			texture:SetBlendMode(ns.GetIndicatorBlendMode())
 			texture:SetWidth(width)
 			local targetHeight = math.max(1, math.min(height, (ns.mhBar and ns.mhBar:GetHeight()) or height))
@@ -1987,11 +2081,7 @@ function ns.ApplyWeaveSparkTextureLayer(layer)
 	end
 	SuperSwingTimerDB.weaveSparkTextureLayer = layer
 	if ns.weaveSpark then
-		if ns.SetTextureLayerAboveBar then
-			ns.SetTextureLayerAboveBar(ns.weaveSpark, layer, ns.GetBarTextureLayer())
-		else
-			ns.weaveSpark:SetDrawLayer(layer)
-		end
+		ns.weaveSpark:SetDrawLayer(layer, 5)  -- high sublayer so spark renders above bar fill
 	end
 end
 
@@ -2152,9 +2242,9 @@ function ns.ApplyVisibility()
 	if ns.UpdateHunterRangeHelperVisual then
 		ns.UpdateHunterRangeHelperVisual()
 	end
-	if ns.weaveSpark or ns.weaveTriangleTop or ns.weaveTriangleBottom or ns.weaveMarker then
+	if ns.weaveSpark or ns.weaveSparkOH or ns.weaveTriangleTop or ns.weaveTriangleBottom or ns.weaveMarker then
 		local showWeave = db.showWeaveAssist ~= false and ns.playerClass == "SHAMAN" and not ns.IsMinimalMode()
-		for _, texture in ipairs({ ns.weaveSpark, ns.weaveTriangleTop, ns.weaveTriangleBottom }) do
+		for _, texture in ipairs({ ns.weaveSpark, ns.weaveSparkOH, ns.weaveTriangleTop, ns.weaveTriangleBottom }) do
 			if texture then
 				texture:SetBlendMode(ns.GetIndicatorBlendMode())
 				texture:SetShown(showWeave)
@@ -2176,6 +2266,13 @@ function ns.ApplyVisibility()
 	if ns.UpdatePaladinSealZone then
 		ns.UpdatePaladinSealZone()
 	end
+	if ns.UpdateLightningShieldVisual then
+		ns.UpdateLightningShieldVisual()
+	end
+	if ns.UpdateShamanFlameShockBar then
+		ns.UpdateShamanFlameShockBar(true)
+	end
+	ns.ApplyLockBars()
 end
 
 function ns.ApplyBarColors()
@@ -2278,6 +2375,15 @@ function ns.ApplyBarColors()
 	if ns.UpdatePaladinSealZone then
 		ns.UpdatePaladinSealZone()
 	end
+	if ns.UpdateDruidEnergyTickColor then
+		ns.UpdateDruidEnergyTickColor()
+	end
+	if ns.UpdateHunterRapidFire then
+		ns.UpdateHunterRapidFire(0, true)
+	end
+	if ns.UpdateLightningShieldVisual then
+		ns.UpdateLightningShieldVisual()
+	end
 	if ns.RefreshBarLabelStyles then
 		ns.RefreshBarLabelStyles()
 	end
@@ -2377,6 +2483,7 @@ function ns.InitBars()
 	ns.ApplySparkColor(ns.GetSparkColor())
 	ns.ApplyMinimalMode(ns.IsMinimalMode())
 	ns.ApplyVisibility()
+	ns.ApplyLockBars()
 end
 
 -- ============================================================

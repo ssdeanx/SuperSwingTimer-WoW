@@ -4,6 +4,9 @@
 
 Super Swing Timer is a World of Warcraft Classic/TBC addon for melee and ranged swing-timer tracking.
 
+**Branch baseline:** BC Classic Anniversary Edition (2026), patch-family 2.5.5.
+This project should not be scoped as the original 2021 BC Classic launch branch.
+
 ## Purpose
 
 The addon helps players time white swings, next-melee-attack abilities, parry haste windows, ranged shot timing, and shaman weave breakpoints.

@@ -1,6 +1,6 @@
 # Config Panel Reference (`/sst`)
 
-Source: `SuperSwingTimer_Config.lua` (3559 lines)
+Source: `SuperSwingTimer_Config.lua` (3729 lines)
 
 ## Frame structure
 
@@ -152,18 +152,18 @@ All toggles use `AddQuickToggle(label, getValue, applyValue, opts)` — renders 
 | Rogue Combo Points | `showRogueComboPoints` | `UpdateRogueComboPointVisual()` | Rogue |
 | Rogue Adrenaline Rush | `showRogueAdrenalineRushBar` | (toggle) | Rogue |
 | Warrior Flurry | `showWarriorFlurryCounter` | (toggle) | Warrior |
-| Omen of Clarity | `showDruidOmenGlow` | (toggle) | Druid |
+| Omen of Clarity | `showDruidOmenGlow` | (legacy — stripped v0.0.9) | Druid |
 | Swing Flash | `showSwingFlash` | (toggle) | All (Phase 1) |
 | GCD Ticker | `showGcdTicker` | (toggle) | Melee (non-Hunter) |
-| Rage Dim | `showDruidRageDim` | `ns.ApplyBarColors()` | Druid |
+| Rage Dim | `showDruidRageDim` | (legacy — stripped v0.0.9) | Druid |
 | Energy Countdown | `showRogueEnergyCountdown` | (toggle) | Rogue |
 | Shield Block | `showWarriorShieldBlockBar` | (toggle) | Warrior |
 | Warrior Rage Bar | `showWarriorRageBar` | `ns.ApplyVisibility()` | Warrior |
 | Protection Hide | `showWarriorRageProtection` | (toggle) | Warrior |
-| Druid Form Colors | `showDruidFormColors` | `ns.ApplyBarColors()` | Druid |
-| Ravage Cue | `showDruidRavageCue` | (toggle) | Druid |
-| Power Shift | `showDruidPowerShiftBar` | `ns.UpdateDruidPowerShiftBar` | Druid |
-| Druid Energy Tick | `showDruidEnergyTickBar` | `ns.UpdateDruidEnergyTickVisual` | Druid |
+| Druid Form Colors | `showDruidFormColors` | (legacy — stripped v0.0.9) | Druid |
+| Ravage Cue | `showDruidRavageCue` | (legacy — stripped v0.0.9) | Druid |
+| Power Shift | `showDruidPowerShiftBar` | (legacy — stripped v0.0.9) | Druid |
+| Druid Energy Tick | `showDruidEnergyTickBar` | (legacy — stripped v0.0.9) | Druid |
 | Paladin Seal Color | `showPaladinSealColor` | `ns.ApplyBarColors()` | Paladin |
 | Paladin Seal Label | `showPaladinSealLabel` | `ns.ApplyBarColors()` | Paladin |
 | Paladin Judgement CD | `showPaladinJudgementMarker` | `ns.ApplyBarColors()` | Paladin |
@@ -203,12 +203,12 @@ flowchart LR
 | Rogue Combo | `rogueComboPoints` | `{1.0,0.18,0.12,0.95}` |
 | Rogue SnD | `rogueSliceAndDice` | `{0.95,0.82,0.22,0.95}` |
 | Rogue Adrenaline Rush | `adrenalineRushBar` | `{1.0,0.40,0.10,0.85}` |
-| Ravage Cue | `ravageCue` | `{1.00,0.72,0.16,0.28}` |
+| Ravage Cue | `ravageCue` | `{1.00,0.72,0.16,0.28}` (legacy — stripped v0.0.9) |
 | Seal Line | `sealTwist` | `{1,0,0,0.35}` |
 | Flurry Counter | `flurryCounter` | `{1.0,0.75,0.10,1.0}` |
 | Shield Block | `shieldBlockBar` | `{0.20,0.55,1.00,0.90}` |
 | Windfury ICD | `windfuryIcd` | `{0.85,0.45,0.0,0.80}` |
-| Omen Glow | `omenGlow` | `{0.20,1.0,0.30,0.80}` |
+| Omen Glow | `omenGlow` | `{0.20,1.0,0.30,0.80}` (legacy — stripped v0.0.9) |
 | Rogue Energy Text | `rogueEnergyText` | `{1.0,0.82,0.18,0.85}` |
 
 ## Control widget types
@@ -266,8 +266,8 @@ flowchart LR
 | 6 | Slider | Hunter Range Helper Width | `hunterRangeHelperWidth` | 2–20 | Hunter |
 | 7 | Slider | Hunter Rapid Fire Height | `hunterRapidFireBarHeight` | 2–20 | Hunter |
 | 8 | Slider | Warrior Shield Block Height | `warriorShieldBlockBarHeight` | 2–20 | Warrior |
-| 9 | Slider | Druid Power Shift Height | `druidPowerShiftBarHeight` | 2–20 | Druid |
-| 10 | Slider | Druid Energy Tick Width | `druidEnergyTickBarWidth` | 2–20 | Druid |
+| 9 | Slider | Druid Power Shift Height | `druidPowerShiftBarHeight` | 2–20 | Druid (legacy — stripped v0.0.9; sliders not created) |
+| 10 | Slider | Druid Energy Tick Width | `druidEnergyTickBarWidth` | 2–20 | Druid (legacy — stripped v0.0.9; sliders not created) |
 | 11 | Slider | Rogue Adrenaline Rush Height | `rogueAdrenalineRushBarHeight` | 2–20 | Rogue |
 | 12 | TextureList | MH/OH Bar Texture | `barTexture` | Blizzard/WA/SharedMedia | All |
 | 13 | Cycle | MH/OH Texture Layer | `barTextureLayer` | `TEXTURE_LAYER_OPTIONS` | All |

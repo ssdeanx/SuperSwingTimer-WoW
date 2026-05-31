@@ -550,6 +550,13 @@ local function CreateLabeledSliderRow(parent, label, minVal, maxVal, step, yOffs
 	end
 	row.text = text
 
+	-- Slider track background — a thin visible line so the track is always readable
+	local trackBg = row:CreateTexture(nil, "BACKGROUND")
+	trackBg:SetColorTexture(0.25, 0.25, 0.25, 0.60)
+	trackBg:SetPoint("TOPLEFT", row, "TOPLEFT", 0, -30 - 8 + 3)
+	trackBg:SetPoint("TOPRIGHT", row, "TOPRIGHT", -(valueBoxWidth + 12), -30 - 8 + 3)
+	trackBg:SetHeight(4)
+
 	local slider = CreateFrame("Slider", nil, row, "OptionsSliderTemplate")
 	slider:SetPoint("TOPLEFT", row, "TOPLEFT", 0, -30)
 	slider:SetPoint("TOPRIGHT", row, "TOPRIGHT", -(valueBoxWidth + 12), -30)
@@ -2115,6 +2122,21 @@ local function CreatePanel()
 		end
 	)
 
+	-- Lock Bars at top of Quick Controls for fast access
+	local lockBarsQuickRow = AddQuickToggle(
+		"Lock Bars",
+		function() return SuperSwingTimerDB.lockBars == true end,
+		function(enabled)
+			SuperSwingTimerDB.lockBars = enabled
+			if ns.ApplyLockBars then
+				ns.ApplyLockBars()
+			end
+		end,
+		{
+			tooltipText = "Lock bars in place so right-click camera movement passes through them. Unlock to reposition.",
+		}
+	)
+
 	local showMHRow = nil
 	if cfg.melee then
 		showMHRow = AddQuickToggle(
@@ -2240,6 +2262,23 @@ local function CreatePanel()
 			end,
 			{
 				tooltipText = "Show the slim Rogue energy-tick bar to the left of the main-hand bar.",
+			}
+		)
+	end
+
+	local showDruidEnergyRow = nil
+	if ns.playerClass == "DRUID" then
+		showDruidEnergyRow = AddQuickToggle(
+			"Druid Energy Tick",
+			function() return SuperSwingTimerDB.showDruidEnergyTickBar ~= false end,
+			function(enabled)
+				SuperSwingTimerDB.showDruidEnergyTickBar = enabled
+				if ns.UpdateDruidEnergyTickVisual then
+					ns.UpdateDruidEnergyTickVisual()
+				end
+			end,
+			{
+				tooltipText = "Show the slim Cat-form energy-tick bar to the left of the main-hand bar.",
 			}
 		)
 	end
@@ -2474,6 +2513,13 @@ local function CreatePanel()
 		})
 	end
 
+	if ns.playerClass == "DRUID" then
+		AddQuickColor("Druid Energy Tick", "druidEnergyTick", {
+			allowAlpha = true,
+			tooltipText = "Pick the Cat-form energy-tick bar color for the slim vertical helper on the left side of the main-hand bar.",
+		})
+	end
+
 
 
 	if ns.playerClass == "WARRIOR" then
@@ -2570,8 +2616,39 @@ local function CreatePanel()
 		AddQuickColor("Seal Line", "sealTwist", { allowAlpha = true })
 	end
 
-	-- Phase 2: Shaman Windfury ICD color swatch
+	-- Phase 2: Shaman Windfury ICD color swatch + Lightning Shield tracker
 	if ns.playerClass == "SHAMAN" then
+		AddQuickToggle("Lightning Shield Tracker",
+			function() return SuperSwingTimerDB.showShamanLightningTracker ~= false end,
+			function(enabled)
+				SuperSwingTimerDB.showShamanLightningTracker = enabled
+				if ns.UpdateLightningShieldVisual then
+					ns.UpdateLightningShieldVisual()
+				end
+			end,
+			{
+				tooltipText = "Show 3 small dot indicators to the left of your melee bars tracking Lightning Shield charges. Fills with class color; dims as charges are consumed. Water Shield always renders in light blue.",
+			}
+		)
+
+		AddQuickToggle("Flame Shock Bar",
+			function() return SuperSwingTimerDB.showShamanFlameShockBar ~= false end,
+			function(enabled)
+				SuperSwingTimerDB.showShamanFlameShockBar = enabled
+				if ns.UpdateShamanFlameShockBar then
+					ns.UpdateShamanFlameShockBar(true)
+				end
+			end,
+			{
+				tooltipText = "Show a thin duration bar above the MH bar for your own Flame Shock on the current target.",
+			}
+		)
+
+		AddQuickColor("Lightning Shield", "shamanLightningShield", {
+			allowAlpha = true,
+			tooltipText = "Pick the fill color for Lightning Shield charge dots on the left side of the main-hand bar (class color blue by default). Water Shield always uses light blue regardless of this setting.",
+		})
+
 		AddQuickColor("Windfury ICD", "windfuryIcd", {
 			allowAlpha = true,
 			tooltipText = "Pick the color for the 3px Windfury ICD tracker bar on the right side of the main-hand bar.",
@@ -2629,6 +2706,14 @@ local function CreatePanel()
 		SetRowClassRequirement(rogueEnergyTickSlider, "ROGUE")
 		rogueEnergyTickSlider:SetValue(SuperSwingTimerDB.rogueEnergyTickBarWidth or ns.DB_DEFAULTS.rogueEnergyTickBarWidth or 4)
 		SyncSliderDisplay(rogueEnergyTickSlider, rogueEnergyTickSlider:GetValue())
+	end
+
+	local druidEnergyTickSlider = nil
+	if ns.playerClass == "DRUID" then
+		druidEnergyTickSlider = CreateSlider(content, "Druid Tick Width", 2, 20, 1, PostQuickY(ShiftY(-140)))
+		SetRowClassRequirement(druidEnergyTickSlider, "DRUID")
+		druidEnergyTickSlider:SetValue(SuperSwingTimerDB.druidEnergyTickBarWidth or ns.DB_DEFAULTS.druidEnergyTickBarWidth or 4)
+		SyncSliderDisplay(druidEnergyTickSlider, druidEnergyTickSlider:GetValue())
 	end
 
 	local hunterRangeHelperWidthSlider = nil
@@ -2865,6 +2950,7 @@ local function CreatePanel()
 	AppendRow(mhOhRows, hunterCastBarHeightSlider)
 	AppendRow(mhOhRows, rogueSndBarHeightSlider)
 	AppendRow(mhOhRows, rogueEnergyTickSlider)
+	AppendRow(mhOhRows, druidEnergyTickSlider)
 	AppendRow(mhOhRows, hunterRangeHelperWidthSlider)
 	AppendRow(mhOhRows, hunterRapidFireSlider)
 	AppendRow(mhOhRows, warriorShieldBlockSlider)
@@ -3064,7 +3150,12 @@ local function CreatePanel()
 		"Lock / Unlock Bars",
 		PostQuickY(ShiftY(-1355)),
 		function() return SuperSwingTimerDB.lockBars == true end,
-		function(enabled) SuperSwingTimerDB.lockBars = enabled end
+		function(enabled)
+			SuperSwingTimerDB.lockBars = enabled
+			if ns.ApplyLockBars then
+				ns.ApplyLockBars()
+			end
+		end
 	)
 	local testBarsRow = CreateActionRow(
 		content,
@@ -3122,6 +3213,18 @@ local function CreatePanel()
 			SyncSliderDisplay(self, value)
 			SuperSwingTimerDB.rogueEnergyTickBarWidth = value
 			ns.ROGUE_ENERGY_TICK_BAR_WIDTH = value
+		end)
+	end
+
+	if druidEnergyTickSlider then
+		druidEnergyTickSlider:SetScript("OnValueChanged", function(self, value)
+			value = math.floor(value + 0.5)
+			SyncSliderDisplay(self, value)
+			SuperSwingTimerDB.druidEnergyTickBarWidth = value
+			ns.DRUID_ENERGY_TICK_BAR_WIDTH = value
+			if ns.UpdateDruidEnergyTickVisual then
+				ns.UpdateDruidEnergyTickVisual()
+			end
 		end)
 	end
 
@@ -3357,12 +3460,12 @@ local function CreatePanel()
 		local rightColumnRight = contentWidth - outerInset
 
 		quickToggleLabel:ClearAllPoints()
-		quickToggleLabel:SetPoint("TOPLEFT", content, "TOPLEFT", leftColumnLeft, headerBottomY - 14)
+		quickToggleLabel:SetPoint("TOPLEFT", content, "TOPLEFT", leftColumnLeft, headerBottomY - 28)
 		quickColorLabel:ClearAllPoints()
-		quickColorLabel:SetPoint("TOPLEFT", content, "TOPLEFT", rightColumnLeft, headerBottomY - 14)
+		quickColorLabel:SetPoint("TOPLEFT", content, "TOPLEFT", rightColumnLeft, headerBottomY - 28)
 
 		local labelHeight = math.max(GetRowLayoutHeight(quickToggleLabel), GetRowLayoutHeight(quickColorLabel))
-		local leftY = headerBottomY - 14 - labelHeight - 10
+		local leftY = headerBottomY - 28 - labelHeight - 20
 		for _, row in ipairs(quickToggleRows) do
 			if row and row:IsShown() then
 				PositionRowBetween(content, row, leftColumnLeft, leftColumnRight, leftY)
@@ -3370,7 +3473,7 @@ local function CreatePanel()
 			end
 		end
 
-		local rightY = headerBottomY - 14 - labelHeight - 10
+		local rightY = headerBottomY - 28 - labelHeight - 20
 		for _, row in ipairs(quickColorRows) do
 			if row and row:IsShown() then
 				PositionRowBetween(content, row, rightColumnLeft, rightColumnRight, rightY)
@@ -3549,6 +3652,9 @@ local function CreatePanel()
 		if showRogueEnergyRow and showRogueEnergyRow.refresh then
 			showRogueEnergyRow.refresh()
 		end
+		if showDruidEnergyRow and showDruidEnergyRow.refresh then
+			showDruidEnergyRow.refresh()
+		end
 		if showRogueSliceAndDiceRow and showRogueSliceAndDiceRow.refresh then
 			showRogueSliceAndDiceRow.refresh()
 		end
@@ -3569,6 +3675,7 @@ local function CreatePanel()
 	f.hunterCastBarHeightSlider = hunterCastBarHeightSlider
 	f.rogueSndBarHeightSlider = rogueSndBarHeightSlider
 	f.rogueEnergyTickSlider = rogueEnergyTickSlider
+	f.druidEnergyTickSlider = druidEnergyTickSlider
 	f.hunterRangeHelperWidthSlider = hunterRangeHelperWidthSlider
 	f.hunterRapidFireSlider = hunterRapidFireSlider
 	f.warriorShieldBlockSlider = warriorShieldBlockSlider
@@ -3606,6 +3713,7 @@ local function CreatePanel()
 	f.indicatorBlendModeRow = indicatorBlendModeRow
 	f.minimalModeRow = minimalModeRow
 	f.lockBarsRow = lockBarsRow
+	f.lockBarsQuickRow = lockBarsQuickRow
 	f.showMHRow = showMHRow
 	f.showOHRow = showOHRow
 	f.showRangedRow = showRangedRow
@@ -3614,6 +3722,7 @@ local function CreatePanel()
 	f.showWeaveRow = showWeaveRow
 	f.showRogueAssistRow = showRogueAssistRow
 	f.showRogueEnergyRow = showRogueEnergyRow
+	f.showDruidEnergyRow = showDruidEnergyRow
 	f.showRogueSliceAndDiceRow = showRogueSliceAndDiceRow
 	f.useClassColorsRow = useClassColorsRow
 	f.weaveFamilyRows = weaveFamilyRows
@@ -3769,6 +3878,9 @@ function ns.ToggleConfig()
 		if panel.lockBarsRow and panel.lockBarsRow.refresh then
 			panel.lockBarsRow.refresh()
 		end
+		if panel.lockBarsQuickRow and panel.lockBarsQuickRow.refresh then
+			panel.lockBarsQuickRow.refresh()
+		end
 		if panel.useClassColorsRow and panel.useClassColorsRow.refresh then
 			panel.useClassColorsRow.refresh()
 		end
@@ -3801,6 +3913,9 @@ function ns.ToggleConfig()
 		end
 		if panel.showRogueEnergyRow and panel.showRogueEnergyRow.refresh then
 			panel.showRogueEnergyRow.refresh()
+		end
+		if panel.showDruidEnergyRow and panel.showDruidEnergyRow.refresh then
+			panel.showDruidEnergyRow.refresh()
 		end
 		if panel.showRogueSliceAndDiceRow and panel.showRogueSliceAndDiceRow.refresh then
 			panel.showRogueSliceAndDiceRow.refresh()
@@ -3921,8 +4036,11 @@ function ns.ResetConfigDefaults()
 	SuperSwingTimerDB.showEnemy                  = ns.DB_DEFAULTS.showEnemy
 	SuperSwingTimerDB.showRogueSinisterAssist    = ns.DB_DEFAULTS.showRogueSinisterAssist
 	SuperSwingTimerDB.showRogueEnergyTick        = ns.DB_DEFAULTS.showRogueEnergyTick
+	SuperSwingTimerDB.showDruidEnergyTickBar     = ns.DB_DEFAULTS.showDruidEnergyTickBar
 	SuperSwingTimerDB.showRogueSliceAndDice      = ns.DB_DEFAULTS.showRogueSliceAndDice
 	SuperSwingTimerDB.showWeaveAssist            = ns.DB_DEFAULTS.showWeaveAssist
+	SuperSwingTimerDB.showShamanLightningTracker = ns.DB_DEFAULTS.showShamanLightningTracker
+	SuperSwingTimerDB.showShamanFlameShockBar    = ns.DB_DEFAULTS.showShamanFlameShockBar
 	SuperSwingTimerDB.useClassColors             = ns.DB_DEFAULTS.useClassColors
 	SuperSwingTimerDB.indicatorBlendMode         = ns.DB_DEFAULTS.indicatorBlendMode
 	SuperSwingTimerDB.weaveSpellFamilies         = {
@@ -3946,6 +4064,9 @@ function ns.ResetConfigDefaults()
 	ns.DRUID_POWER_SHIFT_BAR_HEIGHT = ns.DB_DEFAULTS.druidPowerShiftBarHeight
 	ns.DRUID_ENERGY_TICK_BAR_WIDTH = ns.DB_DEFAULTS.druidEnergyTickBarWidth
 	ns.ROGUE_ADRENALINE_RUSH_BAR_HEIGHT = ns.DB_DEFAULTS.rogueAdrenalineRushBarHeight
+	if ns.UpdateDruidEnergyTickVisual then
+		ns.UpdateDruidEnergyTickVisual()
+	end
 	ns.ApplyBarSize(ns.DB_DEFAULTS.barWidth, ns.DB_DEFAULTS.barHeight)
 	ns.ApplyBarTexture(ns.DB_DEFAULTS.barTexture, ns.DB_DEFAULTS.barTextureLayer)
 	ns.ApplyRangedBarTexture(ns.DB_DEFAULTS.rangedBarTexture, ns.DB_DEFAULTS.barTextureLayer)
@@ -4030,6 +4151,9 @@ function ns.ResetConfigDefaults()
 	end
 	if panel and panel.lockBarsRow and panel.lockBarsRow.refresh then
 		panel.lockBarsRow.refresh()
+	end
+	if panel and panel.lockBarsQuickRow and panel.lockBarsQuickRow.refresh then
+		panel.lockBarsQuickRow.refresh()
 	end
 	if panel and panel.barBorderSlider then
 		panel.barBorderSlider:SetValue(ns.DB_DEFAULTS.barBorderSize)

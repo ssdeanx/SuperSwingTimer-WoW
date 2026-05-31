@@ -27,6 +27,7 @@ Event-driven Lua addon with a clear split between state, UI, class mods, constan
 ## Important design rules
 
 - Keep Classic/TBC compatibility first.
+- Treat BC Classic Anniversary 2026 (2.5.5 line) as the runtime source of truth; do not back-port assumptions from early 2021 BC Classic without verification.
 - Treat latency as part of the timing model for weave safety.
 - Preserve the distinction between live swing progress and breakpoint guidance.
 - When adding new settings, update defaults, migration, runtime application, config panel, and docs together.

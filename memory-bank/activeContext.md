@@ -1,5 +1,289 @@
 # Active Context
 
+## Active Context Update (2026-05-31 - extreme timing/aura hardening pass)
+
+- User asked for an extreme deep pass centered on real production timing, exact reset behavior, and Anniversary-era API correctness rather than perf-driven simplification.
+- Completed a code-proven timing/aura trace across `SuperSwingTimer_State.lua`, `SuperSwingTimer_UI.lua`, and `SuperSwingTimer_ClassMods.lua`.
+- Fixed a real GCD ticker lifecycle bug:
+  - previous code set `ns.gcdActive = false` in `HandleSpellcastStop()`, which could truncate the visible GCD window before the actual global cooldown finished.
+  - new behavior queries spell `61304` through `C_Spell.GetSpellCooldown` with legacy fallback, refreshes on cast start/channel start/success, conditionally clears on failed/interrupted casts only when no real cooldown is active, and self-expires in `UpdateGcdTicker()`.
+- Fixed two aura-tuple correctness bugs in `SuperSwingTimer_ClassMods.lua`:
+  - `GetHarmfulAuraData()` now reads harmful aura counts from the correct return slot for Classic/Anniversary API shape.
+  - Shaman `GetShieldChargeCount()` now reads the actual aura stack count instead of the dispel-type slot, which previously risked showing a fake default 3-charge shield state.
+- Extended reset hardening so GCD state is cleared on both `PLAYER_REGEN_ENABLED` and `OnPlayerEnteringWorld()`, preventing stale ticker carryover after combat end, zoning, or reload.
+- Targeted diagnostics on `SuperSwingTimer_State.lua`, `SuperSwingTimer_ClassMods.lua`, `SuperSwingTimer_UI.lua`, and `SuperSwingTimer.lua` are clean after the pass.
+
+## Active Context Update (2026-05-31 - 4th pass timing/reset/API hardening)
+
+- User requested deeper production drilldown emphasizing TBC Classic Anniversary (2026 API), reset correctness, and timing-critical reliability without stripping behavior.
+- Implemented modern API-aware cooldown hardening:
+  - `State.GetAutoShotCooldown()` now prefers `C_Spell.GetSpellCooldown` and falls back to legacy `GetSpellCooldown`.
+  - `ClassMods` now uses unified `QuerySpellCooldown()` for Paladin GCD/Judgement marker timing and Warrior cooldown badge timing.
+- Tightened reset guarantees across world-entry/combat-end:
+  - Explicitly clears transient cast/channel/pause/proc state on world entry and combat end.
+  - Ensures queued-melee spell caches are hard-cleared after tint cleanup.
+- Timing/perf improvements made without removing UX features:
+  - Shield Block style sync moved off per-frame path to its existing throttle cadence.
+  - Rapid Fire helper style updates now cached and forced when needed (config apply), reducing frame churn while preserving immediate visual feedback.
+- Diagnostics after all edits are clean.
+
+## Active Context Update (2026-05-31 - third deep pass with double-check)
+
+- Executed a deeper third pass centered on dead-path/event-feed mismatches and callback lifecycle validation across class-mod runtime hooks.
+- Confirmed and fixed a Warrior runtime logic gap: Protection-hide (`showWarriorRageProtection`) previously relied on `GetSpecialization()` only, which is unreliable on Classic/TBC-family clients.
+- Added a Classic-safe Protection fallback (talent-tree primary-spec inference via `GetNumTalentTabs` + `GetTalentTabInfo`) with a short cache window to avoid heavy per-frame scanning.
+- Confirmed and fixed Hunter Rapid Fire helper styling deadness after first creation: runtime now re-applies texture/height/width/anchor/color each update so `/sst` style changes are live.
+- Updated shared color-application path so `ApplyBarColors()` explicitly refreshes Druid energy-tick tint and Hunter Rapid Fire helper visuals.
+- Post-fix targeted diagnostics on modified files are clean.
+
+## Active Context Update (2026-05-31 - second pass on remaining classes)
+
+- Completed a second production sanity sweep focused on Hunter/Rogue/Paladin/Druid runtime paths after the Warrior/Shaman pass.
+- Found and fixed a real Paladin runtime issue: `GetReckoningStackCount()` unpacked `UnitBuff` spellId from slot 10 instead of slot 11, which could break ID-based Reckoning detection on non-English clients or name-fallback variance.
+- Patched `SuperSwingTimer_ClassMods.lua` to use the correct tuple slot; diagnostics on the edited file are clean.
+
+## Active Context Update (2026-05-31 - warrior/shaman production correctness)
+
+- Verified a live-code mismatch: Warrior Overpower flash UI existed but had no proc source writing `ns.warriorOverpowerProcUntil`; feature was effectively dead despite older notes claiming implemented.
+- Shipped runtime fix in `SuperSwingTimer_State.lua`: set Overpower proc window on player dodge outcomes from CLEU (`SWING_MISSED` and queued-melee `SPELL_MISSED` when miss type is `DODGE`).
+- Shipped Shaman aura-shape hardening in `SuperSwingTimer_ClassMods.lua`:
+  - Added normalized harmful-aura reader and switched Flame Shock target scan to it.
+  - Corrected shield charge stack reads (use real aura-count field).
+  - Corrected Shaman/Warrior Flurry counters to use aura stack counts rather than counting aura rows.
+- Targeted diagnostics after patching are clean on edited runtime files.
+
+## Active Context Update (2026-05-31 - shaman production pass: proven runtime fixes)
+
+- Completed a Shaman-only production pass focused on code-proven failures before the user's live test session.
+- Fixed a real Shamanistic Rage aura-read bug in `SuperSwingTimer_ClassMods.lua`: `GetShamanAuraRemaining()` was unpacking the shared `GetHelpfulAuraData()` helper as if it returned the full `UnitAura` tuple, which left `expirationTime` / `spellId` wrong and could make the SR badge fail.
+- Fixed weave marker rendering mismatch in `SuperSwingTimer_ClassMods.lua`: the top/bottom breakpoint markers now use the tracked spell icon texture when available instead of always falling back to static arrow textures.
+- Hardened Flame Shock target tracking in `SuperSwingTimer_ClassMods.lua` by adding a fallback from `UnitDebuff("target", index, "PLAYER")` to `UnitAura("target", index, "HARMFUL|PLAYER")`, reducing client-variance risk in the target DoT scan.
+- Hardened Lightning/Water Shield tracker rendering in `SuperSwingTimer_ClassMods.lua`: the charge container is now parented/layered with the MH overlay instead of raw `UIParent`, hides when MH is not visible, and uses cleaner single-anchor positioning for MH-only vs MH+OH layouts.
+- Targeted diagnostics on `SuperSwingTimer_ClassMods.lua` are clean after the Shaman pass.
+
+## Active Context Update (2026-05-31 - migration alignment and Druid cat energy restoration)
+
+- Corrected the mixed migration/default state created during the prior de-bloat pass: runtime schema is aligned back to `v47`, and stale Druid helper removal now lives inside migration `47` instead of silently bumping defaults to `48` without a matching migration step.
+- Narrowed supported Druid runtime scope to the features the user still wants live: Maul queue tint plus Cat-form energy tick. Removed stale normalization for unsupported Druid helpers from `SuperSwingTimer.lua` while preserving old historical migration steps.
+- Restored the actual missing Druid runtime wiring: Druid power events now register, `UPDATE_SHAPESHIFT_FORM` is now actually registered, `HandleDruidEnergyPowerUpdate()` exists again, and `SuperSwingTimer_ClassMods.lua` now creates/updates a real Cat energy tick helper bar left of MH.
+- Added `/sst` wiring for the restored Druid helper: quick toggle, quick color row, and width slider for `showDruidEnergyTickBar` / `druidEnergyTickBarWidth`.
+- Targeted diagnostics on `SuperSwingTimer.lua`, `SuperSwingTimer_State.lua`, `SuperSwingTimer_ClassMods.lua`, `SuperSwingTimer_Config.lua`, and `SuperSwingTimer_Constants.lua` are clean after the correction pass.
+
+## Active Context Update (2026-05-30 - migration ladder refactor complete)
+
+- User requested table-driven migration conversion be done correctly.
+- Completed refactor of `MigrateDB()` in `SuperSwingTimer.lua` from a long sequential `if (version < X)` ladder to an ordered table-driven migration list.
+- Preserved every existing migration step’s behavior and ordering while improving auditability and reducing edit-risk.
+- Targeted diagnostics on `SuperSwingTimer.lua` are clean after the refactor.
+- Separate follow-up smell remains outside this request: `RegisterSlashCommands()` is still invoked in two places (file scope and `OnAddonLoaded()`), which is a high-quality-code concern but not part of the migration refactor.
+
+## Active Context Update (2026-05-30 - migration table corrected to exact ladder shape)
+
+- The table-driven migration path had a real mismatch: `v44` was missing and `v45` was empty compared to the old ladder.
+- Restored the exact missing Druid steps:
+  - `v44`: Druid energy tick color normalization plus Tiger's Fury / Faerie Fire badge defaults
+  - `v45`: Druid Mangle timer / Rip tracker defaults plus their color normalization
+- Restored the corresponding Druid defaults/colors in `SuperSwingTimer_Constants.lua` so migrations have matching backing fields.
+- Validation after the fix: `SuperSwingTimer.lua` and `SuperSwingTimer_Constants.lua` both pass targeted diagnostics.
+
+## Active Context Update (2026-05-30 - deep risk audit: critical/high/medium)
+
+- Executed full core Lua fallback/risk audit with severity triage per user request.
+- No syntax/parser diagnostics found across core modules.
+- Applied additional runtime hardening:
+  - `SuperSwingTimer_State.lua` `ns.HandleCLEU()` now guards missing `CombatLogGetCurrentEventInfo` and empty payload (`subEvent == nil`) before dispatch.
+  - `SuperSwingTimer_UI.lua` bar input path already hardened with safe camera fallback wrappers and visibility/cleanup guards.
+- Audit summary:
+  - Critical: none currently identified after applied guards.
+  - High: migration-chain maintainability risk (long sequential migration ladder) remains process-level risk, not immediate runtime break.
+  - Medium: broad shield fallback ID/name matching remains intentionally resilient but should be periodically trimmed to live-verified mappings to minimize accidental overmatching.
+
+## Active Context Update (2026-05-30 - enterprise fallback hardening: input/camera path)
+
+- User requested enterprise-grade fallback quality pass.
+- Completed a reliability-focused fallback hardening update for core bar input in `SuperSwingTimer_UI.lua`:
+  - added safe right-click camera wrappers with guarded `pcall` start/stop behavior
+  - tightened mouse-enable visibility checks from alpha-only to `IsShown + alpha` semantics
+  - added automatic cleanup of active right-click fallback state when bars are force mouse-disabled
+  - preserved existing UX intent: left-click drag when unlocked, camera-safe behavior in combat
+- Targeted diagnostics on edited runtime file are clean.
+
+## Active Context Update (2026-05-30 - mouse-input scope audit + propagation)
+
+- User asked for confirmation that camera bug was not hiding outside UI.
+- Audit result: class-mod helper bars/overlays are mouse-disabled; primary input-capture path is the draggable core bars in `SuperSwingTimer_UI.lua`.
+- Added bar-level click propagation (`SetPropagateMouseClicks(true)` when available) so right-click camera input can pass through bars naturally out of combat while left-click drag still works when unlocked.
+- Retained guarded fallback right-click start/stop path for clients where click-propagation API is unavailable.
+
+## Active Context Update (2026-05-30 - combat camera safety hard-stop)
+
+- User flagged camera interruption as a critical gameplay bug; accepted as a hard safety requirement.
+- Updated `ns.ApplyLockBars()` in `SuperSwingTimer_UI.lua` to force all core bars mouse-disabled while in combat (`ns.inCombat || InCombatLockdown`), independent of lock/unlock state.
+- Outcome: bars can no longer eat mouse interaction during combat, preventing right-click camera/turn disruption mid-fight.
+- Out-of-combat behavior preserved: unlocked bars remain left-draggable for setup.
+
+## Active Context Update (2026-05-30 - unlocked bar right-click camera fix)
+
+- User clarified intended UX: in combat, right-click over bars must still control camera while left-click remains drag when bars are unlocked.
+- Updated `SuperSwingTimer_UI.lua` drag handler path to use `TurnOrActionStart()` / `TurnOrActionStop()` for right-button interactions over unlocked bars (Classic world-right-click semantic), with fallback to `MouselookStart/Stop` where needed.
+- Added per-frame camera-state tracking (`sstRightCameraActive`) and OnHide cleanup so stop calls only fire if the frame started right-click camera mode.
+- This addresses the symptom where right-click over bars felt non-functional for camera movement even though left drag was working.
+
+## Active Context Update (2026-05-30 - memory-bank-instructions rewrite)
+
+- User copied in `memory-bank/memory-bank-instructions.md` from another folder and requested analysis/update.
+- Replaced generic non-repo template content (notification-service examples, JS toolchain validation hooks, unrelated slash-command flows) with a SuperSwingTimer-specific memory protocol.
+- New instructions now explicitly cover:
+  - required core memory load order
+  - on-demand context loading strategy
+  - BC Classic Anniversary 2026 / 2.5.5 runtime baseline
+  - addon settings wiring checklist (defaults/migration/runtime/config/docs/toc)
+  - targeted `get_errors` validation protocol
+  - mandatory AGENTS + memory + docs sync after code changes
+
+## Active Context Update (2026-05-30 - Anniversary baseline clarification)
+
+- Added explicit repository-level baseline that this project targets **World of Warcraft: Burning Crusade Classic Anniversary Edition** (2026, patch line 2.5.5), not the 2021 BC Classic launch branch.
+- Updated future-context docs (`AGENTS.md`, `memory-bank/techContext.md`, `memory-bank/projectBrief.md`, `memory-bank/systemPatterns.md`) to encode this as default engineering scope.
+- Captured source-priority rule: prefer Anniversary-targeted references first (warcraft.wiki.gg Anniversary pages + current classic UI-source mirror branches), then older forum-era posts only as secondary context.
+- Captured high-confidence difference framing from re-check: public Anniversary deltas are largely gameplay/system-level (e.g., attunement and interface-era changes), while no definitive evidence was found that core swing-timer addon APIs used in this repo are invalidated specifically by 2.5.5.
+
+## Active Context Update (2026-05-30 - lightweight WA-like direction + druid schema cleanup)
+
+- User clarified product direction: SuperSwingTimer should feel like a lightweight WeakAuras-style combat helper (high signal, low bloat), with reliability prioritized over feature sprawl.
+- Applied de-bloat follow-up in core data paths:
+  - removed stale Druid post-streamline defaults from `ns.DB_DEFAULTS` in `SuperSwingTimer_Constants.lua`
+  - removed stale v43->v45 Druid migration writes in `SuperSwingTimer.lua` that were re-adding stripped feature keys/colors to SavedVariables
+- Result: stripped Druid features are no longer silently reintroduced into fresh or upgraded profiles, reducing schema noise and long-term config drift.
+- Synced docs (`README.md`, `CHANGELOG.md`) so published behavior matches the streamlined Druid scope and lightweight design intent.
+
+## Active Context Update (2026-05-30 - full core Lua audit on BCC Anniversary 2.5.5)
+
+- Per user request, performed a deeper end-to-end audit of all core addon Lua files on live BCC Anniversary assumptions (Patch 2.5.5): `SuperSwingTimer.lua`, `_Constants.lua`, `_State.lua`, `_Weaving.lua`, `_UI.lua`, `_ClassMods.lua`, `_Config.lua`.
+- Diagnostics status: no parser/lint issues reported by targeted checks on all seven core files.
+- API-context verification: checked current wiki references for Anniversary/Classic aura and spellcast behaviors; no evidence the addon's core `UnitAura`/`UnitBuff`/`UNIT_SPELLCAST_*` approach is invalidated specifically by 2.5.5.
+- Smell-level findings (not hard failures):
+  - stale Druid helper toggles/migration keys still exist in defaults/schema after streamlining, creating config/migration noise
+  - broadened Water Shield fallback ID table should be validated on live 2.5.5 and trimmed to known-good mappings where redundant
+
+## Active Context Update (2026-05-30 - Lightning/Water shield no-show hardening)
+
+- Per user follow-up about shield tracker not working, completed a focused compatibility audit for Lightning Shield and Water/Mana Shield detection.
+- Found and fixed two reliability gaps:
+  - shield detection previously depended too heavily on spell IDs in aura payloads
+  - Water Shield spell ID coverage was too narrow for cross-client/build aura mapping behavior
+- Implemented fixes:
+  - expanded shield ID coverage in `SuperSwingTimer_Constants.lua` (Lightning ranks + Water rank/alternate aura mappings)
+  - added normalized shield name lookup tables for resilient fallback matching
+  - updated `IsLightningShieldActive()` in `SuperSwingTimer_ClassMods.lua` to do ID-first matching with name fallback (`Water Shield` / `Mana Shield` alias-safe)
+- Updated `README.md` and `CHANGELOG.md` to document shield compatibility hardening in `v0.1.2`.
+- Targeted diagnostics on edited runtime files remained clean after patch.
+
+## Active Context Update (2026-05-30 - shaman Lightning Shield stack-height correction)
+
+- Follow-up UX correction from user visual review: Lightning Shield tracker should not remain MH-only height during MH/OH dual-wield display.
+- Updated `UpdateLightningShieldVisual()` sizing in `SuperSwingTimer_ClassMods.lua`:
+  - single-bar mode -> tracker height = MH height
+  - dual-wield mode -> tracker height = MH + 2px gap + OH height
+- Kept the tracker anchored left of MH and top-aligned to MH in dual-wield mode so the expanded height correctly covers the full melee stack.
+- Synced `memory-bank/visualContext.md` mini-map and `CHANGELOG.md` to reflect the corrected runtime behavior.
+
+## Active Context Update (2026-05-30 - shaman helper checkbox wiring + visualContext sync)
+
+- Added full SavedVariables/UI wiring for disabling the new Enhancement Shaman Flame Shock helper bar from `/sst` Quick Controls.
+- Added `showShamanFlameShockBar` to defaults (`SuperSwingTimer_Constants.lua`), normalized it in migration bootstrap (`SuperSwingTimer.lua`), and added explicit migration step `v46 -> v47` so existing users receive a stable default.
+- Updated `SuperSwingTimer_ClassMods.lua` runtime path so `UpdateShamanFlameShockBar()` respects the DB toggle and hides immediately when disabled.
+- Confirmed Lightning helper has explicit checkbox control and polished label text from `Lightning Shield` to `Lightning Shield Tracker` for clearer operator intent in Quick Controls.
+- Reset Defaults now restores both `showShamanLightningTracker` and `showShamanFlameShockBar` from `ns.DB_DEFAULTS`.
+- Updated `memory-bank/visualContext.md` to reflect the current real `/sst` panel structure, including shaman quick toggles (`Lightning Shield Tracker`, `Flame Shock Bar`) and the helper mini-map.
+- Synced README/CHANGELOG/docs (`docs/UI.md`) to describe the new professional-grade helper toggle behavior.
+
+## Active Context Update (2026-05-30 - Lightning Shield wiring fix + unlocked camera passthrough)
+
+- Follow-up reliability pass addressed user-reported Shaman Lightning Shield tracker no-show behavior after the v0.1.2 rollout.
+- Root cause: `IsLightningShieldActive()` in `SuperSwingTimer_ClassMods.lua` unpacked `GetHelpfulAuraData()` as if it returned the full UnitAura tuple; the helper actually returns a normalized 4-value shape (`name, duration, expirationTime, spellId`), so `auraSpellId` stayed nil and shield detection failed.
+- Fixes implemented:
+  - corrected helper unpacking in `IsLightningShieldActive()`
+  - removed an `OnBarsCreated()` early-return edge case so shaman overlay recovery does not skip creating `shamanLightningContainer` when weave textures already exist
+  - added explicit `UNIT_AURA` (player) -> `UpdateLightningShieldVisual()` refresh in `SuperSwingTimer.lua` for immediate charge updates
+- Camera/interaction polish: unlocked bars now preserve right-click camera look by forwarding right-button down/up to `MouselookStart()` / `MouselookStop()` in `SuperSwingTimer_UI.lua`, while left-click drag behavior remains unchanged.
+- Targeted diagnostics on the touched runtime files remained clean after the patch.
+
+## Active Context Update (2026-05-30 - shaman weave no-show deep analysis + Flame Shock bar)
+
+- Completed a deep shaman weave no-show investigation across `SuperSwingTimer.lua` event dispatch, `SuperSwingTimer_Weaving.lua` spell/cast-state matching, `SuperSwingTimer_ClassMods.lua` overlay rendering, and `SuperSwingTimer_UI.lua` visibility interactions.
+- Verified the `UNIT_SPELLCAST_*` payload assumptions and Classic/TBC cast-token fallback behavior against current wiki references; no Lua diagnostics were present in the shaman-related files.
+- Added a runtime hardening path in `SetupEnhShaman()` so `UpdateWeaveVisuals()` re-attempts `OnBarsCreated()` before returning when weave textures are unexpectedly missing, improving recovery when overlays are rebuilt late.
+- Implemented a new Enhancement Shaman Flame Shock target-duration helper bar above MH (6px stock height), including:
+  - rank-safe Flame Shock spell-ID constants in `SuperSwingTimer_Constants.lua`
+  - player-filtered target debuff tracking in `SuperSwingTimer_ClassMods.lua`
+  - immediate refresh hooks for `PLAYER_TARGET_CHANGED` + `UNIT_AURA` target updates in `SuperSwingTimer.lua`
+  - shared visibility refresh hook in `SuperSwingTimer_UI.lua`
+- Synced docs + metadata for the change: `README.md`, `CHANGELOG.md`, `docs/UI.md`, `docs/swingtimer.md`, and `SuperSwingTimer.toc` (version `v0.1.2`).
+
+## Active Context Update (2026-05-30 - wow-classic-lua v0.5.0 10/10 operator pass)
+
+- Final 10/10 pass added three execution-grade references under `.github/skills/wow-classic-lua/references/`:
+  - `operator-cheatsheet.md` (fastest routing for live coding/debugging)
+  - `class-quickmaps.md` (class-specific file ownership jump map)
+  - `incident-first-5-minutes.md` (deterministic first-response bug triage workflow)
+- Updated `SKILL.md` to `v0.5.0` and indexed the three new references.
+- Updated `api-notes.md` quick-start map + start-here list to include the new operator/class/incident docs.
+- This remains documentation/skill-only work; addon runtime behavior unchanged.
+
+## Active Context Update (2026-05-30 - wow-classic-lua visuals expansion across all references)
+
+- Follow-up pass expanded visuals beyond only the three operational docs.
+- Added compact ASCII visual maps to the rest of the reference pack where they improve scan speed and decision-making:
+  - `api-notes.md`
+  - `api-core.md`
+  - `ui-frames-and-widgets.md`
+  - `framexml-and-xml.md`
+  - `research-links.md`
+  - `superswingtimer.md`
+  - `runtime-safety.md`
+- Existing visualized operational files (`compatibility-matrix.md`, `event-payload-cheatsheet.md`, `verification-playbooks.md`) were kept as-is from the prior pass.
+- This remains doc/skill-only work; no runtime addon Lua behavior changed.
+
+## Active Context Update (2026-05-30 - wow-classic-lua v0.4.0 final 10/10 pass)
+
+- Completed the final operational pass on `.github/skills/wow-classic-lua` and bumped `SKILL.md` to `v0.4.0`.
+- Added three high-leverage reference files requested for a 10/10 quality bar:
+  - `references/compatibility-matrix.md`
+  - `references/event-payload-cheatsheet.md`
+  - `references/verification-playbooks.md`
+- The skill now has explicit branch-safe fallback guidance, a compact high-risk event parsing reference, and subsystem-specific in-game test playbooks.
+- This was a skill/docs pass only; no runtime addon Lua logic changed.
+
+## Active Context Update (2026-05-30 - wow-classic-lua v0.3.0 final polish)
+
+- Final-polished `.github/skills/wow-classic-lua/SKILL.md` and bumped the skill to `v0.3.0`.
+- Tightened wording for accuracy and added explicit runtime-safety scope: combat-lockdown / taint / protected-action constraints now appear in workflow, core rules, and debugging guidance.
+- Added an in-game validation checklist directly in the skill so edits include practical `/reload`, `/sst`, combat visibility, drag/lock, and class-specific verification steps.
+- Added a new reference file: `.github/skills/wow-classic-lua/references/runtime-safety.md` covering secure behavior guardrails, SavedVariables lifecycle timing (`ADDON_LOADED` vs `PLAYER_LOGIN`), performance patterns, and combat-only bug triage flow.
+- This is a documentation/skill pass only; runtime addon logic is unchanged.
+
+## Active Context Update (2026-05-30 - shaman weave actual-cast rescale follow-up)
+
+- Corrected the Enhancement Shaman weave model so the moving icon is driven by elapsed cast time against the current haste-adjusted cast duration each frame instead of only acting like a static helper.
+- The safe breakpoint markers remain fixed for readability, but the live spell icon now animates and resizes with spell haste/buffs while the cast is active.
+- Kept the Quick Controls title-gap polish in place so the `Key Colors` header still has extra breathing room above the first swatch row.
+- Targeted source review is the validation path in this session; the edited weave and class-mod files read clean after the follow-up patch.
+
+## Active Context Update (2026-05-30 - wow-classic-lua skill reference-pack refresh)
+
+- Expanded `.github/skills/wow-classic-lua/` from a thin single-note skill into a fuller Classic/TBC addon reference pack.
+- Refreshed the skill against current `warcraft.wiki.gg` pages for Classic API coverage, `CreateFrame`, Frame, StatusBar, Texture, FontString, ScrollFrame, Slider, widget script handlers, XML schema, combat-log APIs, cast/channel APIs, cooldown APIs, and latency APIs.
+- Added dedicated reference files for API core behavior, UI/frame/widget construction, FrameXML/XML guidance, curated research links, and a new `superswingtimer.md` project-specific architecture guide so future addon work can reuse the current repo's proven patterns.
+- This pass is documentation/skill infrastructure only; no runtime addon Lua behavior changed.
+
+## Active Context Update (2026-05-30 - quick-controls gap + shaman weave live-position follow-up)
+
+- Nudged the `/sst` Quick Controls column titles down a hair more in `SuperSwingTimer_Config.lua` and increased the first-row gap so the `Key Colors` heading no longer visually overlaps or kisses the first compact swatch row.
+- Reworked the Enhancement Shaman weave display split across `SuperSwingTimer_Weaving.lua` and `SuperSwingTimer_ClassMods.lua`: the upper/lower breakpoint markers are fixed on the safe cast-start point again, while the moving weave icon now starts from the live cast-start position on the MH swing and travels toward projected landing instead of making the breakpoint markers themselves masquerade as the active spell position.
+- Hardened the weave cast-state capture to fall back to `ns.GetUnitCastingSpellInfo("player")` when event spell tokens are incomplete, and now store cast-start / predicted-end timing in weave state so Lightning Bolt or Chain Lightning motion can start immediately on the first cast frame.
+- Targeted diagnostics on `SuperSwingTimer_Config.lua`, `SuperSwingTimer_ClassMods.lua`, and `SuperSwingTimer_Weaving.lua` are the validation target after the patch.
+
 ## Active Context Update (2026-05-28 - `/sst` row-width + class-only slider follow-up)
 
 - Tightened the `/sst` config panel again in `SuperSwingTimer_Config.lua`: Hunter / Rogue / Warrior helper sliders in Appearance are now only created for the active class instead of being instantiated for every class and then hidden later, which removes the leaked off-class slider rows the user was still seeing in-game.

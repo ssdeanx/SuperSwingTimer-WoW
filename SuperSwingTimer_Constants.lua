@@ -55,7 +55,10 @@ function ns.GetUnitCastingSpellInfo(unit)
 
 	local spellName, _, _, startTimeMs, endTimeMs, _, castId, _, spellId = UnitCastingInfo(unit)
 	if not spellName and type(UnitChannelInfo) == "function" then
-		spellName, _, _, startTimeMs, endTimeMs, _, castId, _, spellId = UnitChannelInfo(unit)
+		local channelSpellId
+		spellName, _, _, startTimeMs, endTimeMs, _, _, channelSpellId = UnitChannelInfo(unit)
+		castId = nil
+		spellId = channelSpellId
 	end
 	if not spellName then
 		return nil, nil, nil, nil, nil, nil
@@ -109,6 +112,72 @@ ns.SHAMAN_STORMSTRIKE_ID    = 17364
 ns.SHAMAN_STORMSTRIKE_NAME  = ns.GetSpellInfo(ns.SHAMAN_STORMSTRIKE_ID) or "Stormstrike"
 ns.SHAMANISTIC_RAGE_ID      = 30823
 ns.SHAMANISTIC_RAGE_NAME    = ns.GetSpellInfo(ns.SHAMANISTIC_RAGE_ID) or "Shamanistic Rage"
+ns.SHAMAN_FLAME_SHOCK_IDS = {
+	[8050] = true,  -- Rank 1
+	[8052] = true,  -- Rank 2
+	[8053] = true,  -- Rank 3
+	[10447] = true, -- Rank 4
+	[10448] = true, -- Rank 5
+	[29228] = true, -- Rank 6
+	[25457] = true, -- Rank 7 (TBC)
+}
+ns.SHAMAN_FLAME_SHOCK_NAME = ns.GetSpellInfo(8050) or "Flame Shock"
+
+-- Lightning Shield spell IDs (Classic/TBC)
+ns.SHAMAN_LIGHTNING_SHIELD_IDS = {
+	[324]   = true, -- Rank 1
+	[325]   = true, -- Rank 2
+	[905]   = true, -- Rank 3
+	[945]   = true, -- Rank 4
+	[8134]  = true, -- Rank 5
+	[10431] = true, -- Rank 6
+	[10432] = true, -- Rank 7
+	[25469] = true, -- Rank 8 (TBC)
+	[25472] = true, -- Rank 6 (TBC)
+}
+ns.SHAMAN_LIGHTNING_SHIELD_NAME = ns.GetSpellInfo(324) or "Lightning Shield"
+
+-- Water Shield spell IDs (TBC)
+ns.SHAMAN_WATER_SHIELD_IDS = {
+	[52127] = true, -- Rank 1
+	[52129] = true, -- Rank 2
+	[52131] = true, -- Rank 3
+	[24398] = true, -- alternate aura mapping observed on some clients
+	[33736] = true, -- alternate aura mapping observed on some clients
+	[33737] = true, -- alternate aura mapping observed on some clients
+	[34827] = true, -- alternate aura mapping observed on some clients
+	[57960] = true, -- legacy-safe fallback mapping
+}
+ns.SHAMAN_WATER_SHIELD_NAME = ns.GetSpellInfo(52127) or ns.GetSpellInfo(57960) or "Water Shield"
+
+do
+	local lightningNames = {}
+	for spellId in pairs(ns.SHAMAN_LIGHTNING_SHIELD_IDS) do
+		local spellName = ns.GetSpellInfo(spellId)
+		if spellName then
+			lightningNames[spellName] = true
+		end
+	end
+	if ns.SHAMAN_LIGHTNING_SHIELD_NAME then
+		lightningNames[ns.SHAMAN_LIGHTNING_SHIELD_NAME] = true
+	end
+	ns.SHAMAN_LIGHTNING_SHIELD_NAMES = lightningNames
+
+	local waterNames = {
+		["Water Shield"] = true,
+		["Mana Shield"] = true,
+	}
+	for spellId in pairs(ns.SHAMAN_WATER_SHIELD_IDS) do
+		local spellName = ns.GetSpellInfo(spellId)
+		if spellName then
+			waterNames[spellName] = true
+		end
+	end
+	if ns.SHAMAN_WATER_SHIELD_NAME then
+		waterNames[ns.SHAMAN_WATER_SHIELD_NAME] = true
+	end
+	ns.SHAMAN_WATER_SHIELD_NAMES = waterNames
+end
 ns.ROGUE_SLICE_AND_DICE_ID = 5171
 ns.SHIELD_BLOCK_ID         = 2565
 ns.SHIELD_BLOCK_NAME       = ns.GetSpellInfo(ns.SHIELD_BLOCK_ID) or "Shield Block"
@@ -555,7 +624,7 @@ ns.CLASS_CONFIG = {
 -- SavedVariables defaults
 -- ============================================================
 ns.DB_DEFAULTS = {
-	version                    = 43,
+	version                    = 47,
 	showMH                     = true,
 	showOH                     = true,
 	showRanged                 = true,
@@ -571,26 +640,19 @@ ns.DB_DEFAULTS = {
 	showPaladinJudgementMarker = true,
 	showPaladinTwistFlash      = true,
 	showWarriorRageBar         = true,
+	showDruidEnergyTickBar     = true,
 	showWarriorRageProtection  = false,
 	showWarriorShieldBlockBar  = true,
-	showDruidFormColors        = true,
 	showSwingFlash             = true,
 	showGcdTicker              = true,
-	showDruidRageDim           = true,
 	showRogueEnergyCountdown   = true,
 	-- Phase 2 defaults (v39→v40)
 	showHunterRapidFireBar     = true,
 	showWarriorFlurryCounter   = true,
 	showRogueAdrenalineRushBar = true,
-	showDruidOmenGlow          = true,
 	showShamanWindfuryIcd      = true,
-	showDruidRavageCue         = true,
-	showDruidPowerShiftBar     = true,
-	showDruidEnergyTickBar     = true,
-	showDruidTigerFuryBadge    = true,
-	showDruidFaerieFireBadge   = true,
-	showDruidMangleTimer       = true,
-	showDruidRipTracker        = true,
+	showShamanLightningTracker  = true,
+	showShamanFlameShockBar    = true,
 	useClassColors             = false,
 	weaveSpellFamilies         = {
 
@@ -606,18 +668,17 @@ ns.DB_DEFAULTS = {
 	hunterCastBarHeight        = 10,
 	rogueSliceAndDiceBarHeight = 4,
 	rogueEnergyTickBarWidth     = 4,
+	druidEnergyTickBarWidth     = 4,
 	warriorShieldBlockBarHeight = 4,
 	hunterRapidFireBarHeight    = 4,
 	hunterRangeHelperWidth     = 7,
-	druidPowerShiftBarHeight   = 4,
-	druidEnergyTickBarWidth    = 4,
 	rogueAdrenalineRushBarHeight = 4,
 	barTexture                 = "Interface\\TargetingFrame\\UI-StatusBar",
 	rangedBarTexture           = "Interface\\TargetingFrame\\UI-StatusBar",
 	barTextureLayer            = "ARTWORK",
 	sparkTexture               = "Interface\\AddOns\\WeakAuras\\Media\\Textures\\Square_FullWhite",
 	sparkTextureLayer          = "OVERLAY",
-	weaveSparkTexture          = "Interface\\AddOns\\WeakAuras\\Media\\Textures\\target_indicator.tga",
+	weaveSparkTexture          = "Interface\\AddOns\\WeakAuras\\Media\\Textures\\Square_FullWhite",
 	weaveSparkTextureLayer     = "OVERLAY",
 	weaveSparkWidth            = 3,
 	weaveSparkHeight           = 15,
@@ -652,6 +713,7 @@ ns.DB_DEFAULTS = {
 		enemy     = { r = 1, g = 0, b = 0, a = 1 },
 		rogueSinister = { r = 1, g = 0, b = 0, a = 0.35 },
 		rogueEnergyTick = { r = 1.0, g = 0.82, b = 0.18, a = 1 },
+		druidEnergyTick = { r = 1.0, g = 0.82, b = 0.18, a = 1 },
 		rogueEnergyTotal = { r = 0.98, g = 0.90, b = 0.24, a = 0.9 },
 		rogueComboPoints = { r = 1.0, g = 0.18, b = 0.12, a = 0.95 },
 		rogueSliceAndDice = { r = 0.95, g = 0.82, b = 0.22, a = 0.95 },
@@ -669,22 +731,17 @@ ns.DB_DEFAULTS = {
 		sealColorLIGHT       = { r = 0.20, g = 0.80, b = 0.30, a = 1 },
 		sealColorCRUSADER    = { r = 0.60, g = 0.80, b = 1.00, a = 1 },
 		gcdTickerColor       = { r = 0.30, g = 0.70, b = 1.00, a = 0.85 },
-	warriorRageBarColor  = { r = 0.80, g = 0.20, b = 0.10, a = 0.85 },
-	shieldBlockBar       = { r = 0.20, g = 0.55, b = 1.00, a = 0.90 },
-	ravageCue            = { r = 1.00, g = 0.72, b = 0.16, a = 0.28 },
-		druidFormBear       = { r = 0.80, g = 0.15, b = 0.10, a = 1.0 },
-		druidFormCat        = { r = 0.90, g = 0.70, b = 0.10, a = 1.0 },
-		druidFormMoonkin    = { r = 0.30, g = 0.55, b = 0.90, a = 1.0 },
+		warriorRageBarColor  = { r = 0.80, g = 0.20, b = 0.10, a = 0.85 },
+		shieldBlockBar       = { r = 0.20, g = 0.55, b = 1.00, a = 0.90 },
+		ravageCue            = { r = 1.00, g = 0.72, b = 0.16, a = 0.28 },
 		gcdTicker           = { r = 0.90, g = 0.90, b = 0.95, a = 0.70 },
 		rogueEnergyText     = { r = 1.0, g = 0.82, b = 0.18, a = 0.85 },
 		rapidFireBar        = { r = 0.15, g = 0.85, b = 0.45, a = 0.85 },
 		flurryCounter       = { r = 1.0, g = 0.75, b = 0.10, a = 1.0 },
 		adrenalineRushBar   = { r = 1.0, g = 0.40, b = 0.10, a = 0.85 },
 		omenGlow            = { r = 0.20, g = 1.0, b = 0.30, a = 0.80 },
-		druidEnergyTick     = { r = 1.0, g = 0.82, b = 0.18, a = 1.0 },
-		druidMangleTimer    = { r = 0.40, g = 0.20, b = 0.80, a = 0.90 },
-		druidRipTracker     = { r = 0.90, g = 0.10, b = 0.30, a = 0.90 },
 		windfuryIcd         = { r = 0.85, g = 0.45, b = 0.0, a = 0.80 },
+		shamanLightningShield = { r = 0.25, g = 0.72, b = 1.0, a = 0.90 },
 	},
 	positions                  = {
 		mh     = { point = "CENTER", relativePoint = "CENTER", x = 0, y = -120 },
