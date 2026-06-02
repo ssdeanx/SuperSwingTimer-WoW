@@ -1,6 +1,29 @@
 # Super Swing Timer Changelog
 
-## v0.1.2 - 2026-05-30
+## v0.1.2 - 2026-06-01
+
+- **Shaman init crash fix (SetDrawLayer sublevel)**: Fixed a hard init-blocker on Anniversary 2.5.5 where `SetDrawLayer("OVERLAY", 10)` used sublevel `10`, outside the valid `-8` to `7` range. All four Shaman weave overlay calls (MH spark, OH spark, top/bottom triangle markers) now use sublevel `7`, resolving the `Texture:CSimpleRegion::SetDrawLayerScript()` error that prevented Shaman bars from rendering at all.
+- **Addon init error hardening**: Wrapped the full `OnAddonLoaded()` body in `pcall` with `geterrorhandler()` so any init-time error surfaces via Bugsack/error frame instead of silently breaking the addon for the rest of the session.
+- **Shaman fail-open OnUpdate chain fix**: If `SetupEnhShaman()` fails, `InitClassMods()` now saves `ns.OnUpdate` before calling into Shaman setup and restores it on failure, preventing a partially-installed Shaman wrapper from corrupting bar rendering. Fail-open cleanup also clears `ns.OnBarsCreated` and `ns.UpdateShamanWindfuryIcd`.
+
+- **Warrior Overpower glow**: the Overpower proc cue now uses a pulsing border glow on the MH bar instead of a flat fill tint, making the proc easier to notice without obscuring the bar.
+- **Naming consistency cleanup**: normalized remaining `C_Spell` alias usage in the class-mod runtime so the code follows one spelling convention instead of mixing lowercase and uppercase variants.
+
+- **Flurry icon replacement**: both Warrior and Shaman Flurry displays are now 30x30 spell-icon frames (DIALOG strata) centered above all bars, replacing the old `⚡N` text badges. Each icon shows the Flurry spell texture, remaining stack count (gold, bottom-right), and a countdown timer (gray, centered below, from `GetTimePreciseSec`). Only renders while the Flurry buff is active. The shared `GetFlurryBuffInfo()` scan correctly dispatches between TBC Anniversary and older Classic UnitBuff payload shapes (spellId at position 10 vs 11, expirationTime at position 6 vs 7), with explicit `UnitBuff` nil guard.
+
+- **Weave cast-motion hardening**: weave indicator motion now prefers live `UnitCastingInfo` / `UnitChannelInfo` timestamps for the current player cast, then falls back to haste-adjusted spell time only when live timestamps are unavailable. Spark/marker overlays were moved onto a dedicated higher overlay frame so the red moving spark remains visible above the bar stack.
+- **Flame Shock end-warning glow**: the Shaman Flame Shock helper now adds a self-resetting orange border glow during the last 4 seconds of the aura so the user gets a clear recast warning without affecting the countdown logic.
+
+- **Slider track hardening (all sliders)**: replaced row BACKGROUND-only slider track rendering with a dedicated per-row track layer frame and ARTWORK textures anchored to each slider, with explicit frame-level ordering relative to `OptionsSliderTemplate`. This makes slider tracks visible across Classic/TBC template variance.
+- **Texture browser z-order fix**: texture browser popup now forces `FULLSCREEN_DIALOG` strata + top-level frame behavior and reapplies top frame-level/raise on show, preventing the picker from rendering behind the main config UI.
+
+- **Shaman lightning tracker gap slider**: added a new Appearance slider (`Lightning Tracker Gap`) for Shamans, wired through defaults + migration (`v48`), live runtime updates, config refresh, and reset-defaults.
+- **Slider track visibility fix**: slider rows now render a dedicated centered track texture anchored to the actual slider widget so track lines remain visible across template/layout variance.
+- **Shaman weave visual behavior update**: active weave casts now force a red moving spark (instead of icon-swapping the spark), and upper/lower weave indicators move with cast progress toward bar end while casting.
+
+- **Spellcast payload safety fix**: hardened spell-event token resolution so cast GUID payloads are no longer treated as spell identifiers when `spellID` is absent, preventing rare spellcast routing mismatches on `UNIT_SPELLCAST_*` fallbacks.
+- **Shaman weave rank selection**: weave family catalog rebuild now resolves the highest known spell rank per enabled family (with Classic-safe known-spell API fallbacks) so leveling characters track their real learned ranks instead of defaulting toward rank-1 IDs.
+- **Shaman shield tracker spacing polish**: Lightning/Water Shield charge tracker left offset now uses an explicit spacing constant for cleaner separation from the MH/OH stack.
 
 - **Shaman weave reliability**: `UpdateWeaveVisuals()` now attempts an on-demand `OnBarsCreated()` recovery before bailing when weave textures are missing, so weave markers/spark can recover if bar overlays are rebuilt or late-created.
 - **Shaman Flame Shock bar**: added a new thin 6px status bar above MH that tracks the remaining duration of your own Flame Shock on the current target (player-filtered debuff scan, target-change refresh, target aura refresh, and shared visibility refresh integration).

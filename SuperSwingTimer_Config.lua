@@ -12,6 +12,7 @@ local UIDropDownMenu_SetText = _G.UIDropDownMenu_SetText
 local UIDropDownMenu_SetWidth = _G.UIDropDownMenu_SetWidth
 local ToggleDropDownMenu = rawget(_G, "ToggleDropDownMenu")
 local GetTimePreciseSec = rawget(_G, "GetTimePreciseSec")
+local GetTime = rawget(_G, "GetTime")
 local strtrim = rawget(_G, "strtrim")
 local BackdropTemplateMixin = rawget(_G, "BackdropTemplateMixin")
 
@@ -27,6 +28,16 @@ local layoutScale = 1.6
 
 local function ShiftY(y)
 	return math.floor((y * layoutScale) + 0.5) - layoutShift
+end
+
+local function GetCurrentTime()
+	if ns.GetAlignedTime then
+		return ns.GetAlignedTime()
+	end
+	if GetTimePreciseSec then
+		return GetTimePreciseSec()
+	end
+	return GetTime()
 end
 
 local function GetOptionalBackdropTemplate(template)
@@ -424,7 +435,7 @@ end
 -- ------------------------------------------------------------
 local function AnimateTestBars()
 	if not ns.barTestStartTime then return end
-	local now = GetTimePreciseSec and GetTimePreciseSec() or GetTime()
+	local now = GetCurrentTime()
 	local t = now - ns.barTestStartTime
 
 	local function animateOne(bar, period, offset)
@@ -447,7 +458,7 @@ end
 local function StartBarTestPreview(duration)
 	duration = tonumber(duration) or 16
 	ns.barTestActive = true
-	ns.barTestStartTime = GetTimePreciseSec and GetTimePreciseSec() or GetTime()
+	ns.barTestStartTime = GetCurrentTime()
 	if ns.barTestTimer and ns.barTestTimer.Cancel then
 		ns.barTestTimer:Cancel()
 		ns.barTestTimer = nil
@@ -550,13 +561,6 @@ local function CreateLabeledSliderRow(parent, label, minVal, maxVal, step, yOffs
 	end
 	row.text = text
 
-	-- Slider track background — a thin visible line so the track is always readable
-	local trackBg = row:CreateTexture(nil, "BACKGROUND")
-	trackBg:SetColorTexture(0.25, 0.25, 0.25, 0.60)
-	trackBg:SetPoint("TOPLEFT", row, "TOPLEFT", 0, -30 - 8 + 3)
-	trackBg:SetPoint("TOPRIGHT", row, "TOPRIGHT", -(valueBoxWidth + 12), -30 - 8 + 3)
-	trackBg:SetHeight(4)
-
 	local slider = CreateFrame("Slider", nil, row, "OptionsSliderTemplate")
 	slider:SetPoint("TOPLEFT", row, "TOPLEFT", 0, -30)
 	slider:SetPoint("TOPRIGHT", row, "TOPRIGHT", -(valueBoxWidth + 12), -30)
@@ -564,6 +568,9 @@ local function CreateLabeledSliderRow(parent, label, minVal, maxVal, step, yOffs
 	slider:SetValueStep(step)
 	slider:SetObeyStepOnDrag(true)
 	slider:SetHeight(16)
+	if slider.SetFrameLevel and row.GetFrameLevel then
+		slider:SetFrameLevel(row:GetFrameLevel() + 2)
+	end
 	if slider.Text then
 		slider.Text:SetText("")
 	end
@@ -577,6 +584,30 @@ local function CreateLabeledSliderRow(parent, label, minVal, maxVal, step, yOffs
 		slider.High:ClearAllPoints()
 		slider.High:SetPoint("TOPRIGHT", slider, "BOTTOMRIGHT", 2, 0)
 	end
+
+	-- Slider track visuals (shared by every slider row).
+	-- Render in a dedicated frame level so the track is always visible in Classic/TBC
+	-- clients where OptionsSliderTemplate internals can mask BACKGROUND textures.
+	local trackLayer = CreateFrame("Frame", nil, row)
+	trackLayer:SetPoint("LEFT", slider, "LEFT", -1, 0)
+	trackLayer:SetPoint("RIGHT", slider, "RIGHT", 1, 0)
+	trackLayer:SetHeight(6)
+	if trackLayer.SetFrameLevel and row.GetFrameLevel then
+		trackLayer:SetFrameLevel(row:GetFrameLevel() + 1)
+	end
+
+	local trackShadow = trackLayer:CreateTexture(nil, "ARTWORK", nil, 0)
+	trackShadow:SetAllPoints(trackLayer)
+	trackShadow:SetColorTexture(0.02, 0.02, 0.02, 1)
+
+	local trackBg = trackLayer:CreateTexture(nil, "ARTWORK", nil, 1)
+	trackBg:SetPoint("TOPLEFT", trackLayer, "TOPLEFT", 1, -1)
+	trackBg:SetPoint("BOTTOMRIGHT", trackLayer, "BOTTOMRIGHT", -1, 1)
+	trackBg:SetColorTexture(0.32, 0.32, 0.32, 0.95)
+
+	row.trackLayer = trackLayer
+	row.trackShadow = trackShadow
+	row.trackBg = trackBg
 
 	local valueBox = CreateFrame("EditBox", nil, row, "InputBoxTemplate")
 	valueBox:SetSize(valueBoxWidth, 20)
@@ -1105,13 +1136,25 @@ local function CreateTextureBrowserFrame()
 	local frame = CreateOptionalBackdropFrame("Frame", "SuperSwingTimerTextureBrowserFrame", UIParent)
 	frame:SetSize(660, 580)
 	frame:SetPoint("CENTER")
-	frame:SetFrameStrata("DIALOG")
+	frame:SetFrameStrata("FULLSCREEN_DIALOG")
+	frame:SetToplevel(true)
+	if frame.SetFrameLevel and UIParent and UIParent.GetFrameLevel then
+		frame:SetFrameLevel((UIParent:GetFrameLevel() or 0) + 120)
+	end
 	frame:SetClampedToScreen(true)
 	frame:SetMovable(true)
 	frame:EnableMouse(true)
 	frame:RegisterForDrag("LeftButton")
 	frame:SetScript("OnDragStart", frame.StartMoving)
 	frame:SetScript("OnDragStop", frame.StopMovingOrSizing)
+	frame:SetScript("OnShow", function(self)
+		self:SetFrameStrata("FULLSCREEN_DIALOG")
+		self:SetToplevel(true)
+		if self.SetFrameLevel and UIParent and UIParent.GetFrameLevel then
+			self:SetFrameLevel((UIParent:GetFrameLevel() or 0) + 120)
+		end
+		self:Raise()
+	end)
 	SetFrameBackdrop(frame, {
 		bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
 		edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
@@ -2740,6 +2783,14 @@ local function CreatePanel()
 		SyncSliderDisplay(warriorShieldBlockSlider, warriorShieldBlockSlider:GetValue())
 	end
 
+	local shamanLightningGapSlider = nil
+	if ns.playerClass == "SHAMAN" then
+		shamanLightningGapSlider = CreateSlider(content, "Lightning Tracker Gap", 0, 24, 1, PostQuickY(ShiftY(-220)))
+		SetRowClassRequirement(shamanLightningGapSlider, "SHAMAN")
+		shamanLightningGapSlider:SetValue(SuperSwingTimerDB.shamanLightningTrackerGap or ns.DB_DEFAULTS.shamanLightningTrackerGap or 6)
+		SyncSliderDisplay(shamanLightningGapSlider, shamanLightningGapSlider:GetValue())
+	end
+
 	local rogueAdrenalineRushSlider = nil
 	if ns.playerClass == "ROGUE" then
 		rogueAdrenalineRushSlider = CreateSlider(content, "Adrenaline Rush Height", 2, 20, 1, PostQuickY(ShiftY(-260)))
@@ -2954,6 +3005,7 @@ local function CreatePanel()
 	AppendRow(mhOhRows, hunterRangeHelperWidthSlider)
 	AppendRow(mhOhRows, hunterRapidFireSlider)
 	AppendRow(mhOhRows, warriorShieldBlockSlider)
+	AppendRow(mhOhRows, shamanLightningGapSlider)
 	AppendRow(mhOhRows, rogueAdrenalineRushSlider)
 	AppendRow(mhOhRows, barTextureRow)
 	AppendRow(mhOhRows, barLayerRow)
@@ -3255,6 +3307,17 @@ local function CreatePanel()
 			SyncSliderDisplay(self, value)
 			SuperSwingTimerDB.warriorShieldBlockBarHeight = value
 			ns.WARRIOR_SHIELD_BLOCK_BAR_HEIGHT = value
+		end)
+	end
+
+	if shamanLightningGapSlider then
+		shamanLightningGapSlider:SetScript("OnValueChanged", function(self, value)
+			value = math.floor(value + 0.5)
+			SyncSliderDisplay(self, value)
+			SuperSwingTimerDB.shamanLightningTrackerGap = value
+			if ns.UpdateLightningShieldVisual then
+				ns.UpdateLightningShieldVisual()
+			end
 		end)
 	end
 
@@ -3585,6 +3648,9 @@ local function CreatePanel()
 		sparkHeightSlider:SetValue(ns.DB_DEFAULTS.sparkHeight)
 		weaveSparkWidthSlider:SetValue(ns.DB_DEFAULTS.weaveSparkWidth)
 		weaveSparkHeightSlider:SetValue(ns.DB_DEFAULTS.weaveSparkHeight)
+		if shamanLightningGapSlider then
+			shamanLightningGapSlider:SetValue(ns.DB_DEFAULTS.shamanLightningTrackerGap or 6)
+		end
 		weaveSparkAlphaSlider:SetValue(ns.DB_DEFAULTS.weaveSparkAlpha)
 		weaveTriangleSizeSlider:SetValue(ns.DB_DEFAULTS.weaveTriangleSize)
 		weaveTriangleGapSlider:SetValue(ns.DB_DEFAULTS.weaveTriangleGap)
@@ -3679,6 +3745,7 @@ local function CreatePanel()
 	f.hunterRangeHelperWidthSlider = hunterRangeHelperWidthSlider
 	f.hunterRapidFireSlider = hunterRapidFireSlider
 	f.warriorShieldBlockSlider = warriorShieldBlockSlider
+	f.shamanLightningGapSlider = shamanLightningGapSlider
 
 	f.rogueAdrenalineRushSlider = rogueAdrenalineRushSlider
 	f.barTextureRow = barTextureRow
@@ -3796,6 +3863,9 @@ function ns.ToggleConfig()
 		end
 		if panel.warriorShieldBlockSlider then
 			panel.warriorShieldBlockSlider:SetValue(SuperSwingTimerDB.warriorShieldBlockBarHeight or ns.DB_DEFAULTS.warriorShieldBlockBarHeight or 4)
+		end
+		if panel.shamanLightningGapSlider then
+			panel.shamanLightningGapSlider:SetValue(SuperSwingTimerDB.shamanLightningTrackerGap or ns.DB_DEFAULTS.shamanLightningTrackerGap or 6)
 		end
 		if panel.druidPowerShiftSlider then
 			panel.druidPowerShiftSlider:SetValue(SuperSwingTimerDB.druidPowerShiftBarHeight or ns.DB_DEFAULTS.druidPowerShiftBarHeight or 4)
@@ -4041,6 +4111,7 @@ function ns.ResetConfigDefaults()
 	SuperSwingTimerDB.showWeaveAssist            = ns.DB_DEFAULTS.showWeaveAssist
 	SuperSwingTimerDB.showShamanLightningTracker = ns.DB_DEFAULTS.showShamanLightningTracker
 	SuperSwingTimerDB.showShamanFlameShockBar    = ns.DB_DEFAULTS.showShamanFlameShockBar
+	SuperSwingTimerDB.shamanLightningTrackerGap  = ns.DB_DEFAULTS.shamanLightningTrackerGap
 	SuperSwingTimerDB.useClassColors             = ns.DB_DEFAULTS.useClassColors
 	SuperSwingTimerDB.indicatorBlendMode         = ns.DB_DEFAULTS.indicatorBlendMode
 	SuperSwingTimerDB.weaveSpellFamilies         = {
@@ -4093,6 +4164,9 @@ function ns.ResetConfigDefaults()
 	ns.ApplySparkColor(ns.DB_DEFAULTS.sparkColor)
 	ns.ApplyMinimalMode(ns.DB_DEFAULTS.minimalMode)
 	ns.ApplyBarColors()
+	if ns.UpdateLightningShieldVisual then
+		ns.UpdateLightningShieldVisual()
+	end
 	if ns.UpdateOHBar then
 		ns.UpdateOHBar()
 	end

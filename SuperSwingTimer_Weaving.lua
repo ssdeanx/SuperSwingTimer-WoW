@@ -9,6 +9,9 @@ local UnitSpellHaste = rawget(_G, "UnitSpellHaste")
 local GetSpellHaste = rawget(_G, "GetSpellHaste")
 local UnitCastingInfo = rawget(_G, "UnitCastingInfo")
 local UnitChannelInfo = rawget(_G, "UnitChannelInfo")
+local IsSpellKnownOrOverridesKnown = rawget(_G, "IsSpellKnownOrOverridesKnown")
+local IsSpellKnown = rawget(_G, "IsSpellKnown")
+local IsPlayerSpell = rawget(_G, "IsPlayerSpell")
 
 local function GetClock()
 	if ns.GetAlignedTime then
@@ -41,23 +44,58 @@ local function GetSpellHastePercent()
 end
 
 local function ResolveSpellInfo(group)
-	for _, spellId in ipairs(group.ids) do
-		local spellName, spellIcon, castTime
-		if ns.GetSpellInfo then
-			local spellInfo = { ns.GetSpellInfo(spellId) }
-			spellName = spellInfo[1]
-			spellIcon = spellInfo[3]
-			castTime = spellInfo[4]
+	local hasKnownCheck =
+		type(IsSpellKnownOrOverridesKnown) == "function"
+		or type(IsSpellKnown) == "function"
+		or type(IsPlayerSpell) == "function"
+
+	local function IsKnownSpellRank(spellId)
+		if type(IsSpellKnownOrOverridesKnown) == "function" then
+			local known = IsSpellKnownOrOverridesKnown(spellId)
+			if known ~= nil then
+				return known == true
+			end
 		end
-		if spellName and castTime and castTime > 0 then
-			return {
-				spellId = spellId,
-				spellName = spellName,
-				iconTexture = spellIcon,
-				castTime = castTime / 1000,
-				abbrev = group.abbrev,
-				label = group.label,
-			}
+
+		if type(IsSpellKnown) == "function" then
+			local known = IsSpellKnown(spellId)
+			if known ~= nil then
+				return known == true
+			end
+		end
+
+		if type(IsPlayerSpell) == "function" then
+			local known = IsPlayerSpell(spellId)
+			if known ~= nil then
+				return known == true
+			end
+		end
+
+		return false
+	end
+
+	-- Rank lists in constants are low -> high. Iterate backward so weave tracking
+	-- locks to the highest known rank for leveling profiles.
+	for idx = #group.ids, 1, -1 do
+		local spellId = group.ids[idx]
+		if (not hasKnownCheck) or IsKnownSpellRank(spellId) then
+			local spellName, spellIcon, castTime
+			if ns.GetSpellInfo then
+				local spellInfo = { ns.GetSpellInfo(spellId) }
+				spellName = spellInfo[1]
+				spellIcon = spellInfo[3]
+				castTime = spellInfo[4]
+			end
+			if spellName and castTime and castTime > 0 then
+				return {
+					spellId = spellId,
+					spellName = spellName,
+					iconTexture = spellIcon,
+					castTime = castTime / 1000,
+					abbrev = group.abbrev,
+					label = group.label,
+				}
+			end
 		end
 	end
 end
@@ -215,23 +253,38 @@ local function ClampFraction(value)
 	return math_max(0, math_min(value, 1))
 end
 
+local function GetLivePlayerCastTiming()
+	if type(UnitCastingInfo) == "function" then
+		local _, _, _, startTimeMs, endTimeMs = UnitCastingInfo("player")
+		if type(startTimeMs) == "number" and type(endTimeMs) == "number" and endTimeMs > startTimeMs then
+			return startTimeMs / 1000, endTimeMs / 1000
+		end
+	end
+
+	if type(UnitChannelInfo) == "function" then
+		local _, _, _, startTimeMs, endTimeMs = UnitChannelInfo("player")
+		if type(startTimeMs) == "number" and type(endTimeMs) == "number" and endTimeMs > startTimeMs then
+			return startTimeMs / 1000, endTimeMs / 1000
+		end
+	end
+
+	return nil, nil
+end
+
 local function CaptureWeaveCastTiming(state, spellInfo)
 	if not state or not spellInfo then
 		return
 	end
 
 	local now = GetClock()
-	local _, _, startTimeMs, endTimeMs = nil, nil, nil, nil
-	if type(ns.GetUnitCastingSpellInfo) == "function" then
-		_, _, startTimeMs, endTimeMs = ns.GetUnitCastingSpellInfo("player")
-	end
+	local startTime, endTime = GetLivePlayerCastTiming()
 
-	local castStartTime = (type(startTimeMs) == "number" and startTimeMs > 0) and (startTimeMs / 1000) or now
+	local castStartTime = startTime or now
 	state.castStartTime = castStartTime
 	state.baseSpellCastTime = math_max(spellInfo.castTime or 0, 0)
 
-	if type(endTimeMs) == "number" and type(startTimeMs) == "number" and endTimeMs > startTimeMs then
-		state.spellExpirationTime = endTimeMs / 1000
+	if type(endTime) == "number" and endTime > castStartTime then
+		state.spellExpirationTime = endTime
 	else
 		local spellHaste = state.spellHaste or GetSpellHastePercent()
 		local hasteMultiplier = 1 + (math_max(spellHaste, 0) / 100)
@@ -272,23 +325,19 @@ local function BuildDisplayInfo(spellInfo)
 	local castStartTime = type(state.castStartTime) == "number" and state.castStartTime or nil
 	local castElapsed = castStartTime and math_max(now - castStartTime, 0) or 0
 	local castRemaining = effectiveCastTime
+	local liveCastStart, liveCastEnd = GetLivePlayerCastTiming()
+	local liveCastDuration = nil
 
 	if isCasting then
-		local _, _, _, startTimeMs, endTime = UnitCastingInfo("player")
-		if not endTime and UnitChannelInfo then
-			local _, _, _, _, channelEndTime = UnitChannelInfo("player")
-			endTime = channelEndTime
-		end
-		if type(startTimeMs) == "number" and startTimeMs > 0 then
-			castStartTime = startTimeMs / 1000
+		if liveCastStart and liveCastEnd and liveCastEnd > liveCastStart then
+			castStartTime = liveCastStart
 			state.castStartTime = castStartTime
 			castElapsed = math_max(now - castStartTime, 0)
-		end
-		if type(state.baseSpellCastTime) == "number" and state.baseSpellCastTime > 0 then
+			castRemaining = math_max(liveCastEnd - now, 0)
+			liveCastDuration = math_max(liveCastEnd - liveCastStart, 0)
+		elseif type(state.baseSpellCastTime) == "number" and state.baseSpellCastTime > 0 then
 			local baseHastedCastTime = math_max(state.baseSpellCastTime / hasteMultiplier, 0.01)
 			castRemaining = math_max(baseHastedCastTime - castElapsed, 0)
-		elseif type(endTime) == "number" then
-			castRemaining = math_max(0, (endTime / 1000) - now)
 		elseif type(state.spellExpirationTime) == "number" then
 			castRemaining = math_max(0, state.spellExpirationTime - now)
 		end
@@ -298,8 +347,11 @@ local function BuildDisplayInfo(spellInfo)
 	local clipAmount = math_max(0, (now + latency + castRemaining) - nextSwingExpiration)
 	local safe = safeStartIn > 0 and clipAmount <= 0
 	local castProgress = 0
-	if isCasting and effectiveCastTime > 0 then
-		castProgress = ClampFraction(castElapsed / effectiveCastTime)
+	if isCasting then
+		local progressDuration = liveCastDuration or effectiveCastTime
+		if progressDuration and progressDuration > 0 then
+			castProgress = ClampFraction(castElapsed / progressDuration)
+		end
 	end
 
 	local markerFraction = ClampFraction((timer.duration - (effectiveCastTime + latency)) / timer.duration)

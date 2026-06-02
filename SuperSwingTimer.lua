@@ -81,7 +81,7 @@ local function MigrateDB()
 	-- Fresh install
 	if not SuperSwingTimerDB then
 		SuperSwingTimerDB = {
-			version                    = ns.DB_DEFAULTS.version or 47,
+			version                    = ns.DB_DEFAULTS.version or 48,
 			showMH                     = ns.DB_DEFAULTS.showMH,
 			showOH                     = ns.DB_DEFAULTS.showOH,
 			showRanged                 = ns.DB_DEFAULTS.showRanged,
@@ -118,6 +118,7 @@ local function MigrateDB()
 			hunterRapidFireBarHeight   = ns.DB_DEFAULTS.hunterRapidFireBarHeight,
 			druidEnergyTickBarWidth    = ns.DB_DEFAULTS.druidEnergyTickBarWidth,
 			rogueAdrenalineRushBarHeight = ns.DB_DEFAULTS.rogueAdrenalineRushBarHeight,
+			shamanLightningTrackerGap   = ns.DB_DEFAULTS.shamanLightningTrackerGap,
 			barTexture                 = ns.DB_DEFAULTS.barTexture,
 			barTextureLayer            = ns.DB_DEFAULTS.barTextureLayer,
 			rangedBarTexture           = ns.DB_DEFAULTS.rangedBarTexture,
@@ -208,6 +209,9 @@ local function MigrateDB()
 	SuperSwingTimerDB.showShamanWindfuryIcd      = (SuperSwingTimerDB.showShamanWindfuryIcd ~= false)
 	SuperSwingTimerDB.showShamanLightningTracker = (SuperSwingTimerDB.showShamanLightningTracker ~= false)
 	SuperSwingTimerDB.showShamanFlameShockBar    = (SuperSwingTimerDB.showShamanFlameShockBar ~= false)
+	if SuperSwingTimerDB.shamanLightningTrackerGap == nil then
+		SuperSwingTimerDB.shamanLightningTrackerGap = ns.DB_DEFAULTS.shamanLightningTrackerGap or 6
+	end
 	-- useClassColors strictly defaults to false unless explicitly true in the DB
 	if SuperSwingTimerDB.useClassColors == nil then
 		SuperSwingTimerDB.useClassColors = false
@@ -596,6 +600,11 @@ local function MigrateDB()
 			db.colors.druidMangleTimer = nil
 			db.colors.druidRipTracker = nil
 		end },
+		{ version = 48, apply = function(db)
+			if db.shamanLightningTrackerGap == nil then
+				db.shamanLightningTrackerGap = (ns.DB_DEFAULTS and ns.DB_DEFAULTS.shamanLightningTrackerGap) or 6
+			end
+		end },
 	}
 
 	local currentVersion = tonumber(SuperSwingTimerDB.version) or 0
@@ -739,7 +748,7 @@ end
 
 local function UpdateFrameOnUpdate(self, elapsed)
 	if ns.RefreshLatencyCache then
-		local rawNow = GetTimePreciseSec and GetTimePreciseSec() or GetTime()
+		local rawNow = GetCurrentTime()
 		if rawNow >= nextLatencyRefreshAt then
 			ns.RefreshLatencyCache()
 			nextLatencyRefreshAt = rawNow + LATENCY_REFRESH_INTERVAL
@@ -767,7 +776,10 @@ frame:SetScript("OnEvent", function(self, event, ...)
 	if event == "ADDON_LOADED" then
 		local name = ...
 		if name == addonName then
-			OnAddonLoaded()
+			local initOk, initErr = pcall(OnAddonLoaded)
+			if not initOk then
+				geterrorhandler()(string.format("SuperSwingTimer init: %s", tostring(initErr)))
+			end
 			RegisterEvents()
 		end
 	elseif event == "COMBAT_LOG_EVENT_UNFILTERED" then

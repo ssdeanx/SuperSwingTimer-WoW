@@ -776,6 +776,20 @@ local function ResolveSpellcastEventSpell(primaryArg, spellId)
 		return spellId
 	end
 
+	if type(primaryArg) == "number" then
+		return primaryArg
+	end
+
+	if type(primaryArg) ~= "string" or primaryArg == "" then
+		return nil
+	end
+
+	-- Modern/Anniversary UNIT_SPELLCAST_* payloads can provide castGUID as the
+	-- primary argument when spellId is absent. Never treat castGUID as a spell token.
+	if primaryArg:match("^Cast%-%") then
+		return nil
+	end
+
 	return primaryArg
 end
 
@@ -802,9 +816,8 @@ local function QuerySpellCooldown(spellToken)
 		end
 	end
 
-	local legacyGetSpellCooldown = rawget(_G, "GetSpellCooldown")
-	if type(legacyGetSpellCooldown) == "function" then
-		local startTime, duration, enabled = legacyGetSpellCooldown(spellToken)
+	if type(GetSpellCooldown) == "function" then
+		local startTime, duration, enabled = GetSpellCooldown(spellToken)
 		if (enabled == nil or enabled == true or enabled == 1)
 			and type(startTime) == "number"
 			and type(duration) == "number"

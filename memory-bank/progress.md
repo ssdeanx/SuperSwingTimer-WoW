@@ -1,5 +1,71 @@
 # Progress
 
+## Progress Update (2026-06-01 - class-init fail-open hardening)
+
+- Hardened class setup safety in `SuperSwingTimer_ClassMods.lua` by routing all class initializer calls through a fail-open wrapper in `ns.InitClassMods()`.
+- Covered classes: Paladin, Warrior, Rogue, Hunter, Shaman, Druid.
+- Purpose: prevent a class helper init exception from taking down core bar visibility for that class.
+- Shaman keeps explicit helper fallback cleanup when setup fails.
+
+## Progress Update (2026-05-31 - final class audit)
+
+- Completed the requested final audit pass for the live class modules: Warrior, Hunter, Rogue, Shaman, and Druid.
+- Result: no new crash-level blockers or obvious alias/code-smell regressions were found in the class runtime blocks; the main remaining validation step is in-game smoke testing of the class-specific helper overlays and combat-state transitions.
+- Release discipline unchanged: addon remains pinned to `v0.1.2` for final user testing.
+
+## Progress Update (2026-05-31 - broader non-ClassMods alias sweep)
+
+- Completed a file-by-file audit of the core non-ClassMods runtime Lua files: `SuperSwingTimer.lua`, `SuperSwingTimer_State.lua`, `SuperSwingTimer_Weaving.lua`, `SuperSwingTimer_UI.lua`, and `SuperSwingTimer_Config.lua`.
+- Result: those files were already using Blizzard-style capitalized API aliases consistently; the only actual leftover lowercase legacy alias smell was removed from `SuperSwingTimer_State.lua` by switching its cooldown fallback to the existing top-level `GetSpellCooldown` alias.
+- Release discipline unchanged: addon remains pinned to `v0.1.2` for final user validation.
+
+## Progress Update (2026-05-31 - alias consistency beast-mode audit)
+
+- Completed a naming pass across all addon Lua files for Blizzard spell-API aliases.
+- Standardized the remaining local references to the Blizzard namespace as `C_Spell` so the code follows one clear convention instead of mixing `cSpell` / `C_Spell`.
+- Conclusion on performance: the alias itself is not a doubled-performance-cost problem; the meaningful gain is keeping one top-level alias per file and avoiding repeated global lookups in hot paths.
+- Release discipline unchanged: addon remains pinned to `v0.1.2` for final user validation.
+
+## Progress Update (2026-05-31 - warrior Overpower glow + naming consistency)
+
+- Upgraded Warrior Overpower proc cue from a flat fill tint to a pulsing border glow around the MH bar, keyed to the existing proc window from dodge/parry events.
+- Standardized remaining class-mod runtime alias naming to `C_Spell` so the codebase no longer mixes lowercase and uppercase spell-API aliases.
+- Release discipline unchanged: addon remains pinned to `v0.1.2` for final test validation.
+
+## Progress Update (2026-05-31 - shaman cast-motion + Flame Shock hardening)
+
+- Completed the requested Shaman final-test hardening pass.
+- Weave indicators:
+  - motion now prefers live `UnitCastingInfo` / `UnitChannelInfo` timestamps for the current player cast;
+  - falls back to haste-adjusted spell timing only when live timestamps are unavailable;
+  - red spark / weave markers were moved onto a higher dedicated overlay frame above the bars so they remain visible and track real-time cast progression.
+- Flame Shock:
+  - countdown bar remains aura-driven;
+  - added a self-resetting orange border glow during the last 4 seconds of the aura to warn before recast and reduce clipping risk.
+- No version bump; still pinned to `v0.1.2` pending final user validation.
+
+## Progress Update (2026-05-31 - production UI hotfix: slider tracks + browser z-order)
+
+- Addressed user-reported production blockers in config UI.
+- `SuperSwingTimer_Config.lua`:
+  - rebuilt shared slider track rendering using a dedicated per-row track layer frame and explicit frame-level ordering relative to the slider widget so tracks are visible across Classic/TBC template variance.
+  - upgraded texture browser popup layering to `FULLSCREEN_DIALOG` + `SetToplevel(true)` and reasserted high frame level + `Raise()` on show to keep the picker above config UI while in use.
+- Release discipline maintained: TOC remains `v0.1.2` for final user test cycle.
+
+## Progress Update (2026-05-31 - final v0.1.2 pre-test production audit)
+
+- Completed final pre-test production pass before user in-game validation/deploy decision.
+- Slider visibility hardening:
+  - `SuperSwingTimer_Config.lua` shared slider row builder now renders explicit row-owned track shadow/base textures anchored to each slider widget.
+  - Because every slider is created through `CreateLabeledSliderRow`, this fixes track visibility consistently across all sliders.
+- Shaman deep wiring audit (end-to-end):
+  - event feed in `SuperSwingTimer.lua` verified for spellcast/aura/target/spells-changed paths,
+  - cast token safety in `SuperSwingTimer_State.lua` verified (castGUID is not treated as spell token),
+  - weave rank selection in `SuperSwingTimer_Weaving.lua` verified (highest known rank per family),
+  - class visuals in `SuperSwingTimer_ClassMods.lua` verified (red moving cast spark + cast-following weave indicators + configurable Lightning Shield tracker gap).
+- Metadata discipline:
+  - restored accidental TOC bump; `SuperSwingTimer.toc` version is back to `v0.1.2` pending user final test sign-off.
+
 ## Progress Update (2026-05-31 - extreme timing/aura hardening pass)
 
 - Traced the live GCD ticker path end-to-end and fixed a real lifecycle bug:

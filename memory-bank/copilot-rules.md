@@ -31,6 +31,15 @@
 - Prefer concise, durable facts over raw investigation chatter.
 - Keep the active context updated after meaningful progress so a later session can resume cleanly.
 
+## Production audit discipline
+
+- Treat this addon as an enterprise-grade, production-live WoW addon.
+- During audit tasks, inspect the full target surface file-by-file instead of stopping after the first smell or the first clean file.
+- If one alias, timing, or API smell is found, continue sweeping the remaining files in that scope before concluding.
+- Do not claim a class, subsystem, or addon is clean until the relevant live files have been checked explicitly.
+- Keep Blizzard-style naming consistent across files (`C_Spell`, `GetTimePreciseSec`, `GetSpellCooldown`, etc.) and avoid introducing mixed naming just to make a single local look different.
+- Record the actual result of the audit in memory-bank and AGENTS so future sessions can see what was checked, what was changed, and what still needs in-game validation.
+
 ## Current critical insight
 
 - The shaman weave breakpoint visuals should be driven by the current cast window and latency-aware timing, then drawn on the MH bar canvas.

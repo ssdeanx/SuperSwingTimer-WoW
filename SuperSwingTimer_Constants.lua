@@ -34,9 +34,9 @@ function ns.GetSpellInfo(spellIdentifier)
 	if g then
 		return g(spellIdentifier)
 	end
-	local c = _G.C_Spell
-	if c and c.GetSpellInfo then
-		local info = c.GetSpellInfo(spellIdentifier)
+	local C_Spell = _G.C_Spell
+	if C_Spell and C_Spell.GetSpellInfo then
+		local info = C_Spell.GetSpellInfo(spellIdentifier)
 		if info then
 			return info.name, nil, info.iconID, info.castTime, info.minRange, info.maxRange, info.spellID
 		end
@@ -578,8 +578,8 @@ ns.DRUID_FORM_COLORS = {
 }
 
 -- Shaman weaving spell groups.
--- Ordered from highest rank to lowest rank so the first available entry
--- becomes the active breakpoint target.
+-- IDs are listed from low rank to high rank; runtime selection resolves the
+-- highest known rank for the active character.
 ns.WEAVE_SPELL_FAMILY_COLORS = {
 	LB  = { r = 0.45, g = 0.75, b = 1.00, a = 1 }, -- light blue
 	CL  = { r = 0.15, g = 0.45, b = 0.95, a = 1 }, -- dark blue
@@ -624,7 +624,7 @@ ns.CLASS_CONFIG = {
 -- SavedVariables defaults
 -- ============================================================
 ns.DB_DEFAULTS = {
-	version                    = 47,
+	version                    = 48,
 	showMH                     = true,
 	showOH                     = true,
 	showRanged                 = true,
@@ -673,6 +673,7 @@ ns.DB_DEFAULTS = {
 	hunterRapidFireBarHeight    = 4,
 	hunterRangeHelperWidth     = 7,
 	rogueAdrenalineRushBarHeight = 4,
+	shamanLightningTrackerGap   = 6,
 	barTexture                 = "Interface\\TargetingFrame\\UI-StatusBar",
 	rangedBarTexture           = "Interface\\TargetingFrame\\UI-StatusBar",
 	barTextureLayer            = "ARTWORK",

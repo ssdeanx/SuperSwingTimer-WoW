@@ -1,5 +1,77 @@
 # Active Context
 
+## Active Context Update (2026-06-01 - class-init fail-open hardening)
+
+- User reported class-level no-show risk (Shaman bars not showing) and asked for a pass to ensure other classes cannot hit the same failure mode.
+- Implemented class-wide fail-open init wrapper in `ns.InitClassMods()` so class helper init errors do not suppress core bar visibility.
+- Applied across Paladin, Warrior, Rogue, Hunter, Shaman, and Druid setup dispatch.
+- Kept targeted Shaman helper fallback cleanup in the SHAMAN branch.
+
+## Active Context Update (2026-05-31 - final class audit)
+
+- User requested a last pre-test audit for all class runtime paths (Warrior, Hunter, Rogue, Shaman, Druid) and asked for any failures or bug risks to be recorded.
+- Completed a file-by-file review of the live class blocks in `SuperSwingTimer_ClassMods.lua` plus the supporting state/weave/UI hooks.
+- Audit result: no new crash-level blocker was found in the class code; the remaining confidence gap is in-game smoke validation of class-specific overlays and combat-state transitions, not a known code defect.
+- No version bump; addon remains locked to `v0.1.2` for final testing.
+
+## Active Context Update (2026-05-31 - timing clock cleanup)
+
+- User asked to audit `GetTimePreciseSec()` usage and fix the remaining clock code smells.
+- Result: the last inline fallback smell in live runtime code was normalized. `SuperSwingTimer.lua` and `SuperSwingTimer_Config.lua` now route through shared local clock helpers instead of repeating `GetTimePreciseSec() or GetTime()` inline, and the matching hidden worktree UI copy was aligned as well.
+- No version bump; addon remains locked to `v0.1.2` for final testing.
+
+## Active Context Update (2026-05-31 - broader non-ClassMods alias sweep)
+
+- User explicitly requested a file-by-file audit beyond `ClassMods.lua`.
+- Completed the core non-ClassMods runtime audit across `SuperSwingTimer.lua`, `SuperSwingTimer_State.lua`, `SuperSwingTimer_Weaving.lua`, `SuperSwingTimer_UI.lua`, and `SuperSwingTimer_Config.lua`.
+- Audit result: the remaining files were already using Blizzard-style API aliases consistently; the only actual leftover lower-case legacy cooldown fallback was removed from `SuperSwingTimer_State.lua`, so the core runtime is now consistent on that front.
+- No version bump; still locked to `v0.1.2` for final testing.
+
+## Active Context Update (2026-05-31 - alias consistency audit)
+
+- User requested a beast-mode audit for alias consistency and correct Blizzard naming practices across all Lua files.
+- Audit result: the spell-API local aliasing now consistently uses `C_Spell` in runtime code; the prior `cSpell` spelling was just inconsistent naming, not a separate API.
+- Performance note: using one local alias per file is fine; the important production practice is to avoid repeated global table lookups in hot paths.
+- No version bump; still locked to `v0.1.2` for final testing.
+
+## Active Context Update (2026-05-31 - warrior Overpower glow hardening)
+
+- User asked why alias spelling varied and requested enterprise-grade consistency.
+- Normalized remaining runtime spell-API alias usage to `C_Spell` in the class-mod runtime so the naming is consistent and easier to maintain.
+- Improved Warrior Overpower feedback to a pulsing border glow on the MH bar, using the already-tracked proc window from combat events, so the proc cue is more visible without filling the bar.
+- No version bump; the addon is still locked to `v0.1.2` for final testing.
+
+## Active Context Update (2026-05-31 - shaman cast-motion final hardening)
+
+- User requested enterprise-grade final hardening for Shaman weave motion and Flame Shock warning UX.
+- Implemented live cast timing preference in `SuperSwingTimer_Weaving.lua`:
+  - current cast motion now follows `UnitCastingInfo("player")` / `UnitChannelInfo("player")` timestamps first;
+  - haste-adjusted spell timing is used only as fallback when live timestamps are unavailable;
+  - spark/triangle weave visuals were moved to a higher dedicated overlay frame above the bars for visibility.
+- Implemented Flame Shock warning in `SuperSwingTimer_ClassMods.lua`:
+  - bar remains aura-driven/countdown-driven;
+  - border glow activates only in the last 4 seconds and resets cleanly when the aura disappears.
+- Release metadata remains locked to `v0.1.2` until the user’s final validation passes.
+
+## Active Context Update (2026-05-31 - user-blocking config UI fixes)
+
+- User reported two blocking production issues after prior pass: invisible slider tracks and texture browser rendering behind UI.
+- Applied hard fixes in `SuperSwingTimer_Config.lua`:
+  - slider track now uses a dedicated row child frame (`trackLayer`) with explicit frame levels and ARTWORK textures, anchored to slider bounds for deterministic visibility;
+  - texture browser now forces `FULLSCREEN_DIALOG`, `SetToplevel(true)`, and reasserts frame level + `Raise()` on show to stay above panel stack.
+- Kept release metadata on `v0.1.2` for final validation.
+
+## Active Context Update (2026-05-31 - final v0.1.2 pre-test lock-in)
+
+- User requested a production-grade final pass before testing and explicitly required no premature version bump.
+- Implemented global slider track visibility fix in `SuperSwingTimer_Config.lua` by rendering shared row-owned track textures in the common slider builder (`CreateLabeledSliderRow`), covering all slider instances.
+- Performed focused Shaman deep audit across runtime layers:
+  - `SuperSwingTimer.lua`: verified SHAMAN event wiring for `UNIT_SPELLCAST_*`, `UNIT_AURA`, `PLAYER_TARGET_CHANGED`, `SPELLS_CHANGED` and hand-off to weave/flame-shock/lightning visual updates.
+  - `SuperSwingTimer_State.lua`: verified spellcast payload safety path that rejects castGUID-as-spell fallback.
+  - `SuperSwingTimer_Weaving.lua`: verified highest-known-rank spell selection and cast-progress display inputs.
+  - `SuperSwingTimer_ClassMods.lua`: verified red cast spark behavior and cast-following indicator motion-to-bar-end while casting; verified configurable Lightning Shield tracker gap usage.
+- Metadata corrected for test cycle: `SuperSwingTimer.toc` remains `v0.1.2` until user confirms final test success.
+
 ## Active Context Update (2026-05-31 - extreme timing/aura hardening pass)
 
 - User asked for an extreme deep pass centered on real production timing, exact reset behavior, and Anniversary-era API correctness rather than perf-driven simplification.

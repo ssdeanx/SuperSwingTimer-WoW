@@ -13,7 +13,11 @@ local UnitAttackSpeed = rawget(_G, "UnitAttackSpeed")
 local IsSpellInRange = rawget(_G, "IsSpellInRange")
 local SpellHasRange = rawget(_G, "SpellHasRange")
 local CheckInteractDistance = rawget(_G, "CheckInteractDistance")
+local GetSpellTexture = rawget(_G, "GetSpellTexture")
 local InCombatLockdown = rawget(_G, "InCombatLockdown")
+local GetSpecialization = rawget(_G, "GetSpecialization")
+local GetNumTalentTabs = rawget(_G, "GetNumTalentTabs")
+local GetTalentTabInfo = rawget(_G, "GetTalentTabInfo")
 local GetTimePreciseSec = rawget(_G, "GetTimePreciseSec")
 local GetTime = rawget(_G, "GetTime")
 local GetSpellCooldown = rawget(_G, "GetSpellCooldown")
@@ -24,6 +28,91 @@ local WARRIOR_HEROIC_STRIKE_TINT = { r = 1.0, g = 0.92, b = 0.20 }
 local WARRIOR_CLEAVE_TINT = { r = 0.20, g = 0.80, b = 0.25 }
 local DRUID_MAUL_TINT = { r = 1.0, g = 0.78, b = 0.10 }
 local HUNTER_RAPTOR_TINT = { r = 1.0, g = 0.92, b = 0.20 }
+
+-- Shared Flurry buff lookup tables (used by both Warrior and Shaman code paths)
+local FLURRY_BUFF_NAMES = { "Flurry" }
+local FLURRY_BUFF_NAME_LOOKUP = {}
+for _, flurryName in ipairs(FLURRY_BUFF_NAMES) do
+	FLURRY_BUFF_NAME_LOOKUP[flurryName] = true
+end
+local FLURRY_BUFF_SPELL_IDS = {
+	[12319] = true, -- Flurry (all ranks)
+	[16280] = true, -- Flurry (rank 4+)
+}
+
+-- Returns: charges (number or nil), expirationTime (number or nil)
+-- Handles both TBC Anniversary (2.5.5) and older Classic UnitBuff payload shapes.
+-- Dispatch logic matches GetHelpfulAuraData() in this file.
+local function GetFlurryBuffInfo()
+	if not UnitBuff then
+		return nil, nil
+	end
+
+	for i = 1, 40 do
+		local name, _, _, auraCount, _, a6, a7, _, _, a10, a11 = UnitBuff("player", i)
+		if not name then
+			break
+		end
+
+		local expirationTime
+		local spellId
+		if type(a10) == "number" then
+			-- TBC Anniversary (2.5.5) shape: expiration = a6, spellId = a10
+			expirationTime = a6
+			spellId = a10
+		else
+			-- Older Classic shape: expiration = a7, spellId = a11
+			expirationTime = a7
+			spellId = type(a11) == "number" and a11 or nil
+		end
+
+		if FLURRY_BUFF_NAME_LOOKUP[name] or (type(spellId) == "number" and FLURRY_BUFF_SPELL_IDS[spellId]) then
+			local charges = math.min(math.max(tonumber(auraCount) or 1, 1), 3)
+			return charges, expirationTime
+		end
+	end
+	return nil, nil
+end
+
+-- Creates a 30x30 Flurry icon frame (texture + stack count + duration timer).
+-- Parented to UIParent with DIALOG strata so it renders above all bars.
+-- Returns the frame (hidden). Caller must anchor and call Show/Hide per update.
+local function CreateFlurryIconFrame()
+	local icon = CreateFrame("Frame", nil, UIParent)
+	icon:SetSize(30, 30)
+	icon:SetFrameStrata("DIALOG")
+	icon:EnableMouse(false)
+
+	-- Spell texture
+	icon.texture = icon:CreateTexture(nil, "BACKGROUND")
+	icon.texture:SetAllPoints()
+	local texturePath = GetSpellTexture and GetSpellTexture(12319) or "Interface\\Icons\\Ability_Warrior_FocusedRage"
+	icon.texture:SetTexture(texturePath)
+
+	-- Semi-transparent border
+	icon.border = icon:CreateTexture(nil, "OVERLAY")
+	icon.border:SetDrawLayer("OVERLAY", -1)
+	icon.border:SetColorTexture(0, 0, 0, 0.65)
+	icon.border:SetPoint("TOPLEFT", -1, 1)
+	icon.border:SetPoint("BOTTOMRIGHT", 1, -1)
+
+	-- Stack count (bottom-right, overlaid on the icon)
+	icon.stackText = icon:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+	icon.stackText:SetPoint("BOTTOMRIGHT", 1, 0)
+	icon.stackText:SetJustifyH("RIGHT")
+	icon.stackText:SetFont("Fonts\\FRIZQT__.TTF", 11, "OUTLINE")
+	icon.stackText:SetTextColor(1, 0.82, 0, 1)
+
+	-- Duration text (below icon, centered)
+	icon.durationText = icon:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+	icon.durationText:SetPoint("TOP", icon, "BOTTOM", 0, -2)
+	icon.durationText:SetJustifyH("CENTER")
+	icon.durationText:SetFont("Fonts\\FRIZQT__.TTF", 10, "OUTLINE")
+	icon.durationText:SetTextColor(0.75, 0.75, 0.75, 0.9)
+
+	icon:Hide()
+	return icon
+end
 
 local function GetCurrentTime()
 	if ns.GetAlignedTime then
@@ -316,9 +405,9 @@ local function SetupRetPaladin()
 					local c = ns.GetBarColor("mh")
 					if c then
 						ns.mhBar:SetStatusBarColor(c.r, c.g, c.b, c.a or 1)
-	end
-	end
-	end
+					end
+				end
+			end
 			-- Restore default MH label
 			if ns.RestoreBarDefaultLabel then
 				ns.RestoreBarDefaultLabel(ns.mhBar)
@@ -332,6 +421,7 @@ local function SetupRetPaladin()
 	local function UpdateSealBreakpointLine()
 		local sealZone = ns.sealTwistBreakpoint
 		local sealResealLine = ns.sealTwistResealBreakpoint
+		local activeFamily = GetActivePaladinSeal()
 		if not sealZone or not ns.mhBar then
 			return
 		end
@@ -350,7 +440,6 @@ local function SetupRetPaladin()
 			return
 		end
 
-		local activeFamily = GetActivePaladinSeal()
 		if not activeFamily or not ns.PALADIN_SEAL_TWIST_FAMILIES or not ns.PALADIN_SEAL_TWIST_FAMILIES[activeFamily] then
 			sealZone:Hide()
 			if sealResealLine then
@@ -534,14 +623,13 @@ local function SetupRetPaladin()
 	end
 
 	local function GetReckoningStackCount()
-		local unitBuffFn = rawget(_G, "UnitBuff")
-		if not unitBuffFn then
+		if not UnitBuff then
 			return nil
 		end
 
 		local reckoningName = ns.GetSpellInfo and (ns.GetSpellInfo(20178) or "Reckoning") or "Reckoning"
 		for index = 1, 40 do
-			local auraName, _, _, auraCount, _, _, _, _, _, _, auraSpellId = unitBuffFn("player", index)
+			local auraName, _, _, auraCount, _, _, _, _, _, _, auraSpellId = UnitBuff("player", index)
 			if not auraName then
 				break
 			end
@@ -746,7 +834,6 @@ end
 local function SetupWarrior()
 	local IsCurrentSpell = rawget(_G, "IsCurrentSpell")
 	if not IsCurrentSpell then
-		local C_Spell = rawget(_G, "C_Spell")
 		if C_Spell and C_Spell.IsCurrentSpell then
 			IsCurrentSpell = C_Spell.IsCurrentSpell
 		end
@@ -906,9 +993,9 @@ local function SetupWarrior()
 	end
 
 	local function GetSpellCastDuration(spellToken)
-		local spellInfoFn = ns.GetSpellInfo or rawget(_G, "GetSpellInfo")
-		if spellInfoFn then
-			local _, _, _, castTimeMs = spellInfoFn(spellToken)
+		local GetSpellInfo = ns.GetSpellInfo or rawget(_G, "GetSpellInfo")
+		if GetSpellInfo then
+			local _, _, _, castTimeMs = GetSpellInfo(spellToken)
 			if type(castTimeMs) == "number" and castTimeMs > 0 then
 				return castTimeMs / 1000
 			end
@@ -937,20 +1024,17 @@ local function SetupWarrior()
 		end
 
 		local isProtection = false
-		local getSpecialization = rawget(_G, "GetSpecialization")
-		if type(getSpecialization) == "function" then
-			local specId = getSpecialization()
+		if type(GetSpecialization) == "function" then
+			local specId = GetSpecialization()
 			isProtection = (specId == 3)
 		else
 			-- Classic/TBC fallback: infer primary talent tree from points spent.
-			local getNumTalentTabs = rawget(_G, "GetNumTalentTabs")
-			local getTalentTabInfo = rawget(_G, "GetTalentTabInfo")
-			if type(getNumTalentTabs) == "function" and type(getTalentTabInfo) == "function" then
-				local numTabs = tonumber(getNumTalentTabs()) or 0
+			if type(GetNumTalentTabs) == "function" and type(GetTalentTabInfo) == "function" then
+				local numTabs = tonumber(GetNumTalentTabs()) or 0
 				local protPoints = 0
 				local maxPoints = 0
 				for tab = 1, numTabs do
-					local _, _, pointsSpent = getTalentTabInfo(tab)
+					local _, _, pointsSpent = GetTalentTabInfo(tab)
 					local points = tonumber(pointsSpent) or 0
 					if tab == 3 then
 						protPoints = points
@@ -1063,9 +1147,41 @@ local function SetupWarrior()
 		end
 
 		if not warriorOverpowerGlow then
-			warriorOverpowerGlow = ns.mhBar:CreateTexture(nil, "OVERLAY")
-			warriorOverpowerGlow:SetAllPoints(true)
-			warriorOverpowerGlow:SetColorTexture(1, 0.85, 0.10, 0)
+			local glowBorder = {}
+
+			local glowTop = ns.mhBar:CreateTexture(nil, "OVERLAY")
+			glowTop:SetPoint("TOPLEFT", ns.mhBar, "TOPLEFT", -1, 1)
+			glowTop:SetPoint("TOPRIGHT", ns.mhBar, "TOPRIGHT", 1, 1)
+			glowTop:SetHeight(1)
+			glowTop:SetColorTexture(1, 0.85, 0.10, 0)
+			glowTop:Hide()
+			glowBorder[#glowBorder + 1] = glowTop
+
+			local glowBottom = ns.mhBar:CreateTexture(nil, "OVERLAY")
+			glowBottom:SetPoint("BOTTOMLEFT", ns.mhBar, "BOTTOMLEFT", -1, -1)
+			glowBottom:SetPoint("BOTTOMRIGHT", ns.mhBar, "BOTTOMRIGHT", 1, -1)
+			glowBottom:SetHeight(1)
+			glowBottom:SetColorTexture(1, 0.85, 0.10, 0)
+			glowBottom:Hide()
+			glowBorder[#glowBorder + 1] = glowBottom
+
+			local glowLeft = ns.mhBar:CreateTexture(nil, "OVERLAY")
+			glowLeft:SetPoint("TOPLEFT", ns.mhBar, "TOPLEFT", -1, 1)
+			glowLeft:SetPoint("BOTTOMLEFT", ns.mhBar, "BOTTOMLEFT", -1, -1)
+			glowLeft:SetWidth(1)
+			glowLeft:SetColorTexture(1, 0.85, 0.10, 0)
+			glowLeft:Hide()
+			glowBorder[#glowBorder + 1] = glowLeft
+
+			local glowRight = ns.mhBar:CreateTexture(nil, "OVERLAY")
+			glowRight:SetPoint("TOPRIGHT", ns.mhBar, "TOPRIGHT", 1, 1)
+			glowRight:SetPoint("BOTTOMRIGHT", ns.mhBar, "BOTTOMRIGHT", 1, -1)
+			glowRight:SetWidth(1)
+			glowRight:SetColorTexture(1, 0.85, 0.10, 0)
+			glowRight:Hide()
+			glowBorder[#glowBorder + 1] = glowRight
+
+			warriorOverpowerGlow = glowBorder
 		end
 		if not warriorOverpowerText then
 			warriorOverpowerText = ns.mhBar:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
@@ -1076,12 +1192,19 @@ local function SetupWarrior()
 
 		local procUntil = ns.warriorOverpowerProcUntil or 0
 		if not ns.playerInCombat or procUntil <= GetCurrentTime() then
-			warriorOverpowerGlow:SetColorTexture(1, 0.85, 0.10, 0)
+			for _, edge in ipairs(warriorOverpowerGlow) do
+				edge:Hide()
+			end
 			warriorOverpowerText:Hide()
 			return
 		end
 
-		warriorOverpowerGlow:SetColorTexture(1, 0.85, 0.10, 0.30)
+		local pulse = 0.5 + (0.5 * math.sin(GetCurrentTime() * 10))
+		local alpha = 0.25 + (0.45 * pulse)
+		for _, edge in ipairs(warriorOverpowerGlow) do
+			edge:SetColorTexture(1, 0.85, 0.10, alpha)
+			edge:Show()
+		end
 		warriorOverpowerText:SetText("OP")
 		warriorOverpowerText:Show()
 	end
@@ -1328,38 +1451,45 @@ local function SetupWarrior()
 		end)
 	end
 
-	-- Phase 2: Warrior Flurry remaining swings counter
-	ns.UpdateWarriorFlurry = function()
+	-- Phase 2: Warrior Flurry icon (stacks + duration, centered above all bars)
+	local warriorFlurryIcon = nil
+	ns.UpdateWarriorFlurryCounter = function()
 		if not ns.mhBar then return end
 		local db = SuperSwingTimerDB or ns.DB_DEFAULTS
-		if not db or db.showWarriorFlurryCounter == false then return end
-		local unitBuffFn = rawget(_G, "UnitBuff")
-		if not unitBuffFn then return end
-		local charges = nil
-		local i = 1
-		while true do
-			local name, _, _, auraCount, _, _, _, _, _, _, spellId = unitBuffFn("player", i)
-			if not name then break end
-			if spellId == 12319 or name == "Flurry" then
-				charges = math.min(math.max(tonumber(auraCount) or 1, 1), 3)
-				break
-			end
-			i = i + 1
-		end
-		if not charges then
-			if ns.mhBar.flurryText then ns.mhBar.flurryText:Hide() end
+		if not db or db.showWarriorFlurryCounter == false then
+			if warriorFlurryIcon then warriorFlurryIcon:Hide() end
 			return
 		end
-		if not ns.mhBar.flurryText then
-			ns.mhBar.flurryText = ns.mhBar:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-			ns.mhBar.flurryText:SetPoint("RIGHT", ns.mhBar, "LEFT", -3, 0)
-			ns.mhBar.flurryText:SetJustifyH("RIGHT")
-			ns.mhBar.flurryText:SetFont("Fonts\\FRIZQT__.TTF", 9, "OUTLINE")
+
+		if not warriorFlurryIcon then
+			warriorFlurryIcon = CreateFlurryIconFrame()
+			warriorFlurryIcon:SetPoint("BOTTOM", ns.mhBar, "TOP", 0, 12)
 		end
-		local color = ns.GetBarColor and ns.GetBarColor("flurryCounter") or (ns.DB_DEFAULTS and ns.DB_DEFAULTS.colors and ns.DB_DEFAULTS.colors.flurryCounter) or { r = 1.0, g = 0.75, b = 0.10, a = 1.0 }
-		ns.mhBar.flurryText:SetTextColor(color.r or 1.0, color.g or 0.75, color.b or 0.10, color.a or 0.9)
-		ns.mhBar.flurryText:SetText("⚡" .. charges)
-		ns.mhBar.flurryText:Show()
+
+		local charges, expirationTime = GetFlurryBuffInfo()
+		if not charges then
+			warriorFlurryIcon:Hide()
+			return
+		end
+
+		-- Update stack count
+		warriorFlurryIcon.stackText:SetText("x" .. charges)
+
+		-- Update duration remaining (GetTimePreciseSec shares the same monotonic
+		-- game clock as UnitBuff's expirationTime — no offset alignment needed)
+		if type(expirationTime) == "number" and expirationTime > 0 then
+			local remaining = expirationTime - GetTimePreciseSec()
+			if remaining > 0 then
+				warriorFlurryIcon.durationText:SetText(string.format("%.1f", remaining))
+				warriorFlurryIcon.durationText:Show()
+			else
+				warriorFlurryIcon.durationText:Hide()
+			end
+		else
+			warriorFlurryIcon.durationText:Hide()
+		end
+
+		warriorFlurryIcon:Show()
 	end
 end
 
@@ -1477,18 +1607,11 @@ local function SetupEnhShaman()
 		local sparkVisualHeight = clampedSparkHeight
 
 		if showSpark then
-			local liveFraction = info.sparkFraction or info.currentSwingFraction or info.markerFraction or 0
-			local travelFraction = math.max(0, math.min(info.castProgress or 0, 1))
-			if travelFraction > 0 and travelFraction < 1 and barWidth > 0 then
-				local leadBias = math.min(2 / barWidth, 0.015)
-				liveFraction = math.min(1, liveFraction + leadBias)
-			end
-			sparkPos = (math.max(0, math.min(liveFraction, 1))) * barWidth
-			if iconTexture then
-				local iconSize = math.max(clampedSparkHeight, triangleSize)
-				sparkVisualWidth = iconSize
-				sparkVisualHeight = iconSize
-			end
+			local castStartFraction = info.castStartSwingFraction or info.currentSwingFraction or info.markerFraction or 0
+			local castProgress = math.max(0, math.min(info.castProgress or 0, 1))
+			local movingFraction = math.max(0, math.min(castStartFraction + ((1 - castStartFraction) * castProgress), 1))
+			sparkPos = movingFraction * barWidth
+			markerPos = sparkPos
 		end
 
 		if sparkPos < 0 then
@@ -1500,7 +1623,7 @@ local function SetupEnhShaman()
 		-- MH spark
 		ns.weaveSpark:ClearAllPoints()
 		ns.weaveSpark:SetPoint("CENTER", ns.mhBar, "LEFT", sparkPos, 0)
-		ApplyWeaveSparkTexture(ns.weaveSpark, showSpark and iconTexture or nil, sparkFallbackTexture, sparkVisualWidth, sparkVisualHeight, sparkAlpha, color)
+		ApplyWeaveSparkTexture(ns.weaveSpark, nil, sparkFallbackTexture, sparkVisualWidth, sparkVisualHeight, sparkAlpha, color)
 		ns.weaveSpark:SetShown(showSpark)
 
 		-- OH spark (mirrors MH spark when dual-wielding)
@@ -1508,7 +1631,7 @@ local function SetupEnhShaman()
 			local ohSparkHeight = math.max(1, math.min(sparkHeight, (ns.ohBar and ns.ohBar:GetHeight()) or sparkHeight))
 			ns.weaveSparkOH:ClearAllPoints()
 			ns.weaveSparkOH:SetPoint("CENTER", ns.ohBar, "LEFT", sparkPos, 0)
-			ApplyWeaveSparkTexture(ns.weaveSparkOH, showSpark and iconTexture or nil, sparkFallbackTexture, sparkVisualWidth, ohSparkHeight, sparkAlpha, color)
+			ApplyWeaveSparkTexture(ns.weaveSparkOH, nil, sparkFallbackTexture, sparkVisualWidth, ohSparkHeight, sparkAlpha, color)
 			ns.weaveSparkOH:SetShown(showSpark and hasOffHand)
 		end
 
@@ -1529,9 +1652,10 @@ local function SetupEnhShaman()
 		end
 	end
 
-	local LIGHTNING_SHIELD_RECT_WIDTH  = 5
-	local LIGHTNING_SHIELD_RECT_GAP    = 1
-	local LIGHTNING_SHIELD_NUM_RECTS   = 3
+	local LIGHTNING_SHIELD_RECT_WIDTH      = 5
+	local LIGHTNING_SHIELD_RECT_GAP        = 1
+	local LIGHTNING_SHIELD_NUM_RECTS       = 3
+	local LIGHTNING_SHIELD_BAR_GAP_DEFAULT = 6
 
 	ns.OnBarsCreated = function()
 		if not ns.mhBar then
@@ -1542,34 +1666,41 @@ local function SetupEnhShaman()
 		end
 
 		local barParent = GetOverlayParent(ns.mhBar)
-		-- Weave spark on MH bar directly at high draw layer so it renders above the bar fill
-		local weaveSpark = ns.mhBar:CreateTexture(nil, "OVERLAY")
+		local weaveOverlayFrame = CreateFrame("Frame", nil, barParent)
+		weaveOverlayFrame:SetAllPoints(barParent)
+		weaveOverlayFrame:SetFrameStrata(barParent:GetFrameStrata())
+		weaveOverlayFrame:SetFrameLevel((barParent:GetFrameLevel() or 0) + 6)
+		weaveOverlayFrame:EnableMouse(false)
+
+		-- Weave spark uses a dedicated overlay frame above the bars so it stays visible
+		-- even when the bar fill / border draw layers are raised.
+		local weaveSpark = weaveOverlayFrame:CreateTexture(nil, "OVERLAY")
 		weaveSpark:SetTexture(ns.GetWeaveSparkTexture and ns.GetWeaveSparkTexture() or "Interface\\AddOns\\WeakAuras\\Media\\Textures\\Square_FullWhite")
-		weaveSpark:SetDrawLayer("OVERLAY", 5)
+		weaveSpark:SetDrawLayer("OVERLAY", 7)
 		weaveSpark:SetBlendMode(ns.GetIndicatorBlendMode and ns.GetIndicatorBlendMode() or "ADD")
 		weaveSpark:SetAlpha(ns.GetWeaveSparkAlpha and ns.GetWeaveSparkAlpha() or 0.95)
 		weaveSpark:SetWidth(ns.GetWeaveSparkWidth and ns.GetWeaveSparkWidth() or 14)
 		weaveSpark:SetHeight(math.max(1, math.min((ns.GetWeaveSparkHeight and ns.GetWeaveSparkHeight() or 30), (ns.mhBar and ns.mhBar:GetHeight()) or (ns.BAR_HEIGHT or 30))))
-		weaveSpark:SetPoint("CENTER", ns.mhBar, "LEFT", 0, 0)
+		weaveSpark:SetPoint("CENTER", weaveOverlayFrame, "LEFT", 0, 0)
 
-		local weaveTriangleTop = barParent:CreateTexture(nil, "OVERLAY")
+		local weaveTriangleTop = weaveOverlayFrame:CreateTexture(nil, "OVERLAY")
 		weaveTriangleTop:SetTexture(ns.GetWeaveTriangleTopTexture and ns.GetWeaveTriangleTopTexture() or "Interface\\Buttons\\UI-ScrollBar-ScrollDownButton-Arrow")
 		if ns.SetTextureLayerAboveBar then
 			ns.SetTextureLayerAboveBar(weaveTriangleTop, ns.GetWeaveTriangleLayer and ns.GetWeaveTriangleLayer() or "OVERLAY", ns.GetBarTextureLayer and ns.GetBarTextureLayer() or "ARTWORK")
 		else
-			weaveTriangleTop:SetDrawLayer(ns.GetWeaveTriangleLayer and ns.GetWeaveTriangleLayer() or "OVERLAY")
+			weaveTriangleTop:SetDrawLayer(ns.GetWeaveTriangleLayer and ns.GetWeaveTriangleLayer() or "OVERLAY", 7)
 		end
 		weaveTriangleTop:SetBlendMode(ns.GetIndicatorBlendMode and ns.GetIndicatorBlendMode() or "ADD")
 		weaveTriangleTop:SetAlpha(ns.GetWeaveTriangleAlpha and ns.GetWeaveTriangleAlpha() or 1)
 		weaveTriangleTop:SetWidth(ns.GetWeaveTriangleSize and ns.GetWeaveTriangleSize() or 14)
 		weaveTriangleTop:SetHeight(ns.GetWeaveTriangleSize and ns.GetWeaveTriangleSize() or 14)
 
-		local weaveTriangleBottom = barParent:CreateTexture(nil, "OVERLAY")
+		local weaveTriangleBottom = weaveOverlayFrame:CreateTexture(nil, "OVERLAY")
 		weaveTriangleBottom:SetTexture(ns.GetWeaveTriangleBottomTexture and ns.GetWeaveTriangleBottomTexture() or "Interface\\Buttons\\UI-ScrollBar-ScrollUpButton-Arrow")
 		if ns.SetTextureLayerAboveBar then
 			ns.SetTextureLayerAboveBar(weaveTriangleBottom, ns.GetWeaveTriangleLayer and ns.GetWeaveTriangleLayer() or "OVERLAY", ns.GetBarTextureLayer and ns.GetBarTextureLayer() or "ARTWORK")
 		else
-			weaveTriangleBottom:SetDrawLayer(ns.GetWeaveTriangleLayer and ns.GetWeaveTriangleLayer() or "OVERLAY")
+			weaveTriangleBottom:SetDrawLayer(ns.GetWeaveTriangleLayer and ns.GetWeaveTriangleLayer() or "OVERLAY", 7)
 		end
 		weaveTriangleBottom:SetBlendMode(ns.GetIndicatorBlendMode and ns.GetIndicatorBlendMode() or "ADD")
 		weaveTriangleBottom:SetAlpha(ns.GetWeaveTriangleAlpha and ns.GetWeaveTriangleAlpha() or 1)
@@ -1579,14 +1710,20 @@ local function SetupEnhShaman()
 		-- OH spark: mirrors MH spark when dual-wielding
 		local weaveSparkOH = nil
 		if ns.ohBar then
-			weaveSparkOH = ns.ohBar:CreateTexture(nil, "OVERLAY")
+			local ohOverlayFrame = CreateFrame("Frame", nil, GetOverlayParent(ns.ohBar) or ns.ohBar)
+			ohOverlayFrame:SetAllPoints(GetOverlayParent(ns.ohBar) or ns.ohBar)
+			ohOverlayFrame:SetFrameStrata((GetOverlayParent(ns.ohBar) or ns.ohBar):GetFrameStrata())
+			ohOverlayFrame:SetFrameLevel(((GetOverlayParent(ns.ohBar) or ns.ohBar):GetFrameLevel() or 0) + 6)
+			ohOverlayFrame:EnableMouse(false)
+
+			weaveSparkOH = ohOverlayFrame:CreateTexture(nil, "OVERLAY")
 			weaveSparkOH:SetTexture(ns.GetWeaveSparkTexture and ns.GetWeaveSparkTexture() or "Interface\\AddOns\\WeakAuras\\Media\\Textures\\Square_FullWhite")
-			weaveSparkOH:SetDrawLayer("OVERLAY", 5)
+			weaveSparkOH:SetDrawLayer("OVERLAY", 7)
 			weaveSparkOH:SetBlendMode(ns.GetIndicatorBlendMode and ns.GetIndicatorBlendMode() or "ADD")
 			weaveSparkOH:SetAlpha(ns.GetWeaveSparkAlpha and ns.GetWeaveSparkAlpha() or 0.95)
 			weaveSparkOH:SetWidth(ns.GetWeaveSparkWidth and ns.GetWeaveSparkWidth() or 14)
 			weaveSparkOH:SetHeight(math.max(1, math.min((ns.GetWeaveSparkHeight and ns.GetWeaveSparkHeight() or 30), (ns.ohBar and ns.ohBar:GetHeight()) or (ns.BAR_HEIGHT or 30))))
-			weaveSparkOH:SetPoint("CENTER", ns.ohBar, "LEFT", 0, 0)
+			weaveSparkOH:SetPoint("CENTER", ohOverlayFrame, "LEFT", 0, 0)
 			weaveSparkOH:Hide()
 		end
 
@@ -1631,49 +1768,42 @@ local function SetupEnhShaman()
 		end
 	end
 
-	local function GetShamanFlurryStackCount()
-		local unitBuffFn = rawget(_G, "UnitBuff")
-		if not unitBuffFn then
-			return nil
-		end
-
-		for index = 1, 40 do
-			local auraName, _, _, auraCount, _, _, _, _, _, _, auraSpellId = unitBuffFn("player", index)
-			if not auraName then
-				break
-			end
-
-			if auraName == "Flurry" or auraSpellId == 12319 or auraSpellId == 16280 then
-				return math.min(math.max(tonumber(auraCount) or 1, 1), 3)
-			end
-		end
-
-		return nil
-	end
-
-	local function UpdateShamanFlurryBadge()
+	-- Phase 2: Shaman Flurry icon (stacks + duration, centered above all bars)
+	local shamanFlurryIcon = nil
+	local function UpdateShamanFlurryIcon()
 		if not ns.mhBar then
 			return
 		end
 
-		local flurryText = ns.mhBar.shamanFlurryText
-		if not flurryText then
-			flurryText = ns.mhBar:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-			flurryText:SetPoint("RIGHT", ns.mhBar, "LEFT", -3, 0)
-			flurryText:SetJustifyH("RIGHT")
-			flurryText:SetFont("Fonts\\FRIZQT__.TTF", 9, "OUTLINE")
-			flurryText:SetTextColor(1.0, 0.75, 0.10, 0.9)
-			ns.mhBar.shamanFlurryText = flurryText
+		if not shamanFlurryIcon then
+			shamanFlurryIcon = CreateFlurryIconFrame()
+			shamanFlurryIcon:SetPoint("BOTTOM", ns.mhBar, "TOP", 0, 12)
 		end
 
-		local count = GetShamanFlurryStackCount()
-		if not count then
-			flurryText:Hide()
+		local charges, expirationTime = GetFlurryBuffInfo()
+		if not charges then
+			shamanFlurryIcon:Hide()
 			return
 		end
 
-		flurryText:SetText("⚡" .. tostring(count))
-		flurryText:Show()
+		-- Update stack count
+		shamanFlurryIcon.stackText:SetText("x" .. charges)
+
+		-- Update duration remaining (direct GetTimePreciseSec — same clock domain as expirationTime)
+		if type(expirationTime) == "number" and expirationTime > 0 then
+			local clockNow = (GetTimePreciseSec and GetTimePreciseSec()) or GetCurrentTime()
+			local remaining = expirationTime - clockNow
+			if remaining > 0 then
+				shamanFlurryIcon.durationText:SetText(string.format("%.1f", remaining))
+				shamanFlurryIcon.durationText:Show()
+			else
+				shamanFlurryIcon.durationText:Hide()
+			end
+		else
+			shamanFlurryIcon.durationText:Hide()
+		end
+
+		shamanFlurryIcon:Show()
 	end
 
 	local function GetShamanCooldownRemaining(spellId)
@@ -1813,7 +1943,7 @@ local function SetupEnhShaman()
 		return nil
 	end
 
-	ns.UpdateWindfuryIcd = function()
+	ns.UpdateShamanWindfuryIcd = function()
 		if not ns.mhBar then return end
 		local db = SuperSwingTimerDB or ns.DB_DEFAULTS
 		if not db or db.showShamanWindfuryIcd == false then
@@ -1863,8 +1993,36 @@ local function SetupEnhShaman()
 
 	local FLAME_SHOCK_BAR_HEIGHT = 6
 	local FLAME_SHOCK_FALLBACK_DURATION = 12
+	local FLAME_SHOCK_GLOW_WINDOW = 4
 	local flameShockBar = nil
 	local nextFlameShockUpdateAt = 0
+
+	local function SetFlameShockGlow(bar, remaining)
+		if not bar then
+			return
+		end
+
+		local glowBorder = bar.glowBorder
+		if not glowBorder then
+			return
+		end
+
+		local shouldGlow = type(remaining) == "number" and remaining > 0 and remaining <= FLAME_SHOCK_GLOW_WINDOW
+		if not shouldGlow then
+			for _, edge in ipairs(glowBorder) do
+				edge:Hide()
+			end
+			return
+		end
+
+		local now = GetCurrentTime()
+		local pulse = 0.5 + (0.5 * math.sin(now * 10))
+		local alpha = 0.35 + (0.45 * pulse)
+		for _, edge in ipairs(glowBorder) do
+			edge:SetColorTexture(1.0, 0.45, 0.08, alpha)
+			edge:Show()
+		end
+	end
 
 	local function EnsureFlameShockBar()
 		if flameShockBar then
@@ -1889,6 +2047,41 @@ local function SetupEnhShaman()
 		bg:SetAllPoints(true)
 		bg:SetColorTexture(0, 0, 0, 0.45)
 		flameShockBar.backgroundTexture = bg
+
+		local glowBorder = {}
+		local glowTop = flameShockBar:CreateTexture(nil, "OVERLAY")
+		glowTop:SetPoint("TOPLEFT", flameShockBar, "TOPLEFT", -1, 1)
+		glowTop:SetPoint("TOPRIGHT", flameShockBar, "TOPRIGHT", 1, 1)
+		glowTop:SetHeight(1)
+		glowTop:SetColorTexture(1.0, 0.45, 0.08, 0)
+		glowTop:Hide()
+		glowBorder[#glowBorder + 1] = glowTop
+
+		local glowBottom = flameShockBar:CreateTexture(nil, "OVERLAY")
+		glowBottom:SetPoint("BOTTOMLEFT", flameShockBar, "BOTTOMLEFT", -1, -1)
+		glowBottom:SetPoint("BOTTOMRIGHT", flameShockBar, "BOTTOMRIGHT", 1, -1)
+		glowBottom:SetHeight(1)
+		glowBottom:SetColorTexture(1.0, 0.45, 0.08, 0)
+		glowBottom:Hide()
+		glowBorder[#glowBorder + 1] = glowBottom
+
+		local glowLeft = flameShockBar:CreateTexture(nil, "OVERLAY")
+		glowLeft:SetPoint("TOPLEFT", flameShockBar, "TOPLEFT", -1, 1)
+		glowLeft:SetPoint("BOTTOMLEFT", flameShockBar, "BOTTOMLEFT", -1, -1)
+		glowLeft:SetWidth(1)
+		glowLeft:SetColorTexture(1.0, 0.45, 0.08, 0)
+		glowLeft:Hide()
+		glowBorder[#glowBorder + 1] = glowLeft
+
+		local glowRight = flameShockBar:CreateTexture(nil, "OVERLAY")
+		glowRight:SetPoint("TOPRIGHT", flameShockBar, "TOPRIGHT", 1, 1)
+		glowRight:SetPoint("BOTTOMRIGHT", flameShockBar, "BOTTOMRIGHT", 1, -1)
+		glowRight:SetWidth(1)
+		glowRight:SetColorTexture(1.0, 0.45, 0.08, 0)
+		glowRight:Hide()
+		glowBorder[#glowBorder + 1] = glowRight
+
+		flameShockBar.glowBorder = glowBorder
 
 		local label = flameShockBar:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
 		label:SetPoint("CENTER", flameShockBar, "CENTER", 0, 0)
@@ -1957,6 +2150,7 @@ local function SetupEnhShaman()
 
 		local duration, expirationTime = GetTargetFlameShockData()
 		if not duration and not expirationTime then
+			SetFlameShockGlow(bar, 0)
 			bar:Hide()
 			return
 		end
@@ -1978,6 +2172,7 @@ local function SetupEnhShaman()
 		bar:ClearAllPoints()
 		bar:SetPoint("BOTTOMLEFT", ns.mhBar, "TOPLEFT", 0, 2)
 		bar:SetPoint("BOTTOMRIGHT", ns.mhBar, "TOPRIGHT", 0, 2)
+		SetFlameShockGlow(bar, remaining)
 		bar:Show()
 	end
 
@@ -2021,11 +2216,10 @@ local function SetupEnhShaman()
 		if not auraIndex then
 			return nil
 		end
-		local unitBuffFn = rawget(_G, "UnitBuff")
-		if not unitBuffFn then
+		if not UnitBuff then
 			return nil
 		end
-		local _, _, count = unitBuffFn("player", auraIndex)
+		local _, _, count = UnitBuff("player", auraIndex)
 		if type(count) ~= "number" or count <= 0 then
 			if UnitAura then
 				local _, _, auraCount = UnitAura("player", auraIndex, "HELPFUL")
@@ -2114,12 +2308,18 @@ local function SetupEnhShaman()
 			end
 		end
 
+		local trackerGap = tonumber(db.shamanLightningTrackerGap)
+		if not trackerGap then
+			trackerGap = (ns.DB_DEFAULTS and ns.DB_DEFAULTS.shamanLightningTrackerGap) or LIGHTNING_SHIELD_BAR_GAP_DEFAULT
+		end
+		trackerGap = math.max(0, math.min(trackerGap, 40))
+
 		-- Position: left of the MH/OH bar stack
 		ns.shamanLightningContainer:ClearAllPoints()
 		if hasOffHand then
-			ns.shamanLightningContainer:SetPoint("TOPRIGHT", ns.mhBar, "TOPLEFT", -4, 0)
+			ns.shamanLightningContainer:SetPoint("TOPRIGHT", ns.mhBar, "TOPLEFT", -trackerGap, 0)
 		else
-			ns.shamanLightningContainer:SetPoint("RIGHT", ns.mhBar, "LEFT", -4, 0)
+			ns.shamanLightningContainer:SetPoint("RIGHT", ns.mhBar, "LEFT", -trackerGap, 0)
 		end
 
 		ns.shamanLightningContainer:Show()
@@ -2132,18 +2332,25 @@ local function SetupEnhShaman()
 		previousOnUpdate2(elapsed)
 		UpdateWeaveVisuals()
 		UpdateShamanFlameShockBar(false)
-		UpdateShamanFlurryBadge()
+		UpdateShamanFlurryIcon()
 		UpdateShamanStormstrikeBadge()
 		UpdateShamanisticRageBadge()
 		UpdateLightningShieldVisual()
 	end
 
-	UpdateWeaveVisuals()
-	UpdateShamanFlameShockBar(true)
-	UpdateShamanFlurryBadge()
-	UpdateShamanStormstrikeBadge()
-	UpdateShamanisticRageBadge()
-	UpdateLightningShieldVisual()
+	local function SafeInitCall(fn)
+		if type(fn) ~= "function" then
+			return
+		end
+		pcall(fn)
+	end
+
+	SafeInitCall(UpdateWeaveVisuals)
+	SafeInitCall(function() UpdateShamanFlameShockBar(true) end)
+	SafeInitCall(UpdateShamanFlurryIcon)
+	SafeInitCall(UpdateShamanStormstrikeBadge)
+	SafeInitCall(UpdateShamanisticRageBadge)
+	SafeInitCall(UpdateLightningShieldVisual)
 end
 
 local function SetupDruid()
@@ -2151,7 +2358,6 @@ local function SetupDruid()
 	local DRUID_ENERGY_TICK_DURATION = 2.0
 	local DRUID_ENERGY_TICK_GAP = 2
 	if not IsCurrentSpell then
-		local C_Spell = rawget(_G, "C_Spell")
 		if C_Spell and C_Spell.IsCurrentSpell then
 			IsCurrentSpell = C_Spell.IsCurrentSpell
 		end
@@ -2395,7 +2601,6 @@ end
 local function SetupHunter()
 	local IsCurrentSpell = rawget(_G, "IsCurrentSpell")
 	if not IsCurrentSpell then
-		local C_Spell = rawget(_G, "C_Spell")
 		if C_Spell and C_Spell.IsCurrentSpell then
 			IsCurrentSpell = C_Spell.IsCurrentSpell
 		end
@@ -3660,9 +3865,8 @@ local function SetupRogue()
 			return
 		end
 
-		local spellCooldownFn = rawget(_G, "GetSpellCooldown")
-		if not spellCooldownFn then return end
-		local start, duration = spellCooldownFn(ADRENALINE_RUSH_SPELL_ID)
+		if not GetSpellCooldown then return end
+		local start, duration = GetSpellCooldown(ADRENALINE_RUSH_SPELL_ID)
 		if not duration or duration <= 0 then
 			adrenalineRushBar:Hide()
 			return
@@ -3762,18 +3966,37 @@ function ns.InitClassMods()
 	if ns.shamanFlameShockBar then
 		ns.shamanFlameShockBar:Hide()
 	end
+
 	local class = ns.playerClass
 	if class == "PALADIN" then
-		SetupRetPaladin()
+		pcall(SetupRetPaladin)
 	elseif class == "WARRIOR" then
-		SetupWarrior()
+		pcall(SetupWarrior)
 	elseif class == "ROGUE" then
-		SetupRogue()
+		pcall(SetupRogue)
 	elseif class == "HUNTER" then
-		SetupHunter()
+		pcall(SetupHunter)
 	elseif class == "SHAMAN" then
-		SetupEnhShaman()
+		-- Save base OnUpdate before SetupEnhShaman wraps it, so we can restore
+		-- the chain if the initializer fails silently (e.g. from a weave catalog
+		-- lookup error on Anniversary 2.5.5).
+		local preShamanOnUpdate = ns.OnUpdate
+		local ok = pcall(SetupEnhShaman)
+		if not ok then
+			-- Fail-open for production safety: keep core bars operational even if a
+			-- class helper initializer throws in edge client/API states.
+			-- Clear ALL partial Shaman state so OnUpdate doesn't call broken upvalues.
+			ns.OnBarsCreated = nil
+			ns.UpdateLightningShieldVisual = nil
+			ns.UpdateShamanFlameShockBar = nil
+			ns.UpdateShamanWindfuryIcd = nil
+			-- Restore OnUpdate to the pre-Shaman version so bar rendering chain
+			-- is intact even though Shaman overlays are offline.
+			if preShamanOnUpdate then
+				ns.OnUpdate = preShamanOnUpdate
+			end
+		end
 	elseif class == "DRUID" then
-		SetupDruid()
+		pcall(SetupDruid)
 	end
 end

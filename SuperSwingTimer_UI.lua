@@ -2415,11 +2415,11 @@ function ns.OnUpdate(elapsed)
 	-- Phase 2: Hunter Rapid Fire bar
 	if ns.UpdateHunterRapidFire then ns.UpdateHunterRapidFire(elapsed) end
 	-- Phase 2: Warrior Flurry counter (throttled internally)
-	if ns.UpdateWarriorFlurry then ns.UpdateWarriorFlurry(elapsed) end
+	if ns.UpdateWarriorFlurryCounter then ns.UpdateWarriorFlurryCounter(elapsed) end
 	-- Phase 2: Rogue Adrenaline Rush bar
 	if ns.UpdateRogueAdrenalineRush then ns.UpdateRogueAdrenalineRush(elapsed) end
 	-- Phase 2: Shaman Windfury ICD tracker
-	if ns.UpdateWindfuryIcd then ns.UpdateWindfuryIcd() end
+	if ns.UpdateShamanWindfuryIcd then ns.UpdateShamanWindfuryIcd() end
 end
 
 -- ============================================================
