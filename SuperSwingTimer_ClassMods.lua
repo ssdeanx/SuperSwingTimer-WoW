@@ -1607,10 +1607,11 @@ local function SetupEnhShaman()
 		local sparkVisualHeight = clampedSparkHeight
 
 		if showSpark then
-			local castStartFraction = info.castStartSwingFraction or info.currentSwingFraction or info.markerFraction or 0
+			-- Spark is driven purely by the cast's own progress (0 -> 1) and
+			-- intentionally ignores MH swing fractions. The weave spark should
+			-- track the cast itself, not where MH happens to be in its swing.
 			local castProgress = math.max(0, math.min(info.castProgress or 0, 1))
-			local movingFraction = math.max(0, math.min(castStartFraction + ((1 - castStartFraction) * castProgress), 1))
-			sparkPos = movingFraction * barWidth
+			sparkPos = castProgress * barWidth
 			markerPos = sparkPos
 		end
 
@@ -2008,19 +2009,12 @@ local function SetupEnhShaman()
 		end
 
 		local shouldGlow = type(remaining) == "number" and remaining > 0 and remaining <= FLAME_SHOCK_GLOW_WINDOW
-		if not shouldGlow then
-			for _, edge in ipairs(glowBorder) do
+		for _, edge in ipairs(glowBorder) do
+			if shouldGlow then
+				edge:Show()
+			else
 				edge:Hide()
 			end
-			return
-		end
-
-		local now = GetCurrentTime()
-		local pulse = 0.5 + (0.5 * math.sin(now * 10))
-		local alpha = 0.35 + (0.45 * pulse)
-		for _, edge in ipairs(glowBorder) do
-			edge:SetColorTexture(1.0, 0.45, 0.08, alpha)
-			edge:Show()
 		end
 	end
 
@@ -2034,6 +2028,12 @@ local function SetupEnhShaman()
 		end
 
 		flameShockBar = CreateFrame("StatusBar", nil, ns.mhBar)
+		-- All static setup is done once at creation and never touched again
+		-- at runtime. Per-frame updates in UpdateShamanFlameShockBar only
+		-- modify SetMinMaxValues, SetValue, glow Show/Hide, and the label
+		-- text.  Eliminating per-frame ClearAllPoints / SetPoint /
+		-- SetStatusBarTexture / SetColorTexture on glow edges fixes the
+		-- visible flash these calls cause on Classic/TBC's rendering path.
 		flameShockBar:SetStatusBarTexture((ns.GetBarTexture and ns.GetBarTexture()) or "Interface\\TargetingFrame\\UI-StatusBar")
 		flameShockBar:SetStatusBarColor(1.0, 0.35, 0.10, 0.90)
 		flameShockBar:SetMinMaxValues(0, 1)
@@ -2049,11 +2049,13 @@ local function SetupEnhShaman()
 		flameShockBar.backgroundTexture = bg
 
 		local glowBorder = {}
+		-- Glow edges use the final steady alpha at creation time so
+		-- SetFlameShockGlow only calls Show/Hide, never SetColorTexture.
 		local glowTop = flameShockBar:CreateTexture(nil, "OVERLAY")
 		glowTop:SetPoint("TOPLEFT", flameShockBar, "TOPLEFT", -1, 1)
 		glowTop:SetPoint("TOPRIGHT", flameShockBar, "TOPRIGHT", 1, 1)
 		glowTop:SetHeight(1)
-		glowTop:SetColorTexture(1.0, 0.45, 0.08, 0)
+		glowTop:SetColorTexture(1.0, 0.45, 0.08, 0.85)
 		glowTop:Hide()
 		glowBorder[#glowBorder + 1] = glowTop
 
@@ -2061,7 +2063,7 @@ local function SetupEnhShaman()
 		glowBottom:SetPoint("BOTTOMLEFT", flameShockBar, "BOTTOMLEFT", -1, -1)
 		glowBottom:SetPoint("BOTTOMRIGHT", flameShockBar, "BOTTOMRIGHT", 1, -1)
 		glowBottom:SetHeight(1)
-		glowBottom:SetColorTexture(1.0, 0.45, 0.08, 0)
+		glowBottom:SetColorTexture(1.0, 0.45, 0.08, 0.85)
 		glowBottom:Hide()
 		glowBorder[#glowBorder + 1] = glowBottom
 
@@ -2069,7 +2071,7 @@ local function SetupEnhShaman()
 		glowLeft:SetPoint("TOPLEFT", flameShockBar, "TOPLEFT", -1, 1)
 		glowLeft:SetPoint("BOTTOMLEFT", flameShockBar, "BOTTOMLEFT", -1, -1)
 		glowLeft:SetWidth(1)
-		glowLeft:SetColorTexture(1.0, 0.45, 0.08, 0)
+		glowLeft:SetColorTexture(1.0, 0.45, 0.08, 0.85)
 		glowLeft:Hide()
 		glowBorder[#glowBorder + 1] = glowLeft
 
@@ -2077,7 +2079,7 @@ local function SetupEnhShaman()
 		glowRight:SetPoint("TOPRIGHT", flameShockBar, "TOPRIGHT", 1, 1)
 		glowRight:SetPoint("BOTTOMRIGHT", flameShockBar, "BOTTOMRIGHT", 1, -1)
 		glowRight:SetWidth(1)
-		glowRight:SetColorTexture(1.0, 0.45, 0.08, 0)
+		glowRight:SetColorTexture(1.0, 0.45, 0.08, 0.85)
 		glowRight:Hide()
 		glowBorder[#glowBorder + 1] = glowRight
 
@@ -2165,14 +2167,15 @@ local function SetupEnhShaman()
 			remaining = math.max(expirationTime - now, 0)
 		end
 
-		bar:SetStatusBarTexture((ns.GetBarTexture and ns.GetBarTexture()) or "Interface\\TargetingFrame\\UI-StatusBar")
 		bar:SetMinMaxValues(0, duration)
 		bar:SetValue(remaining)
-		bar:SetHeight(FLAME_SHOCK_BAR_HEIGHT)
-		bar:ClearAllPoints()
-		bar:SetPoint("BOTTOMLEFT", ns.mhBar, "TOPLEFT", 0, 2)
-		bar:SetPoint("BOTTOMRIGHT", ns.mhBar, "TOPRIGHT", 0, 2)
 		SetFlameShockGlow(bar, remaining)
+		-- Update the countdown label each frame. Matches the RapidFire /
+		-- AdrenalineRush whole-second countdown pattern (no prefix, just
+		-- the remaining seconds as a rounded whole number).
+		if bar.label then
+			bar.label:SetText(string.format("%.0f", math.max(remaining, 0)))
+		end
 		bar:Show()
 	end
 
@@ -2666,6 +2669,7 @@ local function SetupHunter()
 		end
 		return inRange
 	end
+	ns.IsHunterTargetInMeleeRange = IsHunterTargetInMeleeRange
 
 	local function IsHunterTargetInRangedShotRange()
 		return IsSpellTokenInRange(ns.AUTO_SHOT_NAME, "target")
@@ -3891,6 +3895,7 @@ function ns.InitClassMods()
 	ns.OnDruidFormChange = nil
 	ns.OnMeleeSwing = nil
 	ns.OnRangedSwing = nil
+	ns.IsHunterTargetInMeleeRange = nil
 	ns.UpdateWarriorQueueTint = nil
 	ns.ClearWarriorQueueTint = nil
 	ns.UpdateWarriorRageBar = nil

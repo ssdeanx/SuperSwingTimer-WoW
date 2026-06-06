@@ -1319,8 +1319,17 @@ function ns.HandleSpellcastSucceeded(unit, castGUIDOrSpellName, spellId)
 		ns.hunterAutoRepeatActive = false
 		ns.ResetTimer("ranged")
 	elseif ns.casting and not ns.preventSwingReset then
-		ns.StartSwing("mh", nil, now)
-		ns.StartSwing("oh", nil, now)
+		-- Auto Shot must not reset the MH swing when the Hunter is at range;
+		-- only reset MH/OH when the target is actually in melee range.
+		local isHunterAutoShot = ns.playerClass == "HUNTER" and ns.IsAutoShotSpell and ns.IsAutoShotSpell(spellToken)
+		local skipMeleeReset = false
+		if isHunterAutoShot and ns.IsHunterTargetInMeleeRange then
+			skipMeleeReset = ns.IsHunterTargetInMeleeRange() ~= true
+		end
+		if not skipMeleeReset then
+			ns.StartSwing("mh", nil, now)
+			ns.StartSwing("oh", nil, now)
+		end
 		local shouldResetRanged = ns.playerClass ~= "HUNTER"
 		if not shouldResetRanged and ns.IsHunterCastSpell and ns.IsHunterCastSpell(spellToken) then
 			shouldResetRanged = true
