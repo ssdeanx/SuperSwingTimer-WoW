@@ -1,5 +1,20 @@
 # Super Swing Timer Changelog
 
+## v0.1.4 - 2026-06-17
+
+- **Paladin buff icons added**: full buff/CD icon group above the MH bar matching the Warrior/Rogue/Shaman/Hunter pattern. Tracks Avenging Wrath, Divine Shield, Hammer of Justice, Blessing of Protection, Holy Wrath, Lay on Hands, and all racials (Blood Fury, Berserking, Stoneform, Shadowmeld, War Stomp, Gift of the Naaru, Escape Artist, Will of the Forsaken, Perception, Arcane Torrent). Icons glow gold with pulsing ADD blend in the last 4 seconds, show countdown text. Configurable via Quick Controls toggle + Buff Icon Size slider in Appearance. Migration guards for existing users.
+- **Dual-client CLEU engine fix (CRITICAL)**: Classic Era `COMBAT_LOG_EVENT` sends numeric spell IDs for `SWING_DAMAGE`, `SWING_MISSED`, and `SPELL_CAST_SUCCESS`. TBC Anniversary sends localized spell names (strings) instead. The `registerResetSwingSpells()`, `registerNoResetSwingSpells()`, `PAUSE_SWING_SPELLS`, and `RESET_RANGED_SWING_SPELLS` registration blocks only stored numeric IDs, so swing resets, pauses, and ranged resets silently failed on TBC Anniversary. Fixed by inlining `ns.GetSpellInfo(id)` inside every registration loop at init time, populating each lookup table with both `[spellId] = true` AND `[localizedName] = true`. All four swing-affecting paths now match correctly on both clients.
+- **Hunter buff icons redesigned**: shading removed entirely (no more dim overlay); icons now glow gold with a pulsing ADD blend effect during the last 4 seconds of any tracked buff or cooldown. Added racial ability tracking (Blood Fury, Berserking, Stoneform, Shadowmeld, War Stomp, Gift of the Naaru). Buff group moved up 5px for better visual separation from the ranged bar.
+- **Shaman buff icon group**: added the same buff/CD icon system for Shaman, tracking Shamanistic Rage, Heroism, Stormstrike, Flurry, Windfury Weapon, Elemental Devastation, and racials (Blood Fury, Berserking, Gift of the Naaru, War Stomp). Configurable via Quick Controls toggle + Buff Icon Size slider. Icons sit above the MH bar with gold glow in the last 4 seconds, matching the redesigned Hunter version exactly.
+
+## v0.1.3 - 2026-06-16
+
+- **Hunter cast bar color separated**: added dedicated `hunterCastBar` color key so the cast bar fill can be set independently from the ranged bar fill. Default is light blue (0.35, 0.65, 0.95). Config swatch added to Quick Controls. Migration v49 seeds for existing users.
+- **Hunter cast bar height increased**: default changed from 10px to 13px for better readability.
+- **Critical bar-jumping bug fixed**: added 0.1s `rangedTimerHoldEnd` holdover to prevent MH bar flicker during ranged-only auto shot cycle transitions.
+- **Hunter stance icon**: an Aspect indicator icon to the left of the range helper bar, showing the active aspect spell icon (Hawk, Cheetah, Monkey, Pack, Wild, Viper, Beast). Sized to match the range helper width.
+- **Hunter CD/buff icon group**: adaptive 25x25px icons above the ranged bar stack tracking Bestial Wrath, Rapid Fire, The Beast Within, Quick Shots, and Rapid Killing. Icons dim as buffs expire with duration countdown text.
+
 ## v0.1.2 - 2026-06-01
 
 - **Shaman init crash fix (SetDrawLayer sublevel)**: Fixed a hard init-blocker on Anniversary 2.5.5 where `SetDrawLayer("OVERLAY", 10)` used sublevel `10`, outside the valid `-8` to `7` range. All four Shaman weave overlay calls (MH spark, OH spark, top/bottom triangle markers) now use sublevel `7`, resolving the `Texture:CSimpleRegion::SetDrawLayerScript()` error that prevented Shaman bars from rendering at all.

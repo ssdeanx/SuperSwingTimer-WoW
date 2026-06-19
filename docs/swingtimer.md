@@ -145,125 +145,125 @@ local function GetAutoShotCooldown()
     return nil, nil
 end
 
+-- Dual-client spell lookup helper.
+-- Builds name → true entries alongside existing ID → true entries so that
+-- lookup-by-name works on TBC Anniversary (which passes spell names in some
+-- event payloads) while ID-only lookups still work on Classic Era.
+local function addSpellNamesToLookup(lookup)
+    if type(GetSpellInfo) ~= "function" then
+        return
+    end
+    local names = {}
+    for spellId in pairs(lookup) do
+        if type(spellId) == "number" then
+            local spellName = GetSpellInfo(spellId)
+            if spellName then
+                names[#names + 1] = spellName
+            end
+        end
+    end
+    for _, spellName in ipairs(names) do
+        lookup[spellName] = true
+    end
+end
+
 local reset_swing_spells = {
     [16589] = true, -- Noggenfogger Elixir
     [2645] = true, -- Ghost Wolf
     [51533] = true, -- Feral Spirit
     [2764] = true, -- Throw
-    [3018] = true, -- Shoots,
+    [3018] = true, -- Shoot
     [5384] = true, -- Feign Death
     [5019] = true, -- Shoot
     [75] = true, -- Auto Shot
     [20066] = true, -- Repentance
+    -- Paladin: Hammer of Justice (TBC ranks 1-4)
+    [853] = true,
+    [5588] = true,
+    [5589] = true,
+    [10308] = true,
+    -- Paladin: Holy Wrath (TBC ranks 1-3)
+    [2812] = true,
+    [10318] = true,
+    [27139] = true,
 }
+addSpellNamesToLookup(reset_swing_spells)
 
 local prevent_swing_speed_update = {
-    [768] = true, -- Cat Form
-    [5487] = true, -- Bear Form
-    [9634] = true, -- Dire Bear Form
+    -- Druid form auras (prevent speed recalculation on apply)
+    [768] = true,   -- Cat Form
+    [5487] = true,  -- Bear Form
+    [9634] = true,  -- Dire Bear Form
 }
+addSpellNamesToLookup(prevent_swing_speed_update)
 
 local next_melee_spells = {
-    [30324] = true, -- Heroic Strike (rank 11)
-    [25286] = true, -- Heroic Strike (rank 9)
-    [11567] = true, -- Heroic Strike (rank 8)
-    [11566] = true, -- Heroic Strike (rank 7)
-    [11565] = true, -- Heroic Strike (rank 6)
-    [11564] = true, -- Heroic Strike (rank 5)
-    [1608] = true, -- Heroic Strike (rank 4)
-    [285] = true, -- Heroic Strike (rank 3)
-    [284] = true, -- Heroic Strike (rank 2)
-    [78] = true, -- Heroic Strike (rank 1)
-    [25231] = true, -- Cleave (rank 6)
-    [20569] = true, -- Cleave (rank 5)
-    [11609] = true, -- Cleave (rank 4)
-    [11608] = true, -- Cleave (rank 3)
-    [7369] = true, -- Cleave (rank 2)
-    [845] = true, -- Cleave (rank 1)
+    -- Heroic Strike (Warrior)
+    [78] = true, [284] = true, [285] = true, [1608] = true,
+    [11564] = true, [11565] = true, [11566] = true, [11567] = true,
+    [25286] = true, [30324] = true,
+    -- Cleave (Warrior)
+    [845] = true, [7369] = true, [11608] = true, [11609] = true,
+    [20569] = true, [25231] = true,
+    -- Raptor Strike (Hunter)
+    [2973] = true, [14260] = true, [14261] = true, [14262] = true,
+    [14263] = true, [14264] = true, [14265] = true, [14266] = true,
+    -- Maul (Druid — Bear)
+    [6807] = true, [6808] = true, [6809] = true, [8972] = true,
+    [9745] = true, [9880] = true, [9881] = true,
+    -- Bombs / abilities that count as melee-swings
     [27022] = true, -- Volley (TBC)
     [34120] = true, -- Steady Shot (TBC)
     [30310] = true, -- Fel Iron Bomb (TBC)
     [30311] = true, -- Adamantite Grenade (TBC)
-    [14266] = true, -- Raptor Strike (rank 8)
-    [14265] = true, -- Raptor Strike (rank 7)
-    [14264] = true, -- Raptor Strike (rank 6)
-    [14263] = true, -- Raptor Strike (rank 5)
-    [14262] = true, -- Raptor Strike (rank 4)
-    [14261] = true, -- Raptor Strike (rank 3)
-    [14260] = true, -- Raptor Strike (rank 2)
-    [2973] = true, -- Raptor Strike (rank 1)
-    [6807] = true, -- Maul (rank 1)
-    [6808] = true, -- Maul (rank 2)
-    [6809] = true, -- Maul (rank 3)
-    [8972] = true, -- Maul (rank 4)
-    [9745] = true, -- Maul (rank 5)
-    [9880] = true, -- Maul (rank 6)
-    [9881] = true, -- Maul (rank 7)
 }
+addSpellNamesToLookup(next_melee_spells)
 
 local noreset_swing_spells = {
-    [30310] = true, -- Fel Iron Bomb (TBC)
-    [30311] = true, -- Adamantite Grenade (TBC)
-    [23063] = true, -- Dense Dynamite
-    [4054] = true, -- Rough Dynamite
-    [4064] = true, -- Rough Copper Bomb
-    [4061] = true, -- Coarse Dynamite
-    [8331] = true, -- Ez-Thro Dynamite
-    [4065] = true, -- Large Copper Bomb
-    [4066] = true, -- Small Bronze Bomb
-    [4062] = true, -- Heavy Dynamite
-    [4067] = true, -- Big Bronze Bomb
-    [4068] = true, -- Iron Grenade
-    [23000] = true, -- Ez-Thro Dynamite II
-    [12421] = true, -- Mithril Frag Bomb
-    [4069] = true, -- Big Iron Bomb
-    [12562] = true, -- The Big One
-    [12543] = true, -- Hi-Explosive Bomb
-    [19769] = true, -- Thorium Grenade
-    [19784] = true, -- Dark Iron Bomb
-    [19821] = true, -- Arcane Bomb
+    -- Bombs / thrown explosives
+    [4054] = true, [4064] = true, [4061] = true, [8331] = true,
+    [4065] = true, [4066] = true, [4062] = true, [4067] = true,
+    [4068] = true, [23000] = true, [12421] = true, [4069] = true,
+    [12562] = true, [12543] = true, [19769] = true, [19784] = true,
+    [19821] = true, [23063] = true, [30310] = true, [30311] = true,
+    -- Hunter shots that do not reset swing
     [34120] = true, -- Steady Shot (TBC)
     [27022] = true, -- Volley (TBC)
-    [2643] = true, -- Multi-Shot rank 1 (TBC)
-    [14288] = true, -- Multi-Shot rank 2 (TBC)
-    [14289] = true, -- Multi-Shot rank 3 (TBC)
-    [14290] = true, -- Multi-Shot rank 4 (TBC)
-    [25294] = true, -- Multi-Shot rank 5 (TBC)
-    [27021] = true, -- Multi-Shot rank 6 (TBC)
-    [19434] = true, -- Aimed Shot (rank 1)
-    [20900] = true, -- Aimed Shot (rank 2)
-    [20901] = true, -- Aimed Shot (rank 3)
-    [20902] = true, -- Aimed Shot (rank 4)
-    [20903] = true, -- Aimed Shot (rank 5)
-    [20904] = true, -- Aimed Shot (rank 6)
-    [27065] = true, -- Aimed Shot (TBC)
+    [2643] = true,  -- Multi-Shot rank 1
+    [14288] = true, [14289] = true, [14290] = true,
+    [25294] = true, [27021] = true, -- Multi-Shot ranks 5-6
+    [19434] = true, -- Aimed Shot rank 1
+    [20900] = true, [20901] = true, [20902] = true,
+    [20903] = true, [20904] = true, [27065] = true, -- Aimed Shot TBC
 }
+addSpellNamesToLookup(noreset_swing_spells)
 
 local prevent_reset_swing_auras = {
     [408505] = true, -- Maelstrom Weapon
 }
+addSpellNamesToLookup(prevent_reset_swing_auras)
 
 local pause_swing_spells = {
-    [1464] = true, -- Slam (rank 1)
-    [8820] = true, -- Slam (rank 2)
-    [11604] = true, -- Slam (rank 3)
-    [11605] = true, -- Slam (rank 4)
-    [25241] = true, -- Slam (rank 5)
-    [25242] = true, -- Slam (rank 6)
+    -- Slam (Warrior)
+    [1464] = true, [8820] = true, [11604] = true,
+    [11605] = true, [25241] = true, [25242] = true,
 }
+addSpellNamesToLookup(pause_swing_spells)
 
 local ranged_swing = {
-    [75] = true, -- Auto Shot
-    [3018] = true, -- Shoot
-    [2764] = true, -- Throw
-    [5019] = true, -- Shoot
+    [75] = true,    -- Auto Shot
+    [3018] = true,  -- Shoot
+    [2764] = true,  -- Throw
+    [5019] = true,  -- Shoot
 }
+addSpellNamesToLookup(ranged_swing)
 
 local reset_ranged_swing = {
     [14295] = true, -- Volley
     [11925] = true, -- Night Dragon's Breathe
     [11951] = true, -- Whipper Root Tuber
 }
+addSpellNamesToLookup(reset_ranged_swing)
 
 -- lib.callbacks = lib.callbacks or LibStub("CallbackHandler-1.0"):New(lib)
 

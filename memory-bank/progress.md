@@ -1,6 +1,25 @@
 # Progress
 
-## Progress Update (2026-06-01 - class-init fail-open hardening)
+## Progress Update (2026-06-17 - Hunter buff icons redesigned + Shaman buff icon group)
+
+- **Hunter buff icons**: Removed shading/dim overlay; added gold pulsing glow in the last 4 seconds via ADD blend glow texture. Added racial buff tracking (Blood Fury, Berserking, Stoneform, Shadowmeld, War Stomp, Gift of the Naaru). Moved buff group Y offset from 4 to 9 (+5px).
+- **Shaman buff icon group**: Created full implementation matching the hunter pattern — `SHAMAN_TRACKED_SPELLS`, `CreateShamanBuffIcons()`, `ns.UpdateShamanBuffIcons()`, wired into shaman OnUpdate chain. Tracks Shamanistic Rage, Heroism, Stormstrike, Flurry, Windfury Weapon, Elemental Devastation, and racials. Gold glow in last 4s.
+- **Config**: Added Shaman "Buff Icons" toggle in Quick Controls, "Buff Icon Size" slider in Appearance, reset default, and nil-guard in migration. Update hunter tooltip to mention glow/racials.
+- **DB/changelog**: `showShamanBuffIcons`, `shamanBuffIconSize` defaults in v49 schema. CHANGELOG, TOC bumped to v0.1.4. Migration guard added.
+- **Quality**: luac syntax OK, luacheck 0 warnings 0 errors on all 7 files.
+
+## Progress Update (2026-06-16 - Hunter production polish)
+
+- Completed production hardening pass on all hunter code paths:
+  - **Nil safety**: Added guards for `ns.timers` on ranged bar access (UpdateRangedBar, UpdateHunterCastBar), `ns.rangedBar.GetAlpha` on stance icon, `GetSpellTexture` pcall wrapper, `icon.SetAlpha`/`icon.SetSize`/`icon.Show` method guards, `icon.dim.SetColorTexture` guard, `ReferenceBar.GetWidth` guard, icon nil checks in UpdateHunterBuffIcons
+  - **Font path bug fixed**: `"Fonts\FRIZQT__.TTF"` was using single backslash (treated as literal `F` in Lua 5.1), fixed to `"Fonts\\FRIZQT__.TTF"` for all new code
+  - **Buff icon positioning**: Rewrote layout to right-align icons above the bar instead of center-plus-left-offset, ensuring clean visual grouping regardless of active buff count
+  - **Ranged bar reset guard**: Extended `effectiveRangedActive` beyond the HUNTER visibility block into the ranged bar reset check so the bar display doesn't flicker during holdover
+  - **`rangedTimerHoldEnd` now cleared**: Resets naturally when `rangedActive` goes false and 0.1s passes (no infinite-hold edge case)
+  - **Type checking**: Added `type()` checks before calling all dynamic functions (`ns.GetHunterRangeHelperWidth`, `GetSpellTexture`, `icon.SetSize`, etc.)
+  - **pcall wrapping**: `GetSpellTexture` now wrapped in pcall for the stance icon, since it may not accept non-numeric spell tokens on all Classic clients
+
+## Progress Update (2026-06-16 - Hunter v0.1.3 features)
 
 - Hardened class setup safety in `SuperSwingTimer_ClassMods.lua` by routing all class initializer calls through a fail-open wrapper in `ns.InitClassMods()`.
 - Covered classes: Paladin, Warrior, Rogue, Hunter, Shaman, Druid.
@@ -829,8 +848,37 @@
 
 ## In progress
 
-- None currently.
+- Combat drag + camera interaction fix (2026-06-19):
+  - **Problem**: `ns.ApplyLockBars()` disabled mouse on ALL bars during combat regardless of lock state, preventing left-click drag and blocking right-click camera pass-through.
+  - **Fix in `ns.ApplyLockBars()`**: Removed `inCombat` from the blanket `EnableMouse(false)` condition. Unlocked bars now stay mouse-enabled during combat.
+  - **Fix in `AttachDrag()`**: Added manual combat drag using `GetCursorPosition()` delta tracking + `SetPoint()` updates via `HookScript("OnUpdate")`, since `StartMoving()` is a protected function blocked during combat lockdown.
+  - **Right-click camera**: Preserved via the existing `SetPropagateMouseClicks(true)` set during `CreateBar` — clicks pass through to the game world frame automatically.
+  - **Luacheck**: Added `GetCursorPosition` to `.luacheckrc` and `.luarc.json` globals.
+
+- Hunter improvements round (v0.1.3):
+  - Added dedicated `hunterCastBar` color key to separate cast bar fill from ranged bar fill
+    - New color key added to `DB_DEFAULTS.colors` with a default blue tint (0.35, 0.65, 0.95)
+    - Color swatch added to config Quick Controls ("Cast Bar")
+    - Migration v49 seeds the new color key for existing users
+    - Three wiring points updated: CreateHunterCastBar, ApplyHunterCastBarColor, ApplyBarColors
+  - Increased default hunter cast bar height from 10px to 13px
+  - Fixed critical bar-jumping bug: added `rangedTimerHoldEnd` holdover (0.1s) to prevent MH bar flicker during ranged-only auto shot transitions
+  - Added Hunter stance icon (Aspect indicator) to the left of the range helper bar
+    - Tracks all TBC aspects: Hawk, Cheetah, Monkey, Pack, Wild, Viper, Beast
+    - Shows spell icon sized to match range helper width
+    - Updates every 0.2s (throttled)
+  - Added Hunter CD/buff duration icon group above the ranged bar stack
+    - 25x25px icons for: Bestial Wrath (19574), Rapid Fire (3045), The Beast Within (34692), Quick Shots (6150), Rapid Killing (34949)
+    - Icons darken as buffs expire (dim overlay)
+    - Duration countdown text centered on each icon
+    - Stacks horizontally above the ranged bar
 
 ## Next
 
-- Keep the plan and shipping docs synchronized with the addon source as future work lands.
+- Add config toggles for new features (hunterBuffIcons toggle)
+- Update activeContext.md with full details
+- Update TOC version
+- In-game validation
+- Update activeContext.md with full details
+- Update TOC version
+- In-game validation

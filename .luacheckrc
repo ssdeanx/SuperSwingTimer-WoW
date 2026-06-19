@@ -12,7 +12,11 @@ globals = {
     "UIDROPDOWNMENU_MENU_VALUE", "UIDROPDOWNMENU_MENU_LEVEL",
     "UIDropDownMenu_AddButton", "UIDropDownMenu_CreateInfo", "UIDropDownMenu_Initialize",
     "UIDropDownMenu_SetText", "UIDropDownMenu_SetWidth", "ToggleDropDownMenu",
-    "CloseDropDownMenus"
+    "CloseDropDownMenus",
+    "geterrorhandler",
+
+    -- Cursor position for manual drag during combat
+    "GetCursorPosition"
 }
 -- Allow longer lines in this addon repository to avoid false positives
 max_line_length = 260

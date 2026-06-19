@@ -1,0 +1,15 @@
+{
+  "diagnostics.globals": [
+    "C_Timer",
+    "LibStub",
+    "UnitClass",
+    "GetNetStats",
+    "CreateFrame",
+    "geterrorhandler",
+    "UnitHealth",
+    "UnitHealthMax",
+    "GetInventoryItemID",
+    "CreateHunterAspectIcon",
+    "GetCursorPosition"
+  ]
+}

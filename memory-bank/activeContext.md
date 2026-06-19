@@ -1,5 +1,12 @@
 # Active Context
 
+## Active Context Update (2026-06-17 - Hunter buff icon redesign + Shaman buff icon group)
+
+- **Hunter buff icons redesigned**: Removed the dim/shading overlay from `ns.UpdateHunterBuffIcons()`. Added gold glow (`icon.glow`) with ADD blend mode that pulses between 0.15-0.55 alpha during the last 4 seconds of any tracked buff/CD. Added racial ability tracking (Blood Fury, Berserking, Stoneform, Shadowmeld, War Stomp, Gift of the Naaru). Buff group Y offset raised from 4 to 9 (+5px).
+- **Shaman buff icons implemented**: Created full buff/CD tracking system for Shaman in `SetupEnhShaman()` — `SHAMAN_TRACKED_SPELLS` (Shamanistic Rage, Heroism, Stormstrike, Flurry, Windfury Weapon, Elemental Devastation, racials), `CreateShamanBuffIcons()`, `ns.UpdateShamanBuffIcons()` with gold glow matching the hunter pattern. Wired into the Shaman OnUpdate chain. Config toggle "Buff Icons" + "Buff Icon Size" slider added to config panel.
+- **DB/migration**: `showShamanBuffIcons = true`, `shamanBuffIconSize = 25` added to `ns.DB_DEFAULTS`. Migration guard added in `MigrateDB()`. Reset defaults in Config.
+- **Quality gates**: luac syntax OK, luacheck 0 warnings 0 errors on all 7 files. TOC bumped to v0.1.4, CHANGELOG updated.
+
 ## Active Context Update (2026-06-01 - class-init fail-open hardening)
 
 - User reported class-level no-show risk (Shaman bars not showing) and asked for a pass to ensure other classes cannot hit the same failure mode.
@@ -790,40 +797,39 @@
 
 ## Current focus
 
-1. **v0.0.8 bugfix release is shipped** (2026-05-20) — all 7 fixes complete, LSP clean across all source files.
-2. **Next target: v0.0.9** — Phase 0 critical bugs (DB migration chain, nil specialization, OH base color) + Phase 1 quick wins (swing landing flash, GCD ticker, druid rage dimming, rogue energy tick countdown).
-3. **LSP Health (Phase 9)** — sustained zero-warning policy across all Lua files. No new undefined variables, no shadowed locals, no unclosed blocks.
-4. **In-game validation** — next session should test the crash fixes and paladin seal layer changes on a live Classic/TBC client.
+1. **v0.1.3 is in development** (2026-06-19) — Combat bar drag + camera interaction fix.
+2. **Completed**: 
+   - Hunter cast bar color separation, height increase, bar-jumping critical fix, stance icon, CD/buff icon group.
+   - **Combat bar drag fix**: Bars can now be left-click dragged even during combat when unlocked.
+     - Removed `inCombat` blanket mouse-disable in `ns.ApplyLockBars()` — mouse stays enabled on unlocked bars during combat.
+     - Right-click camera control preserved via pre-existing `SetPropagateMouseClicks(true)`.
+     - Added manual drag (cursor delta tracking via `GetCursorPosition`/`SetPoint`) for combat, since `StartMoving()` is protected during combat lockdown.
+3. **Pending in-game validation**: All changes need testing on a live Classic/TBC Anniversary client.
 
 ## What we know right now
 
-- The live feature plan in `memory-bank/weaveapi-swingtimer-ui` now covers the runtime addon, config/media UI, release docs, metadata, and diagnostics surface.
-- The weave breakpoint uses the current cast window (cast remaining or cast time plus latency) while still being drawn on the MH bar canvas.
-- The main-hand swing timer now refreshes latency in the active update loop, so end-of-swing timing stays closer to live network state.
-- Parry haste now scales from the player's current melee haste (`GetMeleeHaste()` / `GetHaste()` fallback) instead of a flat reduction.
-- The config panel now has Blizzard AddOns registration, class-color defaults for the main bars, and an indicator glow/opaque mode for sparks and weave markers.
-- Bar and ranged texture selection now uses preview dropdown rows, while the spark row opens a dedicated thumbnail browser for the Normal `Square_FullWhite` preset.
-- A new WoW Classic Lua skill now exists at `.github/skills/wow-classic-lua` for loading at the start of future sessions.
-- White-hit handling still stays split by hand, and ranged reset spells keep their own path.
-- The overlay keeps the breakpoint triangles visible while the MH timer is active; the spark remains cast-only.
-- The weave spark tracks cast progress instead of swing progress.
-- Texture selection in the config panel uses a dropdown list of SharedMedia/Blizzard entries with category labels instead of a browser window.
-- Targeted diagnostics on the edited runtime files are clean.
+- The `hunterCastBar` color key is now independent from `ranged` at all three wiring points (CreateHunterCastBar, ApplyHunterCastBarColor, ApplyBarColors).
+- A config swatch "Cast Bar" was added to the Quick Controls section for Hunters.
+- The cast bar height default was increased from 10px to 13px.
+- The bar-jumping bug (MH bar flickering during ranged-only auto shot cycles) is fixed via a 0.1s `rangedTimerHoldEnd` mechanism.
+- Hunter stance icon is implemented: an icon frame left of the range helper bar showing the active Aspect (Hawk, Cheetah, Monkey, Pack, Wild, Viper, Beast) via GetSpellTexture.
+- Hunter CD/buff icon group is implemented: 25x25px icons for Bestial Wrath, Rapid Fire, The Beast Within, Quick Shots, and Rapid Killing. Icons dim as buffs expire with duration countdown text.
+- Migration v49 seeds the new hunterCastBar color for existing users.
 
 ## Likely bug area
 
-- `SuperSwingTimer_State.lua` for white-hit timing, parry haste, and clean CLEU handling.
-- `SetupEnhShaman()` / `UpdateWeaveVisuals()` in `SuperSwingTimer_ClassMods.lua` for breakpoint placement.
+- `UpdateHunterAspect` and `UpdateHunterBuffIcons` in `SuperSwingTimer_ClassMods.lua` — new code paths that need in-game validation.
+- `ns.ApplyVisibility()` — the `rangedTimerHoldEnd` logic needs testing to ensure the fix works without causing the ranged bar to stay visible longer than intended.
 
 ## Working assumptions
 
-- The cast window is the breakpoint source; the MH bar is just the visual surface the breakpoint is drawn onto.
-- The triangle markers represent the safe cast threshold based on cast remaining / cast time and latency.
-- The spark remains tied to cast progress while the breakpoint markers stay visible whenever weave assist is enabled and the MH timer is active.
+- The aspect icon visibility follows the ranged bar + range helper visibility (hidden when range helper is hidden).
+- The buff icons stack horizontally above the ranged bar, expanding leftward as more buffs become active.
+- `GetSpellTexture` resolves spell icons reliably on Classic/TBC Anniversary clients.
 
 ## Next steps
 
-1. **v0.0.9 Phase 0**: Fix DB_DEFAULTS.version chain, showPaladinSeal* nil-safety, GetSpecialization() nil case, OH base color storage.
-2. **v0.0.9 Phase 1**: Swing landing flash, GCD ticker, druid rage dimming, rogue energy tick countdown.
-3. **In-game validation**: Test v0.0.8 fixes on a live Classic/TBC Anniversary client — confirm crash is gone, paladin seal zones render without shaman code, shamanistic rage badge initializes.
-4. **Phase 9 LSP health**: Maintain zero-warning policy; add `.luarc.json` diagnostic config if needed.
+1. **In-game validation**: Test all changes on a live Classic/TBC Anniversary client.
+2. **Config toggle for buff icons**: Add a `showHunterBuffIcons` toggle in Quick Controls.
+3. **TOC update**: v0.1.3 bumped.
+4. **CHANGELOG/README**: Updated for v0.1.3.
