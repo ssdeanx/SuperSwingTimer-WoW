@@ -14,7 +14,7 @@ local UnitExists = rawget(_G, "UnitExists")
 local UnitCanAttack = rawget(_G, "UnitCanAttack")
 local UnitName = rawget(_G, "UnitName")
 local GetNetStats = rawget(_G, "GetNetStats")
-local GetRangedHaste = rawget(_G, "GetRangedHaste") or rawget(_G, "GetHaste")
+local GetRangedHaste = rawget(_G, "GetRangedHaste") -- GetHaste() is melee haste, not a valid fallback
 local IsMounted = rawget(_G, "IsMounted")
 local pcall = pcall
 
@@ -36,14 +36,6 @@ local WARRIOR_OVERPOWER_PROC_WINDOW = 5.0
 --   duration           weapon speed at swing start
 --   speed              cached speed (for haste change detection)
 --   nextSpeedCheckAt   GetCurrentTime() when next haste check should occur
-
--- Swing landing flash state per timer slot
-ns.swingFlash = {
-    mh = { active = false, remaining = 0, duration = 0.08 },
-    oh = { active = false, remaining = 0, duration = 0.08 },
-    ranged = { active = false, remaining = 0, duration = 0.08 },
-    enemy = { active = false, remaining = 0, duration = 0.08 }
-}
 
 ns.timers = {
     mh = { state = "idle", lastSwing = 0.0, duration = 0.0, speed = 0.0, nextSpeedCheckAt = 0.0 },
@@ -1198,6 +1190,7 @@ function ns.HandleCLEU()
             else
                 ns.StartSwing(slot, nil, eventTime)
                 if ns.OnMeleeSwing then ns.OnMeleeSwing(slot) end
+                if ns.TriggerSwingLandingFlash then ns.TriggerSwingLandingFlash(slot) end
             end
         elseif subEvent == "SWING_MISSED" then
             local missType = cleuArg12
@@ -1211,12 +1204,14 @@ function ns.HandleCLEU()
             else
                 ns.StartSwing(slot, nil, eventTime)
                 if ns.OnMeleeSwing then ns.OnMeleeSwing(slot) end
+                if ns.TriggerSwingLandingFlash then ns.TriggerSwingLandingFlash(slot) end
             end
         elseif subEvent == "SPELL_CAST_SUCCESS" then
             local spellId = cleuArg12
             if ns.IsAutoShotSpell and ns.IsAutoShotSpell(spellId) then
                 if ns.StartRangedSwing(eventTime) and ns.OnRangedSwing then
                     ns.OnRangedSwing()
+                    if ns.TriggerSwingLandingFlash then ns.TriggerSwingLandingFlash("ranged") end
                 end
             end
         elseif subEvent == "SPELL_EXTRA_ATTACKS" then
@@ -1228,12 +1223,14 @@ function ns.HandleCLEU()
             if IsQueuedMeleeHitForPlayerClass(spellId) then
                 ns.StartSwing("mh", nil, eventTime)
                 if ns.OnMeleeSwing then ns.OnMeleeSwing("mh") end
+                if ns.TriggerSwingLandingFlash then ns.TriggerSwingLandingFlash("mh") end
                 if ns.playerClass == "WARRIOR" and subEvent == "SPELL_MISSED" and missType == "DODGE" then
                     ns.warriorOverpowerProcUntil = eventTime + WARRIOR_OVERPOWER_PROC_WINDOW
                 end
             elseif ns.RESET_RANGED_SWING_SPELLS and ns.RESET_RANGED_SWING_SPELLS[spellId] then
                 if ns.StartRangedSwing(eventTime) and ns.OnRangedSwing then
                     ns.OnRangedSwing()
+                    if ns.TriggerSwingLandingFlash then ns.TriggerSwingLandingFlash("ranged") end
                 end
             end
         elseif subEvent == "SPELL_AURA_APPLIED" then

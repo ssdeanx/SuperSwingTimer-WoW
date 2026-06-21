@@ -1038,6 +1038,26 @@ local function MigrateDB()
                     }
                 end
             end
+        },
+        {
+            version = 50,
+            apply = function (db)
+                if db.showWarriorDeepWoundsBar == nil then db.showWarriorDeepWoundsBar = true end
+                if db.showDruidMangleBar == nil then db.showDruidMangleBar = true end
+                if db.showDruidRipBar == nil then db.showDruidRipBar = true end
+                if db.showRogueRuptureBar == nil then db.showRogueRuptureBar = true end
+                if db.showHunterSerpentStingBar == nil then db.showHunterSerpentStingBar = true end
+                if db.showPaladinJudgementBar == nil then db.showPaladinJudgementBar = true end
+            end
+        },
+        {
+            version = 51,
+            apply = function (db)
+                if db.showPaladinSealVengeanceBar == nil then db.showPaladinSealVengeanceBar = true end
+                if db.showDruidRakeBar == nil then db.showDruidRakeBar = true end
+                if db.showDruidBuffIcons == nil then db.showDruidBuffIcons = true end
+                if db.druidBuffIconSize == nil then db.druidBuffIconSize = 25 end
+            end
         }
     }
 
@@ -1294,6 +1314,42 @@ frame:SetScript("OnEvent", function (self, event, ...)
         if ns.playerClass == "SHAMAN" and ns.UpdateShamanFlameShockBar then
             ns.UpdateShamanFlameShockBar(true)
         end
+        if ns.playerClass == "WARRIOR" and ns.UpdateWarriorDeepWoundsBar then
+            ns.UpdateWarriorDeepWoundsBar(true)
+        end
+    if ns.playerClass == "DRUID" and ns.UpdateDruidMangleBar then
+        ns.UpdateDruidMangleBar(true)
+    end
+    if ns.playerClass == "DRUID" and ns.UpdateDruidRipBar then
+        ns.UpdateDruidRipBar(true)
+    end
+    if ns.playerClass == "DRUID" and ns.UpdateDruidRakeBar then
+        ns.UpdateDruidRakeBar(true)
+    end
+        if ns.playerClass == "ROGUE" and ns.UpdateRogueRuptureBar then
+            ns.UpdateRogueRuptureBar(true)
+        end
+        if ns.playerClass == "HUNTER" and ns.UpdateHunterSerpentStingBar then
+            ns.UpdateHunterSerpentStingBar(true)
+        end
+        if ns.playerClass == "PALADIN" and ns.UpdatePaladinJudgementBar then
+            ns.UpdatePaladinJudgementBar(true)
+        end
+        if ns.playerClass == "PALADIN" and ns.UpdatePaladinSealVengeanceBar then
+            ns.UpdatePaladinSealVengeanceBar(true)
+        end
+        if ns.playerClass == "WARRIOR" and ns.UpdateWarriorSunderArmorBar then
+            ns.UpdateWarriorSunderArmorBar(true)
+        end
+        if ns.playerClass == "ROGUE" and ns.UpdateRogueExposeArmorBar then
+            ns.UpdateRogueExposeArmorBar(true)
+        end
+        if ns.playerClass == "HUNTER" and ns.UpdateHunterWingClipBar then
+            ns.UpdateHunterWingClipBar(true)
+        end
+        if ns.playerClass == "HUNTER" and ns.UpdateHunterConcussionShotBar then
+            ns.UpdateHunterConcussionShotBar(true)
+        end
         if ((ns.playerInCombat == true) or (InCombatLockdown and InCombatLockdown())) and ns.ApplyVisibility then
             ns.ApplyVisibility()
         end
@@ -1320,6 +1376,30 @@ frame:SetScript("OnEvent", function (self, event, ...)
             end
         elseif unit == "target" and ns.playerClass == "SHAMAN" and ns.UpdateShamanFlameShockBar then
             ns.UpdateShamanFlameShockBar(true)
+        elseif unit == "target" and ns.playerClass == "WARRIOR" and ns.UpdateWarriorDeepWoundsBar then
+            ns.UpdateWarriorDeepWoundsBar(true)
+    elseif unit == "target" and ns.playerClass == "DRUID" and ns.UpdateDruidMangleBar then
+        ns.UpdateDruidMangleBar(true)
+    elseif unit == "target" and ns.playerClass == "DRUID" and ns.UpdateDruidRipBar then
+        ns.UpdateDruidRipBar(true)
+    elseif unit == "target" and ns.playerClass == "DRUID" and ns.UpdateDruidRakeBar then
+        ns.UpdateDruidRakeBar(true)
+        elseif unit == "target" and ns.playerClass == "ROGUE" and ns.UpdateRogueRuptureBar then
+            ns.UpdateRogueRuptureBar(true)
+        elseif unit == "target" and ns.playerClass == "HUNTER" and ns.UpdateHunterSerpentStingBar then
+            ns.UpdateHunterSerpentStingBar(true)
+        elseif unit == "target" and ns.playerClass == "PALADIN" and ns.UpdatePaladinJudgementBar then
+            ns.UpdatePaladinJudgementBar(true)
+        elseif unit == "target" and ns.playerClass == "PALADIN" and ns.UpdatePaladinSealVengeanceBar then
+            ns.UpdatePaladinSealVengeanceBar(true)
+        elseif unit == "target" and ns.playerClass == "WARRIOR" and ns.UpdateWarriorSunderArmorBar then
+            ns.UpdateWarriorSunderArmorBar(true)
+        elseif unit == "target" and ns.playerClass == "ROGUE" and ns.UpdateRogueExposeArmorBar then
+            ns.UpdateRogueExposeArmorBar(true)
+        elseif unit == "target" and ns.playerClass == "HUNTER" and ns.UpdateHunterWingClipBar then
+            ns.UpdateHunterWingClipBar(true)
+        elseif unit == "target" and ns.playerClass == "HUNTER" and ns.UpdateHunterConcussionShotBar then
+            ns.UpdateHunterConcussionShotBar(true)
         end
     elseif event == "UNIT_POWER_UPDATE" or event == "UNIT_POWER_FREQUENT" then
         local unit, powerType = ...

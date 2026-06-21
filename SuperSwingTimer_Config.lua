@@ -2712,6 +2712,172 @@ local function CreatePanel()
         )
 
         AddQuickToggle(
+            "Deep Wounds Bar", function () return SuperSwingTimerDB.showWarriorDeepWoundsBar ~= false end,
+            function (enabled)
+                SuperSwingTimerDB.showWarriorDeepWoundsBar = enabled
+                if ns.UpdateWarriorDeepWoundsBar then
+                    ns.UpdateWarriorDeepWoundsBar(true)
+                end
+            end,
+            {
+                tooltipText = "Show a thin duration bar above the MH bar for your own Deep Wounds bleed on the current target (Arms Warrior)."
+            }
+        )
+
+        AddQuickToggle(
+            "Sunder Armor Bar", function () return SuperSwingTimerDB.showWarriorSunderArmorBar ~= false end,
+            function (enabled)
+                SuperSwingTimerDB.showWarriorSunderArmorBar = enabled
+                if ns.UpdateWarriorSunderArmorBar then
+                    ns.UpdateWarriorSunderArmorBar(true)
+                end
+            end,
+            {
+                tooltipText = "Show a thin duration bar above the MH bar tracking Sunder Armor stacks (1-5) on the current target (Warrior)."
+            }
+        )
+
+        AddQuickToggle(
+            "Mangle Bar", function () return SuperSwingTimerDB.showDruidMangleBar ~= false end,
+            function (enabled)
+                SuperSwingTimerDB.showDruidMangleBar = enabled
+                if ns.UpdateDruidMangleBar then
+                    ns.UpdateDruidMangleBar(true)
+                end
+            end,
+            {
+                tooltipText = "Show a thin duration bar above the MH bar for your own Mangle debuff on the current target (Feral Druid)."
+            }
+        )
+
+        AddQuickToggle(
+            "Rip Bar", function () return SuperSwingTimerDB.showDruidRipBar ~= false end,
+            function (enabled)
+                SuperSwingTimerDB.showDruidRipBar = enabled
+                if ns.UpdateDruidRipBar then
+                    ns.UpdateDruidRipBar(true)
+                end
+            end,
+            {
+                tooltipText = "Show a thin duration bar above the MH bar for your own Rip bleed on the current target (Feral Cat)."
+            }
+        )
+
+        AddQuickToggle(
+            "Rake Bar", function () return SuperSwingTimerDB.showDruidRakeBar ~= false end,
+            function (enabled)
+                SuperSwingTimerDB.showDruidRakeBar = enabled
+                if ns.UpdateDruidRakeBar then
+                    ns.UpdateDruidRakeBar(true)
+                end
+            end,
+            {
+                tooltipText = "Show a thin duration bar above the Mangle/Rip bars for your own Rake bleed on the current target (Feral Cat)."
+            }
+        )
+
+        AddQuickToggle(
+            "Buff Icons", function () return SuperSwingTimerDB.showDruidBuffIcons ~= false end,
+            function (enabled)
+                SuperSwingTimerDB.showDruidBuffIcons = enabled
+            end,
+            {
+                tooltipText = "Show icons above the MH bar for active Druid buffs and CDs (Tiger's Fury, Barkskin, Enrage, Dash, Frenzied Regeneration, Innervate, racials). Icons glow gold in the last 4 seconds."
+            }
+        )
+
+        AddQuickToggle(
+            "Rupture Bar", function () return SuperSwingTimerDB.showRogueRuptureBar ~= false end,
+            function (enabled)
+                SuperSwingTimerDB.showRogueRuptureBar = enabled
+                if ns.UpdateRogueRuptureBar then
+                    ns.UpdateRogueRuptureBar(true)
+                end
+            end,
+            {
+                tooltipText = "Show a thin duration bar above the MH bar for your own Rupture bleed on the current target (Rogue)."
+            }
+        )
+
+        AddQuickToggle(
+            "Expose Armor Bar", function () return SuperSwingTimerDB.showRogueExposeArmorBar ~= false end,
+            function (enabled)
+                SuperSwingTimerDB.showRogueExposeArmorBar = enabled
+                if ns.UpdateRogueExposeArmorBar then
+                    ns.UpdateRogueExposeArmorBar(true)
+                end
+            end,
+            {
+                tooltipText = "Show a thin duration bar above the MH bar for your own Expose Armor on the current target (Rogue)."
+            }
+        )
+
+        AddQuickToggle(
+            "Serpent Sting Bar", function () return SuperSwingTimerDB.showHunterSerpentStingBar ~= false end,
+            function (enabled)
+                SuperSwingTimerDB.showHunterSerpentStingBar = enabled
+                if ns.UpdateHunterSerpentStingBar then
+                    ns.UpdateHunterSerpentStingBar(true)
+                end
+            end,
+            {
+                tooltipText = "Show a thin duration bar above the MH bar for your own Serpent Sting on the current target (Hunter)."
+            }
+        )
+
+        AddQuickToggle(
+            "Wing Clip Bar", function () return SuperSwingTimerDB.showHunterWingClipBar ~= false end,
+            function (enabled)
+                SuperSwingTimerDB.showHunterWingClipBar = enabled
+                if ns.UpdateHunterWingClipBar then
+                    ns.UpdateHunterWingClipBar(true)
+                end
+            end,
+            {
+                tooltipText = "Show a thin duration bar above the MH bar for your own Wing Clip snare on the current target (Hunter)."
+            }
+        )
+
+        AddQuickToggle(
+            "Concussion Shot Bar", function () return SuperSwingTimerDB.showHunterConcussionShotBar ~= false end,
+            function (enabled)
+                SuperSwingTimerDB.showHunterConcussionShotBar = enabled
+                if ns.UpdateHunterConcussionShotBar then
+                    ns.UpdateHunterConcussionShotBar(true)
+                end
+            end,
+            {
+                tooltipText = "Show a thin duration bar above the MH bar for your own Concussion Shot snare on the current target (Hunter)."
+            }
+        )
+
+        AddQuickToggle(
+            "Judgement Bar", function () return SuperSwingTimerDB.showPaladinJudgementBar ~= false end,
+            function (enabled)
+                SuperSwingTimerDB.showPaladinJudgementBar = enabled
+                if ns.UpdatePaladinJudgementBar then
+                    ns.UpdatePaladinJudgementBar(true)
+                end
+            end,
+            {
+                tooltipText = "Show a thin duration bar above the MH bar for your own Judgement of the Crusader on the current target (Retribution Paladin)."
+            }
+        )
+
+        AddQuickToggle(
+            "Seal Vengeance Bar", function () return SuperSwingTimerDB.showPaladinSealVengeanceBar ~= false end,
+            function (enabled)
+                SuperSwingTimerDB.showPaladinSealVengeanceBar = enabled
+                if ns.UpdatePaladinSealVengeanceBar then
+                    ns.UpdatePaladinSealVengeanceBar(true)
+                end
+            end,
+            {
+                tooltipText = "Show a thin duration bar above the MH bar for your own Seal of Vengeance / Corruption stacking Holy DoT on the current target (Retribution Paladin)."
+            }
+        )
+
+        AddQuickToggle(
             "Buff Icons", function () return SuperSwingTimerDB.showShamanBuffIcons ~= false end,
             function (enabled)
                 SuperSwingTimerDB.showShamanBuffIcons = enabled

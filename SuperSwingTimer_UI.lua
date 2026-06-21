@@ -2,10 +2,6 @@ local _, ns = ...
 
 local CreateFrame = rawget(_G, "CreateFrame")
 local UIParent = rawget(_G, "UIParent")
-local MouselookStart = rawget(_G, "MouselookStart")
-local MouselookStop = rawget(_G, "MouselookStop")
-local TurnOrActionStart = rawget(_G, "TurnOrActionStart")
-local TurnOrActionStop = rawget(_G, "TurnOrActionStop")
 local InCombatLockdown = rawget(_G, "InCombatLockdown")
 local GetTimePreciseSec = rawget(_G, "GetTimePreciseSec")
 local GetTime = rawget(_G, "GetTime")
@@ -21,38 +17,6 @@ local function GetCurrentTime()
         return GetTimePreciseSec()
     end
     return GetTime()
-end
-
-local function SafeStartRightCamera()
-    if TurnOrActionStart then
-        local ok = pcall(TurnOrActionStart)
-        if ok then
-            return true
-        end
-    end
-    if MouselookStart then
-        local ok = pcall(MouselookStart)
-        if ok then
-            return true
-        end
-    end
-    return false
-end
-
-local function SafeStopRightCamera()
-    if TurnOrActionStop then
-        local ok = pcall(TurnOrActionStop)
-        if ok then
-            return true
-        end
-    end
-    if MouselookStop then
-        local ok = pcall(MouselookStop)
-        if ok then
-            return true
-        end
-    end
-    return false
 end
 
 local function GetSparkBlendMode()
@@ -532,10 +496,6 @@ local function CreateBar(frameName, width, height)
     f:SetPoint("CENTER", UIParent, "CENTER", 0, -100)
     f:SetMovable(true)
     f:EnableMouse(false) -- mouse enabled later by ns.ApplyLockBars() when unlocked
-    f.sstHasPropagateMouseClicks = (type(f.SetPropagateMouseClicks) == "function")
-    if f.sstHasPropagateMouseClicks then
-        f:SetPropagateMouseClicks(true)
-    end
     f:SetClampedToScreen(true)
     f:SetHitRectInsets(-50, -50, -50, -50)
     f:SetStatusBarTexture(ns.GetBarTexture())
@@ -1221,6 +1181,9 @@ end
 -- ============================================================
 -- Lock/unlock bars â€" controls mouse capture to prevent blocked
 -- right-click camera movement when bars are locked.
+-- Right-click passthrough uses SetMouseClickEnabled("RightButton", false)
+-- (available since WotLK 3.1) rather than SetPropagateMouseClicks (11.0.0+)
+-- which does not exist on TBC Anniversary 2.5.5 or Classic Era.
 -- ============================================================
 function ns.ApplyLockBars()
     local locked = ns.AreBarsLocked()
@@ -1228,60 +1191,47 @@ function ns.ApplyLockBars()
         if bar then
             local isHunterMH = (ns.playerClass == "HUNTER" and bar == ns.mhBar)
             -- Only enable mouse when unlocked AND the bar is actually visible.
-            -- Right-click camera control is preserved via SetPropagateMouseClicks(true)
-            -- set during CreateBar, so clicks pass through to the game world frame.
             -- During combat, left-click drag uses manual mouse tracking since
             -- StartMoving() is a protected function blocked by combat lockdown.
             local isVisible = ((bar:IsShown() and bar:GetAlpha() > 0) or ns.barTestActive)
             if locked or isHunterMH or not isVisible then
                 bar:EnableMouse(false)
-                bar:RegisterForDrag()
-                if bar.sstRightCameraActive then
-                    SafeStopRightCamera()
-                    bar.sstRightCameraActive = nil
-                end
-            else
+            elseif not bar:IsMouseEnabled() then
                 bar:EnableMouse(true)
-                bar:RegisterForDrag("LeftButton")
+                -- EnableMouse(true) resets per-button click state; re-apply
+                -- right-click passthrough so right-click always passes through
+                -- to the game world for normal camera rotation.
+                pcall(bar.SetMouseClickEnabled, bar, "RightButton", false)
             end
         end
     end
 end
 
 -- ============================================================
--- Drag handling (anchor bar only â€" OH follows MH automatically)
+-- Drag handling (anchor bar only — OH follows MH automatically)
+-- Uses manual cursor tracking for all drags (no StartMoving which
+-- causes cursor lock on Classic/TBC). Left-button = drag bar.
+-- Right-click is not handled here — SetMouseClickEnabled in
+-- ApplyLockBars makes it pass through to the game world.
 -- ============================================================
 local function AttachDrag(frame, slot)
     local function StartDrag(self)
         if ns.AreBarsLocked() or self.isMoving then return end
-        local inCombat = (ns.playerInCombat == true) or (InCombatLockdown and InCombatLockdown())
-        if inCombat then
-            -- Manual drag via mouse-tracking deltas.
-            -- StartMoving() is a protected function blocked during combat lockdown,
-            -- so we track cursor position manually and update via SetPoint instead.
-            local cursorX, cursorY = GetCursorPosition()
-            if not cursorX then return end
-            local scale = UIParent:GetEffectiveScale()
-            self.isMoving = true
-            self.dragData = { cursorX = cursorX / scale, cursorY = cursorY / scale }
-        else
-            self:StartMoving()
-            self.isMoving = true
-        end
+        local cursorX, cursorY = GetCursorPosition()
+        if not cursorX then return end
+        local scale = UIParent:GetEffectiveScale()
+        self.isMoving = true
+        self.dragData = { cursorX = cursorX / scale, cursorY = cursorY / scale }
     end
 
     local function StopDrag(self)
         if not self.isMoving then return end
-        if not self.dragData then
-            -- Standard drag (out of combat) -- stop the built-in moving.
-            self:StopMovingOrSizing()
-        end
         self.isMoving = false
         self.dragData = nil
         SavePosition(slot, self)
     end
 
-    -- OnUpdate for manual combat drag: tracks cursor deltas and repositions frame.
+    -- OnUpdate: tracks cursor deltas and repositions frame during drag
     frame:HookScript("OnUpdate", function (self, elapsed)
         if self.isMoving and self.dragData then
             local cursorX, cursorY = GetCursorPosition()
@@ -1297,51 +1247,31 @@ local function AttachDrag(frame, slot)
             self:ClearAllPoints()
             self:SetPoint(point or "CENTER", UIParent, relativePoint or "CENTER", (x or 0) + dx, (y or 0) - dy)
 
-            -- Update anchor for next delta
             self.dragData.cursorX = cursorX
             self.dragData.cursorY = cursorY
         end
     end)
 
-    frame:SetScript("OnDragStart", function (self)
+-- Left button: drag bar. Right button is NOT handled — SetMouseClickEnabled
+-- in ApplyLockBars disables right-click so it passes through to the game
+-- world for normal camera rotation.
+frame:SetScript("OnMouseDown", function (self, button)
+    if ns.AreBarsLocked() then return end
+    if button == "LeftButton" then
         StartDrag(self)
-    end)
-    frame:SetScript("OnDragStop", function (self)
+    end
+end)
+frame:SetScript("OnMouseUp", function (self, button)
+    if button == "LeftButton" then
         StopDrag(self)
-    end)
-    frame:SetScript("OnMouseDown", function (self, button)
-        if button == "LeftButton" and not ns.AreBarsLocked() then
-            StartDrag(self)
-        elseif button == "RightButton" and not ns.AreBarsLocked() then
-            if not self.sstHasPropagateMouseClicks and SafeStartRightCamera() then
-                self.sstRightCameraActive = true
-            end
-        end
-    end)
-    frame:SetScript("OnMouseUp", function (self, button)
-        if button == "LeftButton" then
-            if self.isMoving then
-                StopDrag(self)
-            end
-        elseif button == "RightButton" and self.sstRightCameraActive then
-            SafeStopRightCamera()
-            self.sstRightCameraActive = nil
-        end
-    end)
-    frame:SetScript("OnHide", function (self)
-        if self.isMoving then
-            if self.dragData then
-                self.dragData = nil
-            else
-                self:StopMovingOrSizing()
-            end
-            self.isMoving = false
-        end
-        if self.sstRightCameraActive then
-            SafeStopRightCamera()
-            self.sstRightCameraActive = nil
-        end
-    end)
+    end
+end)
+frame:SetScript("OnHide", function (self)
+    if self.isMoving then
+        self.isMoving = false
+        self.dragData = nil
+    end
+end)
 end
 
 -- ============================================================
@@ -1534,7 +1464,6 @@ end
 -- ============================================================
 -- OnUpdate tick for melee bars
 -- ============================================================
-local TriggerSwingLandingFlash
 local function UpdateMeleeBar(slot, frame)
     local t = ns.timers[slot]
     if not frame then return end
@@ -1560,19 +1489,6 @@ local function UpdateMeleeBar(slot, frame)
     if elapsed_time > t.duration then elapsed_time = t.duration end
     local remaining = t.duration - elapsed_time
     if remaining < 0 then remaining = 0 end
-    -- Swing landing flash: detect progress crossing 1.0
-    if t.duration > 0 then
-        local progress = elapsed_time / t.duration
-        local lastProgress = ns.swingFlash[slot] and ns.swingFlash[slot]._lastProgress or 0
-        if progress >= 1 and lastProgress < 1 then
-            if type(TriggerSwingLandingFlash) == "function" then
-                TriggerSwingLandingFlash(slot)
-            end
-        end
-        if ns.swingFlash[slot] then
-            ns.swingFlash[slot]._lastProgress = progress
-        end
-    end
 
     frame:SetMinMaxValues(0, t.duration)
     frame:SetValue(elapsed_time)
@@ -1976,7 +1892,7 @@ function ns.ApplySparkSettings(texturePath, width, height, layer, alpha, color)
 end
 
 -- ============================================================
--- Swing landing flash: pool per bar slot, driven by progress crossing 1.0
+-- Swing landing flash: pool per bar slot, triggered from CLEU handler
 -- ============================================================
 ns.swingFlash = {}
 local SWING_FLASH_BASE_DURATION = 0.08
@@ -1988,7 +1904,7 @@ local function EnsureSwingFlashSlot(slot)
     return ns.swingFlash[slot]
 end
 
-TriggerSwingLandingFlash = function (slot)
+ns.TriggerSwingLandingFlash = function (slot)
     local db = SuperSwingTimerDB or ns.DB_DEFAULTS
     if db and db.showSwingFlash == false then return end
     local state = EnsureSwingFlashSlot(slot)
@@ -2438,6 +2354,30 @@ function ns.ApplyVisibility()
     end
     if ns.UpdateShamanFlameShockBar then
         ns.UpdateShamanFlameShockBar(true)
+    end
+    if ns.UpdateWarriorDeepWoundsBar then
+        ns.UpdateWarriorDeepWoundsBar(true)
+    end
+    if ns.UpdateDruidMangleBar then
+        ns.UpdateDruidMangleBar(true)
+    end
+    if ns.UpdateDruidRipBar then
+        ns.UpdateDruidRipBar(true)
+    end
+    if ns.UpdateDruidRakeBar then
+        ns.UpdateDruidRakeBar(true)
+    end
+    if ns.UpdateRogueRuptureBar then
+        ns.UpdateRogueRuptureBar(true)
+    end
+    if ns.UpdateHunterSerpentStingBar then
+        ns.UpdateHunterSerpentStingBar(true)
+    end
+    if ns.UpdatePaladinJudgementBar then
+        ns.UpdatePaladinJudgementBar(true)
+    end
+    if ns.UpdatePaladinSealVengeanceBar then
+        ns.UpdatePaladinSealVengeanceBar(true)
     end
     ns.ApplyLockBars()
 end

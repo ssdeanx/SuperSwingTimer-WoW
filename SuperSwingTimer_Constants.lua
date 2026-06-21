@@ -180,6 +180,59 @@ ns.SHIELD_BLOCK_ID = 2565
 ns.SHIELD_BLOCK_NAME = ns.GetSpellInfo(ns.SHIELD_BLOCK_ID) or "Shield Block"
 ns.RAVAGE_ID = 6785
 ns.RAVAGE_NAME = ns.GetSpellInfo(ns.RAVAGE_ID) or "Ravage"
+-- Deep Wounds (Warrior bleed debuff from Mortal Strike talent crit proc)
+ns.DEEP_WOUND_IDS = { [12721] = true }
+ns.DEEP_WOUND_NAME = ns.GetSpellInfo(12721) or "Deep Wound"
+-- Judgement of the Crusader (Paladin Ret debuff on target - Holy damage taken + crit chance)
+ns.PALADIN_JUDGEMENT_CRUSADER_IDS = { [21183] = true }
+ns.PALADIN_JUDGEMENT_CRUSADER_NAME = ns.GetSpellInfo(21183) or "Judgement of the Crusader"
+-- Seal of Vengeance / Seal of Corruption (Ret Paladin stacking Holy DoT debuff on target)
+-- Each stack level has a separate spell ID; all share the same display name.
+ns.PALADIN_SEAL_VENGEANCE_IDS = {
+    [31803] = true,  -- Seal of Vengeance 1 stack
+    [31804] = true,  -- Seal of Vengeance 2 stacks
+    [53736] = true,  -- Seal of Vengeance 3 stacks
+    [53737] = true,  -- Seal of Vengeance 4 stacks
+    [53738] = true,  -- Seal of Vengeance 5 stacks
+    [53739] = true,  -- Seal of Corruption 1 stack
+    [53740] = true,  -- Seal of Corruption 2 stacks
+    [53741] = true,  -- Seal of Corruption 3 stacks
+    [53742] = true,  -- Seal of Corruption 4 stacks
+    [53743] = true,  -- Seal of Corruption 5 stacks
+}
+ns.PALADIN_SEAL_VENGEANCE_NAME = ns.GetSpellInfo(31803) or ns.GetSpellInfo(53739) or "Seal of Vengeance"
+-- Mangle (Druid Feral debuff - Cat/Bear TBC talent)
+ns.DRUID_MANGLE_IDS = { [33983] = true, [33987] = true }
+ns.DRUID_MANGLE_NAME = ns.GetSpellInfo(33983) or ns.GetSpellInfo(33987) or "Mangle"
+-- Rip (Druid Feral cat finisher bleed)
+ns.DRUID_RIP_IDS = { [1079] = true, [9492] = true, [9493] = true, [9752] = true, [9894] = true, [9896] = true, [27008] = true }
+ns.DRUID_RIP_NAME = ns.GetSpellInfo(27008) or ns.GetSpellInfo(1079) or "Rip"
+-- Rake (Druid Feral Cat bleed, 9s duration)
+ns.DRUID_RAKE_IDS = { [1822] = true, [1823] = true, [1824] = true, [9907] = true, [27006] = true }
+ns.DRUID_RAKE_NAME = ns.GetSpellInfo(1822) or "Rake"
+-- Rupture (Rogue finisher bleed)
+ns.ROGUE_RUPTURE_IDS = { [1943] = true, [8637] = true, [8639] = true, [8640] = true, [11273] = true, [11274] = true, [26867] = true }
+ns.ROGUE_RUPTURE_NAME = ns.GetSpellInfo(26867) or ns.GetSpellInfo(1943) or "Rupture"
+-- Serpent Sting (Hunter nature DoT)
+ns.HUNTER_SERPENT_STING_IDS = {
+    [1978] = true, [13549] = true, [13550] = true, [13551] = true, [13552] = true,
+    [13553] = true, [13554] = true, [13555] = true, [27019] = true
+}
+ns.HUNTER_SERPENT_STING_NAME = ns.GetSpellInfo(27019) or "Serpent Sting"
+-- Concussion Shot (Hunter ranged snare debuff)
+ns.HUNTER_CONCUSSION_SHOT_IDS = { [5116] = true, [13585] = true, [13586] = true, [13587] = true, [13588] = true, [13589] = true, [13590] = true, [27068] = true }
+ns.HUNTER_CONCUSSION_SHOT_NAME = ns.GetSpellInfo(5116) or "Concussion Shot"
+-- Misdirection (Hunter threat-transfer buff)
+ns.HUNTER_MISDIRECTION_ID = 34477
+ns.HUNTER_MISDIRECTION_NAME = ns.GetSpellInfo(34477) or "Misdirection"
+-- Wing Clip (Hunter melee snare) — spell ID 2974 already defined for cast tracking
+ns.HUNTER_WING_CLIP_NAME = ns.GetSpellInfo(2974) or "Wing Clip"
+-- Sunder Armor (Warrior armor reduction debuff, stacks 1-5)
+ns.WARRIOR_SUNDER_ARMOR_IDS = { [7386] = true, [7405] = true, [8380] = true, [11596] = true, [11597] = true, [25225] = true }
+ns.WARRIOR_SUNDER_ARMOR_NAME = ns.GetSpellInfo(7386) or "Sunder Armor"
+-- Expose Armor (Rogue armor reduction finisher)
+ns.ROGUE_EXPOSE_ARMOR_IDS = { [8647] = true, [8649] = true, [8650] = true, [11197] = true, [11198] = true, [26996] = true }
+ns.ROGUE_EXPOSE_ARMOR_NAME = ns.GetSpellInfo(8647) or "Expose Armor"
 ns.HUNTER_CAST_SPELLS = {
     [75] = true,    -- Auto Shot
     [2643] = true,  -- Multi-Shot rank 1
@@ -666,7 +719,7 @@ ns.CLASS_CONFIG = {
 -- SavedVariables defaults
 -- ============================================================
 ns.DB_DEFAULTS = {
-    version = 49,
+    version = 51,
     showMH = true,
     showOH = true,
     showRanged = true,
@@ -692,6 +745,16 @@ ns.DB_DEFAULTS = {
     showHunterRapidFireBar = true,
     showHunterBuffIcons = true,
     showWarriorFlurryCounter = true,
+    showWarriorDeepWoundsBar = true,
+    showDruidMangleBar = true,
+    showDruidRipBar = true,
+    showDruidRakeBar = true,
+    showDruidBuffIcons = true,
+    druidBuffIconSize = 25,
+    showRogueRuptureBar = true,
+    showHunterSerpentStingBar = true,
+    showPaladinJudgementBar = true,
+    showPaladinSealVengeanceBar = true,
     showRogueAdrenalineRushBar = true,
     showShamanWindfuryIcd = true,
     showShamanLightningTracker = true,
@@ -700,6 +763,10 @@ ns.DB_DEFAULTS = {
     showWarriorBuffIcons = true,
     showPaladinBuffIcons = true,
     showRogueBuffIcons = true,
+    showHunterWingClipBar = true,
+    showHunterConcussionShotBar = true,
+    showWarriorSunderArmorBar = true,
+    showRogueExposeArmorBar = true,
     useClassColors = false,
     weaveSpellFamilies = {
 
