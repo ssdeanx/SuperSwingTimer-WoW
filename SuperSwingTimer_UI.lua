@@ -40,13 +40,13 @@ local UpdateHunterMeleeBarAnchor = function (_, force)
         return
     end
 
-    if ns.mhBar.hunterAnchorTarget == ns.rangedBar then
+    if not force and ns.mhBar.hunterAnchorTarget == ns.rangedBar then
         return
     end
 
     ns.mhBar:ClearAllPoints()
-    ns.mhBar:SetPoint("BOTTOMLEFT", ns.rangedBar, "TOPLEFT", 0, -2)
-    ns.mhBar:SetPoint("BOTTOMRIGHT", ns.rangedBar, "TOPRIGHT", 0, -2)
+    ns.mhBar:SetPoint("BOTTOMLEFT", ns.rangedBar, "TOPLEFT", 0, 2)
+    ns.mhBar:SetPoint("BOTTOMRIGHT", ns.rangedBar, "TOPRIGHT", 0, 2)
     ns.mhBar.hunterAnchorTarget = ns.rangedBar
 end
 
@@ -2378,6 +2378,30 @@ function ns.ApplyVisibility()
     end
     if ns.UpdatePaladinSealVengeanceBar then
         ns.UpdatePaladinSealVengeanceBar(true)
+    end
+    if ns.UpdateWarriorSunderArmorBar then
+        ns.UpdateWarriorSunderArmorBar(true)
+    end
+    if ns.UpdateRogueExposeArmorBar then
+        ns.UpdateRogueExposeArmorBar(true)
+    end
+    if ns.UpdateHunterWingClipBar then
+        ns.UpdateHunterWingClipBar(true)
+    end
+    if ns.UpdateHunterConcussionShotBar then
+        ns.UpdateHunterConcussionShotBar(true)
+    end
+    if ns.UpdateHunterImmolationTrapBar then
+        ns.UpdateHunterImmolationTrapBar(true)
+    end
+    if ns.UpdateHunterExplosiveTrapBar then
+        ns.UpdateHunterExplosiveTrapBar(true)
+    end
+    if ns.UpdateHunterFreezingTrapBar then
+        ns.UpdateHunterFreezingTrapBar(true)
+    end
+    if ns.UpdateHunterFrostTrapBar then
+        ns.UpdateHunterFrostTrapBar(true)
     end
     ns.ApplyLockBars()
 end

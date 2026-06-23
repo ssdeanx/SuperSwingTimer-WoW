@@ -2852,6 +2852,58 @@ local function CreatePanel()
         )
 
         AddQuickToggle(
+            "Immolation Trap Bar", function () return SuperSwingTimerDB.showHunterImmolationTrapBar ~= false end,
+            function (enabled)
+                SuperSwingTimerDB.showHunterImmolationTrapBar = enabled
+                if ns.UpdateHunterImmolationTrapBar then
+                    ns.UpdateHunterImmolationTrapBar(true)
+                end
+            end,
+            {
+                tooltipText = "Show a thin duration bar above the MH/ranged bar for your own Immolation Trap fire DoT on the current target (Hunter)."
+            }
+        )
+
+        AddQuickToggle(
+            "Explosive Trap Bar", function () return SuperSwingTimerDB.showHunterExplosiveTrapBar ~= false end,
+            function (enabled)
+                SuperSwingTimerDB.showHunterExplosiveTrapBar = enabled
+                if ns.UpdateHunterExplosiveTrapBar then
+                    ns.UpdateHunterExplosiveTrapBar(true)
+                end
+            end,
+            {
+                tooltipText = "Show a thin duration bar above the MH/ranged bar for your own Explosive Trap fire DoT on the current target (Hunter)."
+            }
+        )
+
+        AddQuickToggle(
+            "Freezing Trap Bar", function () return SuperSwingTimerDB.showHunterFreezingTrapBar ~= false end,
+            function (enabled)
+                SuperSwingTimerDB.showHunterFreezingTrapBar = enabled
+                if ns.UpdateHunterFreezingTrapBar then
+                    ns.UpdateHunterFreezingTrapBar(true)
+                end
+            end,
+            {
+                tooltipText = "Show a thin duration bar above the MH/ranged bar for your own Freezing Trap CC on the current target (Hunter)."
+            }
+        )
+
+        AddQuickToggle(
+            "Frost Trap Bar", function () return SuperSwingTimerDB.showHunterFrostTrapBar ~= false end,
+            function (enabled)
+                SuperSwingTimerDB.showHunterFrostTrapBar = enabled
+                if ns.UpdateHunterFrostTrapBar then
+                    ns.UpdateHunterFrostTrapBar(true)
+                end
+            end,
+            {
+                tooltipText = "Show a thin duration bar above the MH/ranged bar for your own Frost Trap snare on the current target (Hunter)."
+            }
+        )
+
+        AddQuickToggle(
             "Judgement Bar", function () return SuperSwingTimerDB.showPaladinJudgementBar ~= false end,
             function (enabled)
                 SuperSwingTimerDB.showPaladinJudgementBar = enabled

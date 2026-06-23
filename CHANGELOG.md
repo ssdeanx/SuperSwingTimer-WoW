@@ -1,5 +1,23 @@
 # Super Swing Timer Changelog
 
+## v0.1.6 - 2026-06-23
+
+- **Hunter debuff bars now dynamically anchored**: All 5 Hunter target debuff bars (Serpent Sting, Wing Clip, Concussion Shot, Immolation Trap, Explosive Trap, Freezing Trap, Frost Trap) are parented to UIParent instead of the MH bar. A new `GetDebuffAnchorBar()` helper selects MH bar when in melee (visible) or ranged bar when at range, so all bars and buff icons follow the Hunter between melee and ranged combat seamlessly — no more invisible debuff bars when out of melee range.
+- **IsPlayerSpell guard removed from all class buff icon systems**: The `IsPlayerSpell` check before the aura scan was blocking talent-based spells (Bestial Wrath, Shamanistic Rage, Kill Command, The Beast Within, etc.) from showing as buff icons. The aura scan is authoritative — if the buff isn't on the player, the icon won't show. Removing the redundant guard fixes talent spell icons for all 6 classes without any negative side effects.
+- **Freezing Trap + Frost Trap debuff bars added**: 6px icy blue (Freezing, label "FZ") and pale blue (Frost, label "FT") duration bars above the MH/ranged bar stack tracking trap debuffs on the current target. Dual-client safe with both spell ID and name matching. Configurable via Quick Controls toggles, DB schema v54 migration.
+- **Immolation Trap + Explosive Trap debuff bars added**: 6px fire orange (Immolation) and red-orange (Explosive) duration bars above the MH/ranged bar stack tracking trap fire DoTs on the current target. Same dual-client safety, configurable toggles, DB schema v53 migration.
+- **Buff icon improvements (all classes)**: Countdown text font increased from 10 to 12, repositioned from icon center to icon top for better readability. Dim overlay texture removed entirely — active buff icons are clean and fully bright. Icons raised 2px for better visual breathing room above debuff bars.
+- **Elapsed-based buff icon throttle (all 6 classes)**: All buff icon update functions (`UpdatePaladinBuffIcons` through `UpdateRogueBuffIcons`) now accept real `elapsed` time from OnUpdate instead of a fixed `+ 0.03` per frame. Throttle is now frame-rate independent — smoother countdown and glow animation on all hardware.
+- **Buff icon glow fix (all classes)**: The gold glow effect in the last 4 seconds of any tracked buff now updates every frame (not throttled), pulsing smoothly via `math.sin(GetCurrentTime() * 6)` with ADD blend mode.
+- **Migration gaps filled**: v52 migration added for 4 missing DB keys (`showHunterWingClipBar`, `showHunterConcussionShotBar`, `showWarriorSunderArmorBar`, `showRogueExposeArmorBar`). All new settings now properly migrate for existing users.
+- **ApplyVisibility completeness**: The `ns.ApplyVisibility()` function now refreshes all 15 target debuff bars — no more bars staying stale after Test Bars or lock-state changes.
+- **InitClassMods cleanup hardened**: All 15 class-specific `ns.Update*Bar` symbols properly nil-cleared on re-init, preventing stale closures from cross-class contamination.
+- **Hunter MH bar anchor force parameter fixed**: `UpdateHunterMeleeBarAnchor()` now respects its `force` parameter instead of always returning early, ensuring the MH bar re-anchors correctly when visibility changes.
+- **Hunter buff icons now use dynamic stack offset**: Hunter buff/CD icon group uses `GetDebuffStackOffset()` with all 7 debuff bars and `GetDebuffAnchorBar()`, so icons always sit above whatever combination of bars are visible.
+- **Trap color scheme**: Wing Clip changed to yellow, Serpent Sting darkened to forest green, Concussion Shot changed to dark blue for better visual distinction.
+- **Debuff bar icon sizing verified**: All debuff bar spell icons match their bar height (6×6 for 6px bars, 5×5 for Seal Vengeance and Rake, 4×4 for Shield Block). No oversized or undersized icons.
+- **DB schema: v54** (`ns.DB_DEFAULTS.version`)
+
 ## v0.1.5 - 2026-06-21
 
 - **Universal buff icon dynamic stacking**: All 6 class buff icon groups now use `GetDebuffStackOffset()` which reads the actual screen position of every visible target debuff bar and positions buff icons 4px above the highest bar. No more manual Y offsets per bar — if you have 3 debuff bars visible, icons sit above all 3. Works identically for Warrior, Paladin, Rogue, Shaman, Druid, and is fully dynamic regardless of which bars are toggled on/off.

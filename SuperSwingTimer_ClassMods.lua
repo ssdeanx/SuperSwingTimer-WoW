@@ -22,7 +22,6 @@ local GetTimePreciseSec = rawget(_G, "GetTimePreciseSec")
 local GetTime = rawget(_G, "GetTime")
 local GetSpellCooldown = rawget(_G, "GetSpellCooldown")
 local C_Spell = rawget(_G, "C_Spell")
-local IsPlayerSpell = rawget(_G, "IsPlayerSpell")
 local pcall = pcall
 local GCD_SPELL_ID = 61304 -- Spell ID used to query the GCD for seal twist timing.
 local WARRIOR_HEROIC_STRIKE_TINT = { r = 1.0, g = 0.92, b = 0.20 }
@@ -40,9 +39,9 @@ local FLURRY_BUFF_NAME_LOOKUP = {}
 -- referenceBar = the main bar to use as origin (e.g. ns.mhBar for melee, ns.rangedBar for hunter).
 -- Returns a BOTTOM-to-referenceBar.TOP Y offset for SetPoint.
 local function GetDebuffStackOffset(bars, referenceBar)
-    if not referenceBar then return 9 end
+    if not referenceBar then return 11 end
     local refTop = type(referenceBar.GetTop) == "function" and referenceBar:GetTop() or 0
-    if not refTop or refTop == 0 then return 9 end
+    if not refTop or refTop == 0 then return 11 end
     local maxBarTop = 0
     for _, bar in ipairs(bars) do
         if bar and bar.IsShown and bar:IsShown() then
@@ -55,7 +54,7 @@ local function GetDebuffStackOffset(bars, referenceBar)
             end
         end
     end
-    return maxBarTop + 4  -- 4px gap above highest bar
+    return maxBarTop + 6  -- 6px gap above highest bar (+2px raised)
 end
 
 -- Universal debuff bar restacker: positions visible bars in order above referenceBar.
@@ -87,6 +86,25 @@ local function RestackDebuffBars(barList, referenceBar, gap)
     if not hasAny then return gap end
     return currentY
 end
+
+-- Returns the best reference bar for stacking target debuff bars and buff icons.
+-- For Hunters: prefers MH bar when visible, falls back to ranged bar.
+-- For all other classes: always returns MH bar.
+-- This is deliberately a closure, not on ns.*, to keep it private.
+local function GetDebuffAnchorBar()
+    if ns.playerClass == "HUNTER" then
+        if ns.mhBar and ns.mhBar.IsShown and ns.mhBar:IsShown()
+            and ns.mhBar.GetAlpha and (ns.mhBar:GetAlpha() or 0) > 0 then
+            return ns.mhBar
+        end
+        if ns.rangedBar and ns.rangedBar.GetAlpha and (ns.rangedBar:GetAlpha() or 0) > 0 then
+            return ns.rangedBar
+        end
+        return ns.rangedBar or ns.mhBar
+    end
+    return ns.mhBar
+end
+
 for _, flurryName in ipairs(FLURRY_BUFF_NAMES) do
     FLURRY_BUFF_NAME_LOOKUP[flurryName] = true
 end
@@ -851,7 +869,7 @@ local function SetupRetPaladin()
             UpdatePaladinLibramSwapBadge()
             CheckTwistSuccess()
             if ns.UpdatePaladinBuffIcons then
-                ns.UpdatePaladinBuffIcons()
+                ns.UpdatePaladinBuffIcons(elapsed)
             end
         end
         -- Force initial update of seal zone and markers
@@ -922,21 +940,6 @@ local function SetupRetPaladin()
     local PALADIN_BUFF_ICON_GAP = 3
 
     local function GetPaladinSpellRemaining(info)
-        -- Dual-client guard: skip spell check for external buffs (party buffs like Bloodlust,
-        -- item buffs like Drums, Haste Potion) since the player doesn't learn these spells
-        -- but can receive them.
-        if not info.external and type(IsPlayerSpell) == "function" then
-            if IsPlayerSpell(info.spellId) ~= true then
-                -- Check if GetSpellInfo accepts names (Anniversary 2.5.5+)
-                local resolvedName = ns.GetSpellInfo and ns.GetSpellInfo(info.name)
-                if resolvedName then
-                    local _, _, _, _, _, _, resolvedId = ns.GetSpellInfo(info.name)
-                    if type(resolvedId) ~= "number" or IsPlayerSpell(resolvedId) ~= true then
-                        return nil, nil
-                    end
-                end
-            end
-        end
         -- Step 1: Scan helpful auras on the player (buffs)
         for index = 1, 40 do
             local auraName, duration, expirationTime, auraSpellId = GetHelpfulAuraData("player", index)
@@ -1003,9 +1006,6 @@ local function SetupRetPaladin()
             icon.texture:SetTexCoord(0.07, 0.93, 0.07, 0.93)
             local texPath = GetSpellTexture and GetSpellTexture(spell.spellId)
             if texPath then icon.texture:SetTexture(texPath) end
-            icon.dim = icon:CreateTexture(nil, "OVERLAY")
-            icon.dim:SetAllPoints()
-            icon.dim:SetColorTexture(0, 0, 0, 0)
             icon.glow = icon:CreateTexture(nil, "OVERLAY", nil, 7)
             icon.glow:SetAllPoints()
             icon.glow:SetColorTexture(1, 0.85, 0, 0)
@@ -1015,9 +1015,9 @@ local function SetupRetPaladin()
             icon.border:SetPoint("TOPLEFT", -1, 1)
             icon.border:SetPoint("BOTTOMRIGHT", 1, -1)
             icon.durationText = icon:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-            icon.durationText:SetPoint("CENTER", icon, "CENTER", 0, 0)
+            icon.durationText:SetPoint("TOP", icon, "TOP", 0, -1)
             icon.durationText:SetJustifyH("CENTER")
-            icon.durationText:SetFont("Fonts\\FRIZQT__.TTF", 10, "OUTLINE")
+            icon.durationText:SetFont("Fonts\\FRIZQT__.TTF", 12, "OUTLINE")
             icon.durationText:SetTextColor(1, 1, 1, 0.95)
             icon.durationText:Hide()
             icon:Hide()
@@ -1028,11 +1028,11 @@ local function SetupRetPaladin()
         end
     end
 
-    ns.UpdatePaladinBuffIcons = function ()
+    ns.UpdatePaladinBuffIcons = function (elapsed)
         CreatePaladinBuffIcons()
         if #paladinBuffIcons == 0 then return end
 
-        paladinBuffTimer = paladinBuffTimer + 0.03
+        paladinBuffTimer = paladinBuffTimer + (elapsed or 0.03)
         if paladinBuffTimer < PALADIN_BUFF_UPDATE_INTERVAL then return end
         paladinBuffTimer = 0
 
@@ -1527,7 +1527,7 @@ local function SetupRetPaladin()
         -- Restack all visible debuff bars above MH dynamically
         RestackDebuffBars({ns.paladinJudgementBar, ns.paladinSealVengeanceBar}, ns.mhBar)
         -- Re-call buff icons so they use the restacked bar positions
-        if ns.UpdatePaladinBuffIcons then ns.UpdatePaladinBuffIcons() end
+        if ns.UpdatePaladinBuffIcons then ns.UpdatePaladinBuffIcons(elapsed) end
     end
 
     -- Initial forced update
@@ -2461,7 +2461,7 @@ local function SetupWarrior()
         UpdateWarriorSunderArmorBar(false)
         -- Restack all visible debuff bars above MH dynamically
         RestackDebuffBars({deepWoundsBar, ns.warriorShieldBlockBar, sunderArmorBar}, ns.mhBar)
-        if ns.UpdateWarriorBuffIcons then ns.UpdateWarriorBuffIcons() end
+        if ns.UpdateWarriorBuffIcons then ns.UpdateWarriorBuffIcons(elapsed) end
     end
 
     ns.UpdateWarriorRageBar()
@@ -2575,19 +2575,6 @@ local function SetupWarrior()
     local WARRIOR_BUFF_ICON_GAP = 3
 
     local function GetWarriorSpellRemaining(info)
-        -- Dual-client guard: skip spell check for external buffs (party buffs like Bloodlust,
-        -- item buffs like Drums) since the player doesn't learn these spells but can receive them.
-        if not info.external and type(IsPlayerSpell) == "function" then
-            if IsPlayerSpell(info.spellId) ~= true then
-                local resolvedName = ns.GetSpellInfo and ns.GetSpellInfo(info.name)
-                if resolvedName then
-                    local _, _, _, _, _, _, resolvedId = ns.GetSpellInfo(info.name)
-                    if type(resolvedId) ~= "number" or IsPlayerSpell(resolvedId) ~= true then
-                        return nil, nil
-                    end
-                end
-            end
-        end
         -- Step 1: Scan helpful auras on the player (buffs)
         for index = 1, 40 do
             local auraName, duration, expirationTime, auraSpellId = GetHelpfulAuraData("player", index)
@@ -2654,9 +2641,6 @@ local function SetupWarrior()
             icon.texture:SetTexCoord(0.07, 0.93, 0.07, 0.93)
             local texPath = GetSpellTexture and GetSpellTexture(spell.spellId)
             if texPath then icon.texture:SetTexture(texPath) end
-            icon.dim = icon:CreateTexture(nil, "OVERLAY")
-            icon.dim:SetAllPoints()
-            icon.dim:SetColorTexture(0, 0, 0, 0)
             icon.glow = icon:CreateTexture(nil, "OVERLAY", nil, 7)
             icon.glow:SetAllPoints()
             icon.glow:SetColorTexture(1, 0.85, 0, 0)
@@ -2666,9 +2650,9 @@ local function SetupWarrior()
             icon.border:SetPoint("TOPLEFT", -1, 1)
             icon.border:SetPoint("BOTTOMRIGHT", 1, -1)
             icon.durationText = icon:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-            icon.durationText:SetPoint("CENTER", icon, "CENTER", 0, 0)
+            icon.durationText:SetPoint("TOP", icon, "TOP", 0, -1)
             icon.durationText:SetJustifyH("CENTER")
-            icon.durationText:SetFont("Fonts\\FRIZQT__.TTF", 10, "OUTLINE")
+            icon.durationText:SetFont("Fonts\\FRIZQT__.TTF", 12, "OUTLINE")
             icon.durationText:SetTextColor(1, 1, 1, 0.95)
             icon.durationText:Hide()
             icon:Hide()
@@ -2679,11 +2663,11 @@ local function SetupWarrior()
         end
     end
 
-    ns.UpdateWarriorBuffIcons = function ()
+    ns.UpdateWarriorBuffIcons = function (elapsed)
         CreateWarriorBuffIcons()
         if #warriorBuffIcons == 0 then return end
 
-        warriorBuffTimer = warriorBuffTimer + 0.03
+        warriorBuffTimer = warriorBuffTimer + (elapsed or 0.03)
         if warriorBuffTimer < WARRIOR_BUFF_UPDATE_INTERVAL then return end
         warriorBuffTimer = 0
 
@@ -3713,18 +3697,6 @@ local function SetupEnhShaman()
     local SHAMAN_BUFF_ICON_GAP = 3
 
     local function GetShamanSpellRemaining(info)
-        -- Dual-client guard: only show if player knows this spell by ID (Classic) or name (Anniversary)
-        if type(IsPlayerSpell) == "function" then
-            if IsPlayerSpell(info.spellId) ~= true then
-                local resolvedName = ns.GetSpellInfo and ns.GetSpellInfo(info.name)
-                if resolvedName then
-                    local _, _, _, _, _, _, resolvedId = ns.GetSpellInfo(info.name)
-                    if type(resolvedId) ~= "number" or IsPlayerSpell(resolvedId) ~= true then
-                        return nil, nil
-                    end
-                end
-            end
-        end
         -- Step 1: Scan helpful auras on the player (buffs)
         for index = 1, 40 do
             local auraName, duration, expirationTime, auraSpellId = GetHelpfulAuraData("player", index)
@@ -3791,9 +3763,6 @@ local function SetupEnhShaman()
             icon.texture:SetTexCoord(0.07, 0.93, 0.07, 0.93)
             local texPath = GetSpellTexture and GetSpellTexture(spell.spellId)
             if texPath then icon.texture:SetTexture(texPath) end
-            icon.dim = icon:CreateTexture(nil, "OVERLAY")
-            icon.dim:SetAllPoints()
-            icon.dim:SetColorTexture(0, 0, 0, 0)
             icon.glow = icon:CreateTexture(nil, "OVERLAY", nil, 7)
             icon.glow:SetAllPoints()
             icon.glow:SetColorTexture(1, 0.85, 0, 0)
@@ -3803,9 +3772,9 @@ local function SetupEnhShaman()
             icon.border:SetPoint("TOPLEFT", -1, 1)
             icon.border:SetPoint("BOTTOMRIGHT", 1, -1)
             icon.durationText = icon:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-            icon.durationText:SetPoint("CENTER", icon, "CENTER", 0, 0)
+            icon.durationText:SetPoint("TOP", icon, "TOP", 0, -1)
             icon.durationText:SetJustifyH("CENTER")
-            icon.durationText:SetFont("Fonts\\FRIZQT__.TTF", 10, "OUTLINE")
+            icon.durationText:SetFont("Fonts\\FRIZQT__.TTF", 12, "OUTLINE")
             icon.durationText:SetTextColor(1, 1, 1, 0.95)
             icon.durationText:Hide()
             icon:Hide()
@@ -3816,12 +3785,11 @@ local function SetupEnhShaman()
         end
     end
 
-    ns.UpdateShamanBuffIcons = function ()
+    ns.UpdateShamanBuffIcons = function (elapsed)
         CreateShamanBuffIcons()
         if #shamanBuffIcons == 0 then return end
 
-        -- Throttle: scanning 40 aura slots per buff is expensive
-        shamanBuffTimer = shamanBuffTimer + 0.03
+        shamanBuffTimer = shamanBuffTimer + (elapsed or 0.03)
         if shamanBuffTimer < SHAMAN_BUFF_UPDATE_INTERVAL then return end
         shamanBuffTimer = 0
 
@@ -3887,11 +3855,6 @@ local function SetupEnhShaman()
             if icon.ClearAllPoints then icon:ClearAllPoints() end
             if icon.SetPoint then icon:SetPoint("BOTTOM", referenceBar, "TOP", finalX, iconY) end
 
-            -- No shading: keep dim invisible always
-            if icon.dim and icon.dim.SetColorTexture then
-                icon.dim:SetColorTexture(0, 0, 0, 0)
-            end
-
             -- Glow effect in the last 4 seconds
             if icon.glow and icon.glow.SetColorTexture then
                 local shouldGlow = remaining <= 4 and remaining > 0
@@ -3926,7 +3889,7 @@ local function SetupEnhShaman()
         UpdateLightningShieldVisual()
         -- Restack all visible debuff bars above MH dynamically
         RestackDebuffBars({flameShockBar}, ns.mhBar)
-        if ns.UpdateShamanBuffIcons then ns.UpdateShamanBuffIcons() end
+        if ns.UpdateShamanBuffIcons then ns.UpdateShamanBuffIcons(elapsed) end
     end
 
     local function SafeInitCall(fn)
@@ -4688,18 +4651,6 @@ local function SetupDruid()
     local DRUID_BUFF_ICON_GAP = 3
 
     local function GetDruidSpellRemaining(info)
-        -- Dual-client guard: skip spell check for external buffs
-        if not info.external and type(IsPlayerSpell) == "function" then
-            if IsPlayerSpell(info.spellId) ~= true then
-                local resolvedName = ns.GetSpellInfo and ns.GetSpellInfo(info.name)
-                if resolvedName then
-                    local _, _, _, _, _, _, resolvedId = ns.GetSpellInfo(info.name)
-                    if type(resolvedId) ~= "number" or IsPlayerSpell(resolvedId) ~= true then
-                        return nil, nil
-                    end
-                end
-            end
-        end
         -- Step 1: Scan helpful auras on the player (buffs)
         for index = 1, 40 do
             local auraName, duration, expirationTime, auraSpellId = GetHelpfulAuraData("player", index)
@@ -4765,9 +4716,6 @@ local function SetupDruid()
             icon.texture:SetTexCoord(0.07, 0.93, 0.07, 0.93)
             local texPath = GetSpellTexture and GetSpellTexture(spell.spellId)
             if texPath then icon.texture:SetTexture(texPath) end
-            icon.dim = icon:CreateTexture(nil, "OVERLAY")
-            icon.dim:SetAllPoints()
-            icon.dim:SetColorTexture(0, 0, 0, 0)
             icon.glow = icon:CreateTexture(nil, "OVERLAY", nil, 7)
             icon.glow:SetAllPoints()
             icon.glow:SetColorTexture(1, 0.85, 0, 0)
@@ -4777,9 +4725,9 @@ local function SetupDruid()
             icon.border:SetPoint("TOPLEFT", -1, 1)
             icon.border:SetPoint("BOTTOMRIGHT", 1, -1)
             icon.durationText = icon:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-            icon.durationText:SetPoint("CENTER", icon, "CENTER", 0, 0)
+            icon.durationText:SetPoint("TOP", icon, "TOP", 0, -1)
             icon.durationText:SetJustifyH("CENTER")
-            icon.durationText:SetFont("Fonts\\FRIZQT__.TTF", 10, "OUTLINE")
+            icon.durationText:SetFont("Fonts\\FRIZQT__.TTF", 12, "OUTLINE")
             icon.durationText:SetTextColor(1, 1, 1, 0.95)
             icon.durationText:Hide()
             icon:Hide()
@@ -4790,11 +4738,11 @@ local function SetupDruid()
         end
     end
 
-    ns.UpdateDruidBuffIcons = function ()
+    ns.UpdateDruidBuffIcons = function (elapsed)
         CreateDruidBuffIcons()
         if #druidBuffIcons == 0 then return end
 
-        druidBuffTimer = druidBuffTimer + 0.03
+        druidBuffTimer = druidBuffTimer + (elapsed or 0.03)
         if druidBuffTimer < DRUID_BUFF_UPDATE_INTERVAL then return end
         druidBuffTimer = 0
 
@@ -4906,7 +4854,7 @@ local function SetupDruid()
         UpdateDruidRakeBar(false)
         -- Restack all visible debuff bars above MH dynamically
         RestackDebuffBars({mangleBar, ripBar, rakeBar}, ns.mhBar)
-        if ns.UpdateDruidBuffIcons then ns.UpdateDruidBuffIcons() end
+        if ns.UpdateDruidBuffIcons then ns.UpdateDruidBuffIcons(elapsed) end
     end
 end
 
@@ -5555,18 +5503,6 @@ local function SetupHunter()
     local HUNTER_BUFF_ICON_GAP = 3
 
     local function GetHunterSpellRemaining(info)
-        -- Dual-client guard: only show if player knows this spell by ID (Classic) or name (Anniversary)
-        if type(IsPlayerSpell) == "function" then
-            if IsPlayerSpell(info.spellId) ~= true then
-                local resolvedName = ns.GetSpellInfo and ns.GetSpellInfo(info.name)
-                if resolvedName then
-                    local _, _, _, _, _, _, resolvedId = ns.GetSpellInfo(info.name)
-                    if type(resolvedId) ~= "number" or IsPlayerSpell(resolvedId) ~= true then
-                        return nil, nil
-                    end
-                end
-            end
-        end
         -- Step 1: Scan helpful auras on the player (buffs)
         for index = 1, 40 do
             local auraName, duration, expirationTime, auraSpellId = GetHelpfulAuraData("player", index)
@@ -5633,9 +5569,6 @@ local function SetupHunter()
             icon.texture:SetTexCoord(0.07, 0.93, 0.07, 0.93)
             local texPath = GetSpellTexture and GetSpellTexture(spell.spellId)
             if texPath then icon.texture:SetTexture(texPath) end
-            icon.dim = icon:CreateTexture(nil, "OVERLAY")
-            icon.dim:SetAllPoints()
-            icon.dim:SetColorTexture(0, 0, 0, 0)
             icon.glow = icon:CreateTexture(nil, "OVERLAY", nil, 7)
             icon.glow:SetAllPoints()
             icon.glow:SetColorTexture(1, 0.85, 0, 0)
@@ -5645,9 +5578,9 @@ local function SetupHunter()
             icon.border:SetPoint("TOPLEFT", -1, 1)
             icon.border:SetPoint("BOTTOMRIGHT", 1, -1)
             icon.durationText = icon:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-            icon.durationText:SetPoint("CENTER", icon, "CENTER", 0, 0)
+            icon.durationText:SetPoint("TOP", icon, "TOP", 0, -1)
             icon.durationText:SetJustifyH("CENTER")
-            icon.durationText:SetFont("Fonts\\FRIZQT__.TTF", 10, "OUTLINE")
+            icon.durationText:SetFont("Fonts\\FRIZQT__.TTF", 12, "OUTLINE")
             icon.durationText:SetTextColor(1, 1, 1, 0.95)
             icon.durationText:Hide()
             icon:Hide()
@@ -5658,13 +5591,12 @@ local function SetupHunter()
         end
     end
 
-    ns.UpdateHunterBuffIcons = function ()
+    ns.UpdateHunterBuffIcons = function (elapsed)
         CreateHunterBuffIcons()
         if not ns.rangedBar then return end
         if #hunterBuffIcons == 0 then return end
 
-        -- Throttle: scanning 40 aura slots per buff is expensive (~240 iterations/frame)
-        hunterBuffTimer = hunterBuffTimer + 0.03
+        hunterBuffTimer = hunterBuffTimer + (elapsed or 0.03)
         if hunterBuffTimer < HUNTER_BUFF_UPDATE_INTERVAL then return end
         hunterBuffTimer = 0
 
@@ -5706,10 +5638,20 @@ local function SetupHunter()
         local numActive = #activeIcons
         if numActive == 0 then return end
 
-        local referenceBar = ns.rangedBar or ns.mhBar
-        if not referenceBar then return end
-        local iconY = 9
-        local barGetWidth = referenceBar.GetWidth
+        local anchorBar = GetDebuffAnchorBar()
+        if not anchorBar then return end
+        -- Position icons above all visible target debuff duration bars
+        local iconY = GetDebuffStackOffset({
+            serpentStingBar,
+            wingClipBar,
+            concussionShotBar,
+            immolationTrapBar,
+            explosiveTrapBar,
+            freezingTrapBar,
+            frostTrapBar,
+        }, anchorBar)
+        if iconY < 4 then iconY = 4 end
+        local barGetWidth = anchorBar.GetWidth
         if not barGetWidth then return end
 
         for idx, entry in ipairs(activeIcons) do
@@ -5725,12 +5667,7 @@ local function SetupHunter()
             local finalX = rightAlign + xOffset
 
             if icon.ClearAllPoints then icon:ClearAllPoints() end
-            if icon.SetPoint then icon:SetPoint("BOTTOM", referenceBar, "TOP", finalX, iconY) end
-
-            -- No shading: keep dim invisible always
-            if icon.dim and icon.dim.SetColorTexture then
-                icon.dim:SetColorTexture(0, 0, 0, 0)
-            end
+            if icon.SetPoint then icon:SetPoint("BOTTOM", anchorBar, "TOP", finalX, iconY) end
 
             -- Glow effect in the last 4 seconds
             if icon.glow and icon.glow.SetColorTexture then
@@ -5777,18 +5714,15 @@ local function SetupHunter()
 
     local function EnsureSerpentStingBar()
         if serpentStingBar then return serpentStingBar end
-        if not ns.mhBar then return nil end
 
-        serpentStingBar = CreateFrame("StatusBar", nil, ns.mhBar)
+        serpentStingBar = CreateFrame("StatusBar", nil, UIParent)
         serpentStingBar:SetStatusBarTexture(
             (ns.GetBarTexture and ns.GetBarTexture()) or "Interface\\TargetingFrame\\UI-StatusBar"
         )
-        serpentStingBar:SetStatusBarColor(0.10, 0.70, 0.30, 0.90)  -- forest green
+        serpentStingBar:SetStatusBarColor(0.05, 0.55, 0.20, 0.90)  -- dark green
         serpentStingBar:SetMinMaxValues(0, 1)
         serpentStingBar:SetValue(0)
         serpentStingBar:SetHeight(SERPENT_STING_BAR_HEIGHT)
-        serpentStingBar:SetPoint("BOTTOMLEFT", ns.mhBar, "TOPLEFT", 0, 2)
-        serpentStingBar:SetPoint("BOTTOMRIGHT", ns.mhBar, "TOPRIGHT", 0, 2)
         serpentStingBar:EnableMouse(false)
 
         local bg = serpentStingBar:CreateTexture(nil, "BACKGROUND")
@@ -5806,7 +5740,7 @@ local function SetupHunter()
             local tex = serpentStingBar:CreateTexture(nil, "OVERLAY")
             tex:SetPoint(edgeDef[1], serpentStingBar, edgeDef[2], edgeDef[4], edgeDef[5])
             tex:SetPoint(edgeDef[3], edgeDef[6], edgeDef[7], edgeDef[8])
-            tex:SetColorTexture(0.10, 0.70, 0.30, 0.85)
+            tex:SetColorTexture(0.05, 0.55, 0.20, 0.85)
             tex:Hide()
             glowBorder[#glowBorder + 1] = tex
         end
@@ -5863,15 +5797,10 @@ local function SetupHunter()
         end
 
         local bar = EnsureSerpentStingBar()
-        if not bar or not ns.mhBar then return end
+        if not bar then return end
 
         if type(UnitExists) ~= "function" or not UnitExists("target")
             or (type(UnitCanAttack) ~= "function" or not UnitCanAttack("player", "target")) then
-            bar:Hide()
-            return
-        end
-
-        if ns.mhBar and ns.mhBar.GetAlpha and (ns.mhBar:GetAlpha() or 0) <= 0 then
             bar:Hide()
             return
         end
@@ -5924,18 +5853,15 @@ local function SetupHunter()
 
     local function EnsureWingClipBar()
         if wingClipBar then return wingClipBar end
-        if not ns.mhBar then return nil end
 
-        wingClipBar = CreateFrame("StatusBar", nil, ns.mhBar)
+        wingClipBar = CreateFrame("StatusBar", nil, UIParent)
         wingClipBar:SetStatusBarTexture(
             (ns.GetBarTexture and ns.GetBarTexture()) or "Interface\\TargetingFrame\\UI-StatusBar"
         )
-        wingClipBar:SetStatusBarColor(0.30, 0.60, 0.90, 0.90)  -- icy blue
+        wingClipBar:SetStatusBarColor(0.85, 0.75, 0.10, 0.90)  -- yellow
         wingClipBar:SetMinMaxValues(0, 1)
         wingClipBar:SetValue(0)
         wingClipBar:SetHeight(WING_CLIP_BAR_HEIGHT)
-        wingClipBar:SetPoint("BOTTOMLEFT", ns.mhBar, "TOPLEFT", 0, 2)
-        wingClipBar:SetPoint("BOTTOMRIGHT", ns.mhBar, "TOPRIGHT", 0, 2)
         wingClipBar:EnableMouse(false)
 
         local bg = wingClipBar:CreateTexture(nil, "BACKGROUND")
@@ -5953,7 +5879,7 @@ local function SetupHunter()
             local tex = wingClipBar:CreateTexture(nil, "OVERLAY")
             tex:SetPoint(edgeDef[1], wingClipBar, edgeDef[2], edgeDef[4], edgeDef[5])
             tex:SetPoint(edgeDef[3], edgeDef[6], edgeDef[7], edgeDef[8])
-            tex:SetColorTexture(0.30, 0.60, 0.90, 0.85)
+            tex:SetColorTexture(0.85, 0.75, 0.10, 0.85)
             tex:Hide()
             glowBorder[#glowBorder + 1] = tex
         end
@@ -6010,15 +5936,10 @@ local function SetupHunter()
         end
 
         local bar = EnsureWingClipBar()
-        if not bar or not ns.mhBar then return end
+        if not bar then return end
 
         if type(UnitExists) ~= "function" or not UnitExists("target")
             or (type(UnitCanAttack) ~= "function" or not UnitCanAttack("player", "target")) then
-            bar:Hide()
-            return
-        end
-
-        if ns.mhBar and ns.mhBar.GetAlpha and (ns.mhBar:GetAlpha() or 0) <= 0 then
             bar:Hide()
             return
         end
@@ -6069,18 +5990,15 @@ local function SetupHunter()
 
     local function EnsureConcussionShotBar()
         if concussionShotBar then return concussionShotBar end
-        if not ns.mhBar then return nil end
 
-        concussionShotBar = CreateFrame("StatusBar", nil, ns.mhBar)
+        concussionShotBar = CreateFrame("StatusBar", nil, UIParent)
         concussionShotBar:SetStatusBarTexture(
             (ns.GetBarTexture and ns.GetBarTexture()) or "Interface\\TargetingFrame\\UI-StatusBar"
         )
-        concussionShotBar:SetStatusBarColor(0.20, 0.50, 0.80, 0.90)  -- darker blue
+        concussionShotBar:SetStatusBarColor(0.10, 0.15, 0.60, 0.90)  -- dark blue
         concussionShotBar:SetMinMaxValues(0, 1)
         concussionShotBar:SetValue(0)
         concussionShotBar:SetHeight(CONCUSSION_SHOT_BAR_HEIGHT)
-        concussionShotBar:SetPoint("BOTTOMLEFT", ns.mhBar, "TOPLEFT", 0, 2)
-        concussionShotBar:SetPoint("BOTTOMRIGHT", ns.mhBar, "TOPRIGHT", 0, 2)
         concussionShotBar:EnableMouse(false)
 
         local bg = concussionShotBar:CreateTexture(nil, "BACKGROUND")
@@ -6098,7 +6016,7 @@ local function SetupHunter()
             local tex = concussionShotBar:CreateTexture(nil, "OVERLAY")
             tex:SetPoint(edgeDef[1], concussionShotBar, edgeDef[2], edgeDef[4], edgeDef[5])
             tex:SetPoint(edgeDef[3], edgeDef[6], edgeDef[7], edgeDef[8])
-            tex:SetColorTexture(0.20, 0.50, 0.80, 0.85)
+            tex:SetColorTexture(0.10, 0.15, 0.60, 0.85)
             tex:Hide()
             glowBorder[#glowBorder + 1] = tex
         end
@@ -6155,15 +6073,10 @@ local function SetupHunter()
         end
 
         local bar = EnsureConcussionShotBar()
-        if not bar or not ns.mhBar then return end
+        if not bar then return end
 
         if type(UnitExists) ~= "function" or not UnitExists("target")
             or (type(UnitCanAttack) ~= "function" or not UnitCanAttack("player", "target")) then
-            bar:Hide()
-            return
-        end
-
-        if ns.mhBar and ns.mhBar.GetAlpha and (ns.mhBar:GetAlpha() or 0) <= 0 then
             bar:Hide()
             return
         end
@@ -6194,6 +6107,558 @@ local function SetupHunter()
         bar:Show()
     end
 
+    -- ============================================================
+    -- Immolation Trap target debuff bar (Hunter fire trap)
+    -- ============================================================
+    local IMMOLATION_TRAP_BAR_HEIGHT = 6
+    local IMMOLATION_TRAP_GLOW_WINDOW = 4
+    local immolationTrapBar = nil
+    local nextImmolationTrapUpdateAt = 0
+
+    local function SetImmolationTrapGlow(bar, remaining)
+        if not bar then return end
+        if bar.glowBorder then
+            local shouldGlow = type(remaining) == "number" and remaining > 0 and remaining <= IMMOLATION_TRAP_GLOW_WINDOW
+            for _, edge in ipairs(bar.glowBorder) do
+                if shouldGlow then edge:Show() else edge:Hide() end
+            end
+        end
+    end
+
+    local function EnsureImmolationTrapBar()
+        if immolationTrapBar then return immolationTrapBar end
+
+        immolationTrapBar = CreateFrame("StatusBar", nil, UIParent)
+        immolationTrapBar:SetStatusBarTexture(
+            (ns.GetBarTexture and ns.GetBarTexture()) or "Interface\\TargetingFrame\\UI-StatusBar"
+        )
+        immolationTrapBar:SetStatusBarColor(0.85, 0.40, 0.10, 0.90)  -- fire orange
+        immolationTrapBar:SetMinMaxValues(0, 1)
+        immolationTrapBar:SetValue(0)
+        immolationTrapBar:SetHeight(IMMOLATION_TRAP_BAR_HEIGHT)
+        immolationTrapBar:EnableMouse(false)
+
+        local bg = immolationTrapBar:CreateTexture(nil, "BACKGROUND")
+        bg:SetAllPoints(true)
+        bg:SetColorTexture(0, 0, 0, 0.45)
+        immolationTrapBar.backgroundTexture = bg
+
+        local glowBorder = {}
+        for _, edgeDef in ipairs({
+            { "TOPLEFT", "TOPRIGHT", "Height", 1, -1, 1, 1, 1 },
+            { "BOTTOMLEFT", "BOTTOMRIGHT", "Height", 1, -1, -1, 1, -1 },
+            { "TOPLEFT", "BOTTOMLEFT", "Width", 1, -1, 1, -1, -1 },
+            { "TOPRIGHT", "BOTTOMRIGHT", "Width", 1, 1, 1, 1, -1 }
+        }) do
+            local tex = immolationTrapBar:CreateTexture(nil, "OVERLAY")
+            tex:SetPoint(edgeDef[1], immolationTrapBar, edgeDef[2], edgeDef[4], edgeDef[5])
+            tex:SetPoint(edgeDef[3], edgeDef[6], edgeDef[7], edgeDef[8])
+            tex:SetColorTexture(0.85, 0.40, 0.10, 0.85)
+            tex:Hide()
+            glowBorder[#glowBorder + 1] = tex
+        end
+        immolationTrapBar.glowBorder = glowBorder
+
+        local label = immolationTrapBar:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        label:SetPoint("CENTER", immolationTrapBar, "CENTER", 0, 0)
+        label:SetFont("Fonts\\FRIZQT__.TTF", 8, "OUTLINE")
+        label:SetTextColor(1.0, 0.85, 0.25, 0.95)
+        label:SetText("IT")
+        immolationTrapBar.label = label
+
+        -- Spell icon (left side)
+        local spellIcon = immolationTrapBar:CreateTexture(nil, "OVERLAY")
+        spellIcon:SetSize(IMMOLATION_TRAP_BAR_HEIGHT, IMMOLATION_TRAP_BAR_HEIGHT)
+        spellIcon:SetPoint("LEFT", immolationTrapBar, "LEFT", 2, 0)
+        local itFirstId = next(ns.HUNTER_IMMOLATION_TRAP_IDS)
+        local itTexPath = itFirstId and GetSpellTexture and GetSpellTexture(itFirstId)
+        if itTexPath then spellIcon:SetTexture(itTexPath) end
+        immolationTrapBar.icon = spellIcon
+
+        immolationTrapBar:Hide()
+        return immolationTrapBar
+    end
+
+    local function GetTargetImmolationTrapData()
+        local trapName = ns.HUNTER_IMMOLATION_TRAP_NAME or (ns.GetSpellInfo and ns.GetSpellInfo(13795) or "Immolation Trap")
+        if not trapName then return nil end
+        for index = 1, 40 do
+            local auraName, _, duration, expirationTime, caster, auraSpellId =
+                GetHarmfulAuraData("target", index, "HARMFUL")
+            if not auraName then break end
+            local isTrap = false
+            if type(auraSpellId) == "number" and ns.HUNTER_IMMOLATION_TRAP_IDS and ns.HUNTER_IMMOLATION_TRAP_IDS[auraSpellId] then
+                isTrap = true
+            elseif auraName == trapName then
+                isTrap = true
+            end
+            if isTrap and (caster == "player" or caster == nil) then
+                return duration, expirationTime
+            end
+        end
+        return nil
+    end
+
+    local function UpdateHunterImmolationTrapBar(force)
+        local now = GetCurrentTime()
+        if not force and now < nextImmolationTrapUpdateAt then return end
+        nextImmolationTrapUpdateAt = now + 0.05
+
+        local db = SuperSwingTimerDB or ns.DB_DEFAULTS
+        if db and db.showHunterImmolationTrapBar == false then
+            if immolationTrapBar then immolationTrapBar:Hide() end
+            return
+        end
+
+        local bar = EnsureImmolationTrapBar()
+        if not bar then return end
+
+        if type(UnitExists) ~= "function" or not UnitExists("target")
+            or (type(UnitCanAttack) ~= "function" or not UnitCanAttack("player", "target")) then
+            bar:Hide()
+            return
+        end
+
+        local duration, expirationTime = GetTargetImmolationTrapData()
+        if not duration and not expirationTime then
+            SetImmolationTrapGlow(bar, 0)
+            bar:Hide()
+            return
+        end
+
+        duration = tonumber(duration)
+        if not duration or duration <= 0 then duration = 15 end  -- Immolation Trap has 15s duration
+
+        local remaining = duration
+        if type(expirationTime) == "number" and expirationTime > 0 then
+            remaining = math.max(expirationTime - now, 0)
+        end
+
+        bar:SetMinMaxValues(0, duration)
+        bar:SetValue(remaining)
+        SetImmolationTrapGlow(bar, remaining)
+
+        if bar.label and bar.label.SetText then
+            bar.label:SetText(string.format("%.0f", math.max(remaining, 0)))
+        end
+
+        bar:Show()
+    end
+
+    -- ============================================================
+    -- Explosive Trap target debuff bar (Hunter fire trap)
+    -- ============================================================
+    local EXPLOSIVE_TRAP_BAR_HEIGHT = 6
+    local EXPLOSIVE_TRAP_GLOW_WINDOW = 4
+    local explosiveTrapBar = nil
+    local nextExplosiveTrapUpdateAt = 0
+
+    local function SetExplosiveTrapGlow(bar, remaining)
+        if not bar then return end
+        if bar.glowBorder then
+            local shouldGlow = type(remaining) == "number" and remaining > 0 and remaining <= EXPLOSIVE_TRAP_GLOW_WINDOW
+            for _, edge in ipairs(bar.glowBorder) do
+                if shouldGlow then edge:Show() else edge:Hide() end
+            end
+        end
+    end
+
+    local function EnsureExplosiveTrapBar()
+        if explosiveTrapBar then return explosiveTrapBar end
+
+        explosiveTrapBar = CreateFrame("StatusBar", nil, UIParent)
+        explosiveTrapBar:SetStatusBarTexture(
+            (ns.GetBarTexture and ns.GetBarTexture()) or "Interface\\TargetingFrame\\UI-StatusBar"
+        )
+        explosiveTrapBar:SetStatusBarColor(0.90, 0.30, 0.10, 0.90)  -- red-orange
+        explosiveTrapBar:SetMinMaxValues(0, 1)
+        explosiveTrapBar:SetValue(0)
+        explosiveTrapBar:SetHeight(EXPLOSIVE_TRAP_BAR_HEIGHT)
+        explosiveTrapBar:EnableMouse(false)
+
+        local bg = explosiveTrapBar:CreateTexture(nil, "BACKGROUND")
+        bg:SetAllPoints(true)
+        bg:SetColorTexture(0, 0, 0, 0.45)
+        explosiveTrapBar.backgroundTexture = bg
+
+        local glowBorder = {}
+        for _, edgeDef in ipairs({
+            { "TOPLEFT", "TOPRIGHT", "Height", 1, -1, 1, 1, 1 },
+            { "BOTTOMLEFT", "BOTTOMRIGHT", "Height", 1, -1, -1, 1, -1 },
+            { "TOPLEFT", "BOTTOMLEFT", "Width", 1, -1, 1, -1, -1 },
+            { "TOPRIGHT", "BOTTOMRIGHT", "Width", 1, 1, 1, 1, -1 }
+        }) do
+            local tex = explosiveTrapBar:CreateTexture(nil, "OVERLAY")
+            tex:SetPoint(edgeDef[1], explosiveTrapBar, edgeDef[2], edgeDef[4], edgeDef[5])
+            tex:SetPoint(edgeDef[3], edgeDef[6], edgeDef[7], edgeDef[8])
+            tex:SetColorTexture(0.90, 0.30, 0.10, 0.85)
+            tex:Hide()
+            glowBorder[#glowBorder + 1] = tex
+        end
+        explosiveTrapBar.glowBorder = glowBorder
+
+        local label = explosiveTrapBar:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        label:SetPoint("CENTER", explosiveTrapBar, "CENTER", 0, 0)
+        label:SetFont("Fonts\\FRIZQT__.TTF", 8, "OUTLINE")
+        label:SetTextColor(1.0, 0.85, 0.25, 0.95)
+        label:SetText("ET")
+        explosiveTrapBar.label = label
+
+        -- Spell icon (left side)
+        local spellIcon = explosiveTrapBar:CreateTexture(nil, "OVERLAY")
+        spellIcon:SetSize(EXPLOSIVE_TRAP_BAR_HEIGHT, EXPLOSIVE_TRAP_BAR_HEIGHT)
+        spellIcon:SetPoint("LEFT", explosiveTrapBar, "LEFT", 2, 0)
+        local etFirstId = next(ns.HUNTER_EXPLOSIVE_TRAP_IDS)
+        local etTexPath = etFirstId and GetSpellTexture and GetSpellTexture(etFirstId)
+        if etTexPath then spellIcon:SetTexture(etTexPath) end
+        explosiveTrapBar.icon = spellIcon
+
+        explosiveTrapBar:Hide()
+        return explosiveTrapBar
+    end
+
+    local function GetTargetExplosiveTrapData()
+        local trapName = ns.HUNTER_EXPLOSIVE_TRAP_NAME or (ns.GetSpellInfo and ns.GetSpellInfo(13813) or "Explosive Trap")
+        if not trapName then return nil end
+        for index = 1, 40 do
+            local auraName, _, duration, expirationTime, caster, auraSpellId =
+                GetHarmfulAuraData("target", index, "HARMFUL")
+            if not auraName then break end
+            local isTrap = false
+            if type(auraSpellId) == "number" and ns.HUNTER_EXPLOSIVE_TRAP_IDS and ns.HUNTER_EXPLOSIVE_TRAP_IDS[auraSpellId] then
+                isTrap = true
+            elseif auraName == trapName then
+                isTrap = true
+            end
+            if isTrap and (caster == "player" or caster == nil) then
+                return duration, expirationTime
+            end
+        end
+        return nil
+    end
+
+    local function UpdateHunterExplosiveTrapBar(force)
+        local now = GetCurrentTime()
+        if not force and now < nextExplosiveTrapUpdateAt then return end
+        nextExplosiveTrapUpdateAt = now + 0.05
+
+        local db = SuperSwingTimerDB or ns.DB_DEFAULTS
+        if db and db.showHunterExplosiveTrapBar == false then
+            if explosiveTrapBar then explosiveTrapBar:Hide() end
+            return
+        end
+
+        local bar = EnsureExplosiveTrapBar()
+        if not bar then return end
+
+        if type(UnitExists) ~= "function" or not UnitExists("target")
+            or (type(UnitCanAttack) ~= "function" or not UnitCanAttack("player", "target")) then
+            bar:Hide()
+            return
+        end
+
+        local duration, expirationTime = GetTargetExplosiveTrapData()
+        if not duration and not expirationTime then
+            SetExplosiveTrapGlow(bar, 0)
+            bar:Hide()
+            return
+        end
+
+        duration = tonumber(duration)
+        if not duration or duration <= 0 then duration = 15 end  -- Explosive Trap has 15s duration
+
+        local remaining = duration
+        if type(expirationTime) == "number" and expirationTime > 0 then
+            remaining = math.max(expirationTime - now, 0)
+        end
+
+        bar:SetMinMaxValues(0, duration)
+        bar:SetValue(remaining)
+        SetExplosiveTrapGlow(bar, remaining)
+
+        if bar.label and bar.label.SetText then
+            bar.label:SetText(string.format("%.0f", math.max(remaining, 0)))
+        end
+
+        bar:Show()
+    end
+
+    -- ============================================================
+    -- Freezing Trap target debuff bar (Hunter CC trap)
+    -- ============================================================
+    local FREEZING_TRAP_BAR_HEIGHT = 6
+    local FREEZING_TRAP_GLOW_WINDOW = 4
+    local freezingTrapBar = nil
+    local nextFreezingTrapUpdateAt = 0
+
+    local function SetFreezingTrapGlow(bar, remaining)
+        if not bar then return end
+        if bar.glowBorder then
+            local shouldGlow = type(remaining) == "number" and remaining > 0 and remaining <= FREEZING_TRAP_GLOW_WINDOW
+            for _, edge in ipairs(bar.glowBorder) do
+                if shouldGlow then edge:Show() else edge:Hide() end
+            end
+        end
+    end
+
+    local function EnsureFreezingTrapBar()
+        if freezingTrapBar then return freezingTrapBar end
+
+        freezingTrapBar = CreateFrame("StatusBar", nil, UIParent)
+        freezingTrapBar:SetStatusBarTexture(
+            (ns.GetBarTexture and ns.GetBarTexture()) or "Interface\\TargetingFrame\\UI-StatusBar"
+        )
+        freezingTrapBar:SetStatusBarColor(0.30, 0.65, 0.95, 0.90)  -- icy blue
+        freezingTrapBar:SetMinMaxValues(0, 1)
+        freezingTrapBar:SetValue(0)
+        freezingTrapBar:SetHeight(FREEZING_TRAP_BAR_HEIGHT)
+        freezingTrapBar:EnableMouse(false)
+
+        local bg = freezingTrapBar:CreateTexture(nil, "BACKGROUND")
+        bg:SetAllPoints(true)
+        bg:SetColorTexture(0, 0, 0, 0.45)
+        freezingTrapBar.backgroundTexture = bg
+
+        local glowBorder = {}
+        for _, edgeDef in ipairs({
+            { "TOPLEFT", "TOPRIGHT", "Height", 1, -1, 1, 1, 1 },
+            { "BOTTOMLEFT", "BOTTOMRIGHT", "Height", 1, -1, -1, 1, -1 },
+            { "TOPLEFT", "BOTTOMLEFT", "Width", 1, -1, 1, -1, -1 },
+            { "TOPRIGHT", "BOTTOMRIGHT", "Width", 1, 1, 1, 1, -1 }
+        }) do
+            local tex = freezingTrapBar:CreateTexture(nil, "OVERLAY")
+            tex:SetPoint(edgeDef[1], freezingTrapBar, edgeDef[2], edgeDef[4], edgeDef[5])
+            tex:SetPoint(edgeDef[3], edgeDef[6], edgeDef[7], edgeDef[8])
+            tex:SetColorTexture(0.30, 0.65, 0.95, 0.85)
+            tex:Hide()
+            glowBorder[#glowBorder + 1] = tex
+        end
+        freezingTrapBar.glowBorder = glowBorder
+
+        local label = freezingTrapBar:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        label:SetPoint("CENTER", freezingTrapBar, "CENTER", 0, 0)
+        label:SetFont("Fonts\\FRIZQT__.TTF", 8, "OUTLINE")
+        label:SetTextColor(1.0, 0.85, 0.25, 0.95)
+        label:SetText("FZ")
+        freezingTrapBar.label = label
+
+        -- Spell icon (left side)
+        local spellIcon = freezingTrapBar:CreateTexture(nil, "OVERLAY")
+        spellIcon:SetSize(FREEZING_TRAP_BAR_HEIGHT, FREEZING_TRAP_BAR_HEIGHT)
+        spellIcon:SetPoint("LEFT", freezingTrapBar, "LEFT", 2, 0)
+        local ftFirstId = next(ns.HUNTER_FREEZING_TRAP_IDS)
+        local ftTexPath = ftFirstId and GetSpellTexture and GetSpellTexture(ftFirstId)
+        if ftTexPath then spellIcon:SetTexture(ftTexPath) end
+        freezingTrapBar.icon = spellIcon
+
+        freezingTrapBar:Hide()
+        return freezingTrapBar
+    end
+
+    local function GetTargetFreezingTrapData()
+        local trapName = ns.HUNTER_FREEZING_TRAP_NAME or (ns.GetSpellInfo and ns.GetSpellInfo(1499) or "Freezing Trap")
+        if not trapName then return nil end
+        for index = 1, 40 do
+            local auraName, _, duration, expirationTime, caster, auraSpellId =
+                GetHarmfulAuraData("target", index, "HARMFUL")
+            if not auraName then break end
+            local isTrap = false
+            if type(auraSpellId) == "number" and ns.HUNTER_FREEZING_TRAP_IDS and ns.HUNTER_FREEZING_TRAP_IDS[auraSpellId] then
+                isTrap = true
+            elseif auraName == trapName then
+                isTrap = true
+            end
+            if isTrap and (caster == "player" or caster == nil) then
+                return duration, expirationTime
+            end
+        end
+        return nil
+    end
+
+    local function UpdateHunterFreezingTrapBar(force)
+        local now = GetCurrentTime()
+        if not force and now < nextFreezingTrapUpdateAt then return end
+        nextFreezingTrapUpdateAt = now + 0.05
+
+        local db = SuperSwingTimerDB or ns.DB_DEFAULTS
+        if db and db.showHunterFreezingTrapBar == false then
+            if freezingTrapBar then freezingTrapBar:Hide() end
+            return
+        end
+
+        local bar = EnsureFreezingTrapBar()
+        if not bar then return end
+
+        if type(UnitExists) ~= "function" or not UnitExists("target")
+            or (type(UnitCanAttack) ~= "function" or not UnitCanAttack("player", "target")) then
+            bar:Hide()
+            return
+        end
+
+        local duration, expirationTime = GetTargetFreezingTrapData()
+        if not duration and not expirationTime then
+            SetFreezingTrapGlow(bar, 0)
+            bar:Hide()
+            return
+        end
+
+        duration = tonumber(duration)
+        if not duration or duration <= 0 then duration = 10 end  -- Freezing Trap has 10s base duration
+
+        local remaining = duration
+        if type(expirationTime) == "number" and expirationTime > 0 then
+            remaining = math.max(expirationTime - now, 0)
+        end
+
+        bar:SetMinMaxValues(0, duration)
+        bar:SetValue(remaining)
+        SetFreezingTrapGlow(bar, remaining)
+
+        if bar.label and bar.label.SetText then
+            bar.label:SetText(string.format("%.0f", math.max(remaining, 0)))
+        end
+
+        bar:Show()
+    end
+
+    -- ============================================================
+    -- Frost Trap target debuff bar (Hunter slow trap)
+    -- ============================================================
+    local FROST_TRAP_BAR_HEIGHT = 6
+    local FROST_TRAP_GLOW_WINDOW = 4
+    local frostTrapBar = nil
+    local nextFrostTrapUpdateAt = 0
+
+    local function SetFrostTrapGlow(bar, remaining)
+        if not bar then return end
+        if bar.glowBorder then
+            local shouldGlow = type(remaining) == "number" and remaining > 0 and remaining <= FROST_TRAP_GLOW_WINDOW
+            for _, edge in ipairs(bar.glowBorder) do
+                if shouldGlow then edge:Show() else edge:Hide() end
+            end
+        end
+    end
+
+    local function EnsureFrostTrapBar()
+        if frostTrapBar then return frostTrapBar end
+
+        frostTrapBar = CreateFrame("StatusBar", nil, UIParent)
+        frostTrapBar:SetStatusBarTexture(
+            (ns.GetBarTexture and ns.GetBarTexture()) or "Interface\\TargetingFrame\\UI-StatusBar"
+        )
+        frostTrapBar:SetStatusBarColor(0.50, 0.70, 0.95, 0.90)  -- pale blue
+        frostTrapBar:SetMinMaxValues(0, 1)
+        frostTrapBar:SetValue(0)
+        frostTrapBar:SetHeight(FROST_TRAP_BAR_HEIGHT)
+        frostTrapBar:EnableMouse(false)
+
+        local bg = frostTrapBar:CreateTexture(nil, "BACKGROUND")
+        bg:SetAllPoints(true)
+        bg:SetColorTexture(0, 0, 0, 0.45)
+        frostTrapBar.backgroundTexture = bg
+
+        local glowBorder = {}
+        for _, edgeDef in ipairs({
+            { "TOPLEFT", "TOPRIGHT", "Height", 1, -1, 1, 1, 1 },
+            { "BOTTOMLEFT", "BOTTOMRIGHT", "Height", 1, -1, -1, 1, -1 },
+            { "TOPLEFT", "BOTTOMLEFT", "Width", 1, -1, 1, -1, -1 },
+            { "TOPRIGHT", "BOTTOMRIGHT", "Width", 1, 1, 1, 1, -1 }
+        }) do
+            local tex = frostTrapBar:CreateTexture(nil, "OVERLAY")
+            tex:SetPoint(edgeDef[1], frostTrapBar, edgeDef[2], edgeDef[4], edgeDef[5])
+            tex:SetPoint(edgeDef[3], edgeDef[6], edgeDef[7], edgeDef[8])
+            tex:SetColorTexture(0.50, 0.70, 0.95, 0.85)
+            tex:Hide()
+            glowBorder[#glowBorder + 1] = tex
+        end
+        frostTrapBar.glowBorder = glowBorder
+
+        local label = frostTrapBar:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        label:SetPoint("CENTER", frostTrapBar, "CENTER", 0, 0)
+        label:SetFont("Fonts\\FRIZQT__.TTF", 8, "OUTLINE")
+        label:SetTextColor(1.0, 0.85, 0.25, 0.95)
+        label:SetText("FT")
+        frostTrapBar.label = label
+
+        -- Spell icon (left side)
+        local spellIcon = frostTrapBar:CreateTexture(nil, "OVERLAY")
+        spellIcon:SetSize(FROST_TRAP_BAR_HEIGHT, FROST_TRAP_BAR_HEIGHT)
+        spellIcon:SetPoint("LEFT", frostTrapBar, "LEFT", 2, 0)
+        local froFirstId = next(ns.HUNTER_FROST_TRAP_IDS)
+        local froTexPath = froFirstId and GetSpellTexture and GetSpellTexture(froFirstId)
+        if froTexPath then spellIcon:SetTexture(froTexPath) end
+        frostTrapBar.icon = spellIcon
+
+        frostTrapBar:Hide()
+        return frostTrapBar
+    end
+
+    local function GetTargetFrostTrapData()
+        local trapName = ns.HUNTER_FROST_TRAP_NAME or (ns.GetSpellInfo and ns.GetSpellInfo(13809) or "Frost Trap")
+        if not trapName then return nil end
+        for index = 1, 40 do
+            local auraName, _, duration, expirationTime, caster, auraSpellId =
+                GetHarmfulAuraData("target", index, "HARMFUL")
+            if not auraName then break end
+            local isTrap = false
+            if type(auraSpellId) == "number" and ns.HUNTER_FROST_TRAP_IDS and ns.HUNTER_FROST_TRAP_IDS[auraSpellId] then
+                isTrap = true
+            elseif auraName == trapName then
+                isTrap = true
+            end
+            if isTrap and (caster == "player" or caster == nil) then
+                return duration, expirationTime
+            end
+        end
+        return nil
+    end
+
+    local function UpdateHunterFrostTrapBar(force)
+        local now = GetCurrentTime()
+        if not force and now < nextFrostTrapUpdateAt then return end
+        nextFrostTrapUpdateAt = now + 0.05
+
+        local db = SuperSwingTimerDB or ns.DB_DEFAULTS
+        if db and db.showHunterFrostTrapBar == false then
+            if frostTrapBar then frostTrapBar:Hide() end
+            return
+        end
+
+        local bar = EnsureFrostTrapBar()
+        if not bar then return end
+
+        if type(UnitExists) ~= "function" or not UnitExists("target")
+            or (type(UnitCanAttack) ~= "function" or not UnitCanAttack("player", "target")) then
+            bar:Hide()
+            return
+        end
+
+        local duration, expirationTime = GetTargetFrostTrapData()
+        if not duration and not expirationTime then
+            SetFrostTrapGlow(bar, 0)
+            bar:Hide()
+            return
+        end
+
+        duration = tonumber(duration)
+        if not duration or duration <= 0 then duration = 12 end  -- Frost Trap has 12s duration
+
+        local remaining = duration
+        if type(expirationTime) == "number" and expirationTime > 0 then
+            remaining = math.max(expirationTime - now, 0)
+        end
+
+        bar:SetMinMaxValues(0, duration)
+        bar:SetValue(remaining)
+        SetFrostTrapGlow(bar, remaining)
+
+        if bar.label and bar.label.SetText then
+            bar.label:SetText(string.format("%.0f", math.max(remaining, 0)))
+        end
+
+        bar:Show()
+    end
+
     -- Patch into OnUpdate chain (guard against double-wrap on UI reload)
     if not ns._hunterOnUpdateWrapped then
         local hunterOrigOnUpdate = ns.OnUpdate or function () end
@@ -6203,20 +6668,32 @@ local function SetupHunter()
             UpdateHunterSerpentStingBar(false)
             UpdateHunterWingClipBar(false)
             UpdateHunterConcussionShotBar(false)
-            -- Restack all visible debuff bars above MH dynamically
-            RestackDebuffBars({serpentStingBar, wingClipBar, concussionShotBar}, ns.mhBar)
-            if ns.UpdateHunterBuffIcons then ns.UpdateHunterBuffIcons() end
+            UpdateHunterImmolationTrapBar(false)
+            UpdateHunterExplosiveTrapBar(false)
+            UpdateHunterFreezingTrapBar(false)
+            UpdateHunterFrostTrapBar(false)
+            -- Restack all visible debuff bars above the anchor bar dynamically
+            RestackDebuffBars({serpentStingBar, wingClipBar, concussionShotBar, immolationTrapBar, explosiveTrapBar, freezingTrapBar, frostTrapBar}, GetDebuffAnchorBar())
+            if ns.UpdateHunterBuffIcons then ns.UpdateHunterBuffIcons(elapsed) end
         end
         ns._hunterOnUpdateWrapped = true
     end
     pcall(UpdateHunterSerpentStingBar, true)
     pcall(UpdateHunterWingClipBar, true)
     pcall(UpdateHunterConcussionShotBar, true)
+    pcall(UpdateHunterImmolationTrapBar, true)
+    pcall(UpdateHunterExplosiveTrapBar, true)
+    pcall(UpdateHunterFreezingTrapBar, true)
+    pcall(UpdateHunterFrostTrapBar, true)
     -- Restack after initial force-update
-    RestackDebuffBars({serpentStingBar, wingClipBar, concussionShotBar}, ns.mhBar)
+    RestackDebuffBars({serpentStingBar, wingClipBar, concussionShotBar, immolationTrapBar, explosiveTrapBar, freezingTrapBar, frostTrapBar}, GetDebuffAnchorBar())
     ns.UpdateHunterSerpentStingBar = UpdateHunterSerpentStingBar
     ns.UpdateHunterWingClipBar = UpdateHunterWingClipBar
     ns.UpdateHunterConcussionShotBar = UpdateHunterConcussionShotBar
+    ns.UpdateHunterImmolationTrapBar = UpdateHunterImmolationTrapBar
+    ns.UpdateHunterExplosiveTrapBar = UpdateHunterExplosiveTrapBar
+    ns.UpdateHunterFreezingTrapBar = UpdateHunterFreezingTrapBar
+    ns.UpdateHunterFrostTrapBar = UpdateHunterFrostTrapBar
 end
 
 local function SetupRogue()
@@ -7237,7 +7714,7 @@ local function SetupRogue()
             UpdateRogueExposeArmorBar(false)
             -- Restack all visible debuff bars above MH dynamically
             RestackDebuffBars({ruptureBar, exposeArmorBar}, ns.mhBar)
-            if ns.UpdateRogueBuffIcons then ns.UpdateRogueBuffIcons() end
+            if ns.UpdateRogueBuffIcons then ns.UpdateRogueBuffIcons(elapsed) end
         end
 
         pcall(UpdateRogueRuptureBar, true)
@@ -7387,19 +7864,6 @@ local function SetupRogue()
     local ROGUE_BUFF_ICON_GAP = 3
 
     local function GetRogueSpellRemaining(info)
-        -- Dual-client guard: skip spell check for external buffs (party buffs like Bloodlust,
-        -- item buffs like Drums) since the player doesn't learn these spells but can receive them.
-        if not info.external and type(IsPlayerSpell) == "function" then
-            if IsPlayerSpell(info.spellId) ~= true then
-                local resolvedName = ns.GetSpellInfo and ns.GetSpellInfo(info.name)
-                if resolvedName then
-                    local _, _, _, _, _, _, resolvedId = ns.GetSpellInfo(info.name)
-                    if type(resolvedId) ~= "number" or IsPlayerSpell(resolvedId) ~= true then
-                        return nil, nil
-                    end
-                end
-            end
-        end
         -- Step 1: Scan helpful auras on the player (buffs)
         for index = 1, 40 do
             local auraName, duration, expirationTime, auraSpellId = GetHelpfulAuraData("player", index)
@@ -7466,9 +7930,6 @@ local function SetupRogue()
             icon.texture:SetTexCoord(0.07, 0.93, 0.07, 0.93)
             local texPath = GetSpellTexture and GetSpellTexture(spell.spellId)
             if texPath then icon.texture:SetTexture(texPath) end
-            icon.dim = icon:CreateTexture(nil, "OVERLAY")
-            icon.dim:SetAllPoints()
-            icon.dim:SetColorTexture(0, 0, 0, 0)
             icon.glow = icon:CreateTexture(nil, "OVERLAY", nil, 7)
             icon.glow:SetAllPoints()
             icon.glow:SetColorTexture(1, 0.85, 0, 0)
@@ -7478,9 +7939,9 @@ local function SetupRogue()
             icon.border:SetPoint("TOPLEFT", -1, 1)
             icon.border:SetPoint("BOTTOMRIGHT", 1, -1)
             icon.durationText = icon:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-            icon.durationText:SetPoint("CENTER", icon, "CENTER", 0, 0)
+            icon.durationText:SetPoint("TOP", icon, "TOP", 0, -1)
             icon.durationText:SetJustifyH("CENTER")
-            icon.durationText:SetFont("Fonts\\FRIZQT__.TTF", 10, "OUTLINE")
+            icon.durationText:SetFont("Fonts\\FRIZQT__.TTF", 12, "OUTLINE")
             icon.durationText:SetTextColor(1, 1, 1, 0.95)
             icon.durationText:Hide()
             icon:Hide()
@@ -7491,11 +7952,11 @@ local function SetupRogue()
         end
     end
 
-    ns.UpdateRogueBuffIcons = function ()
+    ns.UpdateRogueBuffIcons = function (elapsed)
         CreateRogueBuffIcons()
         if #rogueBuffIcons == 0 then return end
 
-        rogueBuffTimer = rogueBuffTimer + 0.03
+        rogueBuffTimer = rogueBuffTimer + (elapsed or 0.03)
         if rogueBuffTimer < ROGUE_BUFF_UPDATE_INTERVAL then return end
         rogueBuffTimer = 0
 
@@ -7618,6 +8079,8 @@ function ns.InitClassMods()
     ns.UpdateDruidRipTracker = nil
     ns.UpdateDruidMangleBar = nil
     ns.UpdateDruidRipBar = nil
+    ns.UpdateDruidRakeBar = nil
+    ns.UpdateDruidBuffIcons = nil
     ns.UpdateHunterQueueTint = nil
     ns.ClearHunterQueueTint = nil
     ns.UpdateHunterRangeHelperColor = nil
@@ -7631,12 +8094,17 @@ function ns.InitClassMods()
     ns.UpdateRogueSliceAndDiceColor = nil
     ns.UpdateRogueSliceAndDiceVisual = nil
     ns.UpdatePaladinJudgementBar = nil
+    ns.UpdatePaladinSealVengeanceBar = nil
     ns.UpdateShamanFlameShockBar = nil
     ns.UpdateHunterAspect = nil
     ns.UpdateHunterBuffIcons = nil
     ns.UpdateHunterSerpentStingBar = nil
     ns.UpdateHunterWingClipBar = nil
     ns.UpdateHunterConcussionShotBar = nil
+    ns.UpdateHunterImmolationTrapBar = nil
+    ns.UpdateHunterExplosiveTrapBar = nil
+    ns.UpdateHunterFreezingTrapBar = nil
+    ns.UpdateHunterFrostTrapBar = nil
     ns.UpdateRogueRuptureBar = nil
     ns.UpdateRogueExposeArmorBar = nil
     ns.UpdateWarriorSunderArmorBar = nil

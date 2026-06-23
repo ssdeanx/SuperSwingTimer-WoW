@@ -16,7 +16,13 @@ globals = {
     "geterrorhandler",
 
     -- Cursor position for manual drag during combat
-    "GetCursorPosition"
+    "GetCursorPosition",
+
+    -- Closure-captured locals in SetupHunter passed as arguments to
+    -- top-level helpers (luacheck false positive: accessible at runtime).
+    "serpentStingBar", "wingClipBar", "concussionShotBar",
+    "immolationTrapBar", "explosiveTrapBar",
+    "freezingTrapBar", "frostTrapBar",
 }
 -- Allow longer lines in this addon repository to avoid false positives
 max_line_length = 260

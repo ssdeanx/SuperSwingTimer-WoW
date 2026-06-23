@@ -1,7 +1,7 @@
 # Super Swing Timer
 
 Live WoW Classic Era and TBC Anniversary addon, thousands of users. 7 Lua files, single `ns` table, zero dependencies.
-**v0.1.5** | **DB schema: v50** (`ns.DB_DEFAULTS.version`) | **CurseForge / GitHub Releases**
+**v0.1.6** | **DB schema: v54** (`ns.DB_DEFAULTS.version`) | **CurseForge / GitHub Releases**
 
 ---
 

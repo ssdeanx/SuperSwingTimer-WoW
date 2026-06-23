@@ -227,6 +227,18 @@ ns.HUNTER_MISDIRECTION_ID = 34477
 ns.HUNTER_MISDIRECTION_NAME = ns.GetSpellInfo(34477) or "Misdirection"
 -- Wing Clip (Hunter melee snare) — spell ID 2974 already defined for cast tracking
 ns.HUNTER_WING_CLIP_NAME = ns.GetSpellInfo(2974) or "Wing Clip"
+-- Immolation Trap (Hunter fire trap debuff on target)
+ns.HUNTER_IMMOLATION_TRAP_IDS = { [13795] = true, [14302] = true }
+ns.HUNTER_IMMOLATION_TRAP_NAME = ns.GetSpellInfo(13795) or "Immolation Trap"
+-- Explosive Trap (Hunter fire trap debuff on target)
+ns.HUNTER_EXPLOSIVE_TRAP_IDS = { [13813] = true, [14303] = true, [14304] = true, [14305] = true }
+ns.HUNTER_EXPLOSIVE_TRAP_NAME = ns.GetSpellInfo(13813) or "Explosive Trap"
+-- Freezing Trap (Hunter CC trap debuff on target - Freezing Trap Effect)
+ns.HUNTER_FREEZING_TRAP_IDS = { [1499] = true, [14310] = true, [14311] = true, [3355] = true, [14308] = true, [14309] = true }
+ns.HUNTER_FREEZING_TRAP_NAME = ns.GetSpellInfo(1499) or "Freezing Trap"
+-- Frost Trap (Hunter slow trap debuff on target)
+ns.HUNTER_FROST_TRAP_IDS = { [13809] = true, [13810] = true }
+ns.HUNTER_FROST_TRAP_NAME = ns.GetSpellInfo(13809) or "Frost Trap"
 -- Sunder Armor (Warrior armor reduction debuff, stacks 1-5)
 ns.WARRIOR_SUNDER_ARMOR_IDS = { [7386] = true, [7405] = true, [8380] = true, [11596] = true, [11597] = true, [25225] = true }
 ns.WARRIOR_SUNDER_ARMOR_NAME = ns.GetSpellInfo(7386) or "Sunder Armor"
@@ -719,7 +731,7 @@ ns.CLASS_CONFIG = {
 -- SavedVariables defaults
 -- ============================================================
 ns.DB_DEFAULTS = {
-    version = 51,
+    version = 54,
     showMH = true,
     showOH = true,
     showRanged = true,
@@ -765,6 +777,10 @@ ns.DB_DEFAULTS = {
     showRogueBuffIcons = true,
     showHunterWingClipBar = true,
     showHunterConcussionShotBar = true,
+    showHunterImmolationTrapBar = true,
+    showHunterExplosiveTrapBar = true,
+    showHunterFreezingTrapBar = true,
+    showHunterFrostTrapBar = true,
     showWarriorSunderArmorBar = true,
     showRogueExposeArmorBar = true,
     useClassColors = false,

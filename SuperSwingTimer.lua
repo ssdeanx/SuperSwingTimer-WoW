@@ -81,7 +81,7 @@ local function MigrateDB()
     -- Fresh install
     if not SuperSwingTimerDB then
         SuperSwingTimerDB = {
-            version = ns.DB_DEFAULTS.version or 48,
+            version = ns.DB_DEFAULTS.version or 54,
             showMH = ns.DB_DEFAULTS.showMH,
             showOH = ns.DB_DEFAULTS.showOH,
             showRanged = ns.DB_DEFAULTS.showRanged,
@@ -1058,6 +1058,29 @@ local function MigrateDB()
                 if db.showDruidBuffIcons == nil then db.showDruidBuffIcons = true end
                 if db.druidBuffIconSize == nil then db.druidBuffIconSize = 25 end
             end
+        },
+        {
+            version = 52,
+            apply = function (db)
+                if db.showHunterWingClipBar == nil then db.showHunterWingClipBar = true end
+                if db.showHunterConcussionShotBar == nil then db.showHunterConcussionShotBar = true end
+                if db.showWarriorSunderArmorBar == nil then db.showWarriorSunderArmorBar = true end
+                if db.showRogueExposeArmorBar == nil then db.showRogueExposeArmorBar = true end
+            end
+        },
+        {
+            version = 53,
+            apply = function (db)
+                if db.showHunterImmolationTrapBar == nil then db.showHunterImmolationTrapBar = true end
+                if db.showHunterExplosiveTrapBar == nil then db.showHunterExplosiveTrapBar = true end
+            end
+        },
+        {
+            version = 54,
+            apply = function (db)
+                if db.showHunterFreezingTrapBar == nil then db.showHunterFreezingTrapBar = true end
+                if db.showHunterFrostTrapBar == nil then db.showHunterFrostTrapBar = true end
+            end
         }
     }
 
@@ -1317,15 +1340,15 @@ frame:SetScript("OnEvent", function (self, event, ...)
         if ns.playerClass == "WARRIOR" and ns.UpdateWarriorDeepWoundsBar then
             ns.UpdateWarriorDeepWoundsBar(true)
         end
-    if ns.playerClass == "DRUID" and ns.UpdateDruidMangleBar then
-        ns.UpdateDruidMangleBar(true)
-    end
-    if ns.playerClass == "DRUID" and ns.UpdateDruidRipBar then
-        ns.UpdateDruidRipBar(true)
-    end
-    if ns.playerClass == "DRUID" and ns.UpdateDruidRakeBar then
-        ns.UpdateDruidRakeBar(true)
-    end
+        if ns.playerClass == "DRUID" and ns.UpdateDruidMangleBar then
+            ns.UpdateDruidMangleBar(true)
+        end
+        if ns.playerClass == "DRUID" and ns.UpdateDruidRipBar then
+            ns.UpdateDruidRipBar(true)
+        end
+        if ns.playerClass == "DRUID" and ns.UpdateDruidRakeBar then
+            ns.UpdateDruidRakeBar(true)
+        end
         if ns.playerClass == "ROGUE" and ns.UpdateRogueRuptureBar then
             ns.UpdateRogueRuptureBar(true)
         end
@@ -1349,6 +1372,12 @@ frame:SetScript("OnEvent", function (self, event, ...)
         end
         if ns.playerClass == "HUNTER" and ns.UpdateHunterConcussionShotBar then
             ns.UpdateHunterConcussionShotBar(true)
+        end
+        if ns.playerClass == "HUNTER" and ns.UpdateHunterImmolationTrapBar then
+            ns.UpdateHunterImmolationTrapBar(true)
+        end
+        if ns.playerClass == "HUNTER" and ns.UpdateHunterExplosiveTrapBar then
+            ns.UpdateHunterExplosiveTrapBar(true)
         end
         if ((ns.playerInCombat == true) or (InCombatLockdown and InCombatLockdown())) and ns.ApplyVisibility then
             ns.ApplyVisibility()
@@ -1378,12 +1407,12 @@ frame:SetScript("OnEvent", function (self, event, ...)
             ns.UpdateShamanFlameShockBar(true)
         elseif unit == "target" and ns.playerClass == "WARRIOR" and ns.UpdateWarriorDeepWoundsBar then
             ns.UpdateWarriorDeepWoundsBar(true)
-    elseif unit == "target" and ns.playerClass == "DRUID" and ns.UpdateDruidMangleBar then
-        ns.UpdateDruidMangleBar(true)
-    elseif unit == "target" and ns.playerClass == "DRUID" and ns.UpdateDruidRipBar then
-        ns.UpdateDruidRipBar(true)
-    elseif unit == "target" and ns.playerClass == "DRUID" and ns.UpdateDruidRakeBar then
-        ns.UpdateDruidRakeBar(true)
+        elseif unit == "target" and ns.playerClass == "DRUID" and ns.UpdateDruidMangleBar then
+            ns.UpdateDruidMangleBar(true)
+        elseif unit == "target" and ns.playerClass == "DRUID" and ns.UpdateDruidRipBar then
+            ns.UpdateDruidRipBar(true)
+        elseif unit == "target" and ns.playerClass == "DRUID" and ns.UpdateDruidRakeBar then
+            ns.UpdateDruidRakeBar(true)
         elseif unit == "target" and ns.playerClass == "ROGUE" and ns.UpdateRogueRuptureBar then
             ns.UpdateRogueRuptureBar(true)
         elseif unit == "target" and ns.playerClass == "HUNTER" and ns.UpdateHunterSerpentStingBar then
@@ -1400,6 +1429,10 @@ frame:SetScript("OnEvent", function (self, event, ...)
             ns.UpdateHunterWingClipBar(true)
         elseif unit == "target" and ns.playerClass == "HUNTER" and ns.UpdateHunterConcussionShotBar then
             ns.UpdateHunterConcussionShotBar(true)
+        elseif unit == "target" and ns.playerClass == "HUNTER" and ns.UpdateHunterImmolationTrapBar then
+            ns.UpdateHunterImmolationTrapBar(true)
+        elseif unit == "target" and ns.playerClass == "HUNTER" and ns.UpdateHunterExplosiveTrapBar then
+            ns.UpdateHunterExplosiveTrapBar(true)
         end
     elseif event == "UNIT_POWER_UPDATE" or event == "UNIT_POWER_FREQUENT" then
         local unit, powerType = ...
