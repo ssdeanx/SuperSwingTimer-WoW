@@ -1,5 +1,13 @@
 # Active Context
 
+## Active Context Update (2026-07-05 - Global Scale slider + deep quality audit)
+
+- **Deep quality audit completed**: Created `AUDIT.md` with 10-section scoring (overall 7.2/10). Identified critical issues: `ns.OnUpdate` chain fragility, fresh-install block duplication, zero test infrastructure, 8 Hunter bar globals suppressed in `.luacheckrc`, and missing global scale slider.
+- **Global Scale slider implemented**: Added `globalScale = 1.0` to `ns.DB_DEFAULTS`, `ns.GetGlobalScale()` (0.5x–3.0x clamped range), `ns.Scale()` helper function. Modified `CreateBar()`, `ApplyBarSize()`, `ApplyBarBorderSize()`, and `CreateGcdTickerBar()` to apply scale internally. Added `ns.ApplyGlobalScale()` that refreshes all 6 classes' helpers after scale change. Placed slider as **first control** at top of `/sst` panel with gold label + descriptive subtitle. Quick Controls shifted down by slider height. Fresh-install, migration nil-guard, reset defaults, and panel refresh all wired.
+- **Scale formula**: `finalSize = math.floor(savedValue × scale + 0.5)`, min 1px. Individual sliders set base size, global scale multiplies everything proportionally.
+- **`get_errors` clean**: All edited files (Constants, SuperSwingTimer, UI, Config) pass diagnostics.
+- **Known follow-up**: 8 Hunter bar globals still need `ns.*` migration, `ns.OnUpdate` chain needs registration pattern.
+
 ## Active Context Update (2026-06-17 - Hunter buff icon redesign + Shaman buff icon group)
 
 - **Hunter buff icons redesigned**: Removed the dim/shading overlay from `ns.UpdateHunterBuffIcons()`. Added gold glow (`icon.glow`) with ADD blend mode that pulses between 0.15-0.55 alpha during the last 4 seconds of any tracked buff/CD. Added racial ability tracking (Blood Fury, Berserking, Stoneform, Shadowmeld, War Stomp, Gift of the Naaru). Buff group Y offset raised from 4 to 9 (+5px).

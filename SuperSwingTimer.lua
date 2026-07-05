@@ -5,19 +5,7 @@ local SlashCmdList = rawget(_G, "SlashCmdList")
 local UnitClass = rawget(_G, "UnitClass")
 local strtrim = rawget(_G, "strtrim")
 local GetShapeshiftForm = rawget(_G, "GetShapeshiftForm")
-local GetTimePreciseSec = rawget(_G, "GetTimePreciseSec")
-local GetTime = rawget(_G, "GetTime")
 local InCombatLockdown = rawget(_G, "InCombatLockdown")
-
-local function GetCurrentTime()
-    if ns.GetAlignedTime then
-        return ns.GetAlignedTime()
-    end
-    if GetTimePreciseSec then
-        return GetTimePreciseSec()
-    end
-    return GetTime()
-end
 
 local LATENCY_REFRESH_INTERVAL = 0.05
 local nextLatencyRefreshAt = 0
@@ -78,160 +66,21 @@ local function MigrateDB()
         end
     end
 
+    local function DeepCopyDefaults(t)
+        local copy = {}
+        for k, v in pairs(t) do
+            if type(v) == "table" then
+                copy[k] = DeepCopyDefaults(v)
+            else
+                copy[k] = v
+            end
+        end
+        return copy
+    end
+
     -- Fresh install
     if not SuperSwingTimerDB then
-        SuperSwingTimerDB = {
-            version = ns.DB_DEFAULTS.version or 54,
-            showMH = ns.DB_DEFAULTS.showMH,
-            showOH = ns.DB_DEFAULTS.showOH,
-            showRanged = ns.DB_DEFAULTS.showRanged,
-            showHunterRangeHelper = ns.DB_DEFAULTS.showHunterRangeHelper,
-            showEnemy = ns.DB_DEFAULTS.showEnemy,
-            showRogueSinisterAssist = ns.DB_DEFAULTS.showRogueSinisterAssist,
-            showRogueEnergyTick = ns.DB_DEFAULTS.showRogueEnergyTick,
-            showRogueComboPoints = ns.DB_DEFAULTS.showRogueComboPoints,
-            showRogueSliceAndDice = ns.DB_DEFAULTS.showRogueSliceAndDice,
-            showWeaveAssist = ns.DB_DEFAULTS.showWeaveAssist,
-            showPaladinSealColor = ns.DB_DEFAULTS.showPaladinSealColor,
-            showPaladinSealLabel = ns.DB_DEFAULTS.showPaladinSealLabel,
-            showPaladinJudgementMarker = ns.DB_DEFAULTS.showPaladinJudgementMarker,
-            showPaladinTwistFlash = ns.DB_DEFAULTS.showPaladinTwistFlash,
-            showWarriorRageBar = ns.DB_DEFAULTS.showWarriorRageBar,
-            showWarriorRageProtection = ns.DB_DEFAULTS.showWarriorRageProtection,
-            showDruidEnergyTickBar = ns.DB_DEFAULTS.showDruidEnergyTickBar,
-            useClassColors = ns.DB_DEFAULTS.useClassColors,
-            indicatorBlendMode = ns.DB_DEFAULTS.indicatorBlendMode,
-            weaveSpellFamilies = {
-                LB = ns.DB_DEFAULTS.weaveSpellFamilies.LB,
-                CL = ns.DB_DEFAULTS.weaveSpellFamilies.CL,
-                HW = ns.DB_DEFAULTS.weaveSpellFamilies.HW,
-                LHW = ns.DB_DEFAULTS.weaveSpellFamilies.LHW,
-                CH = ns.DB_DEFAULTS.weaveSpellFamilies.CH
-            },
-            barWidth = ns.DB_DEFAULTS.barWidth,
-            barHeight = ns.DB_DEFAULTS.barHeight,
-            hunterCastBarHeight = ns.DB_DEFAULTS.hunterCastBarHeight,
-            rogueSliceAndDiceBarHeight = ns.DB_DEFAULTS.rogueSliceAndDiceBarHeight,
-            rogueEnergyTickBarWidth = ns.DB_DEFAULTS.rogueEnergyTickBarWidth,
-            warriorShieldBlockBarHeight = ns.DB_DEFAULTS.warriorShieldBlockBarHeight,
-            hunterRangeHelperWidth = ns.DB_DEFAULTS.hunterRangeHelperWidth,
-            hunterRapidFireBarHeight = ns.DB_DEFAULTS.hunterRapidFireBarHeight,
-            druidEnergyTickBarWidth = ns.DB_DEFAULTS.druidEnergyTickBarWidth,
-            rogueAdrenalineRushBarHeight = ns.DB_DEFAULTS.rogueAdrenalineRushBarHeight,
-            shamanLightningTrackerGap = ns.DB_DEFAULTS.shamanLightningTrackerGap,
-            barTexture = ns.DB_DEFAULTS.barTexture,
-            barTextureLayer = ns.DB_DEFAULTS.barTextureLayer,
-            rangedBarTexture = ns.DB_DEFAULTS.rangedBarTexture,
-            sparkTexture = ns.DB_DEFAULTS.sparkTexture,
-            sparkTextureLayer = ns.DB_DEFAULTS.sparkTextureLayer,
-            weaveSparkTexture = ns.DB_DEFAULTS.weaveSparkTexture,
-            weaveSparkTextureLayer = ns.DB_DEFAULTS.weaveSparkTextureLayer,
-            weaveSparkWidth = ns.DB_DEFAULTS.weaveSparkWidth,
-            weaveSparkHeight = ns.DB_DEFAULTS.weaveSparkHeight,
-            weaveSparkAlpha = ns.DB_DEFAULTS.weaveSparkAlpha,
-            weaveTriangleTopTexture = ns.DB_DEFAULTS.weaveTriangleTopTexture,
-            weaveTriangleBottomTexture = ns.DB_DEFAULTS.weaveTriangleBottomTexture,
-            weaveTriangleTextureLayer = ns.DB_DEFAULTS.weaveTriangleTextureLayer,
-            weaveTriangleSize = ns.DB_DEFAULTS.weaveTriangleSize,
-            weaveTriangleGap = ns.DB_DEFAULTS.weaveTriangleGap,
-            weaveTriangleAlpha = ns.DB_DEFAULTS.weaveTriangleAlpha,
-            weaveMarkerLayer = ns.DB_DEFAULTS.weaveMarkerLayer,
-            sparkWidth = ns.DB_DEFAULTS.sparkWidth,
-            sparkHeight = ns.DB_DEFAULTS.sparkHeight,
-            barBorderSize = ns.DB_DEFAULTS.barBorderSize,
-            barBackgroundAlpha = ns.DB_DEFAULTS.barBackgroundAlpha,
-            barBackgroundColor = {
-                r = ns.DB_DEFAULTS.barBackgroundColor.r,
-                g = ns.DB_DEFAULTS.barBackgroundColor.g,
-                b = ns.DB_DEFAULTS.barBackgroundColor.b,
-                a = ns.DB_DEFAULTS.barBackgroundColor.a
-            },
-            barBorderColor = {
-                r = ns.DB_DEFAULTS.barBorderColor.r,
-                g = ns.DB_DEFAULTS.barBorderColor.g,
-                b = ns.DB_DEFAULTS.barBorderColor.b,
-                a = ns.DB_DEFAULTS.barBorderColor.a
-            },
-            sparkAlpha = ns.DB_DEFAULTS.sparkAlpha,
-            sparkColor = {
-                r = ns.DB_DEFAULTS.sparkColor.r,
-                g = ns.DB_DEFAULTS.sparkColor.g,
-                b = ns.DB_DEFAULTS.sparkColor.b,
-                a = ns.DB_DEFAULTS.sparkColor.a
-            },
-            minimalMode = ns.DB_DEFAULTS.minimalMode,
-            lockBars = ns.DB_DEFAULTS.lockBars,
-            colors = {},
-            positions = {
-                mh = {
-                    point = ns.DB_DEFAULTS.positions.mh.point,
-                    relativePoint = ns.DB_DEFAULTS.positions.mh.relativePoint,
-                    x = ns
-                        .DB_DEFAULTS
-                        .positions
-                        .mh
-                        .x,
-                    y = ns
-                        .DB_DEFAULTS
-                        .positions
-                        .mh
-                        .y
-                },
-                oh = {
-                    point = ns.DB_DEFAULTS.positions.oh.point,
-                    relativePoint = ns.DB_DEFAULTS.positions.oh.relativePoint,
-                    x = ns
-                        .DB_DEFAULTS
-                        .positions
-                        .oh
-                        .x,
-                    y = ns
-                        .DB_DEFAULTS
-                        .positions
-                        .oh
-                        .y
-                },
-                ranged = {
-                    point = ns.DB_DEFAULTS.positions.ranged.point,
-                    relativePoint = ns
-                        .DB_DEFAULTS
-                        .positions
-                        .ranged
-                        .relativePoint,
-                    x = ns
-                        .DB_DEFAULTS
-                        .positions
-                        .ranged
-                        .x,
-                    y = ns
-                        .DB_DEFAULTS
-                        .positions
-                        .ranged
-                        .y
-                },
-                enemy = {
-                    point = ns.DB_DEFAULTS.positions.enemy.point,
-                    relativePoint = ns
-                        .DB_DEFAULTS
-                        .positions
-                        .enemy
-                        .relativePoint,
-                    x = ns
-                        .DB_DEFAULTS
-                        .positions
-                        .enemy
-                        .x,
-                    y = ns
-                        .DB_DEFAULTS
-                        .positions
-                        .enemy
-                        .y
-                }
-            }
-        }
-        for key, def in pairs(ns.DB_DEFAULTS.colors) do
-            SuperSwingTimerDB.colors[key] = { r = def.r, g = def.g, b = def.b, a = def.a }
-        end
+        SuperSwingTimerDB = DeepCopyDefaults(ns.DB_DEFAULTS)
     end
 
     -- Fill any missing fields for upgrades
@@ -293,6 +142,9 @@ local function MigrateDB()
         SuperSwingTimerDB.useClassColors = false
     end
     SuperSwingTimerDB.indicatorBlendMode = SuperSwingTimerDB.indicatorBlendMode or ns.DB_DEFAULTS.indicatorBlendMode
+    if SuperSwingTimerDB.globalScale == nil then
+        SuperSwingTimerDB.globalScale = ns.DB_DEFAULTS.globalScale
+    end
     SuperSwingTimerDB.weaveSpellFamilies = SuperSwingTimerDB.weaveSpellFamilies or {}
     for key, def in pairs(ns.DB_DEFAULTS.weaveSpellFamilies) do
         if SuperSwingTimerDB.weaveSpellFamilies[key] == nil then
@@ -1135,6 +987,11 @@ local function OnAddonLoaded()
     -- Create bars for this class
     ns.InitBars()
 
+    -- Apply global scale before other visual settings
+    if ns.ApplyGlobalScale then
+        ns.ApplyGlobalScale()
+    end
+
     -- Apply DB colors after bars + class mods are set up
     ns.ApplyBarColors()
     ns.ApplyBarBackgroundColor(SuperSwingTimerDB.barBackgroundColor or ns.DB_DEFAULTS.barBackgroundColor)
@@ -1233,7 +1090,7 @@ end
 
 local function UpdateFrameOnUpdate(self, elapsed)
     if ns.RefreshLatencyCache then
-        local rawNow = GetCurrentTime()
+        local rawNow = ns.GetAlignedTime()
         if rawNow >= nextLatencyRefreshAt then
             ns.RefreshLatencyCache()
             nextLatencyRefreshAt = rawNow + LATENCY_REFRESH_INTERVAL
@@ -1326,7 +1183,7 @@ frame:SetScript("OnEvent", function (self, event, ...)
         if ns.RefreshLatencyCache then
             ns.RefreshLatencyCache()
         end
-        ns.lastStoppedMovingAt = GetCurrentTime()
+        ns.lastStoppedMovingAt = ns.GetAlignedTime()
         if ns.UpdateCastZoneVisual then
             ns.UpdateCastZoneVisual()
         end

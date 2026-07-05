@@ -1,0 +1,28 @@
+{
+  "$schema": "https://app.kilo.ai/config.json",
+  "mcp": {
+    "tavily": {
+      "type": "local",
+      "command": [
+        "npx",
+        "-y",
+        "tavily-mcp@0.2.3"
+      ],
+      "environment": {
+        "TAVILY_API_KEY": "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"
+      }
+    },
+    "sequentialthinking": {
+      "type": "local",
+      "command": [
+        "npx",
+        "-y",
+        "@modelcontextprotocol/server-sequential-thinking"
+      ]
+    }
+  },
+  "indexing": {
+    "provider": "ollama",
+    "enabled": true
+  }
+}

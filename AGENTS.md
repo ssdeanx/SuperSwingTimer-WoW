@@ -55,6 +55,29 @@ luac -p SuperSwingTimer.lua SuperSwingTimer_Constants.lua SuperSwingTimer_State.
 
 ## Conventions
 
+### Enterprise-grade Lua docstrings (MANDATORY from v0.1.7+)
+
+Every public function MUST have an LDoc-style comment above it:
+
+```lua
+--- Brief one-line description.
+--  Detailed multi-line explanation of what this function does,
+--  including side effects, timing constraints, or API dependencies.
+--  @param paramName (type) Description — nil behavior if applicable
+--  @return (type) Description of return value, or (nil) if void
+--  @usage Example call pattern for non-trivial functions
+--  @see RelatedFunctionName
+```
+
+Each file begins with a module-level header comment:
+```lua
+-- ============================================================
+-- File role: one-line summary
+-- Dependency order: which files must load before this one
+-- Depends on: ns.* symbols this file reads from sibling files
+-- ============================================================
+```
+
 ### ns.* namespace & nil-guards
 
 No globals. All public functions on `ns`. Nil-guard ClassMods dynamic calls:

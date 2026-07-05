@@ -19,6 +19,13 @@ if GetTimePreciseSec and GetTime then
     EnsurePreciseClockOffset()
 end
 
+--- Return the addon's canonical clock time.
+--  Uses GetTimePreciseSec() aligned to the GetTime() domain so that
+--  cooldown, cast, and channel timestamps are directly comparable.
+--  Falls back to GetTime() if GetTimePreciseSec is unavailable.
+--  @return (number) Current time in seconds, aligned to the GetTime() domain
+--  @usage local now = ns.GetAlignedTime()
+--  @see ns.RefreshLatencyCache
 function ns.GetAlignedTime()
     if GetTimePreciseSec and GetTime then
         return GetTimePreciseSec() + EnsurePreciseClockOffset()
@@ -27,7 +34,13 @@ function ns.GetAlignedTime()
     return GetTime and GetTime() or 0
 end
 
--- Authoritative GetSpellInfo wrapper for Classic/TBC Anniversary (1.15+)
+--- Authoritative GetSpellInfo wrapper for Classic/TBC Anniversary (1.15+).
+--  Tries the legacy GetSpellInfo() first, then falls back to
+--  C_Spell.GetSpellInfo() for modern clients. Both Classic Era and
+--  TBC Anniversary are supported.
+--  @param spellIdentifier (number|string) Spell ID or localized spell name
+--  @return (string|nil) Localized spell name, or nil if not found
+--  @usage local name = ns.GetSpellInfo(75)  -- "Auto Shot"
 function ns.GetSpellInfo(spellIdentifier)
     if not spellIdentifier then return nil end
     local g = _G.GetSpellInfo
@@ -44,10 +57,15 @@ function ns.GetSpellInfo(spellIdentifier)
     return nil
 end
 
--- Classic/TBC-safe UnitCastingInfo wrapper.
--- Classic clients reliably expose the localized spell name while modern-only
--- spellID returns are optional, so callers should prefer the returned token
--- and only trust spellID when it is explicitly numeric.
+--- Classic/TBC-safe UnitCastingInfo wrapper.
+--  Classic clients reliably expose the localized spell name while
+--  modern-only spellID returns are optional, so callers should prefer
+--  the returned token and only trust spellID when numeric.
+--  Falls back to UnitChannelInfo() when no cast is in progress.
+--  @param unit (string) Unit token, e.g. "player"
+--  @return (string|nil) spellIdOrName, name, startTimeMs, endTimeMs, castId, spellId
+--  @usage local token, name = ns.GetUnitCastingSpellInfo("player")
+--  @see ns.GetSpellInfo
 function ns.GetUnitCastingSpellInfo(unit)
     if type(UnitCastingInfo) ~= "function" or not unit then
         return nil, nil, nil, nil, nil, nil
@@ -296,6 +314,10 @@ if true then
 end
 ns.HUNTER_ACTUAL_CAST_SPELL_NAMES["Volley"] = true
 
+--- Check if a spell value corresponds to the Auto Shot spell.
+--  Accepts both numeric IDs and localized spell names.
+--  @param spellValue (number|string|nil) Spell ID or name to check
+--  @return (boolean) true if the value matches Auto Shot
 function ns.IsAutoShotSpell(spellValue)
     if spellValue == nil then
         return false
@@ -305,6 +327,11 @@ function ns.IsAutoShotSpell(spellValue)
     return spellValue == ns.AUTO_SHOT_ID or spellValue == ns.AUTO_SHOT_NAME or (spellId and spellId == ns.AUTO_SHOT_ID)
 end
 
+--- Check if a spell value is a hunter casting spell (Auto Shot, Multi-Shot,
+--  Steady Shot, Aimed Shot, or Volley). Accepts IDs and names.
+--  @param spellValue (number|string|nil) Spell ID or name
+--  @return (boolean) true if the value is a hunter cast spell
+--  @see ns.IsAutoShotSpell
 function ns.IsHunterCastSpell(spellValue)
     if spellValue == nil then
         return false
@@ -315,6 +342,10 @@ function ns.IsHunterCastSpell(spellValue)
         or ns.HUNTER_CAST_SPELL_NAMES[spellValue] == true)
 end
 
+--- Check if a spell value is a hunter actual cast spell (Steady Shot,
+--  Aimed Shot, or Volley — excludes Auto Shot and Multi-Shot).
+--  @param spellValue (number|string|nil) Spell ID or name
+--  @return (boolean) true if the value is an actual cast spell
 function ns.IsHunterActualCastSpell(spellValue)
     if spellValue == nil then
         return false
@@ -352,6 +383,10 @@ if true then
     end
 end
 
+--- Check if a spell value is Multi-Shot (all TBC ranks).
+--  Accepts numeric IDs and localized names.
+--  @param spellValue (number|string|nil) Spell ID or name
+--  @return (boolean) true if the value is Multi-Shot
 function ns.IsMultiShotSpell(spellValue)
     if spellValue == nil then
         return false
@@ -809,6 +844,8 @@ ns.DB_DEFAULTS = {
     paladinBuffIconSize = 25,
     rogueAdrenalineRushBarHeight = 4,
     shamanLightningTrackerGap = 6,
+    -- Global scale multiplier (0.5x–3.0x): proportionally scales all bars, icons, and fonts
+    globalScale = 1.0,
     barTexture = "Interface\\TargetingFrame\\UI-StatusBar",
     rangedBarTexture = "Interface\\TargetingFrame\\UI-StatusBar",
     barTextureLayer = "ARTWORK",
@@ -887,6 +924,9 @@ ns.DB_DEFAULTS = {
         enemy = { point = "CENTER", relativePoint = "CENTER", x = 0, y = -50 }
     }
 }
+
+-- Shared font path for all class-mod overlay text and icons.
+ns.FONT_PATH = "Fonts\\FRIZQT__.TTF"
 
 ns.TEXTURE_LAYER_OPTIONS = {
     { label = "Background", value = "BACKGROUND" }, { label = "Border", value = "BORDER" },
@@ -1186,6 +1226,41 @@ function ns.GetSparkTextureLayer()
         return db.sparkTextureLayer
     end
     return ns.DB_DEFAULTS.sparkTextureLayer
+end
+
+-- ============================================================
+-- Global Scale
+-- ============================================================
+-- Master scale multiplier (0.5x–3.0x) that proportionally adjusts
+-- all bar dimensions, icon sizes, font sizes, sparks, borders,
+-- and inter-element gaps relative to their saved/default base pixel values.
+ns.GLOBAL_SCALE_MIN = 0.5
+ns.GLOBAL_SCALE_MAX = 3.0
+ns.GLOBAL_SCALE_STEP = 0.1
+
+--- Read the current global scale multiplier from SavedVariables.
+--  Clamped to [GLOBAL_SCALE_MIN, GLOBAL_SCALE_MAX]. Falls back to 1.0
+--  (no scaling) if the DB key is missing, nil, or non-numeric.
+--  @return (number) Scale factor between 0.5 and 3.0, always ≥ 0.5
+--  @see ns.Scale
+--  @usage local s = ns.GetGlobalScale()  -- e.g. 1.5 for 150% size
+function ns.GetGlobalScale()
+    local db = rawget(_G, "SuperSwingTimerDB")
+    local scale = db and db.globalScale
+    if type(scale) ~= "number" or scale <= 0 then
+        return 1.0
+    end
+    return math.max(ns.GLOBAL_SCALE_MIN, math.min(scale, ns.GLOBAL_SCALE_MAX))
+end
+
+--- Multiply a base pixel value by the current global scale, rounded to nearest int.
+--- @param value number  The base pixel size (at 1.0× scale).
+--- @return number  The scaled pixel size, min 1.
+function ns.Scale(value)
+    if type(value) ~= "number" then
+        return value
+    end
+    return math.max(1, math.floor(value * ns.GetGlobalScale() + 0.5))
 end
 
 function ns.GetWeaveSparkTexture()

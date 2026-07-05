@@ -859,9 +859,8 @@ local function SetupRetPaladin()
             ns.paladinJudgementMarker = jgMark
         end
 
-        local origOnUpdate = ns.OnUpdate
-        ns.OnUpdate = function (elapsed)
-            origOnUpdate(elapsed)
+        -- Register paladin seal/zone/badge OnUpdate hook
+        ns.RegisterOnUpdateHook(function (elapsed)
             UpdateSealColorAndLabel()
             UpdateSealBreakpointLine()
             UpdateJudgementMarker()
@@ -871,7 +870,7 @@ local function SetupRetPaladin()
             if ns.UpdatePaladinBuffIcons then
                 ns.UpdatePaladinBuffIcons(elapsed)
             end
-        end
+        end)
         -- Force initial update of seal zone and markers
         UpdateSealColorAndLabel()
         UpdateSealBreakpointLine()
@@ -1314,12 +1313,10 @@ local function SetupRetPaladin()
     -- Export
     ns.UpdatePaladinJudgementBar = UpdatePaladinJudgementBar
 
-    -- Chain Judgement bar update into OnUpdate (defined after first wrapper)
-    local paladinPrevOnUpdate = ns.OnUpdate or function () end
-    ns.OnUpdate = function (elapsed)
-        paladinPrevOnUpdate(elapsed)
+    -- Register Judgement bar OnUpdate hook
+    ns.RegisterOnUpdateHook(function (elapsed)
         UpdatePaladinJudgementBar(false)
-    end
+    end)
 
     -- Initial forced update
     pcall(UpdatePaladinJudgementBar, true)
@@ -1519,16 +1516,14 @@ local function SetupRetPaladin()
     -- Export
     ns.UpdatePaladinSealVengeanceBar = UpdatePaladinSealVengeanceBar
 
-    -- Chain into existing OnUpdate (after the judgement bar chain)
-    local paladinPrevOnUpdate2 = ns.OnUpdate or function () end
-    ns.OnUpdate = function (elapsed)
-        paladinPrevOnUpdate2(elapsed)
+    -- Register Seal Vengeance OnUpdate hook (includes restack + buff icons)
+    ns.RegisterOnUpdateHook(function (elapsed)
         UpdatePaladinSealVengeanceBar(false)
         -- Restack all visible debuff bars above MH dynamically
         RestackDebuffBars({ns.paladinJudgementBar, ns.paladinSealVengeanceBar}, ns.mhBar)
         -- Re-call buff icons so they use the restacked bar positions
         if ns.UpdatePaladinBuffIcons then ns.UpdatePaladinBuffIcons(elapsed) end
-    end
+    end)
 
     -- Initial forced update
     pcall(UpdatePaladinSealVengeanceBar, true)
@@ -2440,10 +2435,8 @@ local function SetupWarrior()
         bar:Show()
     end
 
-    -- Chain into OnUpdate
-    local origWarriorOnUpdate = ns.OnUpdate or function () end
-    ns.OnUpdate = function (elapsed)
-        origWarriorOnUpdate(elapsed)
+    -- Register Warrior OnUpdate hook (rage bar + shield block + cooldown badges)
+    ns.RegisterOnUpdateHook(function (elapsed)
         if ns.UpdateWarriorRageBar then
             ns.UpdateWarriorRageBar()
         end
@@ -2462,7 +2455,7 @@ local function SetupWarrior()
         -- Restack all visible debuff bars above MH dynamically
         RestackDebuffBars({deepWoundsBar, ns.warriorShieldBlockBar, sunderArmorBar}, ns.mhBar)
         if ns.UpdateWarriorBuffIcons then ns.UpdateWarriorBuffIcons(elapsed) end
-    end
+    end)
 
     ns.UpdateWarriorRageBar()
     ns.UpdateWarriorShieldBlockBar(0, true)
@@ -3878,9 +3871,8 @@ local function SetupEnhShaman()
         end
     end
 
-    local previousOnUpdate2 = ns.OnUpdate or function () end
-    ns.OnUpdate = function (elapsed)
-        previousOnUpdate2(elapsed)
+    -- Register Shaman OnUpdate hook (weave + flame shock + flurry + shields)
+    ns.RegisterOnUpdateHook(function (elapsed)
         UpdateWeaveVisuals()
         UpdateShamanFlameShockBar(false)
         UpdateShamanFlurryIcon()
@@ -3890,7 +3882,7 @@ local function SetupEnhShaman()
         -- Restack all visible debuff bars above MH dynamically
         RestackDebuffBars({flameShockBar}, ns.mhBar)
         if ns.UpdateShamanBuffIcons then ns.UpdateShamanBuffIcons(elapsed) end
-    end
+    end)
 
     local function SafeInitCall(fn)
         if type(fn) ~= "function" then
@@ -4132,12 +4124,11 @@ local function SetupDruid()
             ns.mhBar.labelText:SetText(GetDruidFormLabel())
         end
 
-        local previousOnUpdate = ns.OnUpdate or function () end
-        ns.OnUpdate = function (elapsed)
-            previousOnUpdate(elapsed)
+        -- Register Druid OnUpdate hook (queue tint + energy tick)
+        ns.RegisterOnUpdateHook(function (elapsed)
             UpdateDruidQueueTint()
             UpdateDruidEnergyTickVisual()
-        end
+        end)
 
         UpdateDruidEnergyTickVisual()
         UpdateDruidQueueTint()
@@ -4845,17 +4836,15 @@ local function SetupDruid()
     ns.UpdateDruidRipBar = UpdateDruidRipBar
     ns.UpdateDruidRakeBar = UpdateDruidRakeBar
 
-    -- Chain Mangle/Rip/Rake + buff icons into OnUpdate (defined after first wrapper)
-    local druidPrevOnUpdate = ns.OnUpdate or function () end
-    ns.OnUpdate = function (elapsed)
-        druidPrevOnUpdate(elapsed)
+    -- Register Druid debuff bars + buff icons OnUpdate hook
+    ns.RegisterOnUpdateHook(function (elapsed)
         UpdateDruidMangleBar(false)
         UpdateDruidRipBar(false)
         UpdateDruidRakeBar(false)
         -- Restack all visible debuff bars above MH dynamically
         RestackDebuffBars({mangleBar, ripBar, rakeBar}, ns.mhBar)
         if ns.UpdateDruidBuffIcons then ns.UpdateDruidBuffIcons(elapsed) end
-    end
+    end)
 end
 
 local function SetupHunter()
@@ -6659,11 +6648,10 @@ local function SetupHunter()
         bar:Show()
     end
 
-    -- Patch into OnUpdate chain (guard against double-wrap on UI reload)
-    if not ns._hunterOnUpdateWrapped then
-        local hunterOrigOnUpdate = ns.OnUpdate or function () end
-        ns.OnUpdate = function (elapsed)
-            hunterOrigOnUpdate(elapsed)
+    -- Register Hunter OnUpdate hook (aspect + debuff bars + buff icons)
+    -- Guard prevents double-registration on UI reload.
+    if not ns._hunterHookRegistered then
+        ns.RegisterOnUpdateHook(function (elapsed)
             if ns.UpdateHunterAspect then ns.UpdateHunterAspect(elapsed) end
             UpdateHunterSerpentStingBar(false)
             UpdateHunterWingClipBar(false)
@@ -6675,8 +6663,8 @@ local function SetupHunter()
             -- Restack all visible debuff bars above the anchor bar dynamically
             RestackDebuffBars({serpentStingBar, wingClipBar, concussionShotBar, immolationTrapBar, explosiveTrapBar, freezingTrapBar, frostTrapBar}, GetDebuffAnchorBar())
             if ns.UpdateHunterBuffIcons then ns.UpdateHunterBuffIcons(elapsed) end
-        end
-        ns._hunterOnUpdateWrapped = true
+        end)
+        ns._hunterHookRegistered = true
     end
     pcall(UpdateHunterSerpentStingBar, true)
     pcall(UpdateHunterWingClipBar, true)
@@ -7702,9 +7690,8 @@ local function SetupRogue()
         ns.rogueSliceAndDiceNextRefreshAt = nil
         SyncRogueSliceAndDiceAura()
 
-        local origOnUpdate = ns.OnUpdate or function () end
-        ns.OnUpdate = function (elapsed)
-            origOnUpdate(elapsed)
+        -- Register Rogue OnUpdate hook (sinister assist + energy + SnD + rupture + expose)
+        ns.RegisterOnUpdateHook(function (elapsed)
             UpdateRogueSinisterAssistVisual()
             UpdateRogueEnergyTickVisual()
             UpdateRogueSliceAndDiceVisual()
@@ -7715,7 +7702,7 @@ local function SetupRogue()
             -- Restack all visible debuff bars above MH dynamically
             RestackDebuffBars({ruptureBar, exposeArmorBar}, ns.mhBar)
             if ns.UpdateRogueBuffIcons then ns.UpdateRogueBuffIcons(elapsed) end
-        end
+        end)
 
         pcall(UpdateRogueRuptureBar, true)
         pcall(UpdateRogueExposeArmorBar, true)
@@ -8055,8 +8042,16 @@ end
 -- ============================================================
 -- Dispatch: pick class mods for the current class
 -- ============================================================
+-- ============================================================
 -- Dispatch: pick class mods for the current class
 -- ============================================================
+
+--- Initialize class-specific mods for the current player class.
+--  Dispatches to the correct Setup*() function. Nil-clears all
+--  class-specific ns.Update* symbols before setup so stale closures
+--  from a previous init never call into the wrong class's helpers.
+--  @return (nil)
+--  @usage Called during OnAddonLoaded before InitBars()
 function ns.InitClassMods()
     ns.OnBarsCreated = nil
     ns.OnDruidFormChange = nil

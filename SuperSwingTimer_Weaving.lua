@@ -184,6 +184,9 @@ function ns.RebuildWeaveSpellCatalog()
 	state.spellCatalogDirty = false
 end
 
+--- Initialize the weave state and rebuild the spell catalog.
+--  Must be called once during addon load after ns.DB_DEFAULTS is ready.
+--  @return (nil)
 function ns.InitWeaving()
 	if not ns.weaveState then
 		return
@@ -413,6 +416,11 @@ local function BuildDisplayInfo(spellInfo)
 	}
 end
 
+--- Get the current weave display info for Shaman class.
+--  Returns nil for non-Shaman or when weave assist is disabled.
+--  @return (table|nil) Display info with cast time, safe start, clip amount,
+--          spark fraction, colors, and text, or nil if unavailable
+--  @see BuildDisplayInfo
 function ns.GetWeaveDisplayInfo()
 	if ns.playerClass ~= "SHAMAN" then
 		return nil
@@ -428,6 +436,14 @@ function ns.GetWeaveDisplayInfo()
 	return BuildDisplayInfo(spellInfo)
 end
 
+--- Handle spellcast events for the weave system (Shaman only).
+--  Routes UNIT_SPELLCAST_START/SUCCEEDED/STOP/FAILED events to
+--  update the tracked spell state and capture cast timing.
+--  @param event (string) The spellcast event type
+--  @param unit (string) The unit that triggered the event
+--  @param castGUIDOrSpellName (string|nil) Cast GUID or spell name
+--  @param spellId (number|nil) Numeric spell ID if available
+--  @return (nil)
 function ns.HandleWeavingSpellcast(event, unit, castGUIDOrSpellName, spellId)
 	-- Classic/BCC spellcast events prefer castGUID + spellID, but keep support for
 	-- older spellName payloads by falling back when no spellID is present.

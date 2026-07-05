@@ -6,7 +6,7 @@ Super Swing Timer tracks white-hit swing timers across main hand, off hand, rang
 
 **Dual-client CLEU architecture:** Classic Era `COMBAT_LOG_EVENT` payloads use numeric spell IDs; TBC Anniversary sends localized spell names (strings) instead. All swing-affecting spell lookup tables (`RESET_SWING_SPELLS`, `NO_RESET_SWING_SPELLS`, `PAUSE_SWING_SPELLS`, `RESET_RANGED_SWING_SPELLS`) populate both key types at init time via `ns.GetSpellInfo(id)` so swing resets, pauses, ranged resets, and NMA queue detection work identically on both clients.
 
-Current version: **v0.1.6**. Status: release-ready. All 4 Hunter traps tracked as target debuff bars (Immolation, Explosive, Freezing, Frost). Hunter debuff bars and buff icons dynamically anchor to MH bar (in melee) or ranged bar (at range) — no more invisible bars when out of melee. IsPlayerSpell guard removed from all class buff icon systems — talent spells (Bestial Wrath, Shamanistic Rage, etc.) now show correctly. Buff icon countdown text moved to icon top with larger 12pt font, dim overlays removed, elapsed-based throttle for smooth glow animation. DB schema v54.
+Current version: **v0.1.7**. Status: release-ready. All 4 Hunter traps tracked as target debuff bars (Immolation, Explosive, Freezing, Frost). Hunter debuff bars and buff icons dynamically anchor to MH bar (in melee) or ranged bar (at range) — no more invisible bars when out of melee. IsPlayerSpell guard removed from all class buff icon systems — talent spells (Bestial Wrath, Shamanistic Rage, etc.) now show correctly. Buff icon countdown text moved to icon top with larger 12pt font, low-alpha swipe keeps icons bright by default, gold ADD glow flashes in the last 4 seconds, elapsed-based throttle for smooth glow animation. Unlocked bar drag direction fixed. DB schema v54.
 
 ## At a glance
 
@@ -128,20 +128,75 @@ Type `/sst`, `/super`, or `/superswingtimer` to open the config panel.
 | `/sst reset` | Restore default settings |
 | `/sst help` | Show command help |
 
-## Config panel options
+## Config Panel Walkthrough
 
-- Use a top Quick Controls section with a clearly labeled left `Visibility` column and right `Key Colors` column so the most-used visibility and bar-color settings stay together, with compact non-overlapping row spacing and a little extra gap under the column titles so the first quick swatches do not crowd the headings
-- The `/sst` color swatches now use clearer flat preview tiles so the chosen bar colors are easier to read at a glance while configuring the addon
-- The main `/sst` panel now supports mouse-wheel scrolling, keeps later sections pushed below the real Quick Controls height, labels preview mode more clearly so setup feels closer to a Blizzard-quality options panel, and reflows the Appearance / Shaman Weave Assist / General Behavior / Weave Families sections from their real widget heights so headers and sliders no longer overlap
-- Show or hide the main-hand, off-hand, ranged, enemy, Rogue Sinister Strike cue, the Rogue Slice and Dice bar, and the Rogue energy-tick helper as appropriate for your class
-- Show or hide the Warrior Shield Block timer and Rogue Adrenaline Rush bar from class-specific quick rows alongside the existing Rogue, Hunter, and Shaman helpers; helper sizing remains adjustable where active helpers exist.
-- Show or hide the Hunter Range Helper (4-state distance strip), the Hunter Rapid Fire CD bar, and the Hunter buff/cooldown icon group from dedicated Hunter quick toggle rows with tooltip descriptions; all three are class-gated and only visible for Hunters.
-- Enable or disable the shaman weave assist and individual spell families
-- Adjust bar, ranged, spark, and weave-spark textures; the bar and ranged rows now use a scrolling full-preview list for bar-style media from Blizzard, WeakAuras, and LibSharedMedia packs, while spark textures still use the thumbnail browser; tune layers, sizes, alpha, and the tiny upper/lower weave markers that follow spell haste; the stock bars now default to a slimmer 15px height with the OH bar derived down to 8px, the Rogue Slice and Dice helper clamped to a slim 3-4px profile above MH, the spark default height matches that slimmer profile and clamps to the host bar, and the breakpoint overlays now live on a dedicated overlay frame so they stay above the bar fill without relying on hover-sensitive HIGHLIGHT layering
-- Switch weave-indicator glow between a bright additive style and a more opaque blend; the main swing spark stays on a color-preserving blend so white/manual spark tints stay visually accurate
-- Toggle minimal mode, lock / unlock bars, tune the bar border size, and run the Test Bars preview; Reset Defaults now also restores the saved anchor positions
-- Change colors for the bar background, bar border, MH, OH, ranged, Rogue Sinister cue, Rogue Slice and Dice helper, Rogue tick bar, Shield Block timer, Auto Shot safe/unsafe feedback, enemy, spark, the paladin seal breakpoint line, Shaman Lightning Shield tracker, **Hunter cast bar** (independent from ranged fill), **Hunter Range Helper** states (melee, sweet spot, ranged, out of range), and **Rapid Fire bar**; MH / OH / ranged can use class colors while helper overlays keep their own separate manual/default tint and opacity.
-- Labels sit above the controls in `/sst`, the rows are clickable, and hover tooltips explain what each setting does; the right-side checkbox, dropdown, or editable number field is the control for each row
+The `/sst` panel is organized into collapsible sections. Here's how they lay out:
+
+```text
++------------------------------------------------------------------+
+| Super Swing Timer                                        [X]     |
+| Global Scale [=====slider (0.5x–3.0x)=====] [1.0]               |
+| Proportionally scales all bars, icons, sparks, borders, fonts     |
+|------------------------------------------------------------------|
+| Quick Controls (always visible)                                   |
+| Left: Visibility toggles   |  Right: Key Color swatches           |
+| Use Class Colors           |  MH Color    [■]                     |
+| Show Main Hand             |  OH Color    [■]                     |
+| Show Off Hand              |  Ranged Color[■]                     |
+| Lock Bars                  |  Enemy Color [■]                     |
+| [class-specific toggles]   |  [class swatches]                    |
+|------------------------------------------------------------------|
+| Appearance (collapsible)                                          |
+| Bar Width [slider] Bar Height [slider]                            |
+| MH Texture [picker] Layer [dropdown]                              |
+| Spark settings, Border, Background, Glow mode                     |
+|------------------------------------------------------------------|
+| Combat & Timer Behavior (collapsible)                             |
+| Minimal Mode, Swing Flash, GCD Ticker, Test Bars                  |
+|------------------------------------------------------------------|
+| Shaman Weave Assist / Shaman Weave Spells (collapsible, Shaman)   |
+------------------------------------------------------------------+
+```
+
+### Quick Controls (top section)
+
+Two compact columns for your most-used settings:
+
+- **Visibility** — checkboxes to show/hide bars, lock position, and class-specific helpers (Rapid Fire, Shield Block, Buff Icons, Lightning Shield Tracker, etc.)
+- **Key Colors** — click any color swatch to open the color picker. Swatches show their name directly on the colored button. MH/OH/Ranged can use class colors via the toggle in the left column
+
+### Appearance
+
+All visual sizing and texture settings:
+- **Global Scale** — first control at the top. Multiplies all bar dimensions, icon sizes, sparks, borders, and fonts proportionally (0.5x–3.0x). Individual sliders below fine-tune each base size
+- **Bar Width / Height** — set the base dimensions for all bars. Off-hand height derives automatically
+- **Texture pickers** — click to browse installed textures. Bar and ranged rows use a scrolling preview list; spark rows use a thumbnail browser
+- **Spark settings** — width, height, alpha, color, draw layer
+- **Border / Background** — color and thickness controls for bar borders and background fill
+- **Indicator Glow Mode** — ADD (bright glow) or BLEND (opaque)
+
+### Combat & Timer Behavior
+
+Toggles for timing helpers:
+- **Minimal Mode** — hides all non-essential overlays
+- **Swing Flash** — brief spark flash on each swing landing
+- **GCD Ticker** — thin bar above MH showing the 1.5s global cooldown
+- **Test Bars** — runs a 16-second animated preview so you can reposition bars without being in combat
+
+### Class-Specific Sections
+
+- **Shaman Weave Assist** — weave marker textures, sizes, layers. Quick Controls row for Lightning Shield Tracker, Flame Shock Bar
+- **Shaman Weave Spells** — per-family toggles for Lightning Bolt, Chain Lightning, Healing Wave, Lesser Healing Wave, Chain Heal
+- **Quick Controls** per-class rows appear dynamically: Warrior gets Shield Block + Rage Bar toggles, Hunter gets Range Helper + Rapid Fire + Cast Bar + Buff Icons, Rogue gets Sinister Cue + SnD + Energy Tick + Adrenaline Rush, etc.
+
+### General tips
+
+- **Hover** any control for a tooltip explaining what it does
+- **Scroll** with mouse wheel in any section
+- **Collapse** section headers to reduce visual noise
+- **Reset Defaults** button at the bottom restores all settings including positions
+- **Lock Bars** to prevent accidental dragging during combat. Unlock to reposition
+- Opening `/sst` shows a preview with all bars filled; they return to combat-only behavior when you close the panel
 
 ## Feedback
 

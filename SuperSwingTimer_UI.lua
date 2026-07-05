@@ -3,21 +3,9 @@ local _, ns = ...
 local CreateFrame = rawget(_G, "CreateFrame")
 local UIParent = rawget(_G, "UIParent")
 local InCombatLockdown = rawget(_G, "InCombatLockdown")
-local GetTimePreciseSec = rawget(_G, "GetTimePreciseSec")
-local GetTime = rawget(_G, "GetTime")
 local UnitAttackSpeed = rawget(_G, "UnitAttackSpeed")
 local UnitChannelInfo = rawget(_G, "UnitChannelInfo")
 local strtrim = rawget(_G, "strtrim")
-
-local function GetCurrentTime()
-    if ns.GetAlignedTime then
-        return ns.GetAlignedTime()
-    end
-    if GetTimePreciseSec then
-        return GetTimePreciseSec()
-    end
-    return GetTime()
-end
 
 local function GetSparkBlendMode()
     -- Keep the main swing spark color-preserving so a white/manual spark does
@@ -81,7 +69,7 @@ local function ShouldKeepHunterRangedTimerActive(now)
         local cooldownStart, cooldownDuration = ns.GetAutoShotCooldown()
         if cooldownStart and cooldownDuration and cooldownDuration > 0 then
             local graceWindow = math.max(ns.cachedLatency or 0, 0.05)
-            if (now or GetCurrentTime()) <= (cooldownStart + cooldownDuration + graceWindow) then
+            if (now or ns.GetAlignedTime()) <= (cooldownStart + cooldownDuration + graceWindow) then
                 return true
             end
         end
@@ -460,7 +448,7 @@ ShouldShowHunterCastBar = function ()
         return false
     end
 
-    local now = GetCurrentTime()
+    local now = ns.GetAlignedTime()
     local rangedWindowStart = GetHunterHiddenCastWindowFromRangedTimer(now)
 
     if IsStoredHunterCastDisplayStateActive(now) then
@@ -492,7 +480,7 @@ end
 -- ============================================================
 local function CreateBar(frameName, width, height)
     local f = CreateFrame("StatusBar", frameName, UIParent)
-    f:SetSize(width or ns.BAR_WIDTH, height or ns.BAR_HEIGHT)
+    f:SetSize(ns.Scale(width or ns.BAR_WIDTH), ns.Scale(height or ns.BAR_HEIGHT))
     f:SetPoint("CENTER", UIParent, "CENTER", 0, -100)
     f:SetMovable(true)
     f:EnableMouse(false) -- mouse enabled later by ns.ApplyLockBars() when unlocked
@@ -957,7 +945,7 @@ local function UpdateHunterCastBar()
         return
     end
 
-    local now = GetCurrentTime()
+    local now = ns.GetAlignedTime()
     local castWindow = math.max(GetRangedCastWindow() or 0.5, 0.01)
     -- ns.CAST_WINDOW is a constant defined in Constants.lua
     local elapsedTime
@@ -1185,6 +1173,10 @@ end
 -- (available since WotLK 3.1) rather than SetPropagateMouseClicks (11.0.0+)
 -- which does not exist on TBC Anniversary 2.5.5 or Classic Era.
 -- ============================================================
+--- Lock or unlock all draggable bars. When locked, bars are
+--  mouse-disabled to prevent accidental drag or camera interference.
+--  During combat, bars are force-disabled regardless of lock state.
+--  @return (nil)
 function ns.ApplyLockBars()
     local locked = ns.AreBarsLocked()
     for _, bar in ipairs({ ns.mhBar, ns.ohBar, ns.rangedBar, ns.enemyBar }) do
@@ -1245,7 +1237,7 @@ local function AttachDrag(frame, slot)
 
             local point, _, relativePoint, x, y = self:GetPoint()
             self:ClearAllPoints()
-            self:SetPoint(point or "CENTER", UIParent, relativePoint or "CENTER", (x or 0) + dx, (y or 0) - dy)
+            self:SetPoint(point or "CENTER", UIParent, relativePoint or "CENTER", (x or 0) + dx, (y or 0) + dy)
 
             self.dragData.cursorX = cursorX
             self.dragData.cursorY = cursorY
@@ -1378,7 +1370,7 @@ local function UpdateRangedBar(elapsed)
         end
         channelName = channelName or "Channel"
         if channelName and startTimeMs and endTimeMs and endTimeMs > startTimeMs then
-            local channelNow = GetCurrentTime()
+            local channelNow = ns.GetAlignedTime()
             local channelDuration = (endTimeMs - startTimeMs) / 1000
             local elapsedChannel = channelNow - (startTimeMs / 1000)
             if elapsedChannel < 0 then elapsedChannel = 0 end
@@ -1403,7 +1395,7 @@ local function UpdateRangedBar(elapsed)
         return
     end
 
-    local now = GetCurrentTime()
+    local now = ns.GetAlignedTime()
     if not t.duration or t.duration <= 0 then return end
 
     -- Haste rescaling: throttled sync + event fallback
@@ -1472,7 +1464,7 @@ local function UpdateMeleeBar(slot, frame)
         return
     end
 
-    local now = GetCurrentTime()
+    local now = ns.GetAlignedTime()
     if ns.pauseSwingTime and (slot == "mh" or slot == "oh") then
         now = ns.pauseSwingTime
     end
@@ -1509,9 +1501,86 @@ end
 -- ============================================================
 -- Runtime apply functions (called from config panel)
 -- ============================================================
+-- ============================================================
+-- Global Scale: multiplies all bar/icon/font pixel sizes
+-- proportionally. Called from the config slider and at init.
+-- ============================================================
+
+--- Apply the current global scale to every visual element in the addon.
+--  Reads ns.GetGlobalScale(), then re-sizes all bars (via ApplyBarSize),
+--  refreshes all 6 class helper overlays (Rogue energy tick, Warrior
+--  Shield Block, etc.), re-anchors the GCD ticker, and refreshes the
+--  ranged cast-zone visual. Every helper that reads a saved pixel size
+--  from DB will have that size multiplied by scale internally.
+--  @param ... (none) — scale factor is read from SuperSwingTimerDB.globalScale
+--  @return (nil) — operates entirely through side effects on frame objects
+--  @usage Called when the scale slider fires OnValueChanged, or once
+--         during OnAddonLoaded after InitBars() creates the initial frames.
+--  @see ns.GetGlobalScale, ns.Scale, ns.ApplyBarSize
+function ns.ApplyGlobalScale()
+    local scale = ns.GetGlobalScale()
+
+    -- Re-apply main bar sizes with current DB values (scale applied inside ApplyBarSize)
+    ns.ApplyBarSize(ns.GetBarWidth(), ns.GetBarHeight())
+
+    -- Refresh class-specific helpers and their sizes
+    if ns.UpdateHunterRapidFire then ns.UpdateHunterRapidFire(0, true) end
+    if ns.UpdateHunterRangeHelperVisual then ns.UpdateHunterRangeHelperVisual() end
+    if ns.UpdateHunterBuffIcons then ns.UpdateHunterBuffIcons(0) end
+    if ns.UpdateWarriorShieldBlockBar then ns.UpdateWarriorShieldBlockBar(0, true) end
+    if ns.UpdateWarriorRageBar then ns.UpdateWarriorRageBar() end
+    if ns.UpdateWarriorBuffIcons then ns.UpdateWarriorBuffIcons(0) end
+    if ns.UpdateRogueEnergyTickVisual then ns.UpdateRogueEnergyTickVisual() end
+    if ns.UpdateRogueComboPointVisual then ns.UpdateRogueComboPointVisual() end
+    if ns.UpdateRogueSliceAndDiceVisual then ns.UpdateRogueSliceAndDiceVisual() end
+    if ns.UpdateRogueBuffIcons then ns.UpdateRogueBuffIcons(0) end
+    if ns.UpdatePaladinSealZone then ns.UpdatePaladinSealZone() end
+    if ns.UpdatePaladinJudgementBar then ns.UpdatePaladinJudgementBar(true) end
+    if ns.UpdatePaladinSealVengeanceBar then ns.UpdatePaladinSealVengeanceBar(true) end
+    if ns.UpdatePaladinBuffIcons then ns.UpdatePaladinBuffIcons(0) end
+    if ns.UpdateShamanBuffIcons then ns.UpdateShamanBuffIcons(0) end
+    if ns.UpdateLightningShieldVisual then ns.UpdateLightningShieldVisual() end
+    if ns.UpdateShamanFlameShockBar then ns.UpdateShamanFlameShockBar() end
+    if ns.UpdateDruidEnergyTickVisual then ns.UpdateDruidEnergyTickVisual() end
+    if ns.UpdateDruidBuffIcons then ns.UpdateDruidBuffIcons(0) end
+    if ns.UpdateRogueBuffIcons then ns.UpdateRogueBuffIcons(0) end
+
+    -- Re-anchor GCD ticker
+    if ns.gcdTickerBar and ns.mhBar then
+        ns.gcdTickerBar:ClearAllPoints()
+        ns.gcdTickerBar:SetPoint("BOTTOMLEFT", ns.mhBar, "TOPLEFT", 0, ns.Scale(6))
+        ns.gcdTickerBar:SetPoint("BOTTOMRIGHT", ns.mhBar, "TOPRIGHT", 0, ns.Scale(6))
+    end
+
+    -- Refresh cast zone visual
+    ns.UpdateCastZoneVisual()
+end
+
+--- Apply width and height to all main swing bars, scaled by globalScale.
+--  Computes scaledWidth = ns.Scale(width) and scaledHeight =
+--  ns.Scale(height), then calls SetSize on mhBar, ohBar, rangedBar,
+--  and enemyBar. Also resizes the bar spark texture to match and
+--  updates derived bar positions (GCD ticker, cast zone).
+--  @param width (number) Base bar width in pixels at 1.0x scale
+--  @param height (number) Base bar height in pixels at 1.0x scale
+--  @return (nil) Side-effect: re-sizes all swing bar frames
+--  @see ns.ApplyGlobalScale
+--  @see ns.Scale
+--- Apply bar width and height to all frames, scaling by
+--  the current global scale multiplier via ns.Scale().
+--  Re-anchors OH, hunter MH, rogue SnD, and warrior rage
+--  bars that depend on the main bar dimensions.
+--  @param width (number) Base bar width before scale
+--  @param height (number) Base bar height before scale
+--  @return (nil)
+--  @see ns.Scale, ns.GetGlobalScale
 function ns.ApplyBarSize(width, height)
-    ns.BAR_WIDTH = width
-    ns.BAR_HEIGHT = height
+    local scale = ns.GetGlobalScale()
+    local scaledWidth = ns.Scale(width)
+    local scaledHeight = ns.Scale(height)
+
+    ns.BAR_WIDTH = scaledWidth
+    ns.BAR_HEIGHT = scaledHeight
     SuperSwingTimerDB.barWidth = width
     SuperSwingTimerDB.barHeight = height
 
@@ -1520,19 +1589,19 @@ function ns.ApplyBarSize(width, height)
     }
     for _, bar in ipairs(bars) do
         if bar then
-            local barHeight = height
+            local barHeight = scaledHeight
             if bar == ns.hunterCastBar then
-                barHeight = ns.HUNTER_CAST_BAR_HEIGHT or 10
+                barHeight = ns.Scale(ns.HUNTER_CAST_BAR_HEIGHT or 10)
             elseif bar == ns.ohBar then
-                barHeight = GetOffHandBarHeight(height)
+                barHeight = GetOffHandBarHeight(scaledHeight)
             elseif bar == ns.rogueSliceAndDiceBar then
-                barHeight = GetRogueSliceAndDiceBarHeight(height)
+                barHeight = GetRogueSliceAndDiceBarHeight(scaledHeight)
             end
-            bar:SetSize(width, barHeight)
-            bar.barWidth = width
+            bar:SetSize(scaledWidth, barHeight)
+            bar.barWidth = scaledWidth
             if bar.sparkTexture then
-                bar.sparkTexture:SetWidth(ns.GetSparkWidth())
-                bar.sparkTexture:SetHeight(ClampSparkHeightForBar(bar, ns.GetSparkHeight()))
+                bar.sparkTexture:SetWidth(ns.Scale(ns.GetSparkWidth()))
+                bar.sparkTexture:SetHeight(ClampSparkHeightForBar(bar, ns.Scale(ns.GetSparkHeight())))
                 UpdateSparkPosition(bar)
             end
         end
@@ -1592,6 +1661,7 @@ function ns.ApplyBarBorderSize(borderSize)
     end
 
     SuperSwingTimerDB.barBorderSize = borderSize
+    local scaledBorder = ns.Scale(borderSize)
 
     for _, bar in ipairs({
         ns.enemyBar,
@@ -1618,10 +1688,10 @@ function ns.ApplyBarBorderSize(borderSize)
                 end
             end
             if showBorder then
-                borderTextures.top:SetHeight(borderSize)
-                borderTextures.bottom:SetHeight(borderSize)
-                borderTextures.left:SetWidth(borderSize)
-                borderTextures.right:SetWidth(borderSize)
+                borderTextures.top:SetHeight(scaledBorder)
+                borderTextures.bottom:SetHeight(scaledBorder)
+                borderTextures.left:SetWidth(scaledBorder)
+                borderTextures.right:SetWidth(scaledBorder)
             end
         end
     end
@@ -1948,7 +2018,7 @@ local function CreateGcdTickerBar()
     local db = SuperSwingTimerDB or ns.DB_DEFAULTS
     local color = db and db.colors and db.colors.gcdTickerColor or { r = 0.30, g = 0.70, b = 1.00, a = 0.85 }
     f:SetStatusBarColor(color.r, color.g, color.b, color.a)
-    f:SetSize(ns.BAR_WIDTH or 240, 3)
+    f:SetSize(ns.Scale(ns.BAR_WIDTH or 240), ns.Scale(3))
     f:SetMinMaxValues(0, 1)
     f:SetValue(0)
     f:SetAlpha(0)
@@ -1956,8 +2026,8 @@ local function CreateGcdTickerBar()
     f:SetFrameLevel(0)
     if ns.mhBar then
         f:ClearAllPoints()
-        f:SetPoint("BOTTOMLEFT", ns.mhBar, "TOPLEFT", 0, 6)
-        f:SetPoint("BOTTOMRIGHT", ns.mhBar, "TOPRIGHT", 0, 6)
+        f:SetPoint("BOTTOMLEFT", ns.mhBar, "TOPLEFT", 0, ns.Scale(6))
+        f:SetPoint("BOTTOMRIGHT", ns.mhBar, "TOPRIGHT", 0, ns.Scale(6))
     end
     f:Hide()
     ns.gcdTickerBar = f
@@ -1973,7 +2043,7 @@ local function UpdateGcdTicker(elapsed)
         f:Hide()
         return
     end
-    local now = GetCurrentTime()
+    local now = ns.GetAlignedTime()
     local gcdStart = ns.lastGcdTime
     if not gcdStart or not ns.gcdActive or (now - gcdStart) >= (ns.gcdDuration or 1.5) then
         if gcdStart and (now - gcdStart) >= (ns.gcdDuration or 1.5) then
@@ -2243,6 +2313,14 @@ function ns.ApplyMinimalMode(enabled)
     end
 end
 
+--- Show or hide all swing bars and class-specific helpers based on
+--  SavedVariables, class config, and combat state. Called whenever a
+--  visibility toggle changes, combat state flips, or the player zones
+--  in. Bars in combat are shown/hidden by the OnUpdate hook; this
+--  function sets the visibility policy (Show/Hide) that OnUpdate
+--  enforces each frame.
+--  @return (nil) Side-effect: calls Show()/Hide() on bar frames
+--  @see ns.OnUpdate
 function ns.ApplyVisibility()
     local cfg = ns.classConfig or {}
     local db = SuperSwingTimerDB or ns.DB_DEFAULTS
@@ -2271,7 +2349,7 @@ function ns.ApplyVisibility()
         -- (hunterMeleeVisible and not (rangedActive or hunterCastVisible)) would
         -- briefly become true and show the MH bar when it should stay hidden.
         -- Use a 0.1s holdover to smooth this transition.
-        local now = GetCurrentTime()
+        local now = ns.GetAlignedTime()
         if ns.rangedTimerHoldEnd == nil or now > ns.rangedTimerHoldEnd then
             ns.rangedTimerHoldEnd = nil
         end
@@ -2530,9 +2608,34 @@ end
 -- this per-frame path handles dynamic rage changes in combat.
 -- ============================================================
 -- ============================================================
--- OnUpdate dispatcher (called from bootstrap frame)
+-- Core OnUpdate render hook (registered as the first hook).
+-- This replaces the old inline OnUpdate body. Frame-render
+-- logic that was previously hardcoded here is now the first
+-- entry in ns.OnUpdateHooks, and class-specific logic is
+-- added via ns.RegisterOnUpdateHook() in ClassMods.lua.
 -- ============================================================
+
+--- Main OnUpdate dispatcher — iterates all registered hooks.
+--  Hooks are stored in ns.OnUpdateHooks in registration order.
+--  The core bar-render hook is registered first during UI init;
+--  class-specific hooks are added by ClassMods.lua Setup*()
+--  functions via ns.RegisterOnUpdateHook().
+--  @param elapsed (number) Time since last frame in seconds
+--  @return (nil)
+--  @see ns.RegisterOnUpdateHook
+--  @see ns.OnUpdateHooks
 function ns.OnUpdate(elapsed)
+    for i = 1, #ns.OnUpdateHooks do
+        ns.OnUpdateHooks[i](elapsed)
+    end
+end
+
+--- Core render path — registered as the first hook so it runs
+--  before any class-specific OnUpdate logic. This function was
+--  originally the body of ns.OnUpdate before the hook system.
+--  @param elapsed (number) Time since last frame in seconds
+--  @local
+local function CoreRenderHook(elapsed)
     UpdateRangedBar(elapsed)
     UpdateHunterCastBar()
     if ns.enemyBar then UpdateMeleeBar("enemy", ns.enemyBar) end
@@ -2556,9 +2659,22 @@ function ns.OnUpdate(elapsed)
     if ns.UpdateShamanWindfuryIcd then ns.UpdateShamanWindfuryIcd() end
 end
 
--- ============================================================
--- Bar initialization (called after SavedVariables are loaded)
--- ============================================================
+-- Register the core render hook as the first hook (priority 1)
+ns.RegisterOnUpdateHook(CoreRenderHook, 1)
+
+--- Create all swing bar frames and helper overlays. Called once after
+--  SavedVariables are loaded and the class config is resolved. Creates
+--  mhBar, ohBar, rangedBar, enemyBar, hunterCastBar, gcdTickerBar,
+--  and registers all OnUpdate hooks. Must be called before any
+--  Apply* function or the config panel /sst.
+--  @return (nil) Side-effect: creates frames, registers hooks
+--  @see ns.ApplyBarSize
+--  @see ns.ApplyVisibility
+--- Create all bar frames for the current class configuration.
+--  Called once during OnAddonLoaded after InitClassMods().
+--  Creates enemy, ranged, hunter cast, MH, OH bars and attaches
+--  drag handlers. Also creates the GCD ticker bar.
+--  @return (nil)
 function ns.InitBars()
     local cfg = ns.classConfig
     if not cfg then return end

@@ -1,5 +1,13 @@
 # Progress
 
+## Progress Update (2026-07-05 - v0.1.7: documentation standards + AUDIT.md checkboxes + version bump)
+
+- **TOC bumped to v0.1.7**: Version string updated in `.toc`, `CHANGELOG.md` entry added, DB schema stays at v54 (no migration needed).
+- **Enterprise-grade Lua docstring standard**: AGENTS.md updated with MANDATORY LDoc-style `--- @param` / `--- @return` convention for all public functions. Demonstrated on new code — `ns.GetGlobalScale()`, `ns.Scale()`, `ns.ApplyGlobalScale()` all have proper docstrings.
+- **AUDIT.md restructured with checkboxes**: All 7 roadmap phases now use GitHub-style `[x]`/`[ ]` checkboxes. Phase 2 item A (Global Scale slider) marked complete. Phase 5 added for File Splitting & Code Organization (highest priority: ClassMods.lua and Config.lua). Phase 7 added for Enterprise-Grade Lua Conventions with docstring template and module-level header requirement.
+- **CHANGELOG.md v0.1.7**: Global Scale slider, deep audit completion, codebase conventions, roadmap made actionable.
+- **Next priorities per audit**: Fix `ns.OnUpdate` chain (registration pattern), fix 8 Hunter globals, replace fresh-install block with `DeepCopyDefaults()`.
+
 ## Progress Update (2026-06-17 - Hunter buff icons redesigned + Shaman buff icon group)
 
 - **Hunter buff icons**: Removed shading/dim overlay; added gold pulsing glow in the last 4 seconds via ADD blend glow texture. Added racial buff tracking (Blood Fury, Berserking, Stoneform, Shadowmeld, War Stomp, Gift of the Naaru). Moved buff group Y offset from 4 to 9 (+5px).

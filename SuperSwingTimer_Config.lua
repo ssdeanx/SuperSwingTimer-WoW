@@ -11,8 +11,6 @@ local UIDropDownMenu_Initialize = _G.UIDropDownMenu_Initialize
 local UIDropDownMenu_SetText = _G.UIDropDownMenu_SetText
 local UIDropDownMenu_SetWidth = _G.UIDropDownMenu_SetWidth
 local ToggleDropDownMenu = rawget(_G, "ToggleDropDownMenu")
-local GetTimePreciseSec = rawget(_G, "GetTimePreciseSec")
-local GetTime = rawget(_G, "GetTime")
 local strtrim = rawget(_G, "strtrim")
 local BackdropTemplateMixin = rawget(_G, "BackdropTemplateMixin")
 
@@ -30,15 +28,6 @@ local function ShiftY(y)
     return math.floor((y * layoutScale) + 0.5) - layoutShift
 end
 
-local function GetCurrentTime()
-    if ns.GetAlignedTime then
-        return ns.GetAlignedTime()
-    end
-    if GetTimePreciseSec then
-        return GetTimePreciseSec()
-    end
-    return GetTime()
-end
 
 local function GetOptionalBackdropTemplate(template)
     if not BackdropTemplateMixin then
@@ -421,7 +410,7 @@ end
 -- ------------------------------------------------------------
 local function AnimateTestBars()
     if not ns.barTestStartTime then return end
-    local now = GetCurrentTime()
+    local now = ns.GetAlignedTime()
     local t = now - ns.barTestStartTime
 
     local function animateOne(bar, period, offset)
@@ -444,7 +433,7 @@ end
 local function StartBarTestPreview(duration)
     duration = tonumber(duration) or 16
     ns.barTestActive = true
-    ns.barTestStartTime = GetCurrentTime()
+    ns.barTestStartTime = ns.GetAlignedTime()
     if ns.barTestTimer and ns.barTestTimer.Cancel then
         ns.barTestTimer:Cancel()
         ns.barTestTimer = nil
@@ -643,33 +632,38 @@ local function CreateLabeledSliderRow(parent, label, minVal, maxVal, step, yOffs
         SyncSliderDisplay(row, row:GetValue())
     end)
 
-    AddControlTooltip(row, label, string.format("Drag or type a value to change %s.", label))
+    local sliderTooltip = options.tooltipText or string.format("Drag or type a value to change %s.", label)
+    AddControlTooltip(row, label, sliderTooltip)
     AddControlTooltip(valueBox, label, string.format("Type a value for %s.", label))
     SyncSliderDisplay(row, row:GetValue())
 
     return row
 end
 
-local function CreateSlider(parent, label, minVal, maxVal, step, yOffset)
+local function CreateSlider(parent, label, minVal, maxVal, step, yOffset, options)
+    options = options or {}
     return CreateLabeledSliderRow(parent, label, minVal, maxVal, step, yOffset, {
         leftInset = 20,
         rightInset = 20,
         valueBoxWidth = 58,
         maxLetters = 8,
-        rowHeight = 72
+        rowHeight = 72,
+        tooltipText = options.tooltipText
     })
 end
 
 -- ------------------------------------------------------------
 -- Compact slider now reuses the same readable full-width row pattern.
 -- ------------------------------------------------------------
-local function CreateCompactSlider(parent, label, minVal, maxVal, step, yOffset, leftInset, rightInset)
+local function CreateCompactSlider(parent, label, minVal, maxVal, step, yOffset, leftInset, rightInset, options)
+    options = options or {}
     return CreateLabeledSliderRow(parent, label, minVal, maxVal, step, yOffset, {
         leftInset = 20,
         rightInset = 20,
         valueBoxWidth = 52,
         maxLetters = 6,
-        rowHeight = 72
+        rowHeight = 72,
+        tooltipText = options.tooltipText
     })
 end
 
@@ -697,13 +691,16 @@ local function CreateColorButton(parent, label, colorKey, yOffset, options)
     local text = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     text:SetPoint("TOPLEFT", row, "TOPLEFT", 0, 0)
     text:SetText(label)
+    if text.SetTextColor then
+        text:SetTextColor(1, 0.82, 0.05, 1)
+    end
     if not compactLayout then
         text:SetPoint("TOPRIGHT", row, "TOPRIGHT", 0, 0)
         text:SetJustifyH("LEFT")
         text:SetJustifyV("TOP")
-        if text.SetTextColor then
-            text:SetTextColor(1, 0.82, 0.05, 1)
-        end
+    else
+        text:SetJustifyH("LEFT")
+        text:SetJustifyV("TOP")
     end
 
     local btn = CreateFrame("Button", nil, row)
@@ -746,6 +743,33 @@ local function CreateColorButton(parent, label, colorKey, yOffset, options)
     gloss:SetColorTexture(1, 1, 1, 0.08)
     btn.gloss = gloss
 
+    -- Color label on the swatch button itself, readable on any fill
+    if compactLayout then
+        local btnLabel = btn:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        btnLabel:SetPoint("CENTER", btn, "CENTER", 0, 0)
+        btnLabel:SetText(label)
+        btnLabel:SetJustifyH("CENTER")
+        btnLabel:SetFont("Fonts\\FRIZQT__.TTF", 10, "OUTLINE")
+        btnLabel:SetTextColor(1, 1, 1, 0.9)
+        btn.btnLabel = btnLabel
+
+        local function UpdateBtnLabel()
+            local c = getColor()
+            if c then
+                -- Dark backgrounds get white text, light backgrounds get dark text
+                local luminance = (c.r or 0) * 0.3 + (c.g or 0) * 0.6 + (c.b or 0) * 0.1
+                local textAlpha = compactLayout and 0.85 or 0
+                if luminance > 0.5 then
+                    btnLabel:SetTextColor(0, 0, 0, textAlpha)
+                else
+                    btnLabel:SetTextColor(1, 1, 1, textAlpha)
+                end
+            end
+        end
+        UpdateBtnLabel()
+        btn.UpdateBtnLabel = UpdateBtnLabel
+    end
+
     local function ApplySelectedColor(r, g, b, a)
         local alpha = allowAlpha and (a or 1) or 1
         if options.applyColor then
@@ -767,17 +791,20 @@ local function CreateColorButton(parent, label, colorKey, yOffset, options)
                         local effective = ns.GetBarColor(key)
                         if effective then
                             colorRow.swatch:SetColorTexture(effective.r, effective.g, effective.b, effective.a)
+                            if colorRow.button.UpdateBtnLabel then colorRow.button.UpdateBtnLabel() end
                         end
                     end
                 end
             end
         end
         swatch:SetColorTexture(r, g, b, alpha)
+        if btn.UpdateBtnLabel then btn.UpdateBtnLabel() end
     end
 
     local function Refresh()
         local color = getColor() or { r = 1, g = 1, b = 1, a = 1 }
         swatch:SetColorTexture(color.r or 1, color.g or 1, color.b or 1, color.a or 1)
+        if btn.UpdateBtnLabel then btn.UpdateBtnLabel() end
     end
 
     local function OpenPicker()
@@ -1680,7 +1707,7 @@ local function CreateTexturePathRow(parent, label, yOffset, getTexture, applyTex
     return row
 end
 
-local function CreateCycleRow(parent, label, yOffset, options, getValue, applyValue)
+local function CreateCycleRow(parent, label, yOffset, options, getValue, applyValue, tooltipText)
     local row = CreateFrame("Frame", nil, parent)
     row:SetPoint("TOPLEFT", parent, "TOPLEFT", 20, yOffset)
     row:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -20, yOffset)
@@ -1737,7 +1764,7 @@ local function CreateCycleRow(parent, label, yOffset, options, getValue, applyVa
             ToggleDropDownMenu(1, nil, dropdown, dropdown, 0, 0)
         end
     end)
-    local dropdownTooltip = string.format(
+    local dropdownTooltip = tooltipText or string.format(
         "Choose the %s option from the dropdown. The full list shows the real WoW draw layers and modes.", label
     )
     AddControlTooltip(row, label, dropdownTooltip)
@@ -1843,6 +1870,39 @@ local function CreateActionRow(parent, label, buttonText, yOffset, onClick, tool
     row.button = btn
     row.refresh = function () end
     return row
+end
+
+-- ------------------------------------------------------------
+-- [?] help button — small clickable font string that shows a
+-- GameTooltip explaining a complex concept. Placed next to a
+-- control label for settings that need conceptual explanation
+-- beyond what the label and tooltip provide.
+-- parent: the row or frame to anchor to
+-- anchor: anchor point on the parent (e.g. "TOPRIGHT")
+-- relativeTo: frame to anchor relative to
+-- helpText: multi-line explanation shown in the tooltip
+-- ------------------------------------------------------------
+local function CreateHelpButton(parent, anchor, relativeTo, helpText)
+    local btn = parent:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    btn:SetPoint(anchor, relativeTo, anchor, 0, 0)
+    btn:SetText("[?]")
+    btn:SetTextColor(0.45, 0.65, 1.0, 0.85)
+    btn:SetJustifyH("RIGHT")
+    btn:SetJustifyV("TOP")
+
+    local function ShowHelp()
+        GameTooltip:SetOwner(btn, "ANCHOR_TOPLEFT")
+        GameTooltip:SetText("Help", 1, 1, 1)
+        GameTooltip:AddLine(helpText, 0.85, 0.85, 0.85, true)
+        GameTooltip:Show()
+    end
+
+    btn:HookScript("OnEnter", ShowHelp)
+    btn:HookScript("OnLeave", function ()
+        GameTooltip:Hide()
+    end)
+
+    return btn
 end
 
 local function CreateSectionHeader(parent, label, yOffset, options)
@@ -2037,8 +2097,11 @@ local function CreatePanel()
 
     local subtitle = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     subtitle:SetPoint("TOP", title, "BOTTOM", 0, -2)
+    subtitle:SetJustifyH("LEFT")
     subtitle:SetText(
-        "Opening /sst previews the bars. Live bars stay combat-only; use the left toggles and right swatches."
+        "SuperSwingTimer tracks melee, ranged, and enemy swing timers with per-class overlay support. " ..
+        "Left column = visibility toggles. Right column = color swatches. " ..
+        "Class-specific controls are in sections at the bottom (/sst help for slash commands)."
     )
 
     -- Close button
@@ -2051,7 +2114,7 @@ local function CreatePanel()
     EnableScrollFrameMouseWheel(scrollFrame, 36)
 
     local content = CreateFrame("Frame", nil, scrollFrame)
-    content:SetSize(720, 3600)
+    content:SetSize(720, 3800)
     scrollFrame:SetScrollChild(content)
     f.scrollFrame = scrollFrame
     f.content = content
@@ -2075,12 +2138,52 @@ local function CreatePanel()
     local cfg = ns.classConfig or {}
     local quickToggleOptions = { leftInset = 20, rightInset = 360, rowHeight = 32, compact = true }
     local quickColorOptions = { leftInset = 360, rightInset = 20, rowHeight = 32, buttonWidth = 160, compact = true }
-    local quickToggleY = -66
-    local quickColorY = -66
+    -- ============================================================
+    -- Global Scale slider — first control, always visible at top
+    -- ============================================================
+    local SCALE_SECTION_HEIGHT = 120  -- slider row + desc text + gap
+    local globalScaleRow = CreateLabeledSliderRow(content, "Global Scale", 0.5, 3.0, 0.1, 0, {
+        leftInset = 20, rightInset = 20, rowHeight = 84
+    })
+    if globalScaleRow and globalScaleRow.text then
+        globalScaleRow.text:SetTextColor(1, 0.90, 0.30, 1)
+    end
+    local globalScaleSlider = globalScaleRow and select(1, globalScaleRow:GetChildren()) or nil
+    panel.globalScaleSlider = globalScaleSlider
+
+    if globalScaleSlider then
+        globalScaleSlider:SetValue(SuperSwingTimerDB.globalScale or ns.DB_DEFAULTS.globalScale or 1.0)
+        globalScaleSlider:SetScript("OnValueChanged", function (self, value)
+            local clamped = math.max(0.5, math.min(3.0, tonumber(value) or 1.0))
+            SuperSwingTimerDB.globalScale = clamped
+            SyncSliderDisplay(self, clamped)
+            if ns.ApplyGlobalScale then
+                ns.ApplyGlobalScale()
+            end
+        end)
+        SyncSliderDisplay(globalScaleSlider, SuperSwingTimerDB.globalScale or ns.DB_DEFAULTS.globalScale or 1.0)
+    end
+
+    -- Description text below scale slider
+    local scaleDesc = content:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    scaleDesc:SetPoint("TOPLEFT", content, "TOPLEFT", 20, -(84 + 2))
+    scaleDesc:SetPoint("TOPRIGHT", content, "TOPRIGHT", -20, -(84 + 2))
+    scaleDesc:SetJustifyH("LEFT")
+    scaleDesc:SetJustifyV("TOP")
+    scaleDesc:SetText(
+        "Proportionally scales all bars, icons, sparks, borders, and fonts relative to their base (default) size. " ..
+        "Each individual slider still fine-tunes that base size; this master slider multiplies everything."
+    )
+    scaleDesc:SetTextColor(0.75, 0.75, 0.75, 1)
+    scaleDesc.layoutHeight = 28
+
+    -- Offset all Quick Controls content down by the scale section
+    local quickToggleY = -66 - SCALE_SECTION_HEIGHT
+    local quickColorY = -66 - SCALE_SECTION_HEIGHT
     local quickRowStep = -30
 
     -- Sliders / selectors
-    local barVisibilityHeader = CreateSectionHeader(content, "Quick Controls", -10, {
+    local barVisibilityHeader = CreateSectionHeader(content, "Quick Controls", -10 - SCALE_SECTION_HEIGHT, {
         rows = barVisibilityRows,
         getCollapsed = function () return sectionCollapsed.barVisibility end,
         setCollapsed = function (collapsed)
@@ -2089,14 +2192,14 @@ local function CreatePanel()
     })
 
     local quickToggleLabel = content:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    quickToggleLabel:SetPoint("TOPLEFT", content, "TOPLEFT", quickToggleOptions.leftInset, -32)
-    quickToggleLabel:SetText("Visibility")
+    quickToggleLabel:SetPoint("TOPLEFT", content, "TOPLEFT", quickToggleOptions.leftInset, -32 - SCALE_SECTION_HEIGHT)
+    quickToggleLabel:SetText("Visibility (show/hide bars)")
     quickToggleLabel.layoutHeight = math.max(math.ceil((quickToggleLabel:GetStringHeight() or 12)), 14)
     barVisibilityRows[#barVisibilityRows + 1] = quickToggleLabel
 
     local quickColorLabel = content:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    quickColorLabel:SetPoint("TOPLEFT", content, "TOPLEFT", quickColorOptions.leftInset, -32)
-    quickColorLabel:SetText("Key Colors")
+    quickColorLabel:SetPoint("TOPLEFT", content, "TOPLEFT", quickColorOptions.leftInset, -32 - SCALE_SECTION_HEIGHT)
+    quickColorLabel:SetText("Colors (bar / swatch tint)")
     quickColorLabel.layoutHeight = math.max(math.ceil((quickColorLabel:GetStringHeight() or 12)), 14)
     barVisibilityRows[#barVisibilityRows + 1] = quickColorLabel
 
@@ -2159,7 +2262,10 @@ local function CreatePanel()
                     end
                 end
             end
-        end
+        end,
+        {
+            tooltipText = "Tint bar fills with your class color (Warrior=tan, Paladin=pink, Hunter=green, Rogue=yellow, Shaman=blue, Druid=orange). Disable to use custom swatches."
+        }
     )
 
     -- Lock Bars at top of Quick Controls for fast access
@@ -2184,7 +2290,10 @@ local function CreatePanel()
             function (enabled)
                 SuperSwingTimerDB.showMH = enabled
                 ns.ApplyVisibility()
-            end
+            end,
+            {
+                tooltipText = "Show/hide the main-hand swing timer bar. Hidden bars still tick in the background."
+            }
         )
     end
 
@@ -2196,7 +2305,10 @@ local function CreatePanel()
             function (enabled)
                 SuperSwingTimerDB.showOH = enabled
                 ns.ApplyVisibility()
-            end
+            end,
+            {
+                tooltipText = "Show/hide the off-hand swing timer bar (dual-wield only). Hidden bars still tick in the background."
+            }
         )
     end
 
@@ -2208,7 +2320,10 @@ local function CreatePanel()
             function (enabled)
                 SuperSwingTimerDB.showRanged = enabled
                 ns.ApplyVisibility()
-            end
+            end,
+            {
+                tooltipText = "Show/hide the ranged swing timer bar (auto-shot cycle). Hidden bars still tick in the background."
+            }
         )
     end
 
@@ -2256,7 +2371,10 @@ local function CreatePanel()
         function (enabled)
             SuperSwingTimerDB.showEnemy = enabled
             ns.ApplyVisibility()
-        end
+        end,
+        {
+            tooltipText = "Show/hide the current target's swing timer bar (non-player). Updates when targeting a new enemy."
+        }
     )
 
     local showWeaveRow = nil
@@ -2269,7 +2387,10 @@ local function CreatePanel()
             function (enabled)
                 SuperSwingTimerDB.showWeaveAssist = enabled
                 ns.ApplyVisibility()
-            end
+            end,
+            {
+                tooltipText = "Show spell weave cast-time overlays on the swing bar. Covers LB, CL, HW, LHW, and CH families with safe-zone and clip feedback."
+            }
         )
         -- Phase 2: Shaman Windfury ICD toggle
         AddQuickToggle(
@@ -2295,7 +2416,10 @@ local function CreatePanel()
                 if ns.UpdateRogueSinisterAssistVisual then
                     ns.UpdateRogueSinisterAssistVisual()
                 end
-            end
+            end,
+            {
+                tooltipText = "Show a colored end-window cue on the MH bar marking when to queue Sinister Strike before the swing lands."
+            }
         )
     end
 
@@ -2971,19 +3095,33 @@ local function CreatePanel()
         barVisibilityHeader.refresh()
     end
 
+    -- Section help text
+    local appearanceHelp = CreateDescriptionText(content,
+        "Adjust bar sizing, textures, spark visuals, border, and background. " ..
+        "Changes apply immediately to the preview bars. Close and reopen /sst to see them in combat.",
+        PostQuickY(-255)
+    )
+    AppendRow(mhOhRows, appearanceHelp)
+
     -- Keep the first MH/OH control clearly below the section header so slider clicks
     -- cannot also hit the collapse toggle.
-    local widthSlider = CreateCompactSlider(content, "Bar Width", 100, 400, 10, PostQuickY(ShiftY(-88)), 20, 600)
+    local widthSlider = CreateCompactSlider(content, "Bar Width", 100, 400, 10, PostQuickY(ShiftY(-88)), 20, 600, {
+        tooltipText = "Set the base width for all swing timer bars in pixels. All helper bars (SnD, Shield Block, etc.) scale from this width. The Global Scale multiplier above applies on top."
+    })
     widthSlider:SetValue(SuperSwingTimerDB.barWidth or ns.DB_DEFAULTS.barWidth)
     SyncSliderDisplay(widthSlider, widthSlider:GetValue())
 
-    local heightSlider = CreateCompactSlider(content, "Bar Height", 10, 40, 2, PostQuickY(ShiftY(-88)), 160, 460)
+    local heightSlider = CreateCompactSlider(content, "Bar Height", 10, 40, 2, PostQuickY(ShiftY(-88)), 160, 460, {
+        tooltipText = "Set the base height for the main-hand bar in pixels. Off-hand bar height derives automatically (MH - 7px). Helper bars have their own height controls below."
+    })
     heightSlider:SetValue(SuperSwingTimerDB.barHeight or ns.DB_DEFAULTS.barHeight)
     SyncSliderDisplay(heightSlider, heightSlider:GetValue())
 
     local hunterCastBarHeightSlider = nil
     if ns.playerClass == "HUNTER" then
-        hunterCastBarHeightSlider = CreateSlider(content, "Hunter Cast Bar Height", 4, 30, 2, PostQuickY(ShiftY(-100)))
+        hunterCastBarHeightSlider = CreateSlider(content, "Hunter Cast Bar Height", 4, 30, 2, PostQuickY(ShiftY(-100)), {
+            tooltipText = "Height of the dedicated cast bar beneath the ranged bar showing Steady Shot, Aimed Shot, and the hidden Auto Shot window."
+        })
         SetRowClassRequirement(hunterCastBarHeightSlider, "HUNTER")
         hunterCastBarHeightSlider:SetValue(
             SuperSwingTimerDB.hunterCastBarHeight or ns.DB_DEFAULTS.hunterCastBarHeight or 10
@@ -2993,7 +3131,9 @@ local function CreatePanel()
 
     local rogueSndBarHeightSlider = nil
     if ns.playerClass == "ROGUE" then
-        rogueSndBarHeightSlider = CreateSlider(content, "Rogue SnD Height", 2, 20, 1, PostQuickY(ShiftY(-115)))
+        rogueSndBarHeightSlider = CreateSlider(content, "Rogue SnD Height", 2, 20, 1, PostQuickY(ShiftY(-115)), {
+            tooltipText = "Height of the Slice and Dice duration bar above the main-hand bar. Shows remaining SnD time."
+        })
         SetRowClassRequirement(rogueSndBarHeightSlider, "ROGUE")
         rogueSndBarHeightSlider:SetValue(
             SuperSwingTimerDB.rogueSliceAndDiceBarHeight or ns.DB_DEFAULTS.rogueSliceAndDiceBarHeight or 4
@@ -3003,7 +3143,9 @@ local function CreatePanel()
 
     local rogueEnergyTickSlider = nil
     if ns.playerClass == "ROGUE" then
-        rogueEnergyTickSlider = CreateSlider(content, "Rogue Tick Width", 2, 20, 1, PostQuickY(ShiftY(-140)))
+        rogueEnergyTickSlider = CreateSlider(content, "Rogue Tick Width", 2, 20, 1, PostQuickY(ShiftY(-140)), {
+            tooltipText = "Width of the vertical energy-tick bar to the left of the main-hand bar. Ticks on the 2s energy pulse cadence."
+        })
         SetRowClassRequirement(rogueEnergyTickSlider, "ROGUE")
         rogueEnergyTickSlider:SetValue(
             SuperSwingTimerDB.rogueEnergyTickBarWidth or ns.DB_DEFAULTS.rogueEnergyTickBarWidth or 4
@@ -3013,7 +3155,9 @@ local function CreatePanel()
 
     local druidEnergyTickSlider = nil
     if ns.playerClass == "DRUID" then
-        druidEnergyTickSlider = CreateSlider(content, "Druid Tick Width", 2, 20, 1, PostQuickY(ShiftY(-140)))
+        druidEnergyTickSlider = CreateSlider(content, "Druid Tick Width", 2, 20, 1, PostQuickY(ShiftY(-140)), {
+            tooltipText = "Width of the vertical Cat-form energy-tick bar to the left of the main-hand bar."
+        })
         SetRowClassRequirement(druidEnergyTickSlider, "DRUID")
         druidEnergyTickSlider:SetValue(
             SuperSwingTimerDB.druidEnergyTickBarWidth or ns.DB_DEFAULTS.druidEnergyTickBarWidth or 4
@@ -3023,7 +3167,9 @@ local function CreatePanel()
 
     local hunterRangeHelperWidthSlider = nil
     if ns.playerClass == "HUNTER" then
-        hunterRangeHelperWidthSlider = CreateSlider(content, "Range Helper Width", 2, 20, 1, PostQuickY(ShiftY(-160)))
+        hunterRangeHelperWidthSlider = CreateSlider(content, "Range Helper Width", 2, 20, 1, PostQuickY(ShiftY(-160)), {
+            tooltipText = "Width of the 4-state range strip showing melee/sweet spot/ranged/out-of-range zones for Hunters."
+        })
         SetRowClassRequirement(hunterRangeHelperWidthSlider, "HUNTER")
         hunterRangeHelperWidthSlider:SetValue(
             SuperSwingTimerDB.hunterRangeHelperWidth or ns.DB_DEFAULTS.hunterRangeHelperWidth or 7
@@ -3033,7 +3179,9 @@ local function CreatePanel()
 
     local hunterRapidFireSlider = nil
     if ns.playerClass == "HUNTER" then
-        hunterRapidFireSlider = CreateSlider(content, "Rapid Fire Height", 2, 20, 1, PostQuickY(ShiftY(-180)))
+        hunterRapidFireSlider = CreateSlider(content, "Rapid Fire Height", 2, 20, 1, PostQuickY(ShiftY(-180)), {
+            tooltipText = "Height of the Rapid Fire cooldown/duration bar below the ranged stack. Shows remaining time while active."
+        })
         SetRowClassRequirement(hunterRapidFireSlider, "HUNTER")
         hunterRapidFireSlider:SetValue(
             SuperSwingTimerDB.hunterRapidFireBarHeight or ns.DB_DEFAULTS.hunterRapidFireBarHeight or 4
@@ -3043,7 +3191,9 @@ local function CreatePanel()
 
     local hunterBuffIconSlider = nil
     if ns.playerClass == "HUNTER" then
-        hunterBuffIconSlider = CreateSlider(content, "Buff Icon Size", 12, 48, 2, PostQuickY(ShiftY(-180)))
+        hunterBuffIconSlider = CreateSlider(content, "Buff Icon Size", 12, 48, 2, PostQuickY(ShiftY(-180)), {
+            tooltipText = "Size of the buff/CD icon group above the ranged bar. Icons show active buffs and cooldowns with countdown text and a gold glow in the last 4 seconds."
+        })
         SetRowClassRequirement(hunterBuffIconSlider, "HUNTER")
         hunterBuffIconSlider:SetValue(SuperSwingTimerDB.hunterBuffIconSize or ns.DB_DEFAULTS.hunterBuffIconSize or 25)
         SyncSliderDisplay(hunterBuffIconSlider, hunterBuffIconSlider:GetValue())
@@ -3051,7 +3201,9 @@ local function CreatePanel()
 
     local warriorShieldBlockSlider = nil
     if ns.playerClass == "WARRIOR" then
-        warriorShieldBlockSlider = CreateSlider(content, "Shield Block Height", 2, 20, 1, PostQuickY(ShiftY(-200)))
+        warriorShieldBlockSlider = CreateSlider(content, "Shield Block Height", 2, 20, 1, PostQuickY(ShiftY(-200)), {
+            tooltipText = "Height of the Shield Block duration bar above the main-hand stack for Protection Warriors."
+        })
         SetRowClassRequirement(warriorShieldBlockSlider, "WARRIOR")
         warriorShieldBlockSlider:SetValue(
             SuperSwingTimerDB.warriorShieldBlockBarHeight or ns.DB_DEFAULTS.warriorShieldBlockBarHeight or 4
@@ -3061,7 +3213,9 @@ local function CreatePanel()
 
     local warriorBuffIconSlider = nil
     if ns.playerClass == "WARRIOR" then
-        warriorBuffIconSlider = CreateSlider(content, "Buff Icon Size", 12, 48, 2, PostQuickY(ShiftY(-200)))
+        warriorBuffIconSlider = CreateSlider(content, "Buff Icon Size", 12, 48, 2, PostQuickY(ShiftY(-200)), {
+            tooltipText = "Size of the buff/CD icon group above the MH bar for Warrior abilities and racials."
+        })
         SetRowClassRequirement(warriorBuffIconSlider, "WARRIOR")
         warriorBuffIconSlider:SetValue(
             SuperSwingTimerDB.warriorBuffIconSize or ns.DB_DEFAULTS.warriorBuffIconSize or 25
@@ -3071,7 +3225,9 @@ local function CreatePanel()
 
     local paladinBuffIconSlider = nil
     if ns.playerClass == "PALADIN" then
-        paladinBuffIconSlider = CreateSlider(content, "Buff Icon Size", 12, 48, 2, PostQuickY(ShiftY(-220)))
+        paladinBuffIconSlider = CreateSlider(content, "Buff Icon Size", 12, 48, 2, PostQuickY(ShiftY(-220)), {
+            tooltipText = "Size of the buff/CD icon group above the MH bar for Paladin abilities and racials."
+        })
         SetRowClassRequirement(paladinBuffIconSlider, "PALADIN")
         paladinBuffIconSlider:SetValue(
             SuperSwingTimerDB.paladinBuffIconSize or ns.DB_DEFAULTS.paladinBuffIconSize or 25
@@ -3081,7 +3237,9 @@ local function CreatePanel()
 
     local shamanLightningGapSlider = nil
     if ns.playerClass == "SHAMAN" then
-        shamanLightningGapSlider = CreateSlider(content, "Lightning Tracker Gap", 0, 24, 1, PostQuickY(ShiftY(-220)))
+        shamanLightningGapSlider = CreateSlider(content, "Lightning Tracker Gap", 0, 24, 1, PostQuickY(ShiftY(-220)), {
+            tooltipText = "Horizontal gap in pixels between the main-hand bar and the Lightning Shield charge tracker dots to the left."
+        })
         SetRowClassRequirement(shamanLightningGapSlider, "SHAMAN")
         shamanLightningGapSlider:SetValue(
             SuperSwingTimerDB.shamanLightningTrackerGap or ns.DB_DEFAULTS.shamanLightningTrackerGap or 6
@@ -3091,7 +3249,9 @@ local function CreatePanel()
 
     local shamanBuffIconSlider = nil
     if ns.playerClass == "SHAMAN" then
-        shamanBuffIconSlider = CreateSlider(content, "Buff Icon Size", 12, 48, 2, PostQuickY(ShiftY(-240)))
+        shamanBuffIconSlider = CreateSlider(content, "Buff Icon Size", 12, 48, 2, PostQuickY(ShiftY(-240)), {
+            tooltipText = "Size of the buff/CD icon group above the MH bar for Shaman abilities and racials."
+        })
         SetRowClassRequirement(shamanBuffIconSlider, "SHAMAN")
         shamanBuffIconSlider:SetValue(
             SuperSwingTimerDB.shamanBuffIconSize or ns.DB_DEFAULTS.shamanBuffIconSize or 25
@@ -3101,7 +3261,9 @@ local function CreatePanel()
 
     local rogueAdrenalineRushSlider = nil
     if ns.playerClass == "ROGUE" then
-        rogueAdrenalineRushSlider = CreateSlider(content, "Adrenaline Rush Height", 2, 20, 1, PostQuickY(ShiftY(-260)))
+        rogueAdrenalineRushSlider = CreateSlider(content, "Adrenaline Rush Height", 2, 20, 1, PostQuickY(ShiftY(-260)), {
+            tooltipText = "Height of the Adrenaline Rush cooldown/duration bar below the main-hand stack."
+        })
         SetRowClassRequirement(rogueAdrenalineRushSlider, "ROGUE")
         rogueAdrenalineRushSlider:SetValue(
             SuperSwingTimerDB.rogueAdrenalineRushBarHeight or ns.DB_DEFAULTS.rogueAdrenalineRushBarHeight or 4
@@ -3111,7 +3273,9 @@ local function CreatePanel()
 
     local rogueBuffIconSlider = nil
     if ns.playerClass == "ROGUE" then
-        rogueBuffIconSlider = CreateSlider(content, "Buff Icon Size", 12, 48, 2, PostQuickY(ShiftY(-260)))
+        rogueBuffIconSlider = CreateSlider(content, "Buff Icon Size", 12, 48, 2, PostQuickY(ShiftY(-260)), {
+            tooltipText = "Size of the buff/CD icon group above the MH bar for Rogue abilities and racials."
+        })
         SetRowClassRequirement(rogueBuffIconSlider, "ROGUE")
         rogueBuffIconSlider:SetValue(
             SuperSwingTimerDB.rogueBuffIconSize or ns.DB_DEFAULTS.rogueBuffIconSize or 25
@@ -3197,7 +3361,9 @@ local function CreatePanel()
         tooltipText = "Type a texture path or click the browse icon to choose the Normal spark preset (Square_FullWhite) or another texture."
     })
 
-    local sparkAlphaSlider = CreateSlider(content, "Spark Alpha", 0, 1, 0.05, PostQuickY(ShiftY(-560)))
+    local sparkAlphaSlider = CreateSlider(content, "Spark Alpha", 0, 1, 0.05, PostQuickY(ShiftY(-560)), {
+        tooltipText = "Set the spark opacity. 1.0 = fully opaque, 0.0 = invisible. Lower values create a subtle shimmer effect."
+    })
     sparkAlphaSlider:SetValue(
         SuperSwingTimerDB.sparkAlpha ~= nil and SuperSwingTimerDB.sparkAlpha or ns.DB_DEFAULTS.sparkAlpha
     )
@@ -3231,11 +3397,15 @@ local function CreatePanel()
         end
     )
 
-    local sparkWidthSlider = CreateCompactSlider(content, "Spark Width", 2, 60, 1, PostQuickY(ShiftY(-485)), 20, 600)
+    local sparkWidthSlider = CreateCompactSlider(content, "Spark Width", 2, 60, 1, PostQuickY(ShiftY(-485)), 20, 600, {
+        tooltipText = "Width of the white tracking spark that moves along the bar fill. Wider sparks are easier to see at a glance."
+    })
     sparkWidthSlider:SetValue(SuperSwingTimerDB.sparkWidth or ns.DB_DEFAULTS.sparkWidth)
     SyncSliderDisplay(sparkWidthSlider, sparkWidthSlider:GetValue())
 
-    local sparkHeightSlider = CreateCompactSlider(content, "Spark Height", 2, 90, 1, PostQuickY(ShiftY(-485)), 160, 460)
+    local sparkHeightSlider = CreateCompactSlider(content, "Spark Height", 2, 90, 1, PostQuickY(ShiftY(-485)), 160, 460, {
+        tooltipText = "Height of the tracking spark. Clamped to the bar height if the value exceeds it."
+    })
     sparkHeightSlider:SetValue(SuperSwingTimerDB.sparkHeight or ns.DB_DEFAULTS.sparkHeight)
     SyncSliderDisplay(sparkHeightSlider, sparkHeightSlider:GetValue())
 
@@ -3258,7 +3428,9 @@ local function CreatePanel()
         }
     )
 
-    local backgroundAlphaSlider = CreateSlider(content, "Bar Background Alpha", 0, 1, 0.05, PostQuickY(ShiftY(-635)))
+    local backgroundAlphaSlider = CreateSlider(content, "Bar Background Alpha", 0, 1, 0.05, PostQuickY(ShiftY(-635)), {
+        tooltipText = "Opacity of the dark bar background behind the fill texture. 1.0 = solid, 0.0 = transparent."
+    })
     backgroundAlphaSlider:SetValue(
         SuperSwingTimerDB.barBackgroundAlpha ~= nil and SuperSwingTimerDB.barBackgroundAlpha
             or ns.DB_DEFAULTS.barBackgroundAlpha
@@ -3273,7 +3445,9 @@ local function CreatePanel()
         function () return SuperSwingTimerDB.indicatorBlendMode or ns.DB_DEFAULTS.indicatorBlendMode end,
         function (blendMode)
             ns.ApplyIndicatorBlendMode(blendMode)
-        end
+        end,
+        "Controls how spark and weave indicator textures blend with the bar fill. " ..
+        "Glow (ADD) = bright additive highlighting. Opaque (BLEND) = standard transparency."
     )
 
     local barBorderColorRow = CreateColorButton(content, "Bar Border Color", "barBorder", PostQuickY(ShiftY(-735)), {
@@ -3287,7 +3461,9 @@ local function CreatePanel()
         tooltipText = "Pick the bar border tint and opacity with the color wheel."
     })
 
-    local barBorderSlider = CreateSlider(content, "Bar Border Size", 0, 6, 1, PostQuickY(ShiftY(-785)))
+    local barBorderSlider = CreateSlider(content, "Bar Border Size", 0, 6, 1, PostQuickY(ShiftY(-785)), {
+        tooltipText = "Thickness of the black border around each bar frame. Set to 0 to hide borders entirely."
+    })
     barBorderSlider:SetValue(
         SuperSwingTimerDB.barBorderSize ~= nil and SuperSwingTimerDB.barBorderSize or ns.DB_DEFAULTS.barBorderSize
     )
@@ -3372,6 +3548,15 @@ local function CreatePanel()
         end
     })
 
+    -- Section help text
+    local shamanHelp = CreateDescriptionText(content,
+        "Configure cast-breakpoint overlays for Enhancement Shaman weaving. " ..
+        "Markers show the safe cast window and track live spell progress on the MH bar. " ..
+        "Breakpoints account for latency and spell haste.",
+        PostQuickY(-775)
+    )
+    AppendRow(shamanRows, shamanHelp)
+
     local weaveSparkTextureRow = CreateTexturePathRow(content, "Cast Breakpoint Spark Texture", PostQuickY(ShiftY(-725)), {
         mode = "browser",
         label = "Cast Breakpoint Spark Texture",
@@ -3408,11 +3593,15 @@ local function CreatePanel()
         end
     )
 
-    local weaveSparkWidthSlider = CreateSlider(content, "Cast Spark Width", 2, 60, 1, PostQuickY(ShiftY(-795)))
+    local weaveSparkWidthSlider = CreateSlider(content, "Cast Spark Width", 2, 60, 1, PostQuickY(ShiftY(-795)), {
+        tooltipText = "Width of the moving weave cast spark in pixels. This is the indicator that travels along the MH bar during an active cast."
+    })
     weaveSparkWidthSlider:SetValue(SuperSwingTimerDB.weaveSparkWidth or ns.DB_DEFAULTS.weaveSparkWidth)
     SyncSliderDisplay(weaveSparkWidthSlider, weaveSparkWidthSlider:GetValue())
 
-    local weaveSparkHeightSlider = CreateSlider(content, "Cast Spark Height", 2, 100, 1, PostQuickY(ShiftY(-845)))
+    local weaveSparkHeightSlider = CreateSlider(content, "Cast Spark Height", 2, 100, 1, PostQuickY(ShiftY(-845)), {
+        tooltipText = "Height of the moving weave cast spark in pixels. Clamped to the MH bar height if the value exceeds it."
+    })
     weaveSparkHeightSlider:SetValue(SuperSwingTimerDB.weaveSparkHeight or ns.DB_DEFAULTS.weaveSparkHeight)
     SyncSliderDisplay(weaveSparkHeightSlider, weaveSparkHeightSlider:GetValue())
 
@@ -3487,13 +3676,22 @@ local function CreatePanel()
         SetRowsShown(shamanRows, false)
     end
 
-    local generalHeader = CreateSectionHeader(content, "General Behavior", PostQuickY(-1340), {
+    local generalHeader = CreateSectionHeader(content, "Combat & Timer Behavior", PostQuickY(-1340), {
         rows = generalRows,
         getCollapsed = function () return sectionCollapsed.general end,
         setCollapsed = function (collapsed)
             sectionCollapsed.general = collapsed
         end
     })
+
+    -- Section help text
+    local generalHelp = CreateDescriptionText(content,
+        "Toggle timing helpers and visual feedback options. " ..
+        "Swing Flash briefly brightens the spark on each landing. " ..
+        "GCD Ticker shows a thin bar above the MH for the global cooldown.",
+        PostQuickY(-1365)
+    )
+    AppendRow(generalRows, generalHelp)
 
     local minimalModeRow = CreateToggleRow(
         content,
@@ -3769,7 +3967,7 @@ local function CreatePanel()
         )
     end)
 
-    local weaveFamiliesHeader = CreateSectionHeader(content, "Weave Families", PostQuickY(-1708), {
+    local weaveFamiliesHeader = CreateSectionHeader(content, "Shaman Weave Spells", PostQuickY(-1708), {
         rows = weaveFamiliesRows,
         getCollapsed = function () return sectionCollapsed.weaveFamilies end,
         setCollapsed = function (collapsed)
@@ -4123,19 +4321,16 @@ local function CreatePanel()
     f.weaveFamilyRows = weaveFamilyRows
     f.colorRows = colorRowsSection
 
-    -- Wrap ns.OnUpdate to animate bars during Test Bars preview.
-    -- Runs once per frame, chaining through the existing class-mod updates.
-    if not ns._testBarsWrapped then
-        local origOnUpdate = ns.OnUpdate
-        ns.OnUpdate = function (elapsed)
+    -- Register Test Bars hook at front of OnUpdate chain.
+    -- Runs BEFORE the core render path so AnimateTestBars() can override
+    -- bar values before the normal frame update logic runs.
+    if not ns._testBarsHookRegistered then
+        ns.RegisterOnUpdateHook(function (elapsed)
             if ns.barTestActive then
                 AnimateTestBars()
             end
-            if origOnUpdate then
-                origOnUpdate(elapsed)
-            end
-        end
-        ns._testBarsWrapped = true
+        end, 1)  -- Position 1 = runs before core render
+        ns._testBarsHookRegistered = true
     end
 
     return f
@@ -4163,6 +4358,10 @@ function ns.InitConfig()
     panel = CreatePanel()
 end
 
+--- Open or close the /sst config panel. Initializes the panel
+--  on first call. Refreshes slider values from DB before showing.
+--  @return (nil)
+--  @usage Bound to /sst, /super, /superswingtimer slash commands
 function ns.ToggleConfig()
     if not panel and ns.InitConfig then
         ns.InitConfig()
@@ -4172,6 +4371,10 @@ function ns.ToggleConfig()
         panel:Hide()
     else
         -- Refresh slider values from DB before showing
+        if panel.globalScaleSlider then
+            panel.globalScaleSlider:SetValue(SuperSwingTimerDB.globalScale or ns.DB_DEFAULTS.globalScale or 1.0)
+            SyncSliderDisplay(panel.globalScaleSlider, SuperSwingTimerDB.globalScale or ns.DB_DEFAULTS.globalScale or 1.0)
+        end
         panel.widthSlider:SetValue(SuperSwingTimerDB.barWidth or ns.DB_DEFAULTS.barWidth)
         panel.heightSlider:SetValue(SuperSwingTimerDB.barHeight or ns.DB_DEFAULTS.barHeight)
         if panel.hunterCastBarHeightSlider then
@@ -4374,6 +4577,10 @@ function ns.ToggleConfig()
     end
 end
 
+--- Reset all SavedVariables to their default values.
+--  Preserves positions, then wipes everything to ns.DB_DEFAULTS
+--  and reapplies all settings to active frames. Called by /sst reset.
+--  @return (nil)
 function ns.ResetConfigDefaults()
     SuperSwingTimerDB.colors = SuperSwingTimerDB.colors or {}
     SuperSwingTimerDB.positions = {
@@ -4476,6 +4683,7 @@ function ns.ResetConfigDefaults()
     SuperSwingTimerDB.paladinBuffIconSize = ns.DB_DEFAULTS.paladinBuffIconSize
     SuperSwingTimerDB.shamanLightningTrackerGap = ns.DB_DEFAULTS.shamanLightningTrackerGap
     SuperSwingTimerDB.useClassColors = ns.DB_DEFAULTS.useClassColors
+    SuperSwingTimerDB.globalScale = ns.DB_DEFAULTS.globalScale
     SuperSwingTimerDB.indicatorBlendMode = ns.DB_DEFAULTS.indicatorBlendMode
     SuperSwingTimerDB.weaveSpellFamilies = {
         LB = ns.DB_DEFAULTS.weaveSpellFamilies.LB,
@@ -4635,5 +4843,9 @@ function ns.ResetConfigDefaults()
                 row.refresh()
             end
         end
+    end
+    -- Apply global scale after all other settings are restored
+    if ns.ApplyGlobalScale then
+        ns.ApplyGlobalScale()
     end
 end

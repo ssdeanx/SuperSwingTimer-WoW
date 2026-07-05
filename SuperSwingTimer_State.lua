@@ -2,7 +2,6 @@ local _, ns = ...
 ---@diagnostic disable: undefined-field
 
 local GetTimePreciseSec = rawget(_G, "GetTimePreciseSec")
-local GetTime = rawget(_G, "GetTime")
 local UnitAttackSpeed = rawget(_G, "UnitAttackSpeed")
 local UnitRangedDamage = rawget(_G, "UnitRangedDamage")
 local GetSpellCooldown = rawget(_G, "GetSpellCooldown")
@@ -32,10 +31,10 @@ local WARRIOR_OVERPOWER_PROC_WINDOW = 5.0
 -- Four independent timers: mh (main hand), oh (off hand), ranged, enemy.
 -- Each timer struct:
 --   state              "idle" | "swinging"
---   lastSwing          GetCurrentTime() / combat-log timestamp at swing start
+--   lastSwing          ns.GetAlignedTime() / combat-log timestamp at swing start
 --   duration           weapon speed at swing start
 --   speed              cached speed (for haste change detection)
---   nextSpeedCheckAt   GetCurrentTime() when next haste check should occur
+--   nextSpeedCheckAt   ns.GetAlignedTime() when next haste check should occur
 
 ns.timers = {
     mh = { state = "idle", lastSwing = 0.0, duration = 0.0, speed = 0.0, nextSpeedCheckAt = 0.0 },
@@ -84,22 +83,11 @@ ns.enemyTargetName = nil
 -- State helpers
 -- ============================================================
 
--- Keep the base timer clock in the GetTime() domain so cooldown, cast, and
--- channel timestamps stay directly comparable, but prefer GetTimePreciseSec()
--- by aligning it once to that same domain.
--- Latency is applied only to predictive windows and guards so a refreshed
--- latency cache cannot shift every in-flight timer forward or backward.
-
-local function GetCurrentTime()
-    if ns.GetAlignedTime then
-        return ns.GetAlignedTime()
-    end
-    if GetTimePreciseSec then
-        return GetTimePreciseSec()
-    end
-    return GetTime()
-end
-
+--- Refresh the cached network latency from GetNetStats().
+--  Called every 0.05s from UpdateFrameOnUpdate. Stores the worst of
+--  homeLatency / worldLatency in ns.cachedLatency for use by weave
+--  safe-window and clip calculations.
+--  @return (nil) Side-effect: updates ns.cachedLatency
 function ns.RefreshLatencyCache()
     local _, _, homeLatency, worldLatency = GetNetStats()
     local activeLatency = (worldLatency and worldLatency > 0) and worldLatency or homeLatency or 0
@@ -107,6 +95,10 @@ function ns.RefreshLatencyCache()
     return ns.cachedLatency
 end
 
+--- Get the cooldown start and duration for Auto Shot (spell 75).
+--  Prefers C_Spell.GetSpellCooldown() with legacy GetSpellCooldown()
+--  fallback. Also tries name-based lookup if ID fails.
+--  @return (number|nil) cooldownStart, cooldownDuration, or nil/nil if not cooling
 function ns.GetAutoShotCooldown()
     local startTime
     local duration
@@ -142,6 +134,12 @@ function ns.GetAutoShotCooldown()
     return nil, nil
 end
 
+--- Check whether the Hunter's auto-repeat (Auto Shot) is currently active.
+--  Uses C_Spell.IsAutoRepeatSpell() with legacy fallback. Mounted
+--  hunters always return false. The fallbackState parameter allows
+--  callers to provide a cached value when the API is unavailable.
+--  @param fallbackState (boolean|nil) Optional cached auto-repeat state
+--  @return (boolean) true if auto-repeat is active
 function ns.IsHunterAutoRepeatActive(fallbackState)
     if ns.playerClass ~= "HUNTER" then
         return false
@@ -195,7 +193,7 @@ function ns.IsHunterRangedPinnedByMovement(now)
         return false
     end
 
-    now = now or GetCurrentTime()
+    now = now or ns.GetAlignedTime()
     return now >= ((t.lastSwing + t.duration) - castWindow)
 end
 
@@ -227,6 +225,11 @@ end
 
 local ClearHunterCastState
 
+--- Returns true if any swing timer, cast, or channel is currently active.
+--  Used to decide whether the OnUpdate loop should keep running.
+--  Also keeps the update loop alive for Warrior combat visuals (rage bar,
+--  shield block) and Druid Cat energy tick even when no timer is swinging.
+--  @return (boolean) true if any timer, cast, or channel is active
 function ns.HasActiveTimers()
     for _, timer in pairs(ns.timers) do
         if timer.state == "swinging" then
@@ -265,7 +268,7 @@ function ns.HasActiveTimers()
         and ns.IsHunterCastSpell(ns.hunterCastSpellId) then
         local startTime = ns.hunterCastStartTime
         local duration = ns.hunterCastDuration
-        if startTime and duration and duration > 0 and GetCurrentTime() < (startTime + duration) then
+        if startTime and duration and duration > 0 and ns.GetAlignedTime() < (startTime + duration) then
             return true
         end
         if ClearHunterCastState then
@@ -299,6 +302,12 @@ ClearHunterCastState = function (clearResolvedSpell)
 end
 ns.spellcastSucceededHooks = ns.spellcastSucceededHooks or {}
 
+--- Register a callback to fire when a spellcast succeeds.
+--  This is used by class modules (Warrior, Druid, Hunter) to apply
+--  next-melee queue tints after a queued spell lands.
+--  @param callback (function) The function(unit, castGUIDOrSpellName, spellId) to call
+--  @return (nil)
+--  @usage ns.RegisterSpellcastSucceededHook(function(u, token, id) ... end)
 function ns.RegisterSpellcastSucceededHook(callback)
     if type(callback) ~= "function" then
         return
@@ -390,7 +399,7 @@ function ns.GetTimeUntilNextHunterRangedShot(now)
         return nil
     end
 
-    now = tonumber(now) or GetCurrentTime()
+    now = tonumber(now) or ns.GetAlignedTime()
 
     local rangedTimer = ns.timers and ns.timers.ranged
     if rangedTimer and rangedTimer.state == "swinging" and rangedTimer.duration and rangedTimer.duration > 0 then
@@ -500,7 +509,7 @@ function ns.RefreshEnemyTarget()
 end
 
 function ns.SyncAllTimerSpeeds(force)
-    local now = GetCurrentTime()
+    local now = ns.GetAlignedTime()
     if ns.timers.mh and ns.timers.mh.state == "swinging" then
         ns.SyncMeleeTimerSpeed("mh", now, force)
     end
@@ -593,11 +602,17 @@ end
 
 local SPEED_CHECK_INTERVAL = 0.10
 
+--- Throttled sync of melee swing speed to the player's current
+--  weapon speed. Used to detect and apply haste changes mid-swing.
+--  @param slot (string) "mh", "oh", or "enemy"
+--  @param now (number|nil) Current timestamp; defaults to GetAlignedTime()
+--  @param force (boolean|nil) If true, skip the throttle check
+--  @return (nil)
 function ns.SyncMeleeTimerSpeed(slot, now, force)
     local t = ns.timers[slot]
     if not t or t.state ~= "swinging" then return end
 
-    now = now or GetCurrentTime()
+    now = now or ns.GetAlignedTime()
     if not force and now < (t.nextSpeedCheckAt or 0) then return end
     t.nextSpeedCheckAt = now + SPEED_CHECK_INTERVAL
 
@@ -617,7 +632,7 @@ function ns.SyncRangedTimerSpeed(now, force)
     local t = ns.timers.ranged
     if not t or t.state ~= "swinging" then return end
 
-    now = now or GetCurrentTime()
+    now = now or ns.GetAlignedTime()
     if ns.IsHunterRangedPinnedByMovement and ns.IsHunterRangedPinnedByMovement(now) then
         return
     end
@@ -663,13 +678,31 @@ function ns.SyncRangedTimerSpeed(now, force)
     end
 end
 
--- Start a melee or ranged swing for the given slot ("mh", "oh", "ranged").
--- startTime: optional timestamp from the combat log
+--- Start or restart a swing timer for the given weapon slot.
+--  Called from CLEU SWING_DAMAGE / SWING_MISSED handlers and from
+--  spellcast-succeeded hooks for queue-at-end abilities. Resets the
+--  timer duration from the current weapon speed and begins counting
+--  down. If startTime is provided (combat-log timestamp), uses it as
+--  the swing base; otherwise falls back to GetAlignedTime().
+--  @param slot (string) "mh", "oh", or "ranged"
+--  @param _ (nil) Unused legacy parameter
+--  @param startTime (number|nil) Combat-log timestamp for the swing start
+--  @return (nil) Side-effect: updates ns.timers[slot]
+--  @see ns.ResetTimer
+--- Start or restart a melee/ranged/enemy swing timer for the given slot.
+--  Resolves weapon speed from UnitAttackSpeed() (melee) or
+--  GetAutoShotCooldown() / UnitRangedDamage() (ranged), sets the
+--  swing duration, and transitions the timer to "swinging" state.
+--  @param slot (string) One of "mh", "oh", "ranged", "enemy"
+--  @param _ (nil) Unused parameter (legacy)
+--  @param startTime (number|nil) Optional timestamp override; defaults to GetAlignedTime()
+--  @return (nil)
+--  @see ns.ResetTimer, ns.RescaleTimer
 function ns.StartSwing(slot, _, startTime)
     local t = ns.timers[slot]
     if not t then return end
 
-    local now = startTime or GetCurrentTime()
+    local now = startTime or ns.GetAlignedTime()
     local speed
 
     if slot == "ranged" then
@@ -728,7 +761,7 @@ function ns.StartEnemySwing(startTime)
         return false
     end
 
-    ns.StartSwing("enemy", nil, startTime or GetCurrentTime())
+    ns.StartSwing("enemy", nil, startTime or ns.GetAlignedTime())
     return ns.timers.enemy and ns.timers.enemy.state == "swinging"
 end
 
@@ -738,7 +771,7 @@ function ns.StartRangedSwing(startTime)
         return false
     end
 
-    local now = startTime or GetCurrentTime()
+    local now = startTime or ns.GetAlignedTime()
     local dedupeWindow = math.max(RANGED_START_DEDUPE_WINDOW, (ns.cachedLatency or 0) + 0.05)
     if t.state == "swinging" and t.lastRangedStartTime and t.lastRangedStartTime > 0 then
         local elapsed = now - t.lastRangedStartTime
@@ -827,7 +860,7 @@ local function QuerySpellCooldown(spellToken)
 end
 
 local function RefreshGcdWindow(now, allowFallback)
-    local queryNow = now or GetCurrentTime()
+    local queryNow = now or ns.GetAlignedTime()
     local startTime, duration = QuerySpellCooldown(GCD_QUERY_SPELL_ID)
     if type(startTime) == "number" and type(duration) == "number" and duration > 0 then
         ns.lastGcdTime = (startTime > 0 and startTime) or queryNow
@@ -882,7 +915,7 @@ local function SeedHunterStoredCastState(spellToken, fallbackStartTime, fallback
     end
 
     local storedSpell = spellToken
-    local startTime = tonumber(fallbackStartTime) or GetCurrentTime()
+    local startTime = tonumber(fallbackStartTime) or ns.GetAlignedTime()
     local duration = GetHunterStoredCastDuration(spellToken, fallbackDuration)
 
     if type(ns.GetUnitCastingSpellInfo) == "function" then
@@ -910,7 +943,7 @@ function ns.HandleSpellcastStart(unit, castGUIDOrSpellName, spellId)
     -- spellName/rank, so resolve whichever spell token is actually present.
     if unit ~= "player" then return end
     ns.RefreshLatencyCache()
-    local now = GetCurrentTime()
+    local now = ns.GetAlignedTime()
 
     -- Track the live GCD window with Anniversary-safe cooldown queries and a
     -- fixed-duration fallback only when the API has not populated yet.
@@ -943,7 +976,7 @@ function ns.HandleSpellcastStart(unit, castGUIDOrSpellName, spellId)
             and (ns.NO_RESET_SWING_SPELLS[spellToken] or (spellIdNumber and ns.NO_RESET_SWING_SPELLS[spellIdNumber])))
     if ns.PAUSE_SWING_SPELLS and (ns.PAUSE_SWING_SPELLS[spellToken]
             or (spellIdNumber and ns.PAUSE_SWING_SPELLS[spellIdNumber])) and not ns.pauseSwingTime then
-        ns.pauseSwingTime = GetCurrentTime()
+        ns.pauseSwingTime = ns.GetAlignedTime()
     end
     ns.RefreshUpdateLoop()
 end
@@ -959,7 +992,7 @@ end
 function ns.HandleSpellcastChannelStart(unit, castGUIDOrSpellName, spellId)
     if unit ~= "player" then return end
     ns.RefreshLatencyCache()
-    RefreshGcdWindow(GetCurrentTime(), true)
+    RefreshGcdWindow(ns.GetAlignedTime(), true)
     local spellToken = ResolveSpellcastEventSpell(castGUIDOrSpellName, spellId)
     local spellIdNumber = tonumber(spellToken)
     ns.casting = true
@@ -1024,15 +1057,15 @@ function ns.HandleSpellcastDelayed(unit, castGUIDOrSpellName, spellId)
 
     ns.currentCastSpellId = spellToken
     ns.lastResolvedHunterCastToken = spellToken
-    ns.lastResolvedHunterCastAt = GetCurrentTime()
-    SeedHunterStoredCastState(spellToken, GetCurrentTime(), ns.hunterCastDuration)
+    ns.lastResolvedHunterCastAt = ns.GetAlignedTime()
+    SeedHunterStoredCastState(spellToken, ns.GetAlignedTime(), ns.hunterCastDuration)
     ns.RefreshUpdateLoop()
 end
 
 function ns.HandleSpellcastInterruptedOrFailed(unit, castGUIDOrSpellName, spellId)
     if unit ~= "player" then return end
     ns.RefreshLatencyCache()
-    local now = GetCurrentTime()
+    local now = ns.GetAlignedTime()
     local spellToken = ResolveSpellcastEventSpell(castGUIDOrSpellName, spellId)
     local spellIdNumber = tonumber(spellToken)
     if ns.PAUSE_SWING_SPELLS and (ns.PAUSE_SWING_SPELLS[spellToken]
@@ -1070,11 +1103,17 @@ end
 -- Apply parry haste to a melee timer when the player parries an incoming attack.
 -- Classic rule: reduce remaining time by 40% of the current swing duration,
 -- but never below 20% remaining.
+--- Apply parry haste to a melee timer when the player parries
+--  an incoming attack. Classic rule: reduce remaining time by 40%
+--  of the current swing duration, but never below 20% remaining.
+--  @param slot (string) The timer slot ("mh" or "oh")
+--  @param eventTime (number|nil) Timestamp of the parry event
+--  @return (nil)
 function ns.ApplyParryHaste(slot, eventTime)
     local t = ns.timers[slot]
     if not t or t.state ~= "swinging" then return end
 
-    local now = eventTime or GetCurrentTime()
+    local now = eventTime or ns.GetAlignedTime()
     local remaining = (t.lastSwing + t.duration) - now
     local floor = 0.2 * t.duration
 
@@ -1124,7 +1163,7 @@ function ns.RescaleTimer(slot, newSpeed)
     if not t or t.state ~= "swinging" or t.duration <= 0 then return end
     if math.abs(t.duration - newSpeed) < 0.01 then return end
 
-    local now = GetCurrentTime()
+    local now = ns.GetAlignedTime()
     local remaining = (t.lastSwing + t.duration) - now
     if remaining < 0 then remaining = 0 end
     local ratio = newSpeed / t.duration
@@ -1148,7 +1187,24 @@ local function GetPlayerGUID()
     return playerGUID
 end
 
--- Main CLEU handler. Called from the bootstrap OnEvent.
+--- Main CLEU dispatch handler — called from the bootstrap OnEvent frame.
+--  Parses CombatLogGetCurrentEventInfo() and dispatches to individual
+--  sub-handlers for SWING_DAMAGE, SWING_MISSED, SPELL_CAST_SUCCESS,
+--  SPELL_EXTRA_ATTACKS, SPELL_DAMAGE, SPELL_MISSED, and
+--  SPELL_AURA_APPLIED. Handles both numeric spell IDs (Classic Era)
+--  and localized string payloads (TBC Anniversary).
+--  @return (nil) Side-effect: starts/resets timers, updates state
+--  @see ns.StartSwing
+--  @see ns.HandleSpellcastSucceeded
+--- Main combat-log event handler. Dispatches SWING_DAMAGE, SWING_MISSED,
+--  SPELL_CAST_SUCCESS, SPELL_EXTRA_ATTACKS, SPELL_DAMAGE, SPELL_MISSED,
+--  and SPELL_AURA_APPLIED events. Routes swings to the correct timer slot
+--  (mh, oh, enemy), handles off-hand detection, extra-attack suppression,
+--  parry haste, and Overpower proc detection.
+--  Called from the bootstrap OnEvent handler every CLEU payload.
+--  @return (nil) Operates entirely through side effects on ns.timers
+--  @usage Called automatically by the addon event frame; no manual calls needed
+--  @see ns.StartSwing, ns.ApplyParryHaste
 function ns.HandleCLEU()
     if type(CombatLogGetCurrentEventInfo) ~= "function" then
         return
@@ -1163,7 +1219,7 @@ function ns.HandleCLEU()
         return
     end
 
-    local eventTime = GetCurrentTime()
+    local eventTime = ns.GetAlignedTime()
     local currentPlayerGUID = GetPlayerGUID()
     local currentEnemyGUID = ns.enemyTargetGUID
 
@@ -1267,7 +1323,7 @@ end
 function ns.HandleSpellcastSucceeded(unit, castGUIDOrSpellName, spellId)
     if unit ~= "player" then return end
     ns.RefreshLatencyCache()
-    local now = GetCurrentTime()
+    local now = ns.GetAlignedTime()
     RefreshGcdWindow(now, true)
     local spellToken = ResolveSpellcastEventSpell(castGUIDOrSpellName, spellId)
     if ns.playerClass == "HUNTER" and not (ns.IsHunterCastSpell and ns.IsHunterCastSpell(spellToken)) then
