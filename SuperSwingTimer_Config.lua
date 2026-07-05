@@ -186,14 +186,24 @@ local function SetRowsShown(rows, shown)
         return
     end
 
+    local showAdvanced = SuperSwingTimerDB and SuperSwingTimerDB.showAdvanced == true
+
     for _, row in ipairs(rows) do
         if row then
-            if row.SetShown then
-                row:SetShown(shown)
-            elseif shown and row.Show then
-                row:Show()
-            elseif not shown and row.Hide then
-                row:Hide()
+            if row.isAdvanced and not showAdvanced then
+                if row.SetShown then
+                    row:SetShown(false)
+                elseif row.Hide then
+                    row:Hide()
+                end
+            else
+                if row.SetShown then
+                    row:SetShown(shown)
+                elseif shown and row.Show then
+                    row:Show()
+                elseif not shown and row.Hide then
+                    row:Hide()
+                end
             end
         end
     end
@@ -637,6 +647,7 @@ local function CreateLabeledSliderRow(parent, label, minVal, maxVal, step, yOffs
     AddControlTooltip(valueBox, label, string.format("Type a value for %s.", label))
     SyncSliderDisplay(row, row:GetValue())
 
+    if ns._panelSearchAdder then ns._panelSearchAdder(row, label) end
     return row
 end
 
@@ -837,6 +848,7 @@ local function CreateColorButton(parent, label, colorKey, yOffset, options)
         end
     end)
 
+    if ns._panelSearchAdder then ns._panelSearchAdder(row, label) end
     row.button = btn
     row.swatch = swatch
     row.refresh = Refresh
@@ -1435,10 +1447,29 @@ local function CreateTexturePathRow(parent, label, yOffset, getTexture, applyTex
 
     if options.mode == "browser" then
         local defaultTexture = options.defaultTexture or getTexture() or ns.DB_DEFAULTS.sparkTexture
+
+        -- Inline preview chip (24x16 thumbnail of the current texture)
+        local previewChip = row:CreateTexture(nil, "ARTWORK")
+        previewChip:SetSize(24, 16)
+        previewChip:SetPoint("BOTTOMRIGHT", row, "BOTTOMRIGHT", -28, 4)
+        previewChip:SetTexCoord(0.02, 0.98, 0.15, 0.85)
+        -- Subtle border via backdrop frame
+        local chipBorder = CreateFrame("Frame", nil, row)
+        chipBorder:SetPoint("TOPLEFT", previewChip, "TOPLEFT", -1, 1)
+        chipBorder:SetPoint("BOTTOMRIGHT", previewChip, "BOTTOMRIGHT", 1, -1)
+        chipBorder:SetFrameLevel(row:GetFrameLevel() + 1)
+        SetFrameBackdrop(chipBorder, {
+            edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+            edgeSize = 4,
+            insets = { left = 1, right = 1, top = 1, bottom = 1 }
+        }, nil, { 0.4, 0.4, 0.4, 1 })
+        row.previewChip = previewChip
+        row.previewChipBorder = chipBorder
+
         local pathBox = CreateFrame("EditBox", nil, row, "InputBoxTemplate")
         pathBox:SetHeight(20)
         pathBox:SetPoint("BOTTOMLEFT", row, "BOTTOMLEFT", 0, 0)
-        pathBox:SetPoint("BOTTOMRIGHT", row, "BOTTOMRIGHT", -34, 0)
+        pathBox:SetPoint("BOTTOMRIGHT", row, "BOTTOMRIGHT", -60, 0)
         pathBox:SetAutoFocus(false)
         pathBox:SetMaxLetters(260)
         pathBox:SetScript("OnEnterPressed", function (self)
@@ -1489,6 +1520,17 @@ local function CreateTexturePathRow(parent, label, yOffset, getTexture, applyTex
             )
         end)
         row.browseButton = browseButton
+
+        -- Update the preview chip in Refresh
+        local origRefresh = Refresh
+        Refresh = function ()
+            origRefresh()
+            local path = getTexture() or ""
+            if previewChip and path ~= "" then
+                previewChip:SetTexture(path)
+            end
+        end
+
         local browserTooltip = options.tooltipText
             or string.format(
                 "Type a texture path or click the browse icon to open the spark texture picker for %s.", label
@@ -1610,6 +1652,7 @@ local function CreateTexturePathRow(parent, label, yOffset, getTexture, applyTex
     AddControlTooltip(
         row, label, string.format("Choose the texture used for %s from the dropdown preview list.", label)
     )
+    if ns._panelSearchAdder then ns._panelSearchAdder(row, label) end
 
     if UIDropDownMenu_Initialize and UIDropDownMenu_AddButton and UIDropDownMenu_CreateInfo then
         UIDropDownMenu_Initialize(dropdown, function (_, level)
@@ -1764,6 +1807,7 @@ local function CreateCycleRow(parent, label, yOffset, options, getValue, applyVa
             ToggleDropDownMenu(1, nil, dropdown, dropdown, 0, 0)
         end
     end)
+    if ns._panelSearchAdder then ns._panelSearchAdder(row, label) end
     local dropdownTooltip = tooltipText or string.format(
         "Choose the %s option from the dropdown. The full list shows the real WoW draw layers and modes.", label
     )
@@ -1818,6 +1862,7 @@ local function CreateToggleRow(parent, label, yOffset, getValue, applyValue, opt
             toggle:Click()
         end
     end)
+    if ns._panelSearchAdder then ns._panelSearchAdder(row, label) end
     AddControlTooltip(row, label, tooltipText)
 
     row.toggle = toggle
@@ -1865,6 +1910,7 @@ local function CreateActionRow(parent, label, buttonText, yOffset, onClick, tool
             btn:Click()
         end
     end)
+    if ns._panelSearchAdder then ns._panelSearchAdder(row, label) end
     AddControlTooltip(row, label, tooltipText or string.format("Click to %s.", string.lower(buttonText or label)))
 
     row.button = btn
@@ -1912,10 +1958,18 @@ local function CreateSectionHeader(parent, label, yOffset, options)
     row:SetHeight(24)
     row.layoutHeight = 30
     row:EnableMouse(true)
+    row:EnableKeyboard(true)
     row:RegisterForClicks("LeftButtonUp")
     row:Show()
     row.options = options or {}
     row.rows = row.options.rows
+
+    -- Keyboard activation for section headers (Enter/Space to toggle collapse)
+    row:SetScript("OnKeyDown", function (self, key)
+        if key == "ENTER" or key == "SPACE" then
+            self:Click()
+        end
+    end)
 
     local bg = row:CreateTexture(nil, "BACKGROUND")
     bg:SetColorTexture(0.07, 0.07, 0.07, 0.82)
@@ -1934,6 +1988,60 @@ local function CreateSectionHeader(parent, label, yOffset, options)
     text:SetPoint("LEFT", arrow, "RIGHT", 6, 0)
     text:SetText(label)
     row.text = text
+
+    -- Per-section Reset button (far right, created eagerly so it's always in the layout)
+    do
+        local resetBtn = CreateFrame("Button", nil, row)
+        resetBtn:SetSize(50, 18)
+        resetBtn:SetPoint("RIGHT", row, "RIGHT", -4, 0)
+        resetBtn:SetFrameLevel(row:GetFrameLevel() + 5)
+        resetBtn:EnableMouse(true)
+        resetBtn:RegisterForClicks("LeftButtonUp")
+        resetBtn:Show()
+
+        local resetBg = resetBtn:CreateTexture(nil, "BACKGROUND")
+        resetBg:SetAllPoints(true)
+        resetBg:SetColorTexture(0.3, 0.15, 0.15, 0.6)
+
+        local resetHover = resetBtn:CreateTexture(nil, "HIGHLIGHT")
+        resetHover:SetAllPoints(true)
+        resetHover:SetColorTexture(0.5, 0.2, 0.2, 0.4)
+
+        local resetText = resetBtn:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        resetText:SetPoint("CENTER")
+        resetText:SetText("Reset")
+        resetText:SetTextColor(0.85, 0.55, 0.55, 0.9)
+
+        resetBtn:SetScript("OnEnter", function ()
+            resetBg:SetColorTexture(0.4, 0.2, 0.2, 0.8)
+            resetText:SetTextColor(1, 0.7, 0.7, 1)
+        end)
+        resetBtn:SetScript("OnLeave", function ()
+            resetBg:SetColorTexture(0.3, 0.15, 0.15, 0.6)
+            resetText:SetTextColor(0.85, 0.55, 0.55, 0.9)
+        end)
+
+        -- Stop click from also toggling section collapse
+        resetBtn:SetScript("OnMouseDown", function ()
+            -- Consume the click; do nothing
+        end)
+
+        row.resetBtn = resetBtn
+        row.resetBtnText = resetText
+        row.resetBtnBg = resetBg
+
+        -- Deferred callback: call this after all controls are created
+        row.setResetCallback = function (callback)
+            options.onReset = callback
+            local hasCallback = callback ~= nil
+            resetBtn:SetShown(hasCallback)
+            if hasCallback then
+                resetBtn:SetScript("OnClick", function ()
+                    callback()
+                end)
+            end
+        end
+    end
 
     local line = row:CreateTexture(nil, "ARTWORK")
     line:SetColorTexture(0.38, 0.38, 0.38, 0.78)
@@ -1981,6 +2089,7 @@ local function CreateDescriptionText(parent, text, yOffset)
     font:SetJustifyV("TOP")
     font:SetWordWrap(true)
     font:SetText(text)
+    if ns._panelSearchAdder then ns._panelSearchAdder(row, text) end
     local descriptionHeight = math.max(math.ceil((font:GetStringHeight() or 0) + 6), 42)
     row:SetHeight(descriptionHeight)
     row.layoutHeight = descriptionHeight
@@ -2114,18 +2223,91 @@ local function CreatePanel()
     EnableScrollFrameMouseWheel(scrollFrame, 36)
 
     local content = CreateFrame("Frame", nil, scrollFrame)
-    content:SetSize(720, 3800)
+    content:SetSize(720, 4000)
+    scrollFrame:SetScrollChild(content)
+    f.scrollFrame = scrollFrame
+    f.content = content
+
+    -- ============================================================
+    -- Search bar — fixed above scroll frame, filters rows in real-time
+    -- ============================================================
+    local searchBox = CreateFrame("EditBox", nil, f, "InputBoxTemplate")
+    searchBox:SetPoint("TOPLEFT", scrollFrame, "BOTTOMLEFT", 6, -2)
+    searchBox:SetPoint("TOPRIGHT", scrollFrame, "BOTTOMRIGHT", -6, -2)
+    searchBox:SetHeight(22)
+    searchBox:SetAutoFocus(false)
+    searchBox:SetTextInsets(6, 6, 1, 1)
+    searchBox:SetText("")
+    searchBox:Show()
+
+    do
+        local placeholder = searchBox:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        placeholder:SetPoint("LEFT", searchBox, "LEFT", 10, 0)
+        placeholder:SetText("Search settings...")
+        placeholder:SetTextColor(0.45, 0.45, 0.45, 0.7)
+        placeholder:SetJustifyH("LEFT")
+        searchBox:HookScript("OnTextChanged", function (self)
+            placeholder:SetShown((self:GetText() or "") == "")
+        end)
+    end
+
+    -- Flat list of all searchable row frames
+    local searchRows = {}
+    f.searchRows = searchRows
+    f.searchBox = searchBox
+
+    -- Expose AddSearchRow globally so factory functions can register rows
+    ns._panelSearchAdder = function (row, text)
+        if row and text and text ~= "" then
+            searchRows[#searchRows + 1] = { frame = row, text = string.lower(text) }
+        end
+    end
+
+    local function AddSearchRow(row, text)
+        if ns._panelSearchAdder then
+            ns._panelSearchAdder(row, text)
+        end
+    end
+
+    local function FilterSearchRows()
+        local searchText = string.lower(searchBox:GetText() or "")
+        local hasSearch = searchText ~= ""
+        local anyVisible = false
+
+        for _, entry in ipairs(searchRows) do
+            local frame = entry.frame
+            if frame then
+                local match = not hasSearch or entry.text:find(searchText, 1, true) ~= nil
+                if match then
+                    frame:SetAlpha(1)
+                    frame:Show()
+                    anyVisible = true
+                else
+                    frame:SetAlpha(0.25)
+                end
+            end
+        end
+
+        if f.ReflowConfigSections then f.ReflowConfigSections() end
+    end
+
+    searchBox:HookScript("OnTextChanged", FilterSearchRows)
+    searchBox:HookScript("OnEscape", function (self)
+        self:SetText("")
+        FilterSearchRows()
+    end)
+
+    local content = CreateFrame("Frame", nil, scrollFrame)
+    content:SetSize(720, 4000)
     scrollFrame:SetScrollChild(content)
     f.scrollFrame = scrollFrame
     f.content = content
 
     local sectionCollapsed = {
-        barVisibility = false,
-        mhOh = false,
-        shaman = false,
         general = false,
         colors = false,
-        weaveFamilies = false
+        weaveFamilies = false,
+        quickTab = "visibility"
     }
     local barVisibilityRows = {}
     local quickToggleRows = {}
@@ -2141,7 +2323,7 @@ local function CreatePanel()
     -- ============================================================
     -- Global Scale slider — first control, always visible at top
     -- ============================================================
-    local SCALE_SECTION_HEIGHT = 120  -- slider row + desc text + gap
+    local SCALE_SECTION_HEIGHT = 184  -- 120 (slider + desc) + 30 (minimal) + 30 (advanced) + 4 (gap)
     local globalScaleRow = CreateLabeledSliderRow(content, "Global Scale", 0.5, 3.0, 0.1, 0, {
         leftInset = 20, rightInset = 20, rowHeight = 84
     })
@@ -2177,7 +2359,65 @@ local function CreatePanel()
     scaleDesc:SetTextColor(0.75, 0.75, 0.75, 1)
     scaleDesc.layoutHeight = 28
 
-    -- Offset all Quick Controls content down by the scale section
+    -- Minimal Mode toggle (right side of top area)
+    local MINIMAL_ROW_HEIGHT = 30
+    local topMinimalModeRow = CreateToggleRow(
+        content,
+        "Minimal Mode",
+        -(84 + 2 + 28 + 4),  -- below scale description
+        function () return SuperSwingTimerDB.minimalMode == true end,
+        function (enabled)
+            ns.ApplyMinimalMode(enabled)
+        end
+    )
+    -- Anchor Minimal Mode to the right half
+    topMinimalModeRow:ClearAllPoints()
+    topMinimalModeRow:SetPoint("TOPLEFT", content, "TOPLEFT", 380, -(84 + 2 + 28 + 4))
+    topMinimalModeRow:SetPoint("TOPRIGHT", content, "TOPRIGHT", -20, -(84 + 2 + 28 + 4))
+    topMinimalModeRow.layoutHeight = MINIMAL_ROW_HEIGHT
+
+    -- Label and description for Minimal Mode
+    local minimalDesc = content:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    minimalDesc:SetPoint("TOPLEFT", content, "TOPLEFT", 20, -(84 + 2 + 28 + 4))
+    minimalDesc:SetPoint("RIGHT", topMinimalModeRow, "LEFT", -8, 0)
+    minimalDesc:SetJustifyH("LEFT")
+    minimalDesc:SetJustifyV("TOP")
+    minimalDesc:SetText("Hide non-essential overlays\nfor a cleaner combat view. Bars, sparks,\nand timers remain functional.")
+    minimalDesc:SetTextColor(0.7, 0.7, 0.7, 0.9)
+    minimalDesc.layoutHeight = MINIMAL_ROW_HEIGHT
+
+    -- Show Advanced toggle (below Minimal Mode, right side)
+    local SHOW_ADVANCED_ROW_HEIGHT = 30
+    local showAdvancedRow = CreateToggleRow(
+        content,
+        "Show Advanced",
+        -(84 + 2 + 28 + 4 + MINIMAL_ROW_HEIGHT + 4),
+        function () return SuperSwingTimerDB.showAdvanced == true end,
+        function (enabled)
+            SuperSwingTimerDB.showAdvanced = enabled
+            if f.ReflowConfigSections then
+                f.ReflowConfigSections()
+            end
+        end
+    )
+    showAdvancedRow:ClearAllPoints()
+    showAdvancedRow:SetPoint("TOPLEFT", content, "TOPLEFT", 380, -(84 + 2 + 28 + 4 + MINIMAL_ROW_HEIGHT + 4))
+    showAdvancedRow:SetPoint("TOPRIGHT", content, "TOPRIGHT", -20, -(84 + 2 + 28 + 4 + MINIMAL_ROW_HEIGHT + 4))
+    showAdvancedRow.layoutHeight = SHOW_ADVANCED_ROW_HEIGHT
+
+    -- Description text for Show Advanced
+    local showAdvancedDesc = content:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    showAdvancedDesc:SetPoint("TOPLEFT", content, "TOPLEFT", 20, -(84 + 2 + 28 + 4 + MINIMAL_ROW_HEIGHT + 4))
+    showAdvancedDesc:SetPoint("RIGHT", showAdvancedRow, "LEFT", -8, 0)
+    showAdvancedDesc:SetJustifyH("LEFT")
+    showAdvancedDesc:SetJustifyV("TOP")
+    showAdvancedDesc:SetText("Show fine-tuning controls like\ntexture layers, spark dimensions,\nand blending mode.")
+    showAdvancedDesc:SetTextColor(0.7, 0.7, 0.7, 0.9)
+    showAdvancedDesc.layoutHeight = SHOW_ADVANCED_ROW_HEIGHT
+
+    -- Refresh Show Advanced toggle when section reflow runs
+    f.showAdvancedRow = showAdvancedRow
+
     local quickToggleY = -66 - SCALE_SECTION_HEIGHT
     local quickColorY = -66 - SCALE_SECTION_HEIGHT
     local quickRowStep = -30
@@ -2196,14 +2436,84 @@ local function CreatePanel()
     quickToggleLabel:SetText("Visibility (show/hide bars)")
     quickToggleLabel.layoutHeight = math.max(math.ceil((quickToggleLabel:GetStringHeight() or 12)), 14)
     barVisibilityRows[#barVisibilityRows + 1] = quickToggleLabel
+    quickToggleLabel:Hide()
 
     local quickColorLabel = content:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     quickColorLabel:SetPoint("TOPLEFT", content, "TOPLEFT", quickColorOptions.leftInset, -32 - SCALE_SECTION_HEIGHT)
     quickColorLabel:SetText("Colors (bar / swatch tint)")
     quickColorLabel.layoutHeight = math.max(math.ceil((quickColorLabel:GetStringHeight() or 12)), 14)
     barVisibilityRows[#barVisibilityRows + 1] = quickColorLabel
+    quickColorLabel:Hide()
 
-    local function AddQuickToggle(label, getValue, applyValue, options)
+    -- Tabbed Quick Controls: Visibility | Colors | Class
+    local function CreateQuickTab(label, tabKey)
+        local btn = CreateOptionalBackdropFrame("Button", nil, content)
+        btn:SetHeight(22)
+        btn:SetWidth(100)
+        btn:SetFrameLevel(content:GetFrameLevel() + 5)
+        btn:EnableMouse(true)
+        btn:EnableKeyboard(true)
+        btn:RegisterForClicks("LeftButtonUp")
+        btn:Show()
+        -- Keyboard activation for tabs (Enter/Space)
+        btn:SetScript("OnKeyDown", function (self, key)
+            if key == "ENTER" or key == "SPACE" then
+                self:Click()
+            end
+        end)
+
+        local bg = btn:CreateTexture(nil, "BACKGROUND")
+        bg:SetAllPoints()
+        bg:SetColorTexture(0.12, 0.12, 0.12, 0.85)
+        btn.bg = bg
+
+        local txt = btn:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        txt:SetPoint("CENTER")
+        txt:SetText(label)
+        btn.label = txt
+
+        local activeBg = btn:CreateTexture(nil, "OVERLAY")
+        activeBg:SetAllPoints()
+        activeBg:SetColorTexture(0.22, 0.22, 0.22, 0.9)
+        activeBg:Hide()
+        btn.activeBg = activeBg
+
+        btn:SetScript("OnClick", function ()
+            if sectionCollapsed.quickTab ~= tabKey then
+                sectionCollapsed.quickTab = tabKey
+                if f.ReflowConfigSections then f.ReflowConfigSections() end
+            end
+        end)
+
+        -- Store refresh function to update active state
+        btn.refresh = function ()
+            local isActive = sectionCollapsed.quickTab == tabKey
+            activeBg:SetShown(isActive)
+            if isActive then
+                txt:SetTextColor(1, 0.90, 0.30, 1)
+            else
+                txt:SetTextColor(0.7, 0.7, 0.7, 1)
+            end
+        end
+
+        return btn
+    end
+
+    -- Tab buttons stored for positioning in ReflowQuickControls
+    local quickTabButtons = {}
+    for _, tabDef in ipairs({
+        { label = "Visibility", key = "visibility" },
+        { label = "Colors", key = "colors" },
+        { label = "Class", key = "class" }
+    }) do
+        local btn = CreateQuickTab(tabDef.label, tabDef.key)
+        quickTabButtons[#quickTabButtons + 1] = btn
+        barVisibilityRows[#barVisibilityRows + 1] = btn
+    end
+    -- Start on visibility tab
+    sectionCollapsed.quickTab = "visibility"
+
+    local function AddQuickToggle(label, getValue, applyValue, options, tab)
         local rowOptions = {}
         for key, value in pairs(quickToggleOptions) do
             rowOptions[key] = value
@@ -2215,12 +2525,13 @@ local function CreatePanel()
         end
         local row = CreateToggleRow(content, label, quickToggleY, getValue, applyValue, rowOptions)
         quickToggleY = quickToggleY + quickRowStep
+        row.quickTab = tab or "visibility"
         quickToggleRows[#quickToggleRows + 1] = row
         barVisibilityRows[#barVisibilityRows + 1] = row
         return row
     end
 
-    local function AddQuickColor(label, colorKey, options)
+    local function AddQuickColor(label, colorKey, options, tab)
         options = options or {}
         options.leftInset = quickColorOptions.leftInset
         options.rightInset = quickColorOptions.rightInset
@@ -2228,6 +2539,7 @@ local function CreatePanel()
         options.buttonWidth = quickColorOptions.buttonWidth
         local row = CreateColorButton(content, label, colorKey, quickColorY, options)
         quickColorY = quickColorY + quickRowStep
+        row.quickTab = tab or "colors"
         quickColorRows[#quickColorRows + 1] = row
         barVisibilityRows[#barVisibilityRows + 1] = row
         colorRowsSection[#colorRowsSection + 1] = row
@@ -3311,6 +3623,7 @@ local function CreatePanel()
             ns.ApplyBarTextureLayer(layer)
         end
     )
+    barLayerRow.isAdvanced = true
 
     local rangedTextureRow = CreateTexturePathRow(content, "Ranged Bar Texture", PostQuickY(ShiftY(-335)), {
         mode = "barList",
@@ -3368,6 +3681,7 @@ local function CreatePanel()
         SuperSwingTimerDB.sparkAlpha ~= nil and SuperSwingTimerDB.sparkAlpha or ns.DB_DEFAULTS.sparkAlpha
     )
     SyncSliderDisplay(sparkAlphaSlider, sparkAlphaSlider:GetValue())
+    sparkAlphaSlider.isAdvanced = true
 
     local sparkColorRow = CreateColorButton(content, "Spark Color", "spark", PostQuickY(ShiftY(-385)), {
         allowAlpha = true,
@@ -3396,18 +3710,21 @@ local function CreatePanel()
             ns.ApplySparkTextureLayer(layer)
         end
     )
+    sparkLayerRow.isAdvanced = true
 
     local sparkWidthSlider = CreateCompactSlider(content, "Spark Width", 2, 60, 1, PostQuickY(ShiftY(-485)), 20, 600, {
         tooltipText = "Width of the white tracking spark that moves along the bar fill. Wider sparks are easier to see at a glance."
     })
     sparkWidthSlider:SetValue(SuperSwingTimerDB.sparkWidth or ns.DB_DEFAULTS.sparkWidth)
     SyncSliderDisplay(sparkWidthSlider, sparkWidthSlider:GetValue())
+    sparkWidthSlider.isAdvanced = true
 
     local sparkHeightSlider = CreateCompactSlider(content, "Spark Height", 2, 90, 1, PostQuickY(ShiftY(-485)), 160, 460, {
         tooltipText = "Height of the tracking spark. Clamped to the bar height if the value exceeds it."
     })
     sparkHeightSlider:SetValue(SuperSwingTimerDB.sparkHeight or ns.DB_DEFAULTS.sparkHeight)
     SyncSliderDisplay(sparkHeightSlider, sparkHeightSlider:GetValue())
+    sparkHeightSlider.isAdvanced = true
 
     local backgroundColorRow = CreateColorButton(
         content,
@@ -3427,6 +3744,7 @@ local function CreatePanel()
             tooltipText = "Pick the bar background tint. Use the alpha slider below to control opacity."
         }
     )
+    backgroundColorRow.isAdvanced = true
 
     local backgroundAlphaSlider = CreateSlider(content, "Bar Background Alpha", 0, 1, 0.05, PostQuickY(ShiftY(-635)), {
         tooltipText = "Opacity of the dark bar background behind the fill texture. 1.0 = solid, 0.0 = transparent."
@@ -3436,6 +3754,7 @@ local function CreatePanel()
             or ns.DB_DEFAULTS.barBackgroundAlpha
     )
     SyncSliderDisplay(backgroundAlphaSlider, backgroundAlphaSlider:GetValue())
+    backgroundAlphaSlider.isAdvanced = true
 
     local indicatorBlendModeRow = CreateCycleRow(
         content,
@@ -3449,6 +3768,7 @@ local function CreatePanel()
         "Controls how spark and weave indicator textures blend with the bar fill. " ..
         "Glow (ADD) = bright additive highlighting. Opaque (BLEND) = standard transparency."
     )
+    indicatorBlendModeRow.isAdvanced = true
 
     local barBorderColorRow = CreateColorButton(content, "Bar Border Color", "barBorder", PostQuickY(ShiftY(-735)), {
         allowAlpha = true,
@@ -3460,6 +3780,7 @@ local function CreatePanel()
         end,
         tooltipText = "Pick the bar border tint and opacity with the color wheel."
     })
+    barBorderColorRow.isAdvanced = true
 
     local barBorderSlider = CreateSlider(content, "Bar Border Size", 0, 6, 1, PostQuickY(ShiftY(-785)), {
         tooltipText = "Thickness of the black border around each bar frame. Set to 0 to hide borders entirely."
@@ -3473,6 +3794,7 @@ local function CreatePanel()
         SyncSliderDisplay(self, value)
         ns.ApplyBarBorderSize(value)
     end)
+    barBorderSlider.isAdvanced = true
     AppendRow(mhOhRows, widthSlider)
     AppendRow(mhOhRows, heightSlider)
     AppendRow(mhOhRows, hunterCastBarHeightSlider)
@@ -3592,24 +3914,28 @@ local function CreatePanel()
             ns.ApplyWeaveSparkTextureLayer(layer)
         end
     )
+    weaveSparkLayerRow.isAdvanced = true
 
     local weaveSparkWidthSlider = CreateSlider(content, "Cast Spark Width", 2, 60, 1, PostQuickY(ShiftY(-795)), {
         tooltipText = "Width of the moving weave cast spark in pixels. This is the indicator that travels along the MH bar during an active cast."
     })
     weaveSparkWidthSlider:SetValue(SuperSwingTimerDB.weaveSparkWidth or ns.DB_DEFAULTS.weaveSparkWidth)
     SyncSliderDisplay(weaveSparkWidthSlider, weaveSparkWidthSlider:GetValue())
+    weaveSparkWidthSlider.isAdvanced = true
 
     local weaveSparkHeightSlider = CreateSlider(content, "Cast Spark Height", 2, 100, 1, PostQuickY(ShiftY(-845)), {
         tooltipText = "Height of the moving weave cast spark in pixels. Clamped to the MH bar height if the value exceeds it."
     })
     weaveSparkHeightSlider:SetValue(SuperSwingTimerDB.weaveSparkHeight or ns.DB_DEFAULTS.weaveSparkHeight)
     SyncSliderDisplay(weaveSparkHeightSlider, weaveSparkHeightSlider:GetValue())
+    weaveSparkHeightSlider.isAdvanced = true
 
     local weaveSparkAlphaSlider = CreateSlider(content, "Cast Spark Alpha", 0, 1, 0.05, PostQuickY(ShiftY(-895)))
     weaveSparkAlphaSlider:SetValue(
         SuperSwingTimerDB.weaveSparkAlpha ~= nil and SuperSwingTimerDB.weaveSparkAlpha or ns.DB_DEFAULTS.weaveSparkAlpha
     )
     SyncSliderDisplay(weaveSparkAlphaSlider, weaveSparkAlphaSlider:GetValue())
+    weaveSparkAlphaSlider.isAdvanced = true
 
     local weaveMarkerNoteRow = CreateDescriptionText(
         content,
@@ -3617,6 +3943,7 @@ local function CreatePanel()
             .. "Use the size, gap, alpha, and layer controls below to tune the small icon markers.",
         PostQuickY(ShiftY(-935))
     )
+    weaveMarkerNoteRow.isAdvanced = true
 
     local weaveTriangleTopRow = nil
     local weaveTriangleBottomRow = nil
@@ -3639,6 +3966,7 @@ local function CreatePanel()
             )
         end
     )
+    weaveTriangleLayerRow.isAdvanced = true
 
     local weaveTriangleSizeSlider = CreateSlider(content, "Spell Icon Size", 6, 24, 1, PostQuickY(ShiftY(-1050)))
     weaveTriangleSizeSlider:SetValue(SuperSwingTimerDB.weaveTriangleSize or ns.DB_DEFAULTS.weaveTriangleSize)
@@ -3693,16 +4021,6 @@ local function CreatePanel()
     )
     AppendRow(generalRows, generalHelp)
 
-    local minimalModeRow = CreateToggleRow(
-        content,
-        "Minimal Mode",
-        PostQuickY(ShiftY(-1325)),
-        function () return SuperSwingTimerDB.minimalMode == true end,
-        function (enabled)
-            ns.ApplyMinimalMode(enabled)
-        end
-    )
-
     local lockBarsRow = CreateToggleRow(
         content,
         "Lock / Unlock Bars",
@@ -3720,9 +4038,8 @@ local function CreatePanel()
     end,
         "Temporarily show the bars for sixteen seconds with animated swing cycles so you can reposition them when unlocked."
     )
-    generalRows[1] = minimalModeRow
-    generalRows[2] = lockBarsRow
-    generalRows[3] = testBarsRow
+    generalRows[1] = lockBarsRow
+    generalRows[2] = testBarsRow
     SetRowsShown(generalRows, not sectionCollapsed.general)
     if generalHeader.refresh then
         generalHeader.refresh()
@@ -4041,37 +4358,92 @@ local function CreatePanel()
         SetRowsShown(barVisibilityRows, true)
         local contentWidth = content:GetWidth() or 720
         local outerInset = 20
-        local gutter = 24
-        local usableWidth = math.max(contentWidth - (outerInset * 2) - gutter, 320)
-        local columnWidth = math.floor(usableWidth / 2)
-        local leftColumnLeft = outerInset
-        local leftColumnRight = leftColumnLeft + columnWidth
-        local rightColumnLeft = leftColumnRight + gutter
-        local rightColumnRight = contentWidth - outerInset
+        local usableWidth = contentWidth - (outerInset * 2)
 
-        quickToggleLabel:ClearAllPoints()
-        quickToggleLabel:SetPoint("TOPLEFT", content, "TOPLEFT", leftColumnLeft, headerBottomY - 28)
-        quickColorLabel:ClearAllPoints()
-        quickColorLabel:SetPoint("TOPLEFT", content, "TOPLEFT", rightColumnLeft, headerBottomY - 28)
-
-        local labelHeight = math.max(GetRowLayoutHeight(quickToggleLabel), GetRowLayoutHeight(quickColorLabel))
-        local leftY = headerBottomY - 28 - labelHeight - 20
-        for _, row in ipairs(quickToggleRows) do
-            if row and row:IsShown() then
-                PositionRowBetween(content, row, leftColumnLeft, leftColumnRight, leftY)
-                leftY = leftY - GetRowLayoutHeight(row) - 8
-            end
+        -- Position tab buttons in a row below the header
+        local tabY = headerBottomY - 28
+        local tabCount = #quickTabButtons
+        local tabWidth = math.min(120, math.floor(usableWidth / tabCount) - 8)
+        local totalTabsWidth = tabCount * tabWidth + (tabCount - 1) * 6
+        local tabStartX = math.floor((contentWidth - totalTabsWidth) / 2)
+        for i, btn in ipairs(quickTabButtons) do
+            btn:ClearAllPoints()
+            btn:SetPoint("TOPLEFT", content, "TOPLEFT", tabStartX + (i - 1) * (tabWidth + 6), tabY)
+            btn:SetWidth(tabWidth)
+            if btn.refresh then btn.refresh() end
         end
 
-        local rightY = headerBottomY - 28 - labelHeight - 20
-        for _, row in ipairs(quickColorRows) do
-            if row and row:IsShown() then
-                PositionRowBetween(content, row, rightColumnLeft, rightColumnRight, rightY)
-                rightY = rightY - GetRowLayoutHeight(row) - 8
+        local activeTab = sectionCollapsed.quickTab or "visibility"
+        local tabBottomY = tabY - 24
+
+        -- Helper: show/hide rows based on tab
+        local function ShowRowsForTab(rows, tabMatch, insetLeft, insetRight, yRef)
+            local nextY = yRef - 4
+            local shown = false
+            for _, row in ipairs(rows) do
+                if row and row:IsShown() and (row.quickTab or "visibility") == tabMatch then
+                    PositionRowBetween(content, row, insetLeft, insetRight, nextY)
+                    nextY = nextY - GetRowLayoutHeight(row) - 4
+                    shown = true
+                elseif row and row.SetShown then
+                    row:SetShown(false)
+                end
             end
+            return nextY, shown
         end
 
-        quickSectionBottomY = math.min(leftY, rightY)
+        -- Show only rows for the active tab
+        if activeTab == "visibility" then
+            local endY = ShowRowsForTab(quickToggleRows, "visibility", outerInset, contentWidth - outerInset, tabBottomY)
+            ShowRowsForTab(quickColorRows, "visibility", outerInset, contentWidth - outerInset, tabBottomY)
+            quickSectionBottomY = endY
+
+        elseif activeTab == "colors" then
+            -- 2-column grid for color swatches
+            local gutter = 16
+            local columnWidth = math.floor((usableWidth - gutter) / 2)
+            local leftStart = outerInset
+            local rightStart = outerInset + columnWidth + gutter
+            local leftY = tabBottomY - 4
+            local rightY = tabBottomY - 4
+            local colIdx = 0
+            for _, row in ipairs(quickColorRows) do
+                if row and row:IsShown() and (row.quickTab or "colors") == "colors" then
+                    colIdx = colIdx + 1
+                    if colIdx % 2 == 1 then
+                        PositionRowBetween(content, row, leftStart, leftStart + columnWidth, leftY)
+                        leftY = leftY - GetRowLayoutHeight(row) - 4
+                    else
+                        PositionRowBetween(content, row, rightStart, rightStart + columnWidth, rightY)
+                        rightY = rightY - GetRowLayoutHeight(row) - 4
+                    end
+                elseif row and row.SetShown then
+                    row:SetShown(false)
+                end
+            end
+            ShowRowsForTab(quickToggleRows, "colors", outerInset, contentWidth - outerInset, tabBottomY)
+            quickSectionBottomY = math.min(leftY, rightY)
+
+        elseif activeTab == "class" then
+            -- Class tab: show all rows from both lists in a single column
+            -- (class-specific rows auto-filter since they're only created for the active class)
+            local classY = tabBottomY - 4
+            for _, row in ipairs(barVisibilityRows) do
+                if row and row:IsShown() and row ~= quickToggleLabel and row ~= quickColorLabel
+                    and not row.quickTabBtn then
+                    local isTabBtn = false
+                    for _, btn in ipairs(quickTabButtons) do
+                        if row == btn then isTabBtn = true; break end
+                    end
+                    if not isTabBtn then
+                        PositionRowBetween(content, row, outerInset, contentWidth - outerInset, classY)
+                        classY = classY - GetRowLayoutHeight(row) - 4
+                    end
+                end
+            end
+            quickSectionBottomY = classY
+        end
+
         return quickSectionBottomY
     end
 
@@ -4135,6 +4507,134 @@ local function CreatePanel()
     AttachHeaderReflow(shamanHeader)
     AttachHeaderReflow(generalHeader)
     AttachHeaderReflow(weaveFamiliesHeader)
+
+    -- ============================================================
+    -- Per-section Reset callbacks (defined here after all controls exist)
+    -- ============================================================
+
+    -- Appearance section reset
+    mhOhHeader:setResetCallback(function ()
+        local d = ns.DB_DEFAULTS
+        local set = function (dbKey, slider, defVal)
+            SuperSwingTimerDB[dbKey] = defVal
+            if slider and slider.SetValue then slider:SetValue(defVal) end
+        end
+        local function setColor(dbKey, def)
+            SuperSwingTimerDB[dbKey] = { r = def.r, g = def.g, b = def.b, a = def.a }
+        end
+
+        set("barWidth", widthSlider, d.barWidth)
+        set("barHeight", heightSlider, d.barHeight)
+        set("hunterCastBarHeight", hunterCastBarHeightSlider, d.hunterCastBarHeight)
+        set("rogueSliceAndDiceBarHeight", rogueSndBarHeightSlider, d.rogueSliceAndDiceBarHeight)
+        set("rogueEnergyTickBarWidth", rogueEnergyTickSlider, d.rogueEnergyTickBarWidth)
+        set("druidEnergyTickBarWidth", druidEnergyTickSlider, d.druidEnergyTickBarWidth)
+        set("hunterRangeHelperWidth", hunterRangeHelperWidthSlider, d.hunterRangeHelperWidth)
+        set("hunterRapidFireBarHeight", hunterRapidFireSlider, d.hunterRapidFireBarHeight)
+        set("hunterBuffIconSize", hunterBuffIconSlider, d.hunterBuffIconSize)
+        set("warriorShieldBlockBarHeight", warriorShieldBlockSlider, d.warriorShieldBlockBarHeight)
+        set("warriorBuffIconSize", warriorBuffIconSlider, d.warriorBuffIconSize)
+        set("paladinBuffIconSize", paladinBuffIconSlider, d.paladinBuffIconSize)
+        set("shamanBuffIconSize", shamanBuffIconSlider, d.shamanBuffIconSize)
+        set("shamanLightningTrackerGap", shamanLightningGapSlider, d.shamanLightningTrackerGap or 6)
+        set("rogueAdrenalineRushBarHeight", rogueAdrenalineRushSlider, d.rogueAdrenalineRushBarHeight)
+        set("rogueBuffIconSize", rogueBuffIconSlider, d.rogueBuffIconSize)
+
+        SuperSwingTimerDB.barTexture = d.barTexture
+        SuperSwingTimerDB.barTextureLayer = d.barTextureLayer
+        SuperSwingTimerDB.rangedBarTexture = d.rangedBarTexture
+        SuperSwingTimerDB.sparkTexture = d.sparkTexture
+        SuperSwingTimerDB.sparkTextureLayer = d.sparkTextureLayer
+        set("sparkWidth", sparkWidthSlider, d.sparkWidth)
+        set("sparkHeight", sparkHeightSlider, d.sparkHeight)
+        set("sparkAlpha", sparkAlphaSlider, d.sparkAlpha)
+        setColor("sparkColor", d.sparkColor)
+        set("barBackgroundAlpha", backgroundAlphaSlider, d.barBackgroundAlpha)
+        setColor("barBackgroundColor", d.barBackgroundColor)
+        SuperSwingTimerDB.indicatorBlendMode = d.indicatorBlendMode
+        setColor("barBorderColor", d.barBorderColor)
+        set("barBorderSize", barBorderSlider, d.barBorderSize)
+
+        -- Refresh custom rows
+        if barTextureRow and barTextureRow.refresh then barTextureRow.refresh() end
+        if barLayerRow and barLayerRow.refresh then barLayerRow.refresh() end
+        if rangedTextureRow and rangedTextureRow.refresh then rangedTextureRow.refresh() end
+        if sparkTextureRow and sparkTextureRow.refresh then sparkTextureRow.refresh() end
+        if sparkLayerRow and sparkLayerRow.refresh then sparkLayerRow.refresh() end
+        if indicatorBlendModeRow and indicatorBlendModeRow.refresh then indicatorBlendModeRow.refresh() end
+
+        -- Apply
+        ns.ApplyBarSize(d.barWidth, d.barHeight)
+        ns.ApplyBarTexture(d.barTexture, d.barTextureLayer)
+        ns.ApplyRangedBarTexture(d.rangedBarTexture, d.barTextureLayer)
+        ns.ApplySparkSettings(d.sparkTexture, d.sparkWidth, d.sparkHeight, d.sparkTextureLayer, d.sparkAlpha, d.sparkColor)
+        ns.ApplyBarBackgroundColor(d.barBackgroundColor)
+        ns.ApplyBarBorderColor(d.barBorderColor)
+        ns.ApplyBarBorderSize(d.barBorderSize)
+        ns.ApplyIndicatorBlendMode(d.indicatorBlendMode)
+
+        -- Refresh color swatches for this section
+        for _, row in ipairs(colorRowsSection) do
+            if row and row.button then
+                local key = row.button.colorKey
+                local c = ns.GetBarColor(key)
+                if c then row.swatch:SetColorTexture(c.r, c.g, c.b, c.a) end
+            end
+        end
+    end)
+
+    -- Shaman Weave Assist section reset
+    shamanHeader:setResetCallback(function ()
+        local d = ns.DB_DEFAULTS
+        SuperSwingTimerDB.weaveSparkTexture = d.weaveSparkTexture
+        SuperSwingTimerDB.weaveSparkTextureLayer = d.weaveSparkTextureLayer
+        SuperSwingTimerDB.weaveSparkWidth = d.weaveSparkWidth
+        SuperSwingTimerDB.weaveSparkHeight = d.weaveSparkHeight
+        SuperSwingTimerDB.weaveSparkAlpha = d.weaveSparkAlpha
+        SuperSwingTimerDB.weaveTriangleTopTexture = d.weaveTriangleTopTexture
+        SuperSwingTimerDB.weaveTriangleBottomTexture = d.weaveTriangleBottomTexture
+        SuperSwingTimerDB.weaveTriangleTextureLayer = d.weaveTriangleTextureLayer
+        SuperSwingTimerDB.weaveTriangleSize = d.weaveTriangleSize
+        SuperSwingTimerDB.weaveTriangleGap = d.weaveTriangleGap
+        SuperSwingTimerDB.weaveTriangleAlpha = d.weaveTriangleAlpha
+
+        -- Sync sliders
+        weaveSparkWidthSlider:SetValue(d.weaveSparkWidth)
+        weaveSparkHeightSlider:SetValue(d.weaveSparkHeight)
+        weaveSparkAlphaSlider:SetValue(d.weaveSparkAlpha)
+        weaveTriangleSizeSlider:SetValue(d.weaveTriangleSize)
+        weaveTriangleGapSlider:SetValue(d.weaveTriangleGap)
+        weaveTriangleAlphaSlider:SetValue(d.weaveTriangleAlpha)
+
+        -- Refresh custom rows
+        if weaveSparkTextureRow and weaveSparkTextureRow.refresh then weaveSparkTextureRow.refresh() end
+        if weaveSparkLayerRow and weaveSparkLayerRow.refresh then weaveSparkLayerRow.refresh() end
+        if weaveTriangleLayerRow and weaveTriangleLayerRow.refresh then weaveTriangleLayerRow.refresh() end
+
+        -- Apply
+        ns.ApplyWeaveSparkSettings(d.weaveSparkTexture, d.weaveSparkWidth, d.weaveSparkHeight, d.weaveSparkTextureLayer, d.weaveSparkAlpha)
+        ns.ApplyWeaveTriangleSettings(d.weaveTriangleTopTexture, d.weaveTriangleBottomTexture, d.weaveTriangleSize, d.weaveTriangleGap, d.weaveTriangleTextureLayer, d.weaveTriangleAlpha)
+    end)
+
+    -- Combat & Timer Behavior section reset
+    generalHeader:setResetCallback(function ()
+        local d = ns.DB_DEFAULTS
+        SuperSwingTimerDB.lockBars = d.lockBars
+        if lockBarsRow and lockBarsRow.refresh then lockBarsRow.refresh() end
+        if ns.ApplyLockBars then ns.ApplyLockBars() end
+    end)
+
+    -- Shaman Weave Spells section reset
+    weaveFamiliesHeader:setResetCallback(function ()
+        local d = ns.DB_DEFAULTS
+        SuperSwingTimerDB.weaveSpellFamilies = {}
+        for key, val in pairs(d.weaveSpellFamilies) do
+            SuperSwingTimerDB.weaveSpellFamilies[key] = val
+        end
+        for _, row in ipairs(weaveFamilyRows) do
+            if row and row.refresh then row.refresh() end
+        end
+    end)
 
     ReflowConfigSections()
     f.ReflowConfigSections = ReflowConfigSections
@@ -4215,8 +4715,8 @@ local function CreatePanel()
         if weaveTriangleLayerRow and weaveTriangleLayerRow.refresh then
             weaveTriangleLayerRow.refresh()
         end
-        if minimalModeRow and minimalModeRow.refresh then
-            minimalModeRow.refresh()
+        if topMinimalModeRow and topMinimalModeRow.refresh then
+            topMinimalModeRow.refresh()
         end
         if lockBarsRow and lockBarsRow.refresh then
             lockBarsRow.refresh()
@@ -4304,7 +4804,7 @@ local function CreatePanel()
     f.barBorderColorRow = barBorderColorRow
     f.barBorderSlider = barBorderSlider
     f.indicatorBlendModeRow = indicatorBlendModeRow
-    f.minimalModeRow = minimalModeRow
+    f.minimalModeRow = topMinimalModeRow
     f.lockBarsRow = lockBarsRow
     f.lockBarsQuickRow = lockBarsQuickRow
     f.showMHRow = showMHRow

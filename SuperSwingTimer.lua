@@ -141,6 +141,7 @@ local function MigrateDB()
     if SuperSwingTimerDB.useClassColors == nil then
         SuperSwingTimerDB.useClassColors = false
     end
+    SuperSwingTimerDB.showAdvanced = (SuperSwingTimerDB.showAdvanced == true)
     SuperSwingTimerDB.indicatorBlendMode = SuperSwingTimerDB.indicatorBlendMode or ns.DB_DEFAULTS.indicatorBlendMode
     if SuperSwingTimerDB.globalScale == nil then
         SuperSwingTimerDB.globalScale = ns.DB_DEFAULTS.globalScale

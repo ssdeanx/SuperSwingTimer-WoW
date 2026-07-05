@@ -1,12 +1,14 @@
 # Active Context
 
-## Active Context Update (2026-07-05 - Global Scale slider + deep quality audit)
+## Active Context Update (2026-07-05 - v0.1.7: Phases 4/6/7/9 enterprise UX finalization)
 
-- **Deep quality audit completed**: Created `AUDIT.md` with 10-section scoring (overall 7.2/10). Identified critical issues: `ns.OnUpdate` chain fragility, fresh-install block duplication, zero test infrastructure, 8 Hunter bar globals suppressed in `.luacheckrc`, and missing global scale slider.
-- **Global Scale slider implemented**: Added `globalScale = 1.0` to `ns.DB_DEFAULTS`, `ns.GetGlobalScale()` (0.5x–3.0x clamped range), `ns.Scale()` helper function. Modified `CreateBar()`, `ApplyBarSize()`, `ApplyBarBorderSize()`, and `CreateGcdTickerBar()` to apply scale internally. Added `ns.ApplyGlobalScale()` that refreshes all 6 classes' helpers after scale change. Placed slider as **first control** at top of `/sst` panel with gold label + descriptive subtitle. Quick Controls shifted down by slider height. Fresh-install, migration nil-guard, reset defaults, and panel refresh all wired.
-- **Scale formula**: `finalSize = math.floor(savedValue × scale + 0.5)`, min 1px. Individual sliders set base size, global scale multiplies everything proportionally.
-- **`get_errors` clean**: All edited files (Constants, SuperSwingTimer, UI, Config) pass diagnostics.
-- **Known follow-up**: 8 Hunter bar globals still need `ns.*` migration, `ns.OnUpdate` chain needs registration pattern.
+- **Show Advanced toggle** (Phase 6): `SuperSwingTimerDB.showAdvanced` toggle at top-right of panel, below Minimal Mode. Reveals 16 advanced rows: texture layers (MH/OH, Spark, Weave, Spell Icon), spark dimensions/alpha, Indicator Glow Mode, bar background/border settings, weave spark dimensions/alpha, weave marker note. Tagged `isAdvanced = true` per row. `SetRowsShown` modified to filter by flag. Default false, migration fill-in added in `MigrateDB()`.
+- **Per-section Reset buttons** (Phase 4): Each section header (Appearance, Shaman Weave Assist, Combat & Timer Behavior, Shaman Weave Spells) has a red "Reset" button on the right. Resets only that section's DB keys + refreshes controls. Uses `setResetCallback()` deferred pattern — callbacks defined after all controls exist. `CreateSectionHeader` updated to always create reset button, hidden by default until callback assigned.
+- **Texture preview chips** (Phase 7): Browser-mode texture rows now show a 24×16 inline thumbnail with UI-Tooltip-Border frame. Updates live on `Refresh()`. PathBox width reduced by 20px to accommodate chip.
+- **Keyboard navigation audit** (Phase 9): Section headers and Quick Controls tab buttons now respond to Enter/Space via `OnKeyDown`. All other controls use Blizzard widget templates with native keyboard handling.
+- **CHANGELOG updated**: Added entries for all 4 phases. **AUDIT.md gap analysis table updated**: SST now at or near target for search, per-section reset, tooltips/help, section help, progressive disclosure, texture previews, keyboard nav, and category tabs. Profile system deferred.
+- **Quality gates**: `luac -p` passes on all 7 files. Zero syntax errors. The only lint diagnostics are false-positive `setResetCallback` arg-count warnings (linter miscounts self + 1 arg as 2).
+- **Known follow-up**: Profile system (Phase 8) deferred as too large. File splitting of Config.lua (~4600+ lines) pending. Quick Controls section doesn't have a reset button (complex tab structure — could add simple toggle/color reset later).
 
 ## Active Context Update (2026-06-17 - Hunter buff icon redesign + Shaman buff icon group)
 

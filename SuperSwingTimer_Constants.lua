@@ -871,6 +871,7 @@ ns.DB_DEFAULTS = {
     barBackgroundColor = { r = 0, g = 0, b = 0, a = 0.4 },
     barBorderColor = { r = 0, g = 0, b = 0, a = 1 },
     sparkAlpha = 1,
+    showAdvanced = false,
     minimalMode = false,
     lockBars = false,
     colors = {

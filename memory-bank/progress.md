@@ -1,12 +1,13 @@
 # Progress
 
-## Progress Update (2026-07-05 - v0.1.7: documentation standards + AUDIT.md checkboxes + version bump)
+## Progress Update (2026-07-05 - v0.1.7: Phases 4/6/7/9 enterprise UX finalization)
 
-- **TOC bumped to v0.1.7**: Version string updated in `.toc`, `CHANGELOG.md` entry added, DB schema stays at v54 (no migration needed).
-- **Enterprise-grade Lua docstring standard**: AGENTS.md updated with MANDATORY LDoc-style `--- @param` / `--- @return` convention for all public functions. Demonstrated on new code — `ns.GetGlobalScale()`, `ns.Scale()`, `ns.ApplyGlobalScale()` all have proper docstrings.
-- **AUDIT.md restructured with checkboxes**: All 7 roadmap phases now use GitHub-style `[x]`/`[ ]` checkboxes. Phase 2 item A (Global Scale slider) marked complete. Phase 5 added for File Splitting & Code Organization (highest priority: ClassMods.lua and Config.lua). Phase 7 added for Enterprise-Grade Lua Conventions with docstring template and module-level header requirement.
-- **CHANGELOG.md v0.1.7**: Global Scale slider, deep audit completion, codebase conventions, roadmap made actionable.
-- **Next priorities per audit**: Fix `ns.OnUpdate` chain (registration pattern), fix 8 Hunter globals, replace fresh-install block with `DeepCopyDefaults()`.
+- **Show Advanced toggle** (Phase 6): New toggle at top of panel (right, below Minimal Mode). When enabled, reveals 16 advanced rows across all sections: texture layers, spark dimensions/alpha, Indicator Glow Mode, bar background/border, weave spark dimensions/alpha/layer, weave marker note, spell icon layer. Controlled by `SuperSwingTimerDB.showAdvanced` (default false). Migration fill-in added.
+- **Per-section Reset buttons** (Phase 4): Small red "Reset" button on each collapsible section header (Appearance, Shaman Weave Assist, Combat & Timer Behavior, Shaman Weave Spells). Resets only that section's DB keys to defaults. `setResetCallback` deferred callback pattern allows definition after all controls exist.
+- **Texture preview chips** (Phase 7): Browser-mode texture rows (Spark Texture, Cast Breakpoint Spark Texture) now show a 24x16 inline thumbnail preview of the current texture with UI-Tooltip-Border edge frame. Updates live on texture change.
+- **Keyboard navigation audit** (Phase 9): Section headers and Quick Controls tab buttons now respond to Enter/Space for keyboard activation. All other controls use Blizzard widget templates (UICheckButtonTemplate, OptionsSliderTemplate, UIPanelButtonTemplate, InputBoxTemplate) with native keyboard support.
+- **CHANGELOG.md + AUDIT.md updated**: Gap analysis table updated to reflect new SST status. Implementation log entries added.
+- **Quality**: `luac -p` passes on all 7 Lua files. Zero syntax errors.
 
 ## Progress Update (2026-06-17 - Hunter buff icons redesigned + Shaman buff icon group)
 

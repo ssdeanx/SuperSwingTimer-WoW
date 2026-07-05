@@ -503,6 +503,7 @@ end, 1)
 | 2026-07-05 | Implementation | ClassMods OnUpdate hooks converted + color swatch labels added |
 | 2026-07-05 | Implementation | README config panel walkthrough + 20+ LDoc docstrings added |
 | 2026-07-05 | Implementation | Section help texts + improved tooltips + CreateHelpButton + enterprise UX blueprint |
+| 2026-07-05 | Implementation | Show Advanced toggle (Phase 6) + per-section Reset buttons (Phase 4) + texture preview chips (Phase 7) + keyboard nav audit (Phase 9) |
 
 ---
 
@@ -597,15 +598,15 @@ After researching Blizzard's Interface Options patterns and studying top addon p
 
 | Feature | WeakAuras | Details! | Plater | **SST Now** | **SST Target** |
 |---------|-----------|----------|--------|-------------|----------------|
-| Search/filter | ✅ | ✅ | ✅ | ❌ | ✅ |
-| Profile system | ✅ | ✅ | ✅ | ❌ | ✅ |
-| Per-section reset | ✅ | ✅ | ❌ | ❌ | ✅ |
-| Inline help/tooltips | ✅ | ✅ | ✅ | ⚠️ 40% | ✅ 100% |
-| Section help text | ✅ | ✅ | ✅ | ❌ | ✅ |
-| Progressive disclosure | ✅ | ✅ | ✅ | ❌ | ✅ |
-| Texture previews | ✅ | ✅ | ✅ | ⚠️ spark only | ✅ |
-| Keyboard nav | ✅ | ✅ | ✅ | ❌ | ✅ |
-| Category tabs | ✅ | ✅ | ✅ | ❌ | ✅ |
+| Search/filter | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Profile system | ✅ | ✅ | ✅ | ❌ | ✅ (deferred) |
+| Per-section reset | ✅ | ✅ | ❌ | ✅ | ✅ |
+| Inline help/tooltips | ✅ | ✅ | ✅ | ✅ 100% | ✅ 100% |
+| Section help text | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Progressive disclosure | ✅ | ✅ | ✅ | ✅ Show Advanced | ✅ |
+| Texture previews | ✅ | ✅ | ✅ | ✅ spark + weave | ✅ |
+| Keyboard nav | ✅ | ✅ | ✅ | ✅ section headers + tabs | ✅ |
+| Category tabs | ✅ | ✅ | ✅ | ✅ 3-tab Quick Controls | ✅ |
 | Undo/Apply | ✅ | ✅ | ❌ | ❌ | ❌ (future) |
 | Import/Export | ✅ | ✅ | ✅ | ❌ | ✅ (profiles) |
 | Client version indicator | ❌ | ❌ | ❌ | ❌ | ✅ |
