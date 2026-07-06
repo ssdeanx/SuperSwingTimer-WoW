@@ -12,10 +12,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Install Lua
-        run: sudo apt-get update && sudo apt-get install -y lua5.4
+        run: sudo apt-get update && sudo apt-get install -y lua5.1
       - name: Check syntax
         run: |
-          luac5.4 -p \
+          luac -p \
             SuperSwingTimer_Constants.lua \
             SuperSwingTimer_State.lua \
             SuperSwingTimer_Weaving.lua \

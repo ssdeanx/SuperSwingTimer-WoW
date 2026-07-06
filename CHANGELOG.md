@@ -1,17 +1,40 @@
 # Super Swing Timer Changelog
 
-## v0.1.7 - 2026-07-05
+## v0.1.7 - 2026-07-06
 
-- **WoWUnit test suite added**: 9 test groups, 34 in-game unit tests via WoWUnit addon (`## OptionalDeps: WoWUnit`). Tests cover constants integrity, aura parsing (both Classic + TBC API shapes), `GetDebuffStackOffset` math, Hunter Serpent Sting detection (by name + ID, caster filtering), `MigrateDB` chain (v1→v54), dispatch nil-guards, helpful aura parsing, and Flurry buff info — all runnable in-game with pass/fail UI. Internal functions exported on `ns._Test` only when WoWUnit is present — zero overhead otherwise.
-- **Expanded to 18 groups, 73 tests**: Added CLEU event simulation (SWING_DAMAGE MH/OH/enemy, SWING_MISSED, DODGE path), timer state machine validation, cross-class debuff detection (Deep Wounds, Flame Shock, Mangle, Rupture, Seal of Vengeance, Sunder Armor), hunter cast spell detection, nil-stress tests, config toggle safety, Paladin seal family lookup, and buff icon tracking. Tests now assert duration, caster, and spellId values — not just existence.
-- **GetHarmfulAuraData API shape detection fixed**: The variable mapping was off-by-one for Classic 1.15.x+ / TBC Anniversary 2.5.5 UnitAura which added an `icon` texture field at position 3. All 24 callers across all classes were silently returning the wrong `caster` value (a number instead of "player"), breaking every `caster == "player"` debuff filter. Fixed with explicit shape detection (`type(pos3) == "string"` → icon present).
-- **GetDebuffStackOffset sign inversion fixed**: Was tracking `maxBarTop` (bars below reference bar), should track `minBarTop` (bars above reference bar). Caused buff icons to overlap debuff duration bars by ~6px. Also added visibility-bitmask cache to prevent one-frame bounce from WoW's deferred SetPoint layout.
-- **Buff icon border fixed**: Was a full-face black `(0, 0, 0, 0.65)` overlay covering the entire icon, causing permanent dimming. Replaced with 4 separate 1px edge strips (top/bottom/left/right) matching the existing debuff bar glow border pattern.
-- **Buff icon duration text moved above icon**: Changed from `SetPoint("TOP", icon, "TOP", 0, -1)` (overlapping icon top) to `SetPoint("BOTTOM", icon, "TOP", 0, 2)` (sits above icon with 2px gap).
-- **Buff icon gap increased**: From 6px to 8px above highest debuff bar and above anchor bar.
-- **Concussion Shot color**: Changed from dark blue `(0.10, 0.15, 0.60)` to grey `(0.55, 0.55, 0.55)` for better visibility.
-- **Serpent Sting color**: Brightened from forest green `(0.05, 0.55, 0.20)` to bright serpent green `(0.10, 0.85, 0.15)`.
-- **Tests now deferred to PLAYER_ENTERING_WORLD**: Test registration waits until all addons (including WoWUnit) are loaded, avoiding load-order race conditions. Added `/ssttest` slash command for manual trigger. Chat-confirmed on registration.
+### Core architecture
+- **Canonical `ns.UnitAura` wrapper** (Constants.lua): Centralized all UnitAura/UnitBuff/UnitDebuff shape detection into a single function with 3 explicit branches — Classic 1.13.x (9-ret, no icon), Classic 1.15.x/Retail (string icon at r3), and TBC Anniversary 2.5.5 (AuraUtil.UnpackAuraData, 15+ returns with FileID icon at r2 + spellId at r10). Added convenience wrappers `ns.UnitBuff()` and `ns.UnitDebuff()`. No more raw `UnitAura()` calls — all callers go through the wrapper.
+- **`GetHarmfulAuraData` / `GetHelpfulAuraData` refactored**: Both collapsed from ~80 lines combined to ~10 lines each by delegating shape detection to `ns.UnitAura`. Eliminated the duplicated, drifting detection logic that caused the TBC Anniversary spellId extraction bug.
+- **File map updated**: 9 Lua files total (Hooks.lua and Tests.lua added), strict dependency order maintained.
+
+### Bug fixes
+- **GetHarmfulAuraData shape detection**: The old boolean gate (`type(pos3) == "string"`) could not distinguish TBC Anniversary's AuraUtil.UnpackAuraData shape (icon as FileID number at r3) from Classic 1.13.x (count at r3). This caused spellId to be extracted from the wrong position, silently producing nil for every debuff on TBC Anniversary. Fixed with three-branch detection that checks r10 type to identify the TBC shape.
+- **GetDebuffStackOffset sign inversion**: Was tracking `maxBarTop` (bars below reference bar) instead of `minBarTop` (bars above). Caused buff icons to overlap debuff duration bars by ~6px. Added visibility-bitmask cache to prevent one-frame bounce from WoW's deferred SetPoint layout.
+- **Buff icon border**: Was a full-face black `(0, 0, 0, 0.65)` overlay covering the entire icon, causing permanent dimming. Replaced with 4 separate 1px edge strips matching the debuff bar glow border pattern.
+- **Permission fix**: WoWUnit test file created at 600 (owner-only) — WoW under Wine needs 644. Added explicit chmod after every write_file.
+
+### Visual changes
+- **Buff icon positioning**: Gap above debuff bars doubled from 8px → 16px. Duration text moved from floating above icon to `SetPoint("CENTER", icon, "TOP", 0, 0)` — reads as a centered label at the top edge of each icon.
+- **Concussion Shot color**: Dark blue `(0.10, 0.15, 0.60)` → grey `(0.55, 0.55, 0.55)` for visibility.
+- **Serpent Sting color**: Forest green `(0.05, 0.55, 0.20)` → bright serpent green `(0.10, 0.85, 0.15)`.
+
+### Combat gating
+- **All 6 buff icon update functions** (Paladin, Warrior, Shaman, Druid, Hunter, Rogue) now check `ns.playerInCombat` — buff icons are hidden when out of combat to prevent stale display.
+
+### Code quality
+- **AGENTS.md compressed**: 11,204 chars → 6,135 chars (~45% reduction). Stripped discoverable content (file maps, verbose tables). Added canonical wrapper docs, WoWUnit test reference, Wine 644 permission rule, and Lua 5.1 `<<` restriction.
+- **AUDIT.md updated**: Date revised, scope expanded to cover 9 Lua files + test suite.
+- **Project conventions enforced**: All raw Blizzard API calls now route through `ns.*` wrappers. Remaining violations in `GetHarmfulAuraData`/`GetHelpfulAuraData` eliminated.
+
+### WoWUnit test suite ⚠️
+- **18 groups consolidated to 4**: SST-Core (constants/clock/migrate), SST-Auras (wrapper parsing), SST-Combat (CLEU/timers), SST-Hunter (class-gated).
+- **`/ssttest` slash command** added for manual triggering.
+- **Class gating**: SST-Hunter only registers on HUNTER characters; Paladin seal test gated on PALADIN.
+- **All tests are currently grey** — they were written against the old shape detection and broke during the ns.UnitAura refactoring. Need to be updated to call the canonical wrapper in the next session.
+
+### Reference
+- **WoWUnit** (Jaliborc fork v12.0.1): Installed at `_anniversary_/Interface/AddOns/WoWUnit/`. Toggle button on right side of screen shows failure count; click to open scrollable panel. Tests register via `WoWUnit('GroupName', 'EVENT')`, assertions `AreEqual`/`IsTrue`/`IsFalse`/`Exists`, mocking via `Replace`/`ClearReplaces`.
+- **AGENTS.md research**: Sourced from ICSE 2026 JAWs paper "On the Impact of AGENTS.md Files on the Efficiency of AI Coding Agents" and ICLR 2026 workshop "Evaluating AGENTS.md" (ETH Zurich) — AGENTS.md adds ~0% task improvement at 20%+ inference cost.
 
 - **Show Advanced toggle** (Phase 6): New "Show Advanced" toggle at top of panel (right side, below Minimal Mode) with descriptive label. When enabled, reveals fine-tuning controls across all sections: texture layer selectors (MH/OH, Spark, Weave, Spell Icon), spark dimensions and alpha, Indicator Glow Mode, bar background/border settings, and weave spark dimensions/alpha. Controlled by `SuperSwingTimerDB.showAdvanced` (defaults false). Each advanced row tagged with `isAdvanced = true` — hidden automatically when toggle is off. Migration fill-in added for existing users.
 - **Per-section Reset buttons** (Phase 4): Each collapsible section header (Appearance, Shaman Weave Assist, Combat & Timer Behavior, Shaman Weave Spells) now has a small red "Reset" button on the right side. Clicking resets only that section's DB keys to defaults and updates all controls (sliders, texture rows, color swatches) without affecting other sections. Reset button has hover highlighting and an `OnMouseDown` handler that prevents the click from also toggling section collapse. Reset callbacks defined after all controls exist for safe variable access.

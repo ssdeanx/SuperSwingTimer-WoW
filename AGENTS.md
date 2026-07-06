@@ -1,126 +1,98 @@
 # Super Swing Timer
 
-Live WoW Classic Era and TBC Anniversary addon, thousands of users. 7 Lua files, single `ns` table, zero dependencies.
-**v0.1.6** | **DB schema: v54** (`ns.DB_DEFAULTS.version`) | **CurseForge / GitHub Releases**
+Classic Era + TBC Anniversary melee/ranged swing timer addon, thousands of users. **9 Lua files**, single `ns` table, zero dependencies.  
+**v0.1.7** | **DB schema: v54** (`ns.DB_DEFAULTS.version`) | **CurseForge / GitHub Releases**
+
+> **Research note:** AGENTS.md adds 0% task improvement with 20%+ inference cost (ICLR 2026, ETH Zurich). This file is stripped to what agents *cannot* discover from the code itself.
 
 ---
 
-## Quality gates (MANDATORY)
+## Live install (Wine, NOT source repo)
 
-No test framework — manual QA is the ONLY bug barrier. Every change must pass:
+The live game path is the authoritative copy. Source repo at `~/SuperSwingTimer-WoW/` is a git mirror, not what WoW reads.
 
-1. **luacheck: 0 warnings, 0 errors** before any commit.
-2. **`luac -p` syntax check** on all 7 files.
-3. **Manual in-game QA** on the correct client:
-   - Enter combat → bars appear with correct weapon speed
-   - Swing lands → timer resets (watch CLEU SWING_DAMAGE/SWING_MISSED)
-   - Class overlays appear for current class only
-   - Config panel toggles visibility correctly
-   - `/sst reset` restores defaults without errors
-4. **Dual-client awareness:** TBC Anniversary has different spell/aura return slots than Classic Era. Wrapper changes must not break the other client.
-5. **CLEU payloads differ:** Classic sends numeric spell IDs, TBC Anniversary sends localized strings. All swing-affecting lookup tables populate **both** key types at init via `ns.GetSpellInfo(id)`.
-6. **CHANGELOG.md** updated and TOC version bumped for any release-worthy change.
+```
+/home/sam/Faugus/battlenet/drive_c/Program Files (x86)/World of Warcraft/_anniversary_/Interface/AddOns/SuperSwingTimer/
+```
+
+File permission quirk: `write_file` creates 600. WoW under Wine needs 644 (`chmod 644` after every write_file or files silently fail to load).
 
 ---
 
-## Commands
+## Quality gates
 
-```bash
-luac -p SuperSwingTimer.lua SuperSwingTimer_Constants.lua SuperSwingTimer_State.lua SuperSwingTimer_Weaving.lua SuperSwingTimer_UI.lua SuperSwingTimer_ClassMods.lua SuperSwingTimer_Config.lua
-"C:\Users\ssdsk\luacheck.exe" SuperSwingTimer.lua SuperSwingTimer_Constants.lua SuperSwingTimer_State.lua SuperSwingTimer_Weaving.lua SuperSwingTimer_UI.lua SuperSwingTimer_ClassMods.lua SuperSwingTimer_Config.lua
-```
+Manual QA is the only bug barrier. Every change:
 
-### In-game
-
-| Action | Command |
-|--------|---------|
-| Open config | `/sst`, `/super`, `/superswingtimer` |
-| Factory reset | `/sst reset` |
-| Help | `/sst help` |
-| Legacy alias | `/swang` |
+1. `luac -p` on ALL 9 `.lua` files (Lua 5.1 — no `<<` operator, use `2 ^ n`)
+2. `luacheck` 0 warnings (Windows: `C:\Users\ssdsk\luacheck.exe`)
+3. In-game: combat→bars appear, swing→timer resets, class overlays for correct class only, `/sst reset` no errors
+4. CHANGELOG.md updated
+5. **Dual-client:** TBC Anniversary 2.5.5 differs from Classic Era — wrappers must not break the other
+6. **CLEU payloads:** Classic sends numeric spellIDs, TBC Anniversary sends localized strings — populate both key types at init
 
 ---
 
-## DB schema & migrations (USER DATA)
+## Architecture essentials
 
-**v50** — `ns.SuperSwingTimerDB` is a SavedVariables table, migrated via `MigrateDB()` in `SuperSwingTimer.lua`.
+**Dependency order:** Constants → State → Weaving → Hooks → UI → ClassMods → Config → Main → Tests
 
-- Every `case` in `MigrateDB()` must handle upgrading FROM that version TO v50.
-- **Never remove old migration cases.** Users skip versions — the chain must work from any v1..v49 → v50.
-- Adding a new default alone is NOT enough — old users have nil for new keys. Always add a migration case.
-- Breaking a migration corrupts user settings irreversibly (no backup).
-- Factory reset (`/sst reset`) calls `ResetConfigDefaults()` which wipes to `ns.DB_DEFAULTS`.
+**10 files:**
+
+| File | Purpose |
+|------|---------|
+| `Constants.lua` | DB defaults, spell catalog, ALL ns.* wrappers (`ns.UnitAura`, `ns.GetSpellInfo`, `ns.GetAlignedTime`, `ns.GetUnitCastingSpellInfo`) |
+| `State.lua` | Timer structs (`ns.timers.mh/oh/ranged/enemy`), CLEU/spellcast handlers, speed sync |
+| `Weaving.lua` | Shaman weave breakpoints (SHAMAN only) |
+| `Hooks.lua` | OnUpdate hook registration (`ns.RegisterOnUpdateHook`) |
+| `UI.lua` | Bar frames, `ns.OnUpdate()` render, Apply* styling |
+| `ClassMods.lua` | 6 Setup* functions + `GetHarmfulAuraData`/`GetHelpfulAuraData` locals |
+| `Config.lua` | Config panel, sliders, swatches, texture browser |
+| `Main.lua` | Event routing, slash commands, init, migration, flags |
+| `Tests.lua` | WoWUnit test suite (see below) |
+
+**Render order:** `ns.OnUpdate()` in UI.lua — call order IS render order  
+**Event map:** `OnEvent` elseif chain in Main.lua  
+**Clock:** `GetTimePreciseSec()` via `ns.GetAlignedTime()` — never bare `GetTime()`  
+**Timers:** `{ state, startTime, endTime, duration, speed, holdEnd }`  
+**CLEU:** `SWING_DAMAGE`/`SWING_MISSED` drives `StartSwing`. Extra attacks/Slam/haste use short-lived flags.  
+**ClassMods:** Nil-guard all dynamic calls (`if ns.Func then ns.Func() end`) — crashes on wrong class
 
 ---
 
-## Conventions
+## Canonical API wrappers (CRITICAL — single source of truth)
 
-### Enterprise-grade Lua docstrings (MANDATORY from v0.1.7+)
+All raw Blizzard API calls route through `ns.UnitAura(unit, index, filter)` in Constants.lua. This normalizes 4+ client return shapes into:
+`name, rank, icon, count, debuffType, duration, expirationTime, unitCaster, isStealable, shouldConsolidate, spellID`
 
-Every public function MUST have an LDoc-style comment above it:
+Use `ns.UnitBuff(unit, index)` and `ns.UnitDebuff(unit, index)` for convenience.  
+**Never call raw `UnitAura()`, `UnitBuff()`, or `UnitDebuff()` directly.** If you add a new Blizzard API wrapper, add it next to `ns.UnitAura` in Constants.lua.
 
-```lua
---- Brief one-line description.
---  Detailed multi-line explanation of what this function does,
---  including side effects, timing constraints, or API dependencies.
---  @param paramName (type) Description — nil behavior if applicable
---  @return (type) Description of return value, or (nil) if void
---  @usage Example call pattern for non-trivial functions
---  @see RelatedFunctionName
-```
+Other wrappers: `ns.GetSpellInfo(id)`, `ns.GetUnitCastingSpellInfo(unit)`, `ns.GetAlignedTime()`
 
-Each file begins with a module-level header comment:
-```lua
--- ============================================================
--- File role: one-line summary
--- Dependency order: which files must load before this one
--- Depends on: ns.* symbols this file reads from sibling files
--- ============================================================
-```
+---
 
-### ns.* namespace & nil-guards
+## New settings protocol (6 files)
 
-No globals. All public functions on `ns`. Nil-guard ClassMods dynamic calls:
+Every setting touches exactly: `ns.DB_DEFAULTS` (Constants) → migration case in `MigrateDB()` (Main.lua) → Apply* (UI.lua) → config control (Config.lua) → README.md → TOC version.
 
-```lua
--- ✓ correct
-if ns.UpdateHunterRangeHelperVisual then ns.UpdateHunterRangeHelperVisual() end
+**Never remove old migration cases.** Users skip versions. Breaking a migration corrupts user settings irreversibly.
 
--- ✗ wrong — LUA ERROR on non-Hunter classes
-ns.UpdateHunterRangeHelperVisual()
-```
+---
 
-### Clock domain
+## WoWUnit tests
 
-Single source: `GetTimePreciseSec()` via `ns.GetAlignedTime()`. `GetTime()` is fallback-only. Each file has a local `now()` bridge:
+73 tests across 4 groups: **SST-Core** (constants/clock/migrate), **SST-Auras** (wrapper parsing), **SST-Combat** (CLEU/timers), **SST-Hunter** (gated on class).  
+Tests run on `PLAYER_ENTERING_WORLD` via deferred OnUpdate registration. Use `/ssttest` to manually trigger all groups.  
+Enable via `## OptionalDeps: WoWUnit` — WoWUnit loads from CurseForge, installs to `_anniversary_/Interface/AddOns/WoWUnit/`.  
+Load order not guaranteed on Classic/TBC ("should" not "must").
 
-```lua
--- ✓ correct
-local now = ns.GetAlignedTime()
-ns.timers.mh.endTime = now + duration
+WoWUnit API: `WoWUnit('GroupName', 'EVENT')` creates a group, test functions defined as `function Group:testName()`. Assertions: `AreEqual`, `IsTrue`, `IsFalse`. Mocking: `Replace('globalFunc', mockFn)` / `ClearReplaces()`.
 
--- ✗ wrong — bare GetTime() causes visible timer desync
-local now = GetTime()
-```
+---
 
-Bare `GetTime()` outside `GetAlignedTime()`'s nil fallback is a correctness bug. Fix on sight.
+## Migration
 
-### Blizzard API wrappers
-
-Use Classic-safe wrappers, not raw APIs. Payloads differ per client:
-
-| Raw API | Wrapper | Reason |
-|---------|---------|--------|
-| `GetSpellInfo(id)` | `ns.GetSpellInfo(id)` | Different return slot counts per client |
-| `UnitCastingInfo(unit)` | `ns.GetUnitCastingSpellInfo(unit)` | Classic-safe return types |
-| `UnitChannelInfo(unit)` | `ns.GetUnitCastingSpellInfo(unit)` | Same wrapper covers both |
-| `CombatLogGetCurrentEventInfo()` | Wrap with explicit arg checks | CLEU payloads differ per client |
-| `GetTime()` | `ns.GetAlignedTime()` | Clock domain — single source |
-| `UnitAura(unit, index)` / `UnitBuff` / `UnitDebuff` | Check client branch payloads first | Return slot counts differ per client |
-
-### New settings: 6-file protocol
-
-Every setting touches exactly: `ns.DB_DEFAULTS` (Constants) → migration case in `MigrateDB()` (SuperSwingTimer.lua) → Apply* function (UI.lua) → config control (Config.lua) → README.md → TOC version.
+MigrateDB() chain in Main.lua — handles v1→v54. Every case upgrades FROM that version. Factory reset: `/sst reset`.
 
 ---
 
@@ -128,109 +100,31 @@ Every setting touches exactly: `ns.DB_DEFAULTS` (Constants) → migration case i
 
 | Tier | Action |
 |------|--------|
-| **Always** | ns.* for cross-file state. Nil-guard ClassMods. Wrap Blizzard APIs. Run luacheck before any commit. |
-| **Ask first** | Adding a setting (6 files). New event registration. New Lua file. DB schema version bump. Migration case changes. |
-| **Never** | `--[[ @debugger ]]` type suppression. Hardcode queryable spell IDs. Dependencies. Secrets. Commit without luacheck. Delete old migration cases. |
+| **Always** | ns.* for state. Nil-guard ClassMods. Use wrappers. luacheck before commit. 644 perms on wine path. |
+| **Ask first** | New setting (6 files). New event/file. DB version bump. Migration case changes. |
+| **Never** | `<<` operator (Lua 5.1). Hardcode queryable spell IDs. Dependencies. Delete old migration cases. |
 
 ---
 
-## Codebase navigation
+## Blizzard API verification
 
-### File map
+**TBC Anniversary 2.5.5 runs TBC mechanics, not Legion/Retail.** Haste is separate per domain — never assume unified (that happened in 6.0.2).
 
-| File | What you'd change it for |
-|------|-------------------------|
-| `SuperSwingTimer.lua` | Event routing, slash commands, init, migration, combat/movement flags |
-| `SuperSwingTimer_Constants.lua` | DB defaults, spell catalog, wrapper helpers, `ns.GetAlignedTime()`, `ns.GetSpellInfo()` |
-| `SuperSwingTimer_State.lua` | Timer structs, CLEU/spellcast handlers, speed sync, `ns.timers.*` |
-| `SuperSwingTimer_Weaving.lua` | Shaman weave catalog + breakpoint math (SHAMAN only) |
-| `SuperSwingTimer_UI.lua` | Bar frames, `ns.OnUpdate()` render, Apply* styling, class overlays |
-| `SuperSwingTimer_ClassMods.lua` | 6 Setup* functions — class-specific overlay registration |
-| `SuperSwingTimer_Config.lua` | Config panel, swatches, sliders, texture browser |
-
-### Discovery
-
-| What you need | How |
-|---------------|-----|
-| File exports | `grep "ns\." <filename>` |
-| Render order | Read `ns.OnUpdate()` in UI.lua — call order = render order |
-| Event wiring | Read the `OnEvent` elseif chain in SuperSwingTimer.lua |
-| Timer/shared state | `grep "^ns\." State.lua` for timers; `grep "ns\." SuperSwingTimer.lua` for combat flags |
-| Declared globals | Read `.luacheckrc` |
-| Blizzard API payloads | Search `classic_anniversary` or `classic` wow-ui-source branches (not `live`) |
-| C API existence | See Blizzard API verification section |
-
-### Architecture
-
-- **7 files, strict dependency order:** Constants → State/Weaving → UI → ClassMods → Config
-- **Clock:** `GetTimePreciseSec()` via `ns.GetAlignedTime()` — never bare `GetTime()`
-- **Timers:** `ns.timers.mh/oh/ranged/enemy` with `{ state, startTime, endTime, duration, speed, holdEnd }`
-- **Event dispatch:** SuperSwingTimer.lua owns `OnEvent`; the `elseif` chain IS the event map
-- **CLEU** drives all timer starts. `SWING_DAMAGE`/`SWING_MISSED` → `StartSwing`. Extra attacks, Slam, haste changes use short-lived flags.
-- **Render:** `OnUpdate()` in UI.lua — function call order = render order. Class overlays nil-guarded.
-- ✅ [WIRING.md](./docs/WIRING.md) for full event, ns.* surface, and shared-state reference.
-
----
-
-## Blizzard API verification (CRITICAL)
-
-**The TBC Anniversary client (2.5.5) runs TBC game mechanics, NOT Legion/Retail.** Haste stats are separate:
+| How | What |
+|-----|------|
+| **Search** `Blizzard_APIDocumentationGenerated/` in wow-ui-source | Confirms C API exists |
+| **Check** `Gethe/wow-ui-source` branch `classic_anniversary` | TBC Anniv source |
+| **Cross-check** FrameXML & TOC files | Function is actually callable |
+| **Never** use `live` branch | Retail, wrong for Classic |
 
 | API | Domain |
 |-----|--------|
-| `GetMeleeHaste()` | Melee haste |
-| `GetRangedHaste()` | Ranged haste |
-| `GetHaste()` | Melee haste (paired with `CR_HASTE_MELEE` in PaperDollFrame) |
-| `UnitSpellHaste()` | Spell haste |
-| `GetCombatRating(CR_HASTE_MELEE/RANGED/SPELL)` | Rating pool |
+| `GetMeleeHaste()` / `GetHaste()` / `CR_HASTE_MELEE` | Melee |
+| `GetRangedHaste()` / `CR_HASTE_RANGED` | Ranged |
+| `UnitSpellHaste()` / `CR_HASTE_SPELL` | Spell |
 
-**Never assume unified haste (that happened in 6.0.2).** Always verify function existence per client.
-
-### How to verify a C API function exists
-
-1. **Search `Blizzard_APIDocumentationGenerated/`** in wow-ui-source for the function — confirms C API exists on that branch.
-2. **Search FrameXML/Blizzard addon Lua files** for its usage — confirms it's callable.
-3. **Search `*.toc` files** to confirm the containing addon is loaded for that client.
-
-| Branch | Client | Repository |
-|--------|--------|------------|
-| `classic_anniversary` | TBC Anniversary (2.5.5) | `Gethe/wow-ui-source` branch `classic_anniversary` |
-| `classic` | Classic Era (1.15.x) | `Gethe/wow-ui-source` branch `classic` |
-| `live` | Retail | Do NOT use for Classic/TBC answers |
-
-### Key client files
-
-| File | classic_anniversary (TBC) | classic (Era) |
-|------|--------------------------|---------------|
-| PaperDollFrame | `Classic/` or `Vanilla/` | `Classic/` or `Vanilla/` |
-| SpellBookFrame | `Classic/SpellBookFrame.lua` | `Classic/SpellBookFrame.lua` |
-| CastingBarFrame | `Classic/CastingBarFrame.lua` | `Classic/CastingBarFrame.lua` |
-| InspectUI | `TBC/Blizzard_InspectUI.lua` | `Vanilla/Blizzard_InspectUI.lua` |
-
-### Common pitfalls
-
-| Mistake | Correction |
-|---------|------------|
-| `GetHaste()` = ranged haste | It's **melee** haste. Use `GetRangedHaste()` or `GetCombatRatingBonus(CR_HASTE_RANGED)`. |
-| Using `live` branch for Classic/TBC | Always use `classic_anniversary` or `classic` branch. |
-| Trusting wiki docs for Anniversary APIs | Cross-check against wow-ui-source source code. |
-| Assuming unified haste (post-6.0.2) | TBC Anniversary has separate melee/ranged/spell haste. |
-| Not checking TOC files | A function exists only if its addon's TOC loads for that `AllowLoadGameType`. |
-
-### Confirmed function existence
-
-| Function | Client | Evidence |
-|----------|--------|----------|
-| `UnitRangedDamage("player")` | classic_anniversary | Returns speed, minDamage, maxDamage, posBuff, negBuff, percent — speed at index 1 (warcraft.wiki.gg) |
-| `C_Spell.GetSpellCooldown(75)` | classic_anniversary | Used in CooldownViewer.lua |
-| `GetTimePreciseSec()` | classic_anniversary | Used in Blizzard_Console.lua |
-| `GetTimePreciseSec()` + `GetTime()` bridge | classic_anniversary | `ns.GetAlignedTime()` in Constants.lua is sound |
-
----
-
-## External references
-
-- [Gethe/wow-ui-source](https://github.com/Gethe/wow-ui-source/branches) — `classic_anniversary` (TBC Anniversary), `classic` (Classic Era), `live` (Retail, **don't use**)
-- [Blizzard_APIDocumentationGenerated](https://github.com/Gethe/wow-ui-source/tree/classic_anniversary/Interface/AddOns/Blizzard_APIDocumentationGenerated) — Lua API stubs per branch
-- [warcraft.wiki.gg Classic API](https://warcraft.wiki.gg/wiki/World_of_Warcraft_API/Classic) — authoritative Classic API docs
-- [TOC: Blizzard_UIPanels_Game_TBC](https://github.com/Gethe/wow-ui-source/blob/classic_anniversary/Interface/AddOns/Blizzard_UIPanels_Game/Blizzard_UIPanels_Game_TBC.toc) — TBC Anniversary panel loading
+| Pitfall | Fix |
+|---------|-----|
+| `GetHaste()` = ranged | It's **melee** haste |
+| Trusting wiki docs | Cross-check wow-ui-source |
+| Not checking TOC | Function exists only if addon loads for that game type |

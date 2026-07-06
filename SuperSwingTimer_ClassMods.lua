@@ -50,7 +50,7 @@ local function GetDebuffStackOffset(bars, referenceBar)
     local visMask = 0
     for i, bar in ipairs(bars or {}) do
         if bar then
-            visMask = visMask + ((bar.IsShown and bar:IsShown()) and (1 << (i - 1)) or 0)
+            visMask = visMask + ((bar.IsShown and bar:IsShown()) and (2 ^ (i - 1)) or 0)
         end
     end
     -- Use cached offset if the visible bar set hasn't changed
@@ -72,7 +72,7 @@ local function GetDebuffStackOffset(bars, referenceBar)
             end
         end
     end
-    local result = minBarTop - 8  -- 8px gap above the highest visible bar
+    local result = minBarTop - 16  -- 16px gap above the highest visible bar
     _debuffStackCache = result
     _debuffStackCacheBars = visMask
     return result
@@ -276,95 +276,17 @@ local function GetOverlayParent(bar)
 end
 
 local function GetHelpfulAuraData(unit, index)
-    if not unit or not index then
-        return nil
-    end
-
-    local name
-    local a5
-    local a6
-    local a7
-    local a10
-    local a11
-    if UnitBuff then
-        name, _, _, _, a5, a6, a7, _, _, a10, a11 = UnitBuff(unit, index)
-    elseif UnitAura then
-        name, _, _, _, a5, a6, a7, _, _, a10, a11 = UnitAura(unit, index, "HELPFUL")
-    end
-
-    if not name then
-        return nil
-    end
-
-    local duration
-    local expirationTime
-    local spellId
-
-    if type(a10) == "number" then
-        -- Current Classic / TBC Anniversary helpful-aura shape.
-        duration = a5
-        expirationTime = a6
-        spellId = a10
-    else
-        -- Older Classic-compatible helpful-aura shape.
-        duration = a6
-        expirationTime = a7
-        spellId = type(a11) == "number" and a11 or nil
-    end
-
-    return name, duration, expirationTime, spellId
+    if not unit or not index then return nil end
+    local name, _, _, _, _, dur, expT, _, _, _, sId = ns.UnitBuff(unit, index)
+    if not name then return nil end
+    return name, dur, expT, sId
 end
 
 local function GetHarmfulAuraData(unit, index, filter)
-    if not unit or not index or not UnitAura then
-        return nil
-    end
-
-    -- Unpack ALL UnitAura return values positionally so we can detect the
-    -- API shape regardless of variable naming.  Current Classic Era 1.15.x+
-    -- and TBC Anniversary 2.5.5 return:
-    --   name, rank, icon, count, debuffType, duration, expTime, caster,
-    --   isStealable, shouldConsolidate, spellID
-    -- Older Classic 1.13.x did NOT return icon (count was at position 3).
-    -- We detect the shape by checking if position 3 is a string (icon texture).
-    local pos1, pos2, pos3, pos4, pos5, pos6, pos7, pos8, pos9, pos10, pos11 = UnitAura(
-        unit, index, filter or "HARMFUL"
-    )
-    if not pos1 then
-        return nil
-    end
-
-    local name = pos1
-    local hasIconField = type(pos3) == "string"
-
-    local auraCount
-    local duration
-    local expirationTime
-    local caster
-    local spellId
-
-    if hasIconField then
-        -- Current shape: pos3=icon, pos4=count, pos5=debuffType,
-        --                pos6=duration, pos7=expTime, pos8=caster,
-        --                pos9=stealable, pos10=shouldConsolidate, pos11=spellID
-        auraCount = tonumber(pos4) or 0
-        duration = pos6
-        expirationTime = pos7
-        caster = pos8
-        spellId = type(pos11) == "number" and pos11
-            or (type(pos10) == "number" and pos10 or nil)
-    else
-        -- Older shape (no icon): pos3=count, pos4=debuffType,
-        --                       pos5=duration, pos6=expTime, pos7=caster,
-        --                       pos8=stealable, pos9=spellID
-        auraCount = tonumber(pos3) or 0
-        duration = pos5
-        expirationTime = pos6
-        caster = pos7
-        spellId = type(pos9) == "number" and pos9 or nil
-    end
-
-    return name, auraCount, duration, expirationTime, caster, spellId
+    if not unit or not index then return nil end
+    local name, _, _, count, _, dur, expT, caster, _, _, sId = ns.UnitAura(unit, index, filter or "HARMFUL")
+    if not name then return nil end
+    return name, count or 0, dur, expT, caster, sId
 end
 
 local function EnsureVerticalHelperBar(frameName, anchorBar, width, texturePath)
@@ -1076,7 +998,7 @@ local function SetupRetPaladin()
             icon.border.right:SetWidth(1)
             icon.border.right:SetColorTexture(0, 0, 0, 0.65)
             icon.durationText = icon:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-            icon.durationText:SetPoint("BOTTOM", icon, "TOP", 0, 2)
+            icon.durationText:SetPoint("CENTER", icon, "TOP", 0, 0)
             icon.durationText:SetJustifyH("CENTER")
             icon.durationText:SetFont("Fonts\\FRIZQT__.TTF", 12, "OUTLINE")
             icon.durationText:SetTextColor(1, 1, 1, 0.95)
@@ -1099,6 +1021,12 @@ local function SetupRetPaladin()
 
         local db = SuperSwingTimerDB or ns.DB_DEFAULTS
         if db and db.showPaladinBuffIcons == false then
+            for _, icon in ipairs(paladinBuffIcons) do
+                if icon and icon.Hide then icon:Hide() end
+            end
+            return
+        end
+        if ns.playerInCombat ~= true then
             for _, icon in ipairs(paladinBuffIcons) do
                 if icon and icon.Hide then icon:Hide() end
             end
@@ -2723,7 +2651,7 @@ local function SetupWarrior()
             icon.border.right:SetWidth(1)
             icon.border.right:SetColorTexture(0, 0, 0, 0.65)
             icon.durationText = icon:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-            icon.durationText:SetPoint("BOTTOM", icon, "TOP", 0, 2)
+            icon.durationText:SetPoint("CENTER", icon, "TOP", 0, 0)
             icon.durationText:SetJustifyH("CENTER")
             icon.durationText:SetFont("Fonts\\FRIZQT__.TTF", 12, "OUTLINE")
             icon.durationText:SetTextColor(1, 1, 1, 0.95)
@@ -2746,6 +2674,12 @@ local function SetupWarrior()
 
         local db = SuperSwingTimerDB or ns.DB_DEFAULTS
         if db and db.showWarriorBuffIcons == false then
+            for _, icon in ipairs(warriorBuffIcons) do
+                if icon and icon.Hide then icon:Hide() end
+            end
+            return
+        end
+        if ns.playerInCombat ~= true then
             for _, icon in ipairs(warriorBuffIcons) do
                 if icon and icon.Hide then icon:Hide() end
             end
@@ -3863,7 +3797,7 @@ local function SetupEnhShaman()
             icon.border.right:SetWidth(1)
             icon.border.right:SetColorTexture(0, 0, 0, 0.65)
             icon.durationText = icon:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-            icon.durationText:SetPoint("BOTTOM", icon, "TOP", 0, 2)
+            icon.durationText:SetPoint("CENTER", icon, "TOP", 0, 0)
             icon.durationText:SetJustifyH("CENTER")
             icon.durationText:SetFont("Fonts\\FRIZQT__.TTF", 12, "OUTLINE")
             icon.durationText:SetTextColor(1, 1, 1, 0.95)
@@ -3886,6 +3820,12 @@ local function SetupEnhShaman()
 
         local db = SuperSwingTimerDB or ns.DB_DEFAULTS
         if db and db.showShamanBuffIcons == false then
+            for _, icon in ipairs(shamanBuffIcons) do
+                if icon and icon.Hide then icon:Hide() end
+            end
+            return
+        end
+        if ns.playerInCombat ~= true then
             for _, icon in ipairs(shamanBuffIcons) do
                 if icon and icon.Hide then icon:Hide() end
             end
@@ -4832,7 +4772,7 @@ local function SetupDruid()
             icon.border.right:SetWidth(1)
             icon.border.right:SetColorTexture(0, 0, 0, 0.65)
             icon.durationText = icon:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-            icon.durationText:SetPoint("BOTTOM", icon, "TOP", 0, 2)
+            icon.durationText:SetPoint("CENTER", icon, "TOP", 0, 0)
             icon.durationText:SetJustifyH("CENTER")
             icon.durationText:SetFont("Fonts\\FRIZQT__.TTF", 12, "OUTLINE")
             icon.durationText:SetTextColor(1, 1, 1, 0.95)
@@ -4855,6 +4795,12 @@ local function SetupDruid()
 
         local db = SuperSwingTimerDB or ns.DB_DEFAULTS
         if db and db.showDruidBuffIcons == false then
+            for _, icon in ipairs(druidBuffIcons) do
+                if icon and icon.Hide then icon:Hide() end
+            end
+            return
+        end
+        if ns.playerInCombat ~= true then
             for _, icon in ipairs(druidBuffIcons) do
                 if icon and icon.Hide then icon:Hide() end
             end
@@ -5701,7 +5647,7 @@ local function SetupHunter()
             icon.border.right:SetWidth(1)
             icon.border.right:SetColorTexture(0, 0, 0, 0.65)
             icon.durationText = icon:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-            icon.durationText:SetPoint("BOTTOM", icon, "TOP", 0, 2)
+            icon.durationText:SetPoint("CENTER", icon, "TOP", 0, 0)
             icon.durationText:SetJustifyH("CENTER")
             icon.durationText:SetFont("Fonts\\FRIZQT__.TTF", 12, "OUTLINE")
             icon.durationText:SetTextColor(1, 1, 1, 0.95)
@@ -5725,6 +5671,12 @@ local function SetupHunter()
 
         local db = SuperSwingTimerDB or ns.DB_DEFAULTS
         if db and db.showHunterBuffIcons == false then
+            for _, icon in ipairs(hunterBuffIcons) do
+                if icon and icon.Hide then icon:Hide() end
+            end
+            return
+        end
+        if ns.playerInCombat ~= true then
             for _, icon in ipairs(hunterBuffIcons) do
                 if icon and icon.Hide then icon:Hide() end
             end
@@ -8083,7 +8035,7 @@ local function SetupRogue()
             icon.border.right:SetWidth(1)
             icon.border.right:SetColorTexture(0, 0, 0, 0.65)
             icon.durationText = icon:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-            icon.durationText:SetPoint("BOTTOM", icon, "TOP", 0, 2)
+            icon.durationText:SetPoint("CENTER", icon, "TOP", 0, 0)
             icon.durationText:SetJustifyH("CENTER")
             icon.durationText:SetFont("Fonts\\FRIZQT__.TTF", 12, "OUTLINE")
             icon.durationText:SetTextColor(1, 1, 1, 0.95)
@@ -8106,6 +8058,12 @@ local function SetupRogue()
 
         local db = SuperSwingTimerDB or ns.DB_DEFAULTS
         if db and db.showRogueBuffIcons == false then
+            for _, icon in ipairs(rogueBuffIcons) do
+                if icon and icon.Hide then icon:Hide() end
+            end
+            return
+        end
+        if ns.playerInCombat ~= true then
             for _, icon in ipairs(rogueBuffIcons) do
                 if icon and icon.Hide then icon:Hide() end
             end

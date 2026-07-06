@@ -89,6 +89,67 @@ function ns.GetUnitCastingSpellInfo(unit)
     return spellId or spellName, spellName, startTimeMs, endTimeMs, castId, spellId
 end
 
+--- Classic/TBC-safe UnitAura wrapper. Normalizes all known client return
+--  shapes into a canonical 11-value tuple:
+--    name, rank, icon, count, debuffType, duration, expirationTime,
+--    unitCaster, isStealable, shouldConsolidate, spellID
+--  Handles Classic 1.13.x (9 ret, no icon), Classic 1.15.x (10 ret, icon),
+--  TBC Anniversary 2.5.5 (AuraUtil.UnpackAuraData, 15+ ret), and Retail.
+--  Missing fields are nil. Intended as the ONLY call site for raw UnitAura
+--  in the addon — all callers use this wrapper or ns.UnitBuff/ns.UnitDebuff.
+--  @param unit (string) Unit token, e.g. "target"
+--  @param index (number) Aura slot index, 1-based
+--  @param filter (string|nil) "HELPFUL", "HARMFUL", or nil (all)
+--  @return (string|nil) name, (nil) rank, (string|number|nil) icon,
+--          (number) count, (string|nil) debuffType, (number|nil) duration,
+--          (number|nil) expirationTime, (string|nil) unitCaster,
+--          (boolean|nil) isStealable, (number|nil) shouldConsolidate,
+--          (number|nil) spellID
+--  @usage local name, _, _, _, _, dur, expT, caster, _, _, sId = ns.UnitAura("target", 1, "HARMFUL")
+function ns.UnitAura(unit, index, filter)
+    if not unit or not index or not UnitAura then return nil end
+    local r1, r2, r3, r4, r5, r6, r7, r8, r9, r10, r11 = UnitAura(unit, index, filter)
+    if not r1 then return nil end
+
+    -- Determine shape by examining return values positionally.
+    -- Three shapes:
+    --   A. Classic 1.13.x:  r3=count(num), r4=debuffType, r9=spellID, r10=nil
+    --   B. Classic 1.15.x:  r3=icon(str),  r4=count,       r10=spellID
+    --   C. TBC Anniv:       r3=apps(num),  r4=dispelName,  r10=spellID(num), r11=canApplyAura(bool)
+    --   D. Retail:          r3=icon(str),  r4=count,       r11=spellID
+    -- Final normalized: name, rank/nil, icon, count, debuffType,
+    --                   duration, expirationTime, unitCaster,
+    --                   isStealable, shouldConsolidate, spellID
+    if type(r3) == "string" then
+        -- Shape B or D (string icon at r3): r4=count, r5=debuffType,
+        -- r6=duration, r7=expTime, r8=caster, r9=stealable
+        -- r10=spellID(B) or shouldConsolidate(D), r11=nil(B) or spellID(D)
+        return r1, r2, r3, tonumber(r4) or 0, r5, r6, r7, r8, r9, r10,
+               type(r11) == "number" and r11 or type(r10) == "number" and r10 or nil
+    elseif type(r3) == "number" and type(r10) == "number" then
+        -- Shape C (TBC Anniv via UnpackAuraData):
+        -- r2=icon(FileID#), r3=applications, r4=dispelName,
+        -- r5=duration, r6=expTime, r7=sourceUnit, r8=stealable,
+        -- r9=nameplateShowPersonal(bool), r10=spellID, r11=canApplyAura(bool)
+        return r1, nil, r2, tonumber(r3) or 0, r4, r5, r6, r7, r8, nil,
+               type(r10) == "number" and r10 or nil
+    else
+        -- Shape A (Classic 1.13.x, no icon):
+        -- r3=count, r4=debuffType, r5=duration, r6=expTime,
+        -- r7=caster, r8=stealable, r9=spellID
+        return r1, nil, nil, tonumber(r3) or 0, r4, r5, r6, r7, r8, nil,
+               type(r9) == "number" and r9 or nil
+    end
+end
+--- Convenience: ns.UnitBuff(unit, index) = ns.UnitAura(unit, index, "HELPFUL")
+function ns.UnitBuff(unit, index)
+    return ns.UnitAura(unit, index, "HELPFUL")
+end
+--- Convenience: ns.UnitDebuff(unit, index) = ns.UnitAura(unit, index, "HARMFUL")
+function ns.UnitDebuff(unit, index)
+    return ns.UnitAura(unit, index, "HARMFUL")
+end
+
 -- ============================================================
 -- UI constants
 -- ============================================================
