@@ -13,7 +13,7 @@ SuperSwingTimer is a **production-grade WoW addon** with ~6,000+ lines of Lua ac
 
 However, the addon has grown organically through many feature passes, and several areas show **accumulated technical debt** that prevents it from being truly best-in-class.
 
-**Overall score: 8.2/10** — improved from 7.2. Fresh-install block fixed, CI added, migration tests, font constant, GetTime shims removed.
+**Overall score: 8.5/10** — improved from 8.2. WoWUnit test suite (+34 tests), GetDebuffStackOffset sign fix, buff icon border fix.
 
 ---
 
@@ -158,7 +158,7 @@ However, the addon has grown organically through many feature passes, and severa
 - Bar factory creates textures unconditionally even for classes that won't use them
 - No pooled texture system for sparks/overlays
 
-### 9. Testing & Quality Gates — **5/10** (+2.0)
+### 9. Testing & Quality Gates — **7/10** (+2.0)
 
 **Strengths:**
 
@@ -166,15 +166,16 @@ However, the addon has grown organically through many feature passes, and severa
 - `luac -p` syntax check capability
 - AGENTS.md documents manual QA steps
 - **NEW: GitHub Actions CI** (`.github/workflows/luac.yml`) auto-runs `luac -p` on push/PR
-- **NEW: `test_migrations.lua`** — 37 tests verifying `DeepCopyDefaults` correctness
+- **NEW: `SuperSwingTimer_Tests.lua`** — 34 WoWUnit in-game tests across 9 groups. Tests run via `## OptionalDeps: WoWUnit`, zero overhead when absent. Internal functions exported on `ns._Test` only when WoWUnit is present.
 - **NEW: `docs/QA.md`** — step-by-step manual smoke-test checklist covering all 6 classes
+- Test groups cover: constants integrity (12 tests), timer state (3), harmful aura parsing both Classic + TBC shapes (4), GetDebuffStackOffset math + sign (3), Hunter Serpent Sting detection by ID + name + caster filter (4), MigrateDB v1→v54 chain (4), dispatch nil-guards (3), helpful aura parsing both shapes (2), Flurry buff info both shapes (3)
 
 **Weaknesses:**
 
 - **No CLEU parsing test harness** — the most error-prone code path has zero simulation tests.
-- No regression test for migration cases (54 versions, only DeepCopyDefaults tested).
-- Manual QA is the only runtime bug barrier — though `docs/QA.md` now provides a checklist.
-- No integration tests for the OnUpdate hook system.
+- No standalone test runner outside WoW (no busted/luaunit CI for pure-logic tests).
+- Manual QA is still the only runtime bug barrier for visual layout.
+- WoWUnit tests require the game client to execute — can't run in CI.
 
 ### 10. Documentation — **7.5/10** (+0.5)
 
@@ -349,6 +350,7 @@ Compared to other swing timer addons (WeaponSwingTimer, SwangThang, Quartz, Gnos
 - [x] **Migration test suite** — `test_migrations.lua` with 37 tests for `DeepCopyDefaults` correctness
 - [x] **GitHub Actions CI** — `.github/workflows/luac.yml` auto-runs `luac -p` on push/PR
 - [x] **Manual smoke-test checklist** — `docs/QA.md` with step-by-step QA steps
+- [x] **WoWUnit in-game test suite** — 34 tests across 9 groups via `## OptionalDeps: WoWUnit`. `ns._Test` harness exports internal functions only when testing.
 
 ### Phase 4: Polish & Documentation (1–2 sessions)
 

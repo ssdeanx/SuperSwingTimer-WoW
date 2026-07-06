@@ -38,23 +38,44 @@ local FLURRY_BUFF_NAME_LOOKUP = {}
 -- screen position so the calculation is always correct regardless of SetPoint offsets.
 -- referenceBar = the main bar to use as origin (e.g. ns.mhBar for melee, ns.rangedBar for hunter).
 -- Returns a BOTTOM-to-referenceBar.TOP Y offset for SetPoint.
+-- Uses a visibility-bitmask cache to avoid one-frame bounce from WoW's deferred
+-- SetPoint layout: GetTop() is stale in the frame where a bar is shown/hidden.
+local _debuffStackCache = nil
+local _debuffStackCacheBars = nil
 local function GetDebuffStackOffset(bars, referenceBar)
     if not referenceBar then return 11 end
     local refTop = type(referenceBar.GetTop) == "function" and referenceBar:GetTop() or 0
     if not refTop or refTop == 0 then return 11 end
-    local maxBarTop = 0
-    for _, bar in ipairs(bars) do
+    -- Compute visibility bitmask to detect bar-set changes
+    local visMask = 0
+    for i, bar in ipairs(bars or {}) do
+        if bar then
+            visMask = visMask + ((bar.IsShown and bar:IsShown()) and (1 << (i - 1)) or 0)
+        end
+    end
+    -- Use cached offset if the visible bar set hasn't changed
+    if _debuffStackCache and _debuffStackCacheBars == visMask then
+        return _debuffStackCache
+    end
+    -- Track the highest bar's top edge (most negative offset from refTop).
+    -- RestackDebuffBars stacks bars below refTop, so their tops extend above
+    -- refTop (negative offset). The MOST negative offset = the HIGHEST bar.
+    local minBarTop = 0
+    for _, bar in ipairs(bars or {}) do
         if bar and bar.IsShown and bar:IsShown() then
             local barTop = type(bar.GetTop) == "function" and bar:GetTop()
             if barTop then
                 local offset = barTop - refTop
-                if offset > maxBarTop then
-                    maxBarTop = offset
+                if offset < minBarTop then
+                    minBarTop = offset
                 end
             end
         end
     end
-    return maxBarTop + 6  -- 6px gap above highest bar (+2px raised)
+    local result = minBarTop - 8  -- 8px gap above the highest visible bar
+    _debuffStackCache = result
+    _debuffStackCacheBars = visMask
+    return result
 end
 
 -- Universal debuff bar restacker: positions visible bars in order above referenceBar.
@@ -162,12 +183,32 @@ local function CreateFlurryIconFrame()
     local texturePath = GetSpellTexture and GetSpellTexture(12319) or "Interface\\Icons\\Ability_Warrior_FocusedRage"
     icon.texture:SetTexture(texturePath)
 
-    -- Semi-transparent border
-    icon.border = icon:CreateTexture(nil, "OVERLAY")
-    icon.border:SetDrawLayer("OVERLAY", -1)
-    icon.border:SetColorTexture(0, 0, 0, 0.65)
-    icon.border:SetPoint("TOPLEFT", -1, 1)
-    icon.border:SetPoint("BOTTOMRIGHT", 1, -1)
+    -- 4-edge outline border (not a full-face overlay)
+    icon.border = {}
+    icon.border.top = icon:CreateTexture(nil, "OVERLAY")
+    icon.border.top:SetDrawLayer("OVERLAY", -1)
+    icon.border.top:SetPoint("TOPLEFT", -1, 1)
+    icon.border.top:SetPoint("TOPRIGHT", 1, 1)
+    icon.border.top:SetHeight(1)
+    icon.border.top:SetColorTexture(0, 0, 0, 0.65)
+    icon.border.bottom = icon:CreateTexture(nil, "OVERLAY")
+    icon.border.bottom:SetDrawLayer("OVERLAY", -1)
+    icon.border.bottom:SetPoint("BOTTOMLEFT", -1, -1)
+    icon.border.bottom:SetPoint("BOTTOMRIGHT", 1, -1)
+    icon.border.bottom:SetHeight(1)
+    icon.border.bottom:SetColorTexture(0, 0, 0, 0.65)
+    icon.border.left = icon:CreateTexture(nil, "OVERLAY")
+    icon.border.left:SetDrawLayer("OVERLAY", -1)
+    icon.border.left:SetPoint("TOPLEFT", -1, 1)
+    icon.border.left:SetPoint("BOTTOMLEFT", -1, -1)
+    icon.border.left:SetWidth(1)
+    icon.border.left:SetColorTexture(0, 0, 0, 0.65)
+    icon.border.right = icon:CreateTexture(nil, "OVERLAY")
+    icon.border.right:SetDrawLayer("OVERLAY", -1)
+    icon.border.right:SetPoint("TOPRIGHT", 1, 1)
+    icon.border.right:SetPoint("BOTTOMRIGHT", 1, -1)
+    icon.border.right:SetWidth(1)
+    icon.border.right:SetColorTexture(0, 0, 0, 0.65)
 
     -- Stack count (bottom-right, overlaid on the icon)
     icon.stackText = icon:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
@@ -279,46 +320,49 @@ local function GetHarmfulAuraData(unit, index, filter)
         return nil
     end
 
-    local name
-    local auraCountRaw
-    local auraTypeOrDuration
-    local maybeDuration
-    local maybeExpiration
-    local maybeCaster
-    local maybeSpellId
-    local legacySpellId
-
-    name, _, auraCountRaw, auraTypeOrDuration, maybeDuration, maybeExpiration, maybeCaster, _, _, maybeSpellId, legacySpellId = UnitAura(
+    -- Unpack ALL UnitAura return values positionally so we can detect the
+    -- API shape regardless of variable naming.  Current Classic Era 1.15.x+
+    -- and TBC Anniversary 2.5.5 return:
+    --   name, rank, icon, count, debuffType, duration, expTime, caster,
+    --   isStealable, shouldConsolidate, spellID
+    -- Older Classic 1.13.x did NOT return icon (count was at position 3).
+    -- We detect the shape by checking if position 3 is a string (icon texture).
+    local pos1, pos2, pos3, pos4, pos5, pos6, pos7, pos8, pos9, pos10, pos11 = UnitAura(
         unit, index, filter or "HARMFUL"
     )
-    if not name then
+    if not pos1 then
         return nil
     end
 
-    local auraCount = tonumber(auraCountRaw) or 0
+    local name = pos1
+    local hasIconField = type(pos3) == "string"
+
+    local auraCount
     local duration
     local expirationTime
     local caster
+    local spellId
 
-    -- Classic-family builds can shift harmful-aura tuple fields. Prefer typed parsing.
-    if type(auraTypeOrDuration) == "number" and type(maybeDuration) == "number" then
-        -- Current Classic/TBC Anniversary harmful-aura shape.
-        duration = auraTypeOrDuration
-        expirationTime = maybeDuration
-        caster = maybeExpiration
-    elseif type(maybeDuration) == "number" and type(maybeExpiration) == "number" then
-        -- Older Classic-compatible harmful-aura shape.
-        duration = maybeDuration
-        expirationTime = maybeExpiration
-        caster = maybeCaster
+    if hasIconField then
+        -- Current shape: pos3=icon, pos4=count, pos5=debuffType,
+        --                pos6=duration, pos7=expTime, pos8=caster,
+        --                pos9=stealable, pos10=shouldConsolidate, pos11=spellID
+        auraCount = tonumber(pos4) or 0
+        duration = pos6
+        expirationTime = pos7
+        caster = pos8
+        spellId = type(pos11) == "number" and pos11
+            or (type(pos10) == "number" and pos10 or nil)
     else
-        duration = tonumber(auraTypeOrDuration) or tonumber(maybeDuration)
-        expirationTime = tonumber(maybeDuration) or tonumber(maybeExpiration)
-        caster = maybeExpiration or maybeCaster
+        -- Older shape (no icon): pos3=count, pos4=debuffType,
+        --                       pos5=duration, pos6=expTime, pos7=caster,
+        --                       pos8=stealable, pos9=spellID
+        auraCount = tonumber(pos3) or 0
+        duration = pos5
+        expirationTime = pos6
+        caster = pos7
+        spellId = type(pos9) == "number" and pos9 or nil
     end
-
-    local spellId = type(maybeSpellId) == "number" and maybeSpellId
-        or (type(legacySpellId) == "number" and legacySpellId or nil)
 
     return name, auraCount, duration, expirationTime, caster, spellId
 end
@@ -1009,12 +1053,30 @@ local function SetupRetPaladin()
             icon.glow:SetAllPoints()
             icon.glow:SetColorTexture(1, 0.85, 0, 0)
             icon.glow:SetBlendMode("ADD")
-            icon.border = icon:CreateTexture(nil, "OVERLAY", nil, -1)
-            icon.border:SetColorTexture(0, 0, 0, 0.65)
-            icon.border:SetPoint("TOPLEFT", -1, 1)
-            icon.border:SetPoint("BOTTOMRIGHT", 1, -1)
+            -- 4-edge outline border (not a full-face overlay)
+            icon.border = {}
+            icon.border.top = icon:CreateTexture(nil, "OVERLAY", nil, -1)
+            icon.border.top:SetPoint("TOPLEFT", -1, 1)
+            icon.border.top:SetPoint("TOPRIGHT", 1, 1)
+            icon.border.top:SetHeight(1)
+            icon.border.top:SetColorTexture(0, 0, 0, 0.65)
+            icon.border.bottom = icon:CreateTexture(nil, "OVERLAY", nil, -1)
+            icon.border.bottom:SetPoint("BOTTOMLEFT", -1, -1)
+            icon.border.bottom:SetPoint("BOTTOMRIGHT", 1, -1)
+            icon.border.bottom:SetHeight(1)
+            icon.border.bottom:SetColorTexture(0, 0, 0, 0.65)
+            icon.border.left = icon:CreateTexture(nil, "OVERLAY", nil, -1)
+            icon.border.left:SetPoint("TOPLEFT", -1, 1)
+            icon.border.left:SetPoint("BOTTOMLEFT", -1, -1)
+            icon.border.left:SetWidth(1)
+            icon.border.left:SetColorTexture(0, 0, 0, 0.65)
+            icon.border.right = icon:CreateTexture(nil, "OVERLAY", nil, -1)
+            icon.border.right:SetPoint("TOPRIGHT", 1, 1)
+            icon.border.right:SetPoint("BOTTOMRIGHT", 1, -1)
+            icon.border.right:SetWidth(1)
+            icon.border.right:SetColorTexture(0, 0, 0, 0.65)
             icon.durationText = icon:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-            icon.durationText:SetPoint("TOP", icon, "TOP", 0, -1)
+            icon.durationText:SetPoint("BOTTOM", icon, "TOP", 0, 2)
             icon.durationText:SetJustifyH("CENTER")
             icon.durationText:SetFont("Fonts\\FRIZQT__.TTF", 12, "OUTLINE")
             icon.durationText:SetTextColor(1, 1, 1, 0.95)
@@ -2638,12 +2700,30 @@ local function SetupWarrior()
             icon.glow:SetAllPoints()
             icon.glow:SetColorTexture(1, 0.85, 0, 0)
             icon.glow:SetBlendMode("ADD")
-            icon.border = icon:CreateTexture(nil, "OVERLAY", nil, -1)
-            icon.border:SetColorTexture(0, 0, 0, 0.65)
-            icon.border:SetPoint("TOPLEFT", -1, 1)
-            icon.border:SetPoint("BOTTOMRIGHT", 1, -1)
+            -- 4-edge outline border (not a full-face overlay)
+            icon.border = {}
+            icon.border.top = icon:CreateTexture(nil, "OVERLAY", nil, -1)
+            icon.border.top:SetPoint("TOPLEFT", -1, 1)
+            icon.border.top:SetPoint("TOPRIGHT", 1, 1)
+            icon.border.top:SetHeight(1)
+            icon.border.top:SetColorTexture(0, 0, 0, 0.65)
+            icon.border.bottom = icon:CreateTexture(nil, "OVERLAY", nil, -1)
+            icon.border.bottom:SetPoint("BOTTOMLEFT", -1, -1)
+            icon.border.bottom:SetPoint("BOTTOMRIGHT", 1, -1)
+            icon.border.bottom:SetHeight(1)
+            icon.border.bottom:SetColorTexture(0, 0, 0, 0.65)
+            icon.border.left = icon:CreateTexture(nil, "OVERLAY", nil, -1)
+            icon.border.left:SetPoint("TOPLEFT", -1, 1)
+            icon.border.left:SetPoint("BOTTOMLEFT", -1, -1)
+            icon.border.left:SetWidth(1)
+            icon.border.left:SetColorTexture(0, 0, 0, 0.65)
+            icon.border.right = icon:CreateTexture(nil, "OVERLAY", nil, -1)
+            icon.border.right:SetPoint("TOPRIGHT", 1, 1)
+            icon.border.right:SetPoint("BOTTOMRIGHT", 1, -1)
+            icon.border.right:SetWidth(1)
+            icon.border.right:SetColorTexture(0, 0, 0, 0.65)
             icon.durationText = icon:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-            icon.durationText:SetPoint("TOP", icon, "TOP", 0, -1)
+            icon.durationText:SetPoint("BOTTOM", icon, "TOP", 0, 2)
             icon.durationText:SetJustifyH("CENTER")
             icon.durationText:SetFont("Fonts\\FRIZQT__.TTF", 12, "OUTLINE")
             icon.durationText:SetTextColor(1, 1, 1, 0.95)
@@ -3760,12 +3840,30 @@ local function SetupEnhShaman()
             icon.glow:SetAllPoints()
             icon.glow:SetColorTexture(1, 0.85, 0, 0)
             icon.glow:SetBlendMode("ADD")
-            icon.border = icon:CreateTexture(nil, "OVERLAY", nil, -1)
-            icon.border:SetColorTexture(0, 0, 0, 0.65)
-            icon.border:SetPoint("TOPLEFT", -1, 1)
-            icon.border:SetPoint("BOTTOMRIGHT", 1, -1)
+            -- 4-edge outline border (not a full-face overlay)
+            icon.border = {}
+            icon.border.top = icon:CreateTexture(nil, "OVERLAY", nil, -1)
+            icon.border.top:SetPoint("TOPLEFT", -1, 1)
+            icon.border.top:SetPoint("TOPRIGHT", 1, 1)
+            icon.border.top:SetHeight(1)
+            icon.border.top:SetColorTexture(0, 0, 0, 0.65)
+            icon.border.bottom = icon:CreateTexture(nil, "OVERLAY", nil, -1)
+            icon.border.bottom:SetPoint("BOTTOMLEFT", -1, -1)
+            icon.border.bottom:SetPoint("BOTTOMRIGHT", 1, -1)
+            icon.border.bottom:SetHeight(1)
+            icon.border.bottom:SetColorTexture(0, 0, 0, 0.65)
+            icon.border.left = icon:CreateTexture(nil, "OVERLAY", nil, -1)
+            icon.border.left:SetPoint("TOPLEFT", -1, 1)
+            icon.border.left:SetPoint("BOTTOMLEFT", -1, -1)
+            icon.border.left:SetWidth(1)
+            icon.border.left:SetColorTexture(0, 0, 0, 0.65)
+            icon.border.right = icon:CreateTexture(nil, "OVERLAY", nil, -1)
+            icon.border.right:SetPoint("TOPRIGHT", 1, 1)
+            icon.border.right:SetPoint("BOTTOMRIGHT", 1, -1)
+            icon.border.right:SetWidth(1)
+            icon.border.right:SetColorTexture(0, 0, 0, 0.65)
             icon.durationText = icon:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-            icon.durationText:SetPoint("TOP", icon, "TOP", 0, -1)
+            icon.durationText:SetPoint("BOTTOM", icon, "TOP", 0, 2)
             icon.durationText:SetJustifyH("CENTER")
             icon.durationText:SetFont("Fonts\\FRIZQT__.TTF", 12, "OUTLINE")
             icon.durationText:SetTextColor(1, 1, 1, 0.95)
@@ -4711,12 +4809,30 @@ local function SetupDruid()
             icon.glow:SetAllPoints()
             icon.glow:SetColorTexture(1, 0.85, 0, 0)
             icon.glow:SetBlendMode("ADD")
-            icon.border = icon:CreateTexture(nil, "OVERLAY", nil, -1)
-            icon.border:SetColorTexture(0, 0, 0, 0.65)
-            icon.border:SetPoint("TOPLEFT", -1, 1)
-            icon.border:SetPoint("BOTTOMRIGHT", 1, -1)
+            -- 4-edge outline border (not a full-face overlay)
+            icon.border = {}
+            icon.border.top = icon:CreateTexture(nil, "OVERLAY", nil, -1)
+            icon.border.top:SetPoint("TOPLEFT", -1, 1)
+            icon.border.top:SetPoint("TOPRIGHT", 1, 1)
+            icon.border.top:SetHeight(1)
+            icon.border.top:SetColorTexture(0, 0, 0, 0.65)
+            icon.border.bottom = icon:CreateTexture(nil, "OVERLAY", nil, -1)
+            icon.border.bottom:SetPoint("BOTTOMLEFT", -1, -1)
+            icon.border.bottom:SetPoint("BOTTOMRIGHT", 1, -1)
+            icon.border.bottom:SetHeight(1)
+            icon.border.bottom:SetColorTexture(0, 0, 0, 0.65)
+            icon.border.left = icon:CreateTexture(nil, "OVERLAY", nil, -1)
+            icon.border.left:SetPoint("TOPLEFT", -1, 1)
+            icon.border.left:SetPoint("BOTTOMLEFT", -1, -1)
+            icon.border.left:SetWidth(1)
+            icon.border.left:SetColorTexture(0, 0, 0, 0.65)
+            icon.border.right = icon:CreateTexture(nil, "OVERLAY", nil, -1)
+            icon.border.right:SetPoint("TOPRIGHT", 1, 1)
+            icon.border.right:SetPoint("BOTTOMRIGHT", 1, -1)
+            icon.border.right:SetWidth(1)
+            icon.border.right:SetColorTexture(0, 0, 0, 0.65)
             icon.durationText = icon:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-            icon.durationText:SetPoint("TOP", icon, "TOP", 0, -1)
+            icon.durationText:SetPoint("BOTTOM", icon, "TOP", 0, 2)
             icon.durationText:SetJustifyH("CENTER")
             icon.durationText:SetFont("Fonts\\FRIZQT__.TTF", 12, "OUTLINE")
             icon.durationText:SetTextColor(1, 1, 1, 0.95)
@@ -5562,12 +5678,30 @@ local function SetupHunter()
             icon.glow:SetAllPoints()
             icon.glow:SetColorTexture(1, 0.85, 0, 0)
             icon.glow:SetBlendMode("ADD")
-            icon.border = icon:CreateTexture(nil, "OVERLAY", nil, -1)
-            icon.border:SetColorTexture(0, 0, 0, 0.65)
-            icon.border:SetPoint("TOPLEFT", -1, 1)
-            icon.border:SetPoint("BOTTOMRIGHT", 1, -1)
+            -- 4-edge outline border (not a full-face overlay)
+            icon.border = {}
+            icon.border.top = icon:CreateTexture(nil, "OVERLAY", nil, -1)
+            icon.border.top:SetPoint("TOPLEFT", -1, 1)
+            icon.border.top:SetPoint("TOPRIGHT", 1, 1)
+            icon.border.top:SetHeight(1)
+            icon.border.top:SetColorTexture(0, 0, 0, 0.65)
+            icon.border.bottom = icon:CreateTexture(nil, "OVERLAY", nil, -1)
+            icon.border.bottom:SetPoint("BOTTOMLEFT", -1, -1)
+            icon.border.bottom:SetPoint("BOTTOMRIGHT", 1, -1)
+            icon.border.bottom:SetHeight(1)
+            icon.border.bottom:SetColorTexture(0, 0, 0, 0.65)
+            icon.border.left = icon:CreateTexture(nil, "OVERLAY", nil, -1)
+            icon.border.left:SetPoint("TOPLEFT", -1, 1)
+            icon.border.left:SetPoint("BOTTOMLEFT", -1, -1)
+            icon.border.left:SetWidth(1)
+            icon.border.left:SetColorTexture(0, 0, 0, 0.65)
+            icon.border.right = icon:CreateTexture(nil, "OVERLAY", nil, -1)
+            icon.border.right:SetPoint("TOPRIGHT", 1, 1)
+            icon.border.right:SetPoint("BOTTOMRIGHT", 1, -1)
+            icon.border.right:SetWidth(1)
+            icon.border.right:SetColorTexture(0, 0, 0, 0.65)
             icon.durationText = icon:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-            icon.durationText:SetPoint("TOP", icon, "TOP", 0, -1)
+            icon.durationText:SetPoint("BOTTOM", icon, "TOP", 0, 2)
             icon.durationText:SetJustifyH("CENTER")
             icon.durationText:SetFont("Fonts\\FRIZQT__.TTF", 12, "OUTLINE")
             icon.durationText:SetTextColor(1, 1, 1, 0.95)
@@ -5708,7 +5842,7 @@ local function SetupHunter()
         serpentStingBar:SetStatusBarTexture(
             (ns.GetBarTexture and ns.GetBarTexture()) or "Interface\\TargetingFrame\\UI-StatusBar"
         )
-        serpentStingBar:SetStatusBarColor(0.05, 0.55, 0.20, 0.90)  -- dark green
+        serpentStingBar:SetStatusBarColor(0.10, 0.85, 0.15, 0.90)  -- bright serpent green
         serpentStingBar:SetMinMaxValues(0, 1)
         serpentStingBar:SetValue(0)
         serpentStingBar:SetHeight(SERPENT_STING_BAR_HEIGHT)
@@ -5729,7 +5863,7 @@ local function SetupHunter()
             local tex = serpentStingBar:CreateTexture(nil, "OVERLAY")
             tex:SetPoint(edgeDef[1], serpentStingBar, edgeDef[2], edgeDef[4], edgeDef[5])
             tex:SetPoint(edgeDef[3], edgeDef[6], edgeDef[7], edgeDef[8])
-            tex:SetColorTexture(0.05, 0.55, 0.20, 0.85)
+            tex:SetColorTexture(0.10, 0.85, 0.15, 0.85)
             tex:Hide()
             glowBorder[#glowBorder + 1] = tex
         end
@@ -5984,7 +6118,7 @@ local function SetupHunter()
         concussionShotBar:SetStatusBarTexture(
             (ns.GetBarTexture and ns.GetBarTexture()) or "Interface\\TargetingFrame\\UI-StatusBar"
         )
-        concussionShotBar:SetStatusBarColor(0.10, 0.15, 0.60, 0.90)  -- dark blue
+        concussionShotBar:SetStatusBarColor(0.55, 0.55, 0.55, 0.90)  -- grey
         concussionShotBar:SetMinMaxValues(0, 1)
         concussionShotBar:SetValue(0)
         concussionShotBar:SetHeight(CONCUSSION_SHOT_BAR_HEIGHT)
@@ -6005,7 +6139,7 @@ local function SetupHunter()
             local tex = concussionShotBar:CreateTexture(nil, "OVERLAY")
             tex:SetPoint(edgeDef[1], concussionShotBar, edgeDef[2], edgeDef[4], edgeDef[5])
             tex:SetPoint(edgeDef[3], edgeDef[6], edgeDef[7], edgeDef[8])
-            tex:SetColorTexture(0.10, 0.15, 0.60, 0.85)
+            tex:SetColorTexture(0.55, 0.55, 0.55, 0.85)
             tex:Hide()
             glowBorder[#glowBorder + 1] = tex
         end
@@ -6682,6 +6816,11 @@ local function SetupHunter()
     ns.UpdateHunterExplosiveTrapBar = UpdateHunterExplosiveTrapBar
     ns.UpdateHunterFreezingTrapBar = UpdateHunterFreezingTrapBar
     ns.UpdateHunterFrostTrapBar = UpdateHunterFrostTrapBar
+    -- WoWUnit test harness
+    if WoWUnit then
+        if not ns._Test then ns._Test = {} end
+        ns._Test.GetTargetSerpentStingData = GetTargetSerpentStingData
+    end
 end
 
 local function SetupRogue()
@@ -7921,12 +8060,30 @@ local function SetupRogue()
             icon.glow:SetAllPoints()
             icon.glow:SetColorTexture(1, 0.85, 0, 0)
             icon.glow:SetBlendMode("ADD")
-            icon.border = icon:CreateTexture(nil, "OVERLAY", nil, -1)
-            icon.border:SetColorTexture(0, 0, 0, 0.65)
-            icon.border:SetPoint("TOPLEFT", -1, 1)
-            icon.border:SetPoint("BOTTOMRIGHT", 1, -1)
+            -- 4-edge outline border (not a full-face overlay)
+            icon.border = {}
+            icon.border.top = icon:CreateTexture(nil, "OVERLAY", nil, -1)
+            icon.border.top:SetPoint("TOPLEFT", -1, 1)
+            icon.border.top:SetPoint("TOPRIGHT", 1, 1)
+            icon.border.top:SetHeight(1)
+            icon.border.top:SetColorTexture(0, 0, 0, 0.65)
+            icon.border.bottom = icon:CreateTexture(nil, "OVERLAY", nil, -1)
+            icon.border.bottom:SetPoint("BOTTOMLEFT", -1, -1)
+            icon.border.bottom:SetPoint("BOTTOMRIGHT", 1, -1)
+            icon.border.bottom:SetHeight(1)
+            icon.border.bottom:SetColorTexture(0, 0, 0, 0.65)
+            icon.border.left = icon:CreateTexture(nil, "OVERLAY", nil, -1)
+            icon.border.left:SetPoint("TOPLEFT", -1, 1)
+            icon.border.left:SetPoint("BOTTOMLEFT", -1, -1)
+            icon.border.left:SetWidth(1)
+            icon.border.left:SetColorTexture(0, 0, 0, 0.65)
+            icon.border.right = icon:CreateTexture(nil, "OVERLAY", nil, -1)
+            icon.border.right:SetPoint("TOPRIGHT", 1, 1)
+            icon.border.right:SetPoint("BOTTOMRIGHT", 1, -1)
+            icon.border.right:SetWidth(1)
+            icon.border.right:SetColorTexture(0, 0, 0, 0.65)
             icon.durationText = icon:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-            icon.durationText:SetPoint("TOP", icon, "TOP", 0, -1)
+            icon.durationText:SetPoint("BOTTOM", icon, "TOP", 0, 2)
             icon.durationText:SetJustifyH("CENTER")
             icon.durationText:SetFont("Fonts\\FRIZQT__.TTF", 12, "OUTLINE")
             icon.durationText:SetTextColor(1, 1, 1, 0.95)
@@ -8187,4 +8344,17 @@ function ns.InitClassMods()
     elseif class == "DRUID" then
         pcall(SetupDruid)
     end
+end
+
+-- ============================================================
+-- WoWUnit test harness: expose internal functions for in-game
+-- unit tests. Only loaded when WoWUnit addon is present.
+-- ============================================================
+if WoWUnit then
+    ns._Test = {}
+    ns._Test.GetHarmfulAuraData = GetHarmfulAuraData
+    ns._Test.GetHelpfulAuraData = GetHelpfulAuraData
+    ns._Test.GetDebuffStackOffset = GetDebuffStackOffset
+    ns._Test.RestackDebuffBars = RestackDebuffBars
+    ns._Test.GetFlurryBuffInfo = GetFlurryBuffInfo
 end

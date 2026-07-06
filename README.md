@@ -206,3 +206,33 @@ Found a bug or want a feature? Open an issue at:
 ## Changelog
 
 See `CHANGELOG.md` for the release history.
+
+## Testing
+
+SuperSwingTimer includes an optional in-game unit test suite powered by [**WoWUnit**](https://www.curseforge.com/wow/addons/wowunit) (Jaliborc).
+
+### Setup
+
+1. Install [WoWUnit from CurseForge](https://www.curseforge.com/wow/addons/wowunit)
+2. `/reload` in-game
+3. Open WoWUnit's test UI to see results
+
+Tests run automatically on `PLAYER_ENTERING_WORLD` and relevant game events. 9 test groups cover:
+
+| Group | Tests | Coverage |
+|-------|-------|----------|
+| `SST-Constants` | 12 | Spell IDs, DB defaults, clock domain, seal families |
+| `SST-Timers` | 3 | `ns.timers.*` existence, monotonic clock |
+| `SST-AuraParsing` | 4 | `GetHarmfulAuraData` Classic + TBC shapes, physical debuffs, nil |
+| `SST-StackOffset` | 3 | `GetDebuffStackOffset` sign, highest-bar tracking, hidden bars |
+| `SST-HunterSerpentSting` | 4 | Detection by ID + name, caster filtering, no-target safety |
+| `SST-MigrateDB` | 4 | Fresh DB, v1→v54 chain, v54 no-op, factory reset |
+| `SST-Dispatch` | 3 | Nil-guards on public API functions |
+| `SST-HelpfulAura` | 2 | `GetHelpfulAuraData` both API shapes |
+| `SST-Flurry` | 3 | `GetFlurryBuffInfo` charges + expiration, nil when inactive |
+
+Tests are loaded as `## OptionalDeps: WoWUnit` and skipped entirely when WoWUnit is not installed — zero overhead outside testing.
+
+### CI (GitHub Actions)
+
+Every push to `main` runs `luac -p` syntax check on all 8 Lua files via `.github/workflows/luac.yml`.

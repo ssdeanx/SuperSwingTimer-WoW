@@ -5,6 +5,7 @@
 ## Version: v0.1.7
 ## IconTexture: Interface\Icons\INV_Sword_27
 ## X-Curse-Project-ID: 1521271
+## OptionalDeps: WoWUnit
 ## SavedVariables: SuperSwingTimerDB SwangThangDB HunterTimerDB
 
 SuperSwingTimer_Constants.lua
@@ -15,3 +16,4 @@ SuperSwingTimer_UI.lua
 SuperSwingTimer_ClassMods.lua
 SuperSwingTimer_Config.lua
 SuperSwingTimer.lua
+SuperSwingTimer_Tests.lua
