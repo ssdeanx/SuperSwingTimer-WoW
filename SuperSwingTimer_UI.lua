@@ -1541,11 +1541,15 @@ function ns.ApplyGlobalScale()
     if ns.UpdateDruidBuffIcons then ns.UpdateDruidBuffIcons(0) end
     if ns.UpdateRogueBuffIcons then ns.UpdateRogueBuffIcons(0) end
 
-    -- Re-anchor GCD ticker
-    if ns.gcdTickerBar and ns.mhBar then
-        ns.gcdTickerBar:ClearAllPoints()
-        ns.gcdTickerBar:SetPoint("BOTTOMLEFT", ns.mhBar, "TOPLEFT", 0, ns.Scale(6))
-        ns.gcdTickerBar:SetPoint("BOTTOMRIGHT", ns.mhBar, "TOPRIGHT", 0, ns.Scale(6))
+    -- Re-anchor GCD ticker to the BOTTOM of the resource/power bar (lowest bar).
+    -- Falls back to OH then MH when no resource bar exists.
+    if ns.gcdTickerBar then
+        local anchorBar = ns.warriorRageBar or ns.ohBar or ns.mhBar
+        if anchorBar then
+            ns.gcdTickerBar:ClearAllPoints()
+            ns.gcdTickerBar:SetPoint("BOTTOMLEFT", anchorBar, "BOTTOMLEFT", 0, -ns.Scale(6))
+            ns.gcdTickerBar:SetPoint("BOTTOMRIGHT", anchorBar, "BOTTOMRIGHT", 0, -ns.Scale(6))
+        end
     end
 
     -- Refresh cast zone visual
@@ -2019,10 +2023,13 @@ local function CreateGcdTickerBar()
     f:SetAlpha(0)
     f:SetFrameStrata("BACKGROUND")
     f:SetFrameLevel(0)
-    if ns.mhBar then
+    -- Sit BELOW the resource/power bar chain (bottom of the entire stack).
+    -- GCD ticker is the lowest bar on screen. Falls back to OH then MH.
+    local anchorBar = ns.warriorRageBar or ns.ohBar or ns.mhBar
+    if anchorBar then
         f:ClearAllPoints()
-        f:SetPoint("BOTTOMLEFT", ns.mhBar, "TOPLEFT", 0, ns.Scale(6))
-        f:SetPoint("BOTTOMRIGHT", ns.mhBar, "TOPRIGHT", 0, ns.Scale(6))
+        f:SetPoint("BOTTOMLEFT", anchorBar, "BOTTOMLEFT", 0, -ns.Scale(6))
+        f:SetPoint("BOTTOMRIGHT", anchorBar, "BOTTOMRIGHT", 0, -ns.Scale(6))
     end
     f:Hide()
     ns.gcdTickerBar = f

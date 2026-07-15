@@ -9,6 +9,7 @@
 ## v0.1.9 - 2026-07-14
 
 ### Added
+
 - **SoD rune support (`SuperSwingTimer_SoD.lua`):** New file providing Season of Discovery rune ability spell IDs and classifications. Injects SoD-specific spell IDs into the existing swing classification tables defined in Constants.lua. Safely no-ops on TBC Anniversary / Classic Era 1.15 where these spell IDs don't exist. Loaded via `.toc` after Constants.lua.
   - **NO_RESET_SWING_SPELLS** for SoD instant attacks verified to not reset the swing timer: Quick Strike (429765), Raging Blow (402911), Flanking Strike (415320), Lava Lash (408507), Carve (425711), Divine Storm (407778). Includes rune passive vs. actual cast ID separation.
   - **Rend debuff tracking:** 7 rank IDs (772, 6546, 6547, 6548, 11572, 11573, 11574) for Warrior bleed, massively buffed by Blood Frenzy rune.
@@ -19,21 +20,61 @@
 - **Bundled statusbar media (`Media/`):** The MerfinPlus statusbar texture set is now shipped inside the addon's own `Media/statusbar/` folder, rehomed under `Interface\AddOns\SuperSwingTimer\Media\...`. A self-contained `Media/SuperSwingTimer_Media.lua` registrar (no external-lib dependencies; LibSharedMedia registration is optional and guarded) loads via `Media/Media.xml` in the `.toc`. Five fill textures ship locally — `MerfinMain`, `MerfinMainDark`, `MerfinFlatt` (`.tga`) and `MerfinTexture`, `Flatt` (`.blp`) — and appear in the in-game bar-texture picker, so the default bar is always a visible, locally-hosted skin with no dependency on a missing/external texture. Removed ~16 MB of unused Merfin assets (fonts, sound packs, spell overlays, icons, border caps) and the original Merfin-namespaced loader scripts, which referenced foreign `MerfinPlus`/`LibStub`/`LibSharedMedia` globals and would have crashed on load.
 
 ### Fixed
-- **Classic Era `/sst` panel crash (OnEscape → OnEscapePressed):** `searchBox:HookScript("OnEscape", ...)` used an event name that does not exist on Classic Era EditBox widgets. Classic Era exposes `OnEscapePressed`, not `OnEscape`. TBC Anniversary aliases `OnEscape` internally so the bug was invisible until Classic Era testing. Changed all hook registrations to `"OnEscapePressed"` across Config.lua (search box, value boxes, path boxes). Resolves `/sst` error: `EditBoxHookScript; Doesn't have a 'Onescape' script`.
-- **Init-time crash on Classic Era (missing `GetBarWidth`/`GetBarHeight`):** `UI.lua:1524` called two getter functions (`GetBarWidth`, `GetBarHeight`) that were referenced at runtime but never defined in any file. This threw a Lua error during `ApplyBarSize` on Classic Era where the `pcall` guard caught it silently — but the panel never loaded and bars failed to render. Added both function definitions to `Constants.lua` returning the appropriate dimension from `ns.mhBar`.
+
+- **Classic Era `/sst` panel crash (OnEscape → OnEscapePressed):** `searchBox:HookScript("OnEscape", ...)` used an event name that does not exist on Classic Era EditBox widgets. Classic Era exposes `OnEscapePressed`, not `OnEscape`. TBC Anniversary aliases `OnEscape` internally so the bug was invisible until Classic Era testing. Changed all hook registrations to `"OnEscapePressed"` across Config.lua (search box, value boxes, path boxes). Resolves `/sst` error: `EditBoxHookScript; Does not have a Onescape script`.
+- **Init-time crash on Classic Era (missing `GetBarWidth`/`GetBarHeight`):** `UI.lua:1524` called two getter functions (`GetBarWidth`, `GetBarHeight`) that were referenced at runtime but never defined in any file. This threw a Lua error during `ApplyBarSize` on Classic Era where the `pcall` guard caught it silently - but the panel never loaded and bars failed to render. Added both function definitions to `Constants.lua` returning the appropriate dimension from `ns.mhBar`.
 - **`panel` upvalue nil in `CreatePanel()`:** A module-level `local panel` was declared but assigned via a late-assignment pattern (the function was defined before the assignment). Inside `CreatePanel()`, `panel` was nil at the point of first use. Added `panel = f` at the top of `CreatePanel()` so the upvalue is populated before any consumer reads it.
-- **Invisible bars (black fill × texture):** The real root cause of "invisible" bars was the fill *color*, not the texture. `DB_DEFAULTS.colors.mh/oh/ranged` were pure black `(0,0,0,1)`; migration v22 force-set them to black while disabling `useClassColors`, and migration v10 also forces black when the color matches the class-blue `(0.25,0.72,1.0)`. A black vertex color zeroes any statusbar texture, so bars rendered black-on-dark and looked invisible. Changed the default fill colors to class blue `(0.25,0.72,1.0)`, repointed `barTexture`/`rangedBarTexture` defaults to the bundled `MerfinMain.tga`, and added **migration v57**, which repairs existing saved variables locked to black fills and re-enables class colors when the old forced-black migration disabled them.
+- **Invisible bars (black fill x texture):** The real root cause of invisible bars was the fill *color*, not the texture. `DB_DEFAULTS.colors.mh/oh/ranged` were pure black `(0,0,0,1)`; migration v22 force-set them to black while disabling `useClassColors`, and migration v10 also forces black when the color matches the class-blue `(0.25,0.72,1.0)`. A black vertex color zeroes any statusbar texture, so bars rendered black-on-dark and looked invisible. Changed the default fill colors to class blue `(0.25,0.72,1.0)`, repointed `barTexture`/`rangedBarTexture` defaults to the bundled `MerfinMain.tga`, and added **migration v57**, which repairs existing saved variables locked to black fills and re-enables class colors when the old forced-black migration disabled them.
+- **Warrior buff/CD icons overlapped debuff bars:** `ComputeBuffIconOffset` (Warrior icon positioning) was called with only `{deepWoundsBar, sunderArmorBar}`, while `RestackDebuffBars` stacks all 5 Warrior debuff bars `{deepWoundsBar, sunderArmorBar, rendBar, thunderClapBar, demoShoutBar}`. When only Rend / Thunder Clap / Demoralizing Shout were visible (Fury/Arms without Deep Wounds + Sunder), the icon offset saw two hidden bars and returned the 8px default, so icons stayed pinned 8px above `mhBar` and overlapped the stacked debuff bars. Now passes the full 5-bar list so Warrior icons always sit above every visible debuff bar, matching the other 5 classes.
+- **Addon would not load on Classic Era 1.15.8:** `SuperSwingTimer.toc` used `## Interface: 20505` (TBC Anniversary 2.5.5), which exceeds the Classic Era interface number (11508) — Classic Era classified the addon as out of date and refused to load it, so no bars or icons appeared at all on that client. Changed to `## Interface: 11508, 20505` (comma-delimited, both values on one line — supported by the WoW TOC format). TBC Anniversary (20505) is preserved; Classic Era (11508) now loads.
 
 ### Changed
+
 - **Version metadata:** `SuperSwingTimer.toc` bumped from `v0.1.8` to `v0.1.9`. `Constants.lua` DB version updated to `56`.
 
+### Docs
+
+- `SuperSwingTimer_ClassMods.lua`: corrected `ComputeBuffIconOffset` doc comment (returns a positive Y-up offset, not negative).
+- `README.md`: dual-client coverage line updated to state Classic Era 1.15.8 + TBC Anniversary 2.5.5/2.5.6.
+
 ### Notes
-- **DB schema:** v56 → v57 → v58 (texture allowlist repair) → v59 (final texture+color repair, exact-match denylist).
+
+- **DB schema:** v56 -> v57 -> v58 (texture allowlist repair) -> v59 (final texture+color repair, exact-match denylist).
 - **Affected clients:** Classic Era / SoD (1.15.x) — SoD rune support and Classic Era config panel fixes. TBC Anniversary (2.5.x) was unaffected by either.
 - **Root cause investigation:** The Classic Era breakage was initially suspected to be caused by a "migration 57" issue. Investigation traced the failure to three distinct root causes: (1) EditBox event name mismatch between Classic and TBC, (2) missing getter functions referenced before definition, and (3) Lua upvalue nil timing in the panel factory. No problematic migration was found for the config crash — at that point the migration table ended at v56. This release now adds migration 57 for the separate invisible-bar fix (see Fixed).
 - **wow-ui-source cross-reference:** Verified Classic Era (1.15.8) EditBox API against `FrameXML/EditBox.lua` — confirmed `OnEscapePressed` is the correct event name. `OnEscape` exists only in TBC Anniversary and later clients via engine aliasing.
 - **SoD spell ID research:** Rune ability IDs sourced from Wowhead Season of Discovery spell database. Verified each ID by rune passive vs. actual cast dual-ID pattern. All IDs are nil-safe on non-SoD clients via `ns.GetSpellInfo()` returning nil for unknown spell IDs.
-- **Version metadata:** `SuperSwingTimer.toc` → `v0.1.9`, `Constants.lua` → `version = 56` (migrations 57–59 applied in this release).
+- **Version metadata:** `SuperSwingTimer.toc` -> `v0.1.9`, `Constants.lua` -> `version = 56` (migrations 57-59 applied in this release).
+
+### Hermes (deepseek-v4-flash, 2026-07-15)
+
+### Added
+
+- **Resource bar color defaults (Constants.lua):** 5 per-class resource color defaults: `shamanManaBarColor`, `rogueEnergyBarColor`, `hunterManaBarColor`, `druidManaBarColor`, `paladinManaBarColor`.
+- **`BUFF_ICON_BASE_OFFSET = 14` constant (ClassMods.lua):** Replaced hardcoded 8px base gap in `GetDebuffStackOffset()` and `ComputeBuffIconOffset()` for all 6 classes.
+
+### Changed
+
+- **`MigrateDB` signature + export:** Accepts optional `db` param (falls back to SuperSwingTimerDB). Exported as `ns.MigrateDB` for test harness.
+- **`ns.DB_CURRENT_VERSION = 60` (SuperSwingTimer.lua):** New constant matching highest migration version. Tests use this instead of stale hardcode.
+- **Resource/power bar generalized:** Height 4px -> 8px (`RESOURCE_BAR_HEIGHT`). Class-aware: Warrior rage (pType 1), Shaman/Hunter/Druid/Paladin mana (pType 0), Rogue energy (pType 3). Per-class color via db.colors.*.
+- **GCD bar anchored to bottom of ALL bars (UI.lua):** Power bar -> OH -> MH chain. CreateGcdTickerBar + UpdateBarLayout both updated.
+- **HasActiveTimers() buff-icon condition (State.lua):** Per-class show*BuffIcons toggle check so OnUpdate stays alive OOC.
+- **Interface token:** Added 20506 to .toc for TBC Anniversary 2.5.6.
+
+### Fixed
+
+- **Test harness `ClearReplaces` nil crash (Tests.lua):** Captured WoWUnit.ClearReplaces as a local.
+- **`HelpfulSpellID_AtPos10` mock (Tests.lua):** Changed from dead UnitBuff global to UnitAura (the real call path).
+- **`MigrateDB_*` tests (Tests.lua):** Changed hardcoded 56 assertions to ns.DB_CURRENT_VERSION.
+- **V0.1.10 section removed (CHANGELOG.md):** Merged its content into v0.1.9 Fixed + Docs. Not a real patch.
+- **Changelog restructured:** Restored accidentally removed v0.1.9 Fixed items. Added Hermes section per convention.
+
+### Notes
+
+- **DB schema:** v59 -> v60 (per-class resource bar color defaults).
+- **Subagents used:** 3 dispatched (buff-icon gap 401'd, GCD bar, power bar). Power-bar subagent applied v60 migration + color defaults + generalized resource bar. GCD subagent applied anchor changes. Manual fixes applied for tests, changelog, HasActiveTimers, and combat gate removal.
+- **wow-ui-source verified:** UnitPower/UnitPowerMax on both classic_era (1.15.8.67156) and classic_anniversary (2.5.6.68575).
 
 ### Hermes / deepseek-v4-flash (2026-07-14) — Full session audit, Media prune, bar texture+color fix, luacheck cleanup
 
@@ -90,6 +131,7 @@
 ## v0.1.8 - 2026-07-12
 
 ### Added
+
 - **Global Scale slider:** Master UI scale control (0.5×–3.0×, default 1.0×) at the top of the `/sst` panel. Proportionally scales all bars, icons, sparks, borders, and fonts relative to their configured base size. Gold label with descriptive subtitle. Implemented across Constants (defaults), Config (slider + tooltip), UI (apply on init + refresh), and ClassMods (per-element scaling). Fresh install, migration, reset-defaults, and panel-refresh paths all wired.
 - **`/sst` search bar:** "Search settings..." EditBox pinned below the scroll frame. Filters all section rows in real-time — matching rows stay at full opacity, non-matching rows dim to 25% alpha. Escape clears the filter. Every toggle, slider, color swatch, dropdown, texture row, action button, and description text is searchable (case-insensitive, substring match).
 - **Tabbed Quick Controls section:** The Quick Controls section now has 3 tab-selectable views — **Visibility** (toggles only, single column), **Colors** (swatches only, 2-column grid), and **Class** (combined view for class-specific controls). Tab buttons with gold active state sit below the section header. Switching tabs preserves the panel scroll position. Tabs collapse/expand correctly with the section header.
@@ -100,6 +142,7 @@
 - **`clampFrameLevel` / `clampAlpha` helpers:** Added to `options.lua` to enforce valid WoW frame-level and alpha ranges on all dropdown popups and sliders.
 
 ### Changed
+
 - **Flurry icon merged into unified CD/buff icon group:** Removed the dedicated 30×30 Flurry icon system (`CreateFlurryIconFrame`, `UpdateWarriorFlurryCounter`, `UpdateShamanFlurryIcon`). Flurry is now tracked by the same 25×25 CD/buff icon group as every other class buff — same size, centering, dynamic positioning as Death Wish, Rapid Fire, etc. Eliminates the redundant double-icon on Shaman (Flurry appeared both as a dedicated icon AND in the group) and the hardcoded 12px offset that overlapped debuff bars.
 - **CD/buff icon groups re-centered:** All 6 class icon groups (Paladin, Warrior, Shaman, Druid, Hunter, Rogue) changed from right-edge alignment to true horizontal centering over the bar width.
 - **Flurry icon strata lowered:** `SetFrameStrata` from `DIALOG` to `MEDIUM` to prevent destructive visual overlap with debuff bars when both are active.
@@ -108,18 +151,22 @@
 - **Buff icon gap reduced 16px → 8px:** Tighter, cleaner spacing between buff icons and the topmost debuff bar.
 
 ### Fixed
+
 - **Hunter MH bar flicker during ranged auto shot:** A stale `hunterQueuedMeleeSpell` from an unlanded Raptor Strike (queued then the player moved out of melee range) kept `IsHunterMeleeBarVisible()` returning true, causing the MH bar to briefly pop up when the ranged active-state holdover dipped between Auto Shot cycles. Fixed by clearing the stale queue in `ApplyVisibility()` when the MH is not actively swinging.
 
 ### Removed
+
 - **~100 lines of dead code:** `GetFlurryBuffInfo()`, `CreateFlurryIconFrame()`, `FLURRY_BUFF_NAMES`, `FLURRY_BUFF_NAME_LOOKUP`, `FLURRY_BUFF_SPELL_IDS`, and all dedicated Flurry icon update/refresh functions.
 - **2 stale Flurry tests** (`SST-Flurry` test group) — tested `GetFlurryBuffInfo` which no longer exists.
 
 ### Docs
+
 - `README.md`: Updated feature summary to reflect unified icon groups, removed dedicated Flurry references.
 - `docs/WIRING.md`: Flurry removed from OnUpdate chain diagram and Warrior setup documentation; all references to `UpdateWarriorFlurryCounter` and `UpdateShamanFlurryIcon` replaced with unified icon group.
 - `CHANGELOG.md`: This entry.
 
 ### Notes
+
 - **DB schema:** v54 → v55 → v56. Migration 55: Enable Warrior rage bar for Protection spec by default. Migration 56: Class colors on by default.
 - **OnUpdate hook ordering:** Hooks execute in registration order. Test Bars hook registers at position 1 for pre-render priority. All class-mod hooks register during `InitClassMods()`.
 - **Version metadata:** `SuperSwingTimer.toc` → `v0.1.8`, `Constants.lua` → `version = 56`.
@@ -129,39 +176,47 @@
 ## v0.1.7 - 2026-07-06
 
 ### Added
+
 - **Canonical `ns.UnitAura` wrapper** (Constants.lua): Centralized all `UnitAura`/`UnitBuff`/`UnitDebuff` shape detection into a single function with 3 explicit branches — Classic 1.13.x (9-ret, no icon), Classic 1.15.x/Retail (string icon at r3), and TBC Anniversary 2.5.5 (`AuraUtil.UnpackAuraData`, 15+ returns with FileID icon at r2 + spellId at r10). Added convenience wrappers `ns.UnitBuff()` and `ns.UnitDebuff()`. No more raw `UnitAura()` calls — all callers go through the wrapper.
 - **`GetHarmfulAuraData` / `GetHelpfulAuraData` refactored**: Both collapsed from ~80 lines combined to ~10 lines each by delegating shape detection to `ns.UnitAura`. Eliminated duplicated, drifting detection logic that caused the TBC Anniversary spellId extraction bug.
 - **File map updated**: 9 Lua files total (Hooks.lua and Tests.lua added), strict dependency order maintained.
 
 ### WoWUnit test suite ⚠️
+
 - **18 groups consolidated to 4**: SST-Core (constants/clock/migrate), SST-Auras (wrapper parsing), SST-Combat (CLEU/timers), SST-Hunter (class-gated).
 - **`/ssttest` slash command** added for manual triggering.
 - **Class gating**: SST-Hunter only registers on HUNTER characters; Paladin seal test gated on PALADIN.
 - **All tests are currently grey** — they were written against the old shape detection and broke during the ns.UnitAura refactoring. Need to be updated to call the canonical wrapper in the next session.
 
 ### Reference
+
 - **WoWUnit** (Jaliborc fork v12.0.1): Installed at `_anniversary_/Interface/AddOns/WoWUnit/`. Toggle button on right side of screen shows failure count; click to open scrollable panel. Tests register via `WoWUnit('GroupName', 'EVENT')`, assertions `AreEqual`/`IsTrue`/`IsFalse`/`Exists`, mocking via `Replace`/`ClearReplaces`.
 - **AGENTS.md research**: Sourced from ICSE 2026 JAWs paper "On the Impact of AGENTS.md Files on the Efficiency of AI Coding Agents" and ICLR 2026 workshop "Evaluating AGENTS.md" (ETH Zurich) — AGENTS.md adds ~0% task improvement at 20%+ inference cost.
 
 ### Changed
+
 - **Buff icon positioning**: Gap above debuff bars doubled from 8px → 16px. Duration text moved to `SetPoint("CENTER", icon, "TOP", 0, 0)` — reads as a centered label at the top edge of each icon.
 - **Concussion Shot color**: Dark blue `(0.10, 0.15, 0.60)` → grey `(0.55, 0.55, 0.55)` for better visibility.
 - **Serpent Sting color**: Forest green `(0.05, 0.55, 0.20)` → bright serpent green `(0.10, 0.85, 0.15)`.
 
 ### Fixed
+
 - **GetHarmfulAuraData shape detection on TBC Anniversary**: The old boolean gate (`type(pos3) == "string"`) could not distinguish TBC Anniversary's `AuraUtil.UnpackAuraData` shape (icon as FileID number at r3) from Classic 1.13.x (count at r3). This caused spellId to be extracted from the wrong position, silently producing nil for every debuff on TBC Anniversary. Fixed with three-branch detection that checks r10 type to identify the TBC shape.
 - **GetDebuffStackOffset sign inversion**: Was tracking `maxBarTop` (bars below reference bar) instead of `minBarTop` (bars above). Caused buff icons to overlap debuff duration bars by ~6px. Added visibility-bitmask cache to prevent one-frame bounce from WoW's deferred `SetPoint` layout.
 - **Buff icon overlay dimming**: Was a full-face black `(0, 0, 0, 0.65)` overlay covering the entire icon, causing permanent dimming. Replaced with 4 separate 1px edge strips matching the debuff bar glow border pattern.
 - **WoWUnit file permissions**: Test file created at 600 (owner-only) — WoW under Wine needs 644. Added explicit `chmod` after every `write_file`.
 
 ### Removed
+
 - **Project conventions enforced**: All raw Blizzard API calls now route through `ns.*` wrappers. Remaining violations in `GetHarmfulAuraData`/`GetHelpfulAuraData` eliminated.
 
 ### Docs
+
 - **AGENTS.md compressed**: 11,204 chars → 6,135 chars (~45% reduction). Stripped discoverable content (file maps, verbose tables). Added canonical wrapper docs, WoWUnit test reference, Wine 644 permission rule, and Lua 5.1 `<<` restriction.
 - **AUDIT.md updated**: Date revised, scope expanded to cover 9 Lua files + test suite.
 
 ### Internal
+
 - **LDoc docstrings added**: 20+ core public functions documented with `--- @param` / `--- @return` / `@usage` / `@see` across Constants.lua, State.lua, Weaving.lua, UI.lua, Config.lua, ClassMods.lua, and Hooks.lua. Critical engine functions (`ns.GetAlignedTime`, `ns.GetSpellInfo`, `ns.HandleCLEU`, `ns.StartSwing`, `ns.ApplyParryHaste`, etc.) documented.
 - **GetCurrentTime() shims removed**: 5 identical `GetCurrentTime()` shims across all files replaced with direct `ns.GetAlignedTime()`. Eliminates duplicated clock-domain wrappers.
 - **Fresh-install block replaced with DeepCopyDefaults**: 155-line inline table literal replaced with `DeepCopyDefaults(ns.DB_DEFAULTS)`. Eliminates drift risk — adding a default to Constants.lua now auto-applies to fresh installs.
@@ -173,6 +228,7 @@
 - **Project conventions enforced**: All raw Blizzard API calls routed through `ns.*` wrappers.
 
 ### Notes
+
 - **DB schema:** v54 (unchanged — no migration needed for these changes).
 - **Quality gates:** `luac -p` passes on all 9 files.
 

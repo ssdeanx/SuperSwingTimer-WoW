@@ -13,7 +13,7 @@ globals = {
     "UIDropDownMenu_AddButton", "UIDropDownMenu_CreateInfo", "UIDropDownMenu_Initialize",
     "UIDropDownMenu_SetText", "UIDropDownMenu_SetWidth", "ToggleDropDownMenu",
     "CloseDropDownMenus",
-    "geterrorhandler",
+    "geterrorhandler", "WoWUnit", "targetDB",
 
     -- Cursor position for manual drag during combat
     "GetCursorPosition",

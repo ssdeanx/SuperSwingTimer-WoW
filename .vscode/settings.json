@@ -106,6 +106,8 @@
         "ERR_INVALID_INSPECT_TARGET",
         "SetCVar",
         "GetCVar",
+        "WoWUnit",
+        "targetDB",
         "EventRegistry",
         "GetCVarBool",
         "InspectModelFrame",

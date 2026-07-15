@@ -64,6 +64,8 @@
       "UnitGUID",
       "UnitName",
       "UnitClass",
+      "WoWUnit",
+      "targetDB",
       "CombatLogGetCurrentEventInfo",
       "GetInventoryItemLink",
       "GetInventoryItemID",
@@ -85,7 +87,8 @@
       "ClearReplaces",
       "SlashCmdList",
       "SLASH_SSTTEST1",
-      "WoWUnit"
+      "WoWUnit",
+            "targetDB"
     ]
   }
 }

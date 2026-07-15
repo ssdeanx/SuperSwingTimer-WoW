@@ -1,3 +1,4 @@
+---@diagnostic disable: undefined-global
 -- ============================================================
 -- File role: WoWUnit in-game test suite for SuperSwingTimer
 -- Depends on: WoWUnit addon (optional, skipped cleanly)
@@ -11,6 +12,9 @@ local function RegisterSSTTests()
     local IsTrue, IsFalse = WoWUnit.IsTrue, WoWUnit.IsFalse
     local Exists, AreEqual = WoWUnit.Exists, WoWUnit.AreEqual
     local Replace = WoWUnit.Replace
+    -- WoWUnit exposes ClearReplaces as a method on the WoWUnit table,
+    -- not as a global. Capture it so the Aura/CLEU tests can reset mocks.
+    local ClearReplaces = WoWUnit.ClearReplaces
     local T = ns._Test
     local function pc(p, ...) local ok, r = pcall(p, ...); return ok, r end
 
@@ -33,26 +37,26 @@ local function RegisterSSTTests()
     end
     function Core:AutoShotID_75() AreEqual(ns.AUTO_SHOT_ID, 75) end
     function Core:SteadyShotCastTime() AreEqual(ns.STEADY_SHOT_CAST_TIME, 1.5) end
-    function Core:MigrateDB_Fresh() local db={}; local ok,_=pc(ns.MigrateDB,db); IsTrue(ok) end
+    function Core:MigrateDB_Fresh() local db={}; local ok,_=pc(ns.MigrateDB,db); IsTrue(ok); AreEqual(db.version, ns.DB_CURRENT_VERSION) end
     function Core:MigrateDB_V1()
         local db={version=1}; local ok,_=pc(ns.MigrateDB,db)
-        IsTrue(ok); AreEqual(db.version, 56)
+        IsTrue(ok); AreEqual(db.version, ns.DB_CURRENT_VERSION)
     end
     function Core:MigrateDB_V53()
         local db={version=53}; local ok,_=pc(ns.MigrateDB,db)
-        IsTrue(ok); AreEqual(db.version, 56)
+        IsTrue(ok); AreEqual(db.version, ns.DB_CURRENT_VERSION)
     end
     function Core:MigrateDB_V54()
         local db={version=54}; local ok,_=pc(ns.MigrateDB,db)
-        IsTrue(ok); AreEqual(db.version, 56)
+        IsTrue(ok); AreEqual(db.version, ns.DB_CURRENT_VERSION)
     end
     function Core:MigrateDB_V55()
         local db={version=55}; local ok,_=pc(ns.MigrateDB,db)
-        IsTrue(ok); AreEqual(db.version, 56)
+        IsTrue(ok); AreEqual(db.version, ns.DB_CURRENT_VERSION)
     end
     function Core:MigrateDB_V56()
         local db={version=56}; local ok,_=pc(ns.MigrateDB,db)
-        IsTrue(ok); AreEqual(db.version, 56)
+        IsTrue(ok); AreEqual(db.version, ns.DB_CURRENT_VERSION)
     end
     function Core:FactoryReset() IsTrue(pc(ns.ResetConfigDefaults)) end
     function Core:GetSpellInfo_Wraps() Exists(ns.GetSpellInfo(ns.AUTO_SHOT_ID)) end
@@ -74,7 +78,10 @@ local function RegisterSSTTests()
 
     function Auras:HelpfulSpellID_AtPos10()
         if not T or not T.GetHelpfulAuraData then return end
-        Replace('UnitBuff', function(u,i)
+        -- GetHelpfulAuraData -> ns.UnitBuff -> ns.UnitAura -> global UnitAura.
+        -- The wrapper only calls the global UnitAura, so we must mock UnitAura
+        -- (not the deprecated UnitBuff global) for the mock to engage.
+        Replace('UnitAura', function(u,i)
             if i==1 then return 'Slice and Dice',nil,'Interface\\Icons\\Ability_Rogue_SliceDice',
                 1,15,12345.0,'player',nil,0,5171 end
         end)

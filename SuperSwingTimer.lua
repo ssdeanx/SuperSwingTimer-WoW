@@ -36,7 +36,7 @@ ns.hunterAutoRepeatActive = false
 -- ============================================================
 -- SavedVariables migration
 -- ============================================================
-local function MigrateDB()
+local function MigrateDB(targetDb)
     local legacyAddonDB = rawget(_G, "SwangThangDB")
     local legacyHunterDB = rawget(_G, "HunterTimerDB")
 
@@ -1025,18 +1025,47 @@ local function MigrateDB()
                 end
                 db.useClassColors = true
             end
+        },
+        {
+            version = 60,
+            apply = function (db)
+                db.colors = db.colors or {}
+                if not db.colors.shamanManaBarColor then
+                    db.colors.shamanManaBarColor = { r = 0.20, g = 0.45, b = 1.00, a = 0.85 }
+                end
+                if not db.colors.rogueEnergyBarColor then
+                    db.colors.rogueEnergyBarColor = { r = 1.00, g = 0.82, b = 0.18, a = 0.85 }
+                end
+                if not db.colors.hunterManaBarColor then
+                    db.colors.hunterManaBarColor = { r = 0.20, g = 0.45, b = 1.00, a = 0.85 }
+                end
+                if not db.colors.druidManaBarColor then
+                    db.colors.druidManaBarColor = { r = 0.20, g = 0.45, b = 1.00, a = 0.85 }
+                end
+                if not db.colors.paladinManaBarColor then
+                    db.colors.paladinManaBarColor = { r = 0.20, g = 0.45, b = 1.00, a = 0.85 }
+                end
+            end
         }
     }
 
-    local currentVersion = tonumber(SuperSwingTimerDB.version) or 0
+    -- Optional db param lets the test harness migrate an isolated table.
+    -- Falls back to the real global when called during addon load.
+    local db = targetDB or SuperSwingTimerDB ---@diagnostic disable-line: undefined-global
+    local currentVersion = tonumber(db.version) or 0
     for _, migration in ipairs(migrations) do
         if currentVersion < migration.version then
-            migration.apply(SuperSwingTimerDB)
+            migration.apply(db)
             currentVersion = migration.version
-            SuperSwingTimerDB.version = migration.version
+            db.version = migration.version
         end
     end
 end
+
+-- Highest migration version currently defined. Tests assert against this
+-- instead of a hard-coded number so they don't go stale when the
+-- migration ladder grows.
+ns.DB_CURRENT_VERSION = 60
 
 -- ============================================================
 -- Initialization
@@ -1552,3 +1581,7 @@ frame:SetScript("OnEvent", function (self, event, ...)
 end)
 
 ns.SetUpdateEnabled(ns.HasActiveTimers())
+
+-- Expose the migration entrypoint for the WoWUnit test harness
+-- (SST-MigrateDB group). Production load still calls the local directly.
+ns.MigrateDB = MigrateDB

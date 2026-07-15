@@ -6,13 +6,13 @@ Super Swing Timer tracks white-hit swing timers across main hand, off hand, rang
 
 **Dual-client CLEU architecture:** Classic Era `COMBAT_LOG_EVENT` payloads use numeric spell IDs; TBC Anniversary sends localized spell names (strings) instead. All swing-affecting spell lookup tables (`RESET_SWING_SPELLS`, `NO_RESET_SWING_SPELLS`, `PAUSE_SWING_SPELLS`, `RESET_RANGED_SWING_SPELLS`) populate both key types at init time via `ns.GetSpellInfo(id)` so swing resets, pauses, ranged resets, and NMA queue detection work identically on both clients.
 
-Current version: **v0.1.9**. Status: release-ready. Bundled statusbar textures ship locally so bars are always visible by default; invisible-bar root cause (black fill color + Casting Fill texture) fixed. Buff icon positioning fixed — icons no longer overlap the bar when debuff duration bars appear/disappear, with dynamic stacking above all visible bars and an 8px gap. Hunter MH bar no longer flickers during ranged-only auto shot. DB schema v56 → v57 → v58 → v59.
+Current version: **v0.1.10**. Status: release-ready. Bundled statusbar textures ship locally so bars are always visible by default; invisible-bar root cause (black fill color + Casting Fill texture) fixed. Buff icon positioning fixed — icons no longer overlap the bar when debuff duration bars appear/disappear, with dynamic stacking above all visible bars and an 8px gap. Hunter MH bar no longer flickers during ranged-only auto shot. DB schema v56 → v57 → v58 → v59. Runs on Classic Era 1.15.8 (including Season of Discovery) and TBC Anniversary 2.5.5 / 2.5.6 via a dual-interface TOC (`## Interface: 11508, 20505`).
 
 ## At a glance
 
 | Area | What it covers |
 | --- | --- |
-|| Hunter | Auto Shot cooldown sync, a hunter-linked MH bar that only appears for real melee swings or queued Raptor Strike (dynamically anchored above the ranged bar), a yellow Raptor queue tint, configurable movement-safe / late colors, Anniversary-safe auto-repeat state gating, Feign Death ranged reset handling, Readiness refresh handling for Rapid Fire, a dedicated hunter bar that covers the hidden Auto Shot window plus real Steady Shot / Aimed Shot casts with clip-safety feedback (now accounts for the TBC 0.5s Steady Shot grace period for accurate safe/unsafe timing) and a live latency end slice, **a 4-state Range Helper** (melee/sweet spot/ranged/OOR) with configurable colors and width, an **aspect/stance icon** showing the active Aspect texture, an adaptive **25x25 CD/buff icon group** above the ranged bar for Bestial Wrath, Rapid Fire, The Beast Within, Quick Shots, Rapid Killing, Kill Command, Readiness, Misdirection and racials with gold glow in the last 4 seconds, **5 target debuff duration bars** (Serpent Sting, Wing Clip, Concussion Shot + Immolation Trap, Explosive Trap, Freezing Trap, Frost Trap) with spell icons, gold glow borders, and dynamic stacking above whichever anchor bar is active (MH in melee, ranged at range), and an **independent hunter cast bar color** (default light blue) separate from the ranged bar fill |
+| Hunter | Auto Shot cooldown sync, a hunter-linked MH bar that only appears for real melee swings or queued Raptor Strike (dynamically anchored above the ranged bar), a yellow Raptor queue tint, configurable movement-safe / late colors, Anniversary-safe auto-repeat state gating, Feign Death ranged reset handling, Readiness refresh handling for Rapid Fire, a dedicated hunter bar that covers the hidden Auto Shot window plus real Steady Shot / Aimed Shot casts with clip-safety feedback (now accounts for the TBC 0.5s Steady Shot grace period for accurate safe/unsafe timing) and a live latency end slice, **a 4-state Range Helper** (melee/sweet spot/ranged/OOR) with configurable colors and width, an **aspect/stance icon** showing the active Aspect texture, an adaptive **25x25 CD/buff icon group** above the ranged bar for Bestial Wrath, Rapid Fire, The Beast Within, Quick Shots, Rapid Killing, Kill Command, Readiness, Misdirection and racials with gold glow in the last 4 seconds, **5 target debuff duration bars** (Serpent Sting, Wing Clip, Concussion Shot + Immolation Trap, Explosive Trap, Freezing Trap, Frost Trap) with spell icons, gold glow borders, and dynamic stacking above whichever anchor bar is active (MH in melee, ranged at range), and an **independent hunter cast bar color** (default light blue) separate from the ranged bar fill |
 | Warrior | Heroic Strike and Cleave queue tints with yellow/green MH bar coloring, Slam pause/extend timing with a live Slam cast bar above the MH bar, a Shield Block duration bar above the MH stack with configurable height and color, an Execute-phase `EXEC` badge on the rage bar, and next-melee queue cancellation support |
 | Druid | Feral MH timing, form reset support, and a lightweight Maul queue tint path without extra helper-bar bloat |
 | Paladin | Aura-aware seal breakpoint logic with a proportional-width red twist zone (right-anchored, matching Rogue Sinister Strike pattern) for Seal of Command, Blood, and Martyr timing, plus a GCD-aware reseal marker. Buff/CD icon group above the MH bar tracks Avenging Wrath, Divine Shield, Hammer of Justice, Blessing of Protection, Holy Wrath, Lay on Hands, and racials with gold glow in the last 4 seconds |
@@ -169,6 +169,7 @@ Two compact columns for your most-used settings:
 ### Appearance
 
 All visual sizing and texture settings:
+
 - **Global Scale** — first control at the top. Multiplies all bar dimensions, icon sizes, sparks, borders, and fonts proportionally (0.5x–3.0x). Individual sliders below fine-tune each base size
 - **Bar Width / Height** — set the base dimensions for all bars. Off-hand height derives automatically
 - **Texture pickers** — click to browse installed textures. Bar and ranged rows use a scrolling preview list; spark rows use a thumbnail browser
@@ -179,6 +180,7 @@ All visual sizing and texture settings:
 ### Combat & Timer Behavior
 
 Toggles for timing helpers:
+
 - **Minimal Mode** — hides all non-essential overlays
 - **Swing Flash** — brief spark flash on each swing landing
 - **GCD Ticker** — thin bar above MH showing the 1.5s global cooldown
@@ -229,7 +231,7 @@ Tests run automatically on `PLAYER_ENTERING_WORLD` and relevant game events. 9 t
 | `SST-HunterSerpentSting` | 4 | Detection by ID + name, caster filtering, no-target safety |
 | `SST-MigrateDB` | 4 | Fresh DB, v1→v54 chain, v54 no-op, factory reset |
 | `SST-Dispatch` | 3 | Nil-guards on public API functions |
-|| `SST-HelpfulAura` | 2 | `GetHelpfulAuraData` both API shapes |
+| `SST-HelpfulAura` | 2 | `GetHelpfulAuraData` both API shapes |
 
 Tests are loaded as `## OptionalDeps: WoWUnit` and skipped entirely when WoWUnit is not installed — zero overhead outside testing.
 

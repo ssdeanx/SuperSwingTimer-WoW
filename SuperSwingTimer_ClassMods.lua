@@ -40,22 +40,28 @@ local _debuffStackIconOffset = nil
 -- if no restack has occurred — places buff icons with 8px gap above bar.
 -- Returns a BOTTOM-to-referenceBar.TOP Y offset for SetPoint.
 -- WoW SetPoint uses positive Y = UP (confirmed from Blizzard API docs).
+-- Resting clearance (px, WoW Y-up) between the reference main bar and the
+-- buff icons when no debuff bars are visible. Also used as the gap above the
+-- tallest debuff bar when bars ARE active. Bumped 8 -> 14 so icons stop
+-- hugging the MH bar (they used to sit only ~2-4px off it).
+local BUFF_ICON_BASE_OFFSET = 14
+
 local function GetDebuffStackOffset()
-    return _debuffStackIconOffset or 8
+    return _debuffStackIconOffset or BUFF_ICON_BASE_OFFSET
 end
 
 -- Direct buff icon Y offset computation. Uses the same synthetic arithmetic
 -- as RestackDebuffBars (no GetTop() calls) but takes the bar list and
 -- reference bar directly, so there's no shared-state dependency.
--- Returns a negative Y offset for SetPoint("BOTTOM", bar, "TOP", x, y).
--- Falls back to -8 (8px above reference bar) when no bars are visible.
+-- Returns a positive Y offset (WoW Y-up) for SetPoint("BOTTOM", bar, "TOP", x, y).
+-- Falls back to BUFF_ICON_BASE_OFFSET (14px above reference bar) when no bars are visible.
 -- @param barList (table) Ordered list of debuff bar frames to check
 -- @param referenceBar (frame) The main bar they're stacked above
 -- @param gap (number|nil) Pixel gap between stacked bars (default 2)
 -- @return (number) Negative Y offset for icon positioning
 local function ComputeBuffIconOffset(barList, referenceBar, gap)
     if not referenceBar then
-        return 8
+        return BUFF_ICON_BASE_OFFSET
     end
     gap = gap or 2
     local currentY = gap
@@ -73,11 +79,11 @@ local function ComputeBuffIconOffset(barList, referenceBar, gap)
         end
     end
     if highestBarTop then
-        -- Icon bottom at highestBarTop + gap = 8px above tallest bar
-        return highestBarTop + 8
+        -- Icon bottom sits BUFF_ICON_BASE_OFFSET above the tallest debuff bar
+        return highestBarTop + BUFF_ICON_BASE_OFFSET
     end
-    -- No bars visible: icon bottom 8px above reference bar
-    return 8
+    -- No bars visible: icon bottom BUFF_ICON_BASE_OFFSET above reference bar
+    return BUFF_ICON_BASE_OFFSET
 end
 
 -- Universal debuff bar restacker: positions visible bars in order above referenceBar.
@@ -978,13 +984,7 @@ local function SetupRetPaladin()
             end
             return
         end
-        if ns.playerInCombat ~= true then
-            for _, icon in ipairs(paladinBuffIcons) do
-                if icon and icon.Hide then icon:Hide() end
-            end
-            return
-        end
-
+        -- Buff icons visible out of combat (combat gate removed)
         local iconSize = SuperSwingTimerDB and SuperSwingTimerDB.paladinBuffIconSize or 25
         if type(iconSize) ~= "number" or iconSize <= 0 then iconSize = 25 end
 
@@ -1810,37 +1810,96 @@ local function SetupWarrior()
             return
         end
 
-        local showBar = SuperSwingTimerDB and SuperSwingTimerDB.showWarriorRageBar ~= false
-        local showProt = SuperSwingTimerDB and SuperSwingTimerDB.showWarriorRageProtection
-        local isProt = IsWarriorProtectionSpec()
-        local inCombat = (ns.playerInCombat == true) or (InCombatLockdown and InCombatLockdown() or false)
-        if ns.playerClass ~= "WARRIOR" or not showBar or not inCombat or (isProt and not showProt) then
+        local db = SuperSwingTimerDB
+        if not db or db.showWarriorRageBar == false then
             bar:SetAlpha(0)
+            bar:Hide()
             return
         end
 
-        local rage = UnitPower and UnitPower("player", 1) or 0
-        local maxRage = 100
-        bar:SetMinMaxValues(0, maxRage)
-        bar:SetValue(rage)
+        local class = ns.playerClass
+        local supportedClasses = {
+            WARRIOR = true,
+            SHAMAN = true,
+            ROGUE = true,
+            HUNTER = true,
+            DRUID = true,
+            PALADIN = true,
+        }
+        if not class or not supportedClasses[class] then
+            bar:SetAlpha(0)
+            bar:Hide()
+            return
+        end
 
-        local color = GetWarriorRageBarColor()
-        bar:SetStatusBarColor(color.r or 0.80, color.g or 0.20, color.b or 0.10, color.a or 0.85)
+        local powerType, maxPower, label, colorRef
+
+        if class == "WARRIOR" then
+            powerType = 1
+            maxPower = 100
+            label = "RAGE"
+            colorRef = (db.colors and db.colors.warriorRageBarColor) or { r = 0.80, g = 0.20, b = 0.10, a = 0.85 }
+        elseif class == "SHAMAN" then
+            powerType = 0
+            maxPower = (type(UnitPowerMax) == "function") and (UnitPowerMax("player", 0) or 100) or 100
+            label = "MANA"
+            colorRef = (db.colors and db.colors.shamanManaBarColor) or { r = 0.20, g = 0.45, b = 1.00, a = 0.85 }
+        elseif class == "ROGUE" then
+            powerType = 3
+            maxPower = (type(UnitPowerMax) == "function") and (UnitPowerMax("player", 3) or 100) or 100
+            label = "EN"
+            colorRef = (db.colors and db.colors.rogueEnergyBarColor) or { r = 1.00, g = 0.82, b = 0.18, a = 0.85 }
+        elseif class == "HUNTER" then
+            powerType = 0
+            maxPower = (type(UnitPowerMax) == "function") and (UnitPowerMax("player", 0) or 100) or 100
+            label = "MANA"
+            colorRef = (db.colors and db.colors.hunterManaBarColor) or { r = 0.20, g = 0.45, b = 1.00, a = 0.85 }
+        elseif class == "DRUID" then
+            powerType = 0
+            maxPower = (type(UnitPowerMax) == "function") and (UnitPowerMax("player", 0) or 100) or 100
+            label = "MANA"
+            colorRef = (db.colors and db.colors.druidManaBarColor) or { r = 0.20, g = 0.45, b = 1.00, a = 0.85 }
+        elseif class == "PALADIN" then
+            powerType = 0
+            maxPower = (type(UnitPowerMax) == "function") and (UnitPowerMax("player", 0) or 100) or 100
+            label = "MANA"
+            colorRef = (db.colors and db.colors.paladinManaBarColor) or { r = 0.20, g = 0.45, b = 1.00, a = 0.85 }
+        else
+            bar:SetAlpha(0)
+            bar:Hide()
+            return
+        end
+
+        local power = (type(UnitPower) == "function") and (UnitPower("player", powerType) or 0) or 0
+        bar:SetMinMaxValues(0, maxPower)
+        bar:SetValue(power)
+
+        bar:SetStatusBarColor(colorRef.r or 0.80, colorRef.g or 0.20, colorRef.b or 0.10, colorRef.a or 0.85)
         bar:SetAlpha(1)
+        bar:Show()
 
-        local targetHealth = UnitHealth and UnitHealth("target") or 0
-        local targetMaxHealth = UnitHealthMax and UnitHealthMax("target") or 0
-        local executeActive = targetHealth > 0 and targetMaxHealth > 0 and (targetHealth / targetMaxHealth) <= 0.20
-        if executeActive then
-            if not bar.executeText then
-                bar.executeText = bar:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-                bar.executeText:SetPoint("LEFT", bar, "RIGHT", 3, 0)
-                bar.executeText:SetJustifyH("LEFT")
-                bar.executeText:SetFont("Fonts\\FRIZQT__.TTF", 9, "OUTLINE")
-                bar.executeText:SetTextColor(1.0, 0.35, 0.20, 0.95)
+        if bar.label then
+            bar.label:SetText(power .. " " .. label)
+        end
+
+        -- Execute range display (Warrior only)
+        if class == "WARRIOR" then
+            local targetHealth = UnitHealth and UnitHealth("target") or 0
+            local targetMaxHealth = UnitHealthMax and UnitHealthMax("target") or 0
+            local executeActive = targetHealth > 0 and targetMaxHealth > 0 and (targetHealth / targetMaxHealth) <= 0.20
+            if executeActive then
+                if not bar.executeText then
+                    bar.executeText = bar:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+                    bar.executeText:SetPoint("LEFT", bar, "RIGHT", 3, 0)
+                    bar.executeText:SetJustifyH("LEFT")
+                    bar.executeText:SetFont("Fonts\\FRIZQT__.TTF", 9, "OUTLINE")
+                    bar.executeText:SetTextColor(1.0, 0.35, 0.20, 0.95)
+                end
+                bar.executeText:SetText("EXEC")
+                bar.executeText:Show()
+            elseif bar.executeText then
+                bar.executeText:Hide()
             end
-            bar.executeText:SetText("EXEC")
-            bar.executeText:Show()
         elseif bar.executeText then
             bar.executeText:Hide()
         end
@@ -2059,13 +2118,14 @@ local function SetupWarrior()
 
     -- ============================================================
     -- Create the rage bar on first call
+    local RESOURCE_BAR_HEIGHT = 8
     if not ns.warriorRageBar then
         local bar = rawget(_G, "SuperSwingTimerWarriorRageBar")
         if not bar then
             bar = CreateFrame("StatusBar", "SuperSwingTimerWarriorRageBar", UIParent)
         end
         bar:SetStatusBarTexture(ns.GetBarTexture and ns.GetBarTexture() or "Interface\\TargetingFrame\\UI-StatusBar")
-        bar:SetSize((ns.mhBar and ns.mhBar:GetWidth()) or ns.BAR_WIDTH or 240, 4)
+        bar:SetSize((ns.mhBar and ns.mhBar:GetWidth()) or ns.BAR_WIDTH or 240, RESOURCE_BAR_HEIGHT)
         bar:SetMinMaxValues(0, 100)
         bar:SetValue(0)
         bar:SetFrameStrata((ns.mhBar and ns.mhBar:GetFrameStrata()) or "MEDIUM")
@@ -2117,6 +2177,13 @@ local function SetupWarrior()
 
         bar.backgroundTexture = backgroundTexture
         bar.statusBarTexture = statusBarTexture
+
+        bar.label = bar:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        bar.label:SetPoint("LEFT", bar, "LEFT", 2, 0)
+        bar.label:SetJustifyH("LEFT")
+        bar.label:SetFont("Fonts\\FRIZQT__.TTF", 10, "OUTLINE")
+        bar.label:SetTextColor(1, 1, 1, 0.95)
+
         bar:SetAlpha(0)
         ns.warriorRageBar = bar
     end
@@ -2753,7 +2820,7 @@ local function SetupWarrior()
         if not saName then return nil end
         local saDuration, saExpiration, saStacks
         for index = 1, 40 do
-            local auraName, _, duration, expirationTime, caster, auraSpellId, _, _, _, auraStackCount =
+            local auraName, auraStackCount, duration, expirationTime, caster, auraSpellId =
                 GetHarmfulAuraData("target", index, "HARMFUL")
             if not auraName then break end
             local isSA = false
@@ -3063,13 +3130,7 @@ local function SetupWarrior()
             end
             return
         end
-        if ns.playerInCombat ~= true then
-            for _, icon in ipairs(warriorBuffIcons) do
-                if icon and icon.Hide then icon:Hide() end
-            end
-            return
-        end
-
+        -- Buff icons visible out of combat (combat gate removed)
         local iconSize = SuperSwingTimerDB and SuperSwingTimerDB.warriorBuffIconSize or 25
         if type(iconSize) ~= "number" or iconSize <= 0 then iconSize = 25 end
 
@@ -3103,7 +3164,7 @@ local function SetupWarrior()
         local referenceBar = ns.mhBar
         if not referenceBar then return end
         -- Position icons above all visible target debuff duration bars
-        local iconY = ComputeBuffIconOffset({deepWoundsBar, sunderArmorBar}, referenceBar)
+        local iconY = ComputeBuffIconOffset({deepWoundsBar, sunderArmorBar, rendBar, thunderClapBar, demoShoutBar}, referenceBar)
         local barGetWidth = referenceBar.GetWidth
         if not barGetWidth then return end
 
@@ -4168,13 +4229,7 @@ local function SetupEnhShaman()
             end
             return
         end
-        if ns.playerInCombat ~= true then
-            for _, icon in ipairs(shamanBuffIcons) do
-                if icon and icon.Hide then icon:Hide() end
-            end
-            return
-        end
-
+        -- Buff icons visible out of combat (combat gate removed)
         local iconSize = SuperSwingTimerDB and SuperSwingTimerDB.shamanBuffIconSize or 25
         if type(iconSize) ~= "number" or iconSize <= 0 then iconSize = 25 end
 
@@ -5096,13 +5151,7 @@ local function SetupDruid()
             end
             return
         end
-        if ns.playerInCombat ~= true then
-            for _, icon in ipairs(druidBuffIcons) do
-                if icon and icon.Hide then icon:Hide() end
-            end
-            return
-        end
-
+        -- Buff icons visible out of combat (combat gate removed)
         local iconSize = SuperSwingTimerDB and SuperSwingTimerDB.druidBuffIconSize or 25
         if type(iconSize) ~= "number" or iconSize <= 0 then iconSize = 25 end
 
@@ -5968,13 +6017,7 @@ local function SetupHunter()
             end
             return
         end
-        if ns.playerInCombat ~= true then
-            for _, icon in ipairs(hunterBuffIcons) do
-                if icon and icon.Hide then icon:Hide() end
-            end
-            return
-        end
-
+        -- Buff icons visible out of combat (combat gate removed)
         local iconSize = SuperSwingTimerDB and SuperSwingTimerDB.hunterBuffIconSize or 25
         if type(iconSize) ~= "number" or iconSize <= 0 then iconSize = 25 end
 
@@ -6954,7 +6997,7 @@ local function SetupHunter()
     ns.UpdateHunterFreezingTrapBar = UpdateHunterFreezingTrapBar
     ns.UpdateHunterFrostTrapBar = UpdateHunterFrostTrapBar
     -- WoWUnit test harness
-    if WoWUnit then
+    if WoWUnit then ---@diagnostic disable-line: undefined-global
         if not ns._Test then ns._Test = {} end
         ns._Test.GetTargetSerpentStingData = GetTargetSerpentStingData
     end
@@ -8220,13 +8263,7 @@ local function SetupRogue()
             end
             return
         end
-        if ns.playerInCombat ~= true then
-            for _, icon in ipairs(rogueBuffIcons) do
-                if icon and icon.Hide then icon:Hide() end
-            end
-            return
-        end
-
+        -- Buff icons visible out of combat (combat gate removed)
         local iconSize = SuperSwingTimerDB and SuperSwingTimerDB.rogueBuffIconSize or 25
         if type(iconSize) ~= "number" or iconSize <= 0 then iconSize = 25 end
 
@@ -8461,7 +8498,7 @@ end
 -- WoWUnit test harness: expose internal functions for in-game
 -- unit tests. Only loaded when WoWUnit addon is present.
 -- ============================================================
-if WoWUnit then
+if WoWUnit then ---@diagnostic disable-line: undefined-global
     ns._Test = {}
     ns._Test.GetHarmfulAuraData = GetHarmfulAuraData
     ns._Test.GetHelpfulAuraData = GetHelpfulAuraData

@@ -1,3 +1,4 @@
+---@diagnostic disable: undefined-global
 -- ============================================================
 -- Migration & Fresh-Install Test Harness
 -- Run: lua5.1 test_migrations.lua

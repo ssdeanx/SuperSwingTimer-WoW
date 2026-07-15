@@ -264,6 +264,27 @@ function ns.HasActiveTimers()
     if ns.channeling then
         return true
     end
+
+    -- Active GCD: keep the update loop running so the GCD ticker animates
+    -- even outside combat (it has no swing/cast timer to keep the loop alive).
+    if ns.gcdActive then
+        return true
+    end
+
+    -- Buff/CD icons: keep the update loop alive when any class has buff icons
+    -- enabled, so tracked auras render and count down outside combat.
+    local db = SuperSwingTimerDB or ns.DB_DEFAULTS
+    if db and ns.playerClass then
+        if (ns.playerClass == "WARRIOR" and db.showWarriorBuffIcons ~= false)
+        or (ns.playerClass == "PALADIN" and db.showPaladinBuffIcons ~= false)
+        or (ns.playerClass == "SHAMAN" and db.showShamanBuffIcons ~= false)
+        or (ns.playerClass == "DRUID" and db.showDruidBuffIcons ~= false)
+        or (ns.playerClass == "HUNTER" and db.showHunterBuffIcons ~= false)
+        or (ns.playerClass == "ROGUE" and db.showRogueBuffIcons ~= false) then
+            return true
+        end
+    end
+
     if ns.playerClass == "HUNTER" and ns.hunterCastActive and ns.hunterCastSpellId and ns.IsHunterCastSpell
         and ns.IsHunterCastSpell(ns.hunterCastSpellId) then
         local startTime = ns.hunterCastStartTime
