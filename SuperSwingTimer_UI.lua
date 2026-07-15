@@ -876,6 +876,8 @@ local function ApplyHunterCastBarColor(spellId, remainingCastTime, now)
     return clipSafe
 end
 
+---@param duration number|nil
+---@param showVisual boolean
 local function UpdateHunterCastLatencyVisual(duration, showVisual)
     local f = ns.hunterCastBar
     if not f or not f.latencyOverlay then

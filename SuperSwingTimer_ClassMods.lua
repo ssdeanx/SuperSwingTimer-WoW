@@ -1832,37 +1832,31 @@ local function SetupWarrior()
             return
         end
 
-        local powerType, maxPower, label, colorRef
+        local powerType, maxPower, colorRef
 
         if class == "WARRIOR" then
             powerType = 1
             maxPower = 100
-            label = "RAGE"
             colorRef = (db.colors and db.colors.warriorRageBarColor) or { r = 0.80, g = 0.20, b = 0.10, a = 0.85 }
         elseif class == "SHAMAN" then
             powerType = 0
             maxPower = (type(UnitPowerMax) == "function") and (UnitPowerMax("player", 0) or 100) or 100
-            label = "MANA"
             colorRef = (db.colors and db.colors.shamanManaBarColor) or { r = 0.20, g = 0.45, b = 1.00, a = 0.85 }
         elseif class == "ROGUE" then
             powerType = 3
             maxPower = (type(UnitPowerMax) == "function") and (UnitPowerMax("player", 3) or 100) or 100
-            label = "EN"
             colorRef = (db.colors and db.colors.rogueEnergyBarColor) or { r = 1.00, g = 0.82, b = 0.18, a = 0.85 }
         elseif class == "HUNTER" then
             powerType = 0
             maxPower = (type(UnitPowerMax) == "function") and (UnitPowerMax("player", 0) or 100) or 100
-            label = "MANA"
             colorRef = (db.colors and db.colors.hunterManaBarColor) or { r = 0.20, g = 0.45, b = 1.00, a = 0.85 }
         elseif class == "DRUID" then
             powerType = 0
             maxPower = (type(UnitPowerMax) == "function") and (UnitPowerMax("player", 0) or 100) or 100
-            label = "MANA"
             colorRef = (db.colors and db.colors.druidManaBarColor) or { r = 0.20, g = 0.45, b = 1.00, a = 0.85 }
         elseif class == "PALADIN" then
             powerType = 0
             maxPower = (type(UnitPowerMax) == "function") and (UnitPowerMax("player", 0) or 100) or 100
-            label = "MANA"
             colorRef = (db.colors and db.colors.paladinManaBarColor) or { r = 0.20, g = 0.45, b = 1.00, a = 0.85 }
         else
             bar:SetAlpha(0)
@@ -1879,7 +1873,13 @@ local function SetupWarrior()
         bar:Show()
 
         if bar.label then
-            bar.label:SetText(power .. " " .. label)
+            -- Warrior (rage) and Rogue (energy) show only the numeric amount.
+            -- Mana classes (Shaman, Hunter, Druid, Paladin) show current/max.
+            if class == "WARRIOR" or class == "ROGUE" then
+                bar.label:SetText(tostring(power))
+            else
+                bar.label:SetText(power .. "/" .. maxPower)
+            end
         end
 
         -- Execute range display (Warrior only)

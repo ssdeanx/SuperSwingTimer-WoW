@@ -17,13 +17,16 @@ Need highly dynamic/generated rows?
   +-- YES --> prefer Lua CreateFrame path
 ```
 
-## Core references
+## Core references (local Blizzard mirror)
 
-- XML schema: <https://warcraft.wiki.gg/wiki/XML_schema>
-- FrameXML overview: <https://warcraft.wiki.gg/wiki/FrameXML>
-- Widget API: <https://warcraft.wiki.gg/wiki/Widget_API>
-- Widget handlers: <https://warcraft.wiki.gg/wiki/Widget_script_handlers>
-- Blizzard UI source: <https://github.com/Gethe/wow-ui-source>
+All references below live inside `/home/sam/wow-ui-source/` (use the
+`classic_anniversary` branch for this project):
+
+- XML schema: `reference/ARCHITECTURE.md` + the `.xsd` under `Interface/AddOns/Blizzard_FrameXML/`
+- FrameXML overview: `Interface/AddOns/Blizzard_FrameXML/` (read the addon source directly)
+- Widget API: widget templates under `Interface/AddOns/Blizzard_FrameXML/`
+- Widget handlers: widget templates under `Interface/AddOns/Blizzard_FrameXML/`
+- Blizzard UI source: `/home/sam/wow-ui-source/` (the local mirror itself — no web fallback)
 
 ## Practical rule
 
@@ -45,7 +48,7 @@ XML can still help when:
 
 ## XML root reminder
 
-The Warcraft Wiki XML schema page shows the root `Ui` element and schema usage.
+The local Blizzard FrameXML source shows the root `Ui` element and schema usage.
 The exact namespace boilerplate matters when authoring XML files.
 
 Skeleton:
@@ -76,7 +79,7 @@ The schema and widget docs cover these frequently used elements:
 
 ## Layer example
 
-The `Layer` page documents the standard draw order and XML layer usage.
+The widget templates under `Blizzard_FrameXML` document the standard draw order and XML layer usage.
 
 Example:
 

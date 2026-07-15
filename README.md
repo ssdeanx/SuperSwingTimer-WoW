@@ -42,6 +42,7 @@ Current version: **v0.1.10**. Status: release-ready. Bundled statusbar textures 
 - Shaman Lightning Shield / Water Shield helper: 3 thin charge rectangles to the left of MH that refresh immediately on player aura changes, use hardened spell-ID plus aura-name fallback matching for better Classic/TBC payload compatibility, recognize Water Shield / Mana Shield alias paths, stay class-colored (with Water Shield override) from the Quick Controls swatch/toggle path, and now support an Appearance slider for left-gap spacing
 - Shaman Quick Controls now expose explicit checkboxes for both `Lightning Shield Tracker` and `Flame Shock Bar`, so each helper can be disabled independently without touching weave settings
 - Optional class colors for MH / OH / ranged bar fills, with the spark color kept independent so queue tints and white/manual spark colors stay readable, turning class colors off restoring the saved manual bar colors instead of leaving the class tint behind, and live bar text now flipping to black with a white outlined backing while class colors are enabled for better readability on bright fills
+- Class power bar (rage / energy / mana) shows only numeric values: Warrior rage and Rogue energy display the bare amount, while mana classes (Shaman, Hunter, Druid, Paladin) show `current/max` — no resource-type word labels such as "RAGE", "MANA", or "EN"
 - Rogue latency-adjusted main-hand end window that turns red on the final slice of the MH bar so Combat Rogues can press Sinister Strike into the swing landing and more reliably fire it immediately after the main-hand hit, while the spark stays layered above that red slice for readability, the default alpha stays a little softer for clearer bar reading, and the helper now falls back to the live MH weapon speed whenever the MH bar itself is visible
 - Rogue Slice and Dice helper: a slim duration bar above the MH bar that uses the shared bar texture path, matches MH width, tracks the active Slice and Dice buff in real time from a Classic-safe helpful-aura read (`UnitBuff` / `UnitAura` signature tolerant), rechecks its aura state on a short throttle for smoother live updates, and stays hidden whenever the buff is down or the MH bar itself is hidden
 - Rogue energy-tick helper: one slim 4px vertical bar to the left of the MH bar that fills on the Classic/TBC 2-second energy-tick cadence, re-syncs from likely natural energy gains, and keeps the swing timer stack cleaner than the earlier paired test helper
@@ -223,7 +224,7 @@ SuperSwingTimer includes an optional in-game unit test suite powered by [**WoWUn
 Tests run automatically on `PLAYER_ENTERING_WORLD` and relevant game events. 9 test groups cover:
 
 | Group | Tests | Coverage |
-|-------|-------|----------|
+| ----- | ----- | -------- |
 | `SST-Constants` | 12 | Spell IDs, DB defaults, clock domain, seal families |
 | `SST-Timers` | 3 | `ns.timers.*` existence, monotonic clock |
 | `SST-AuraParsing` | 4 | `GetHarmfulAuraData` Classic + TBC shapes, physical debuffs, nil |

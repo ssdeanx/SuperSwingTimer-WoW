@@ -23,7 +23,7 @@ dragging, textures, font strings, sliders, scroll frames, or dropdown UI.
 
 ## Core entry point: `CreateFrame`
 
-Primary page: <https://warcraft.wiki.gg/wiki/API_CreateFrame>
+Local source: /home/sam/wow-ui-source — Blizzard_FrameXML CreateFrame template (branch: classic_anniversary)
 
 Signature:
 
@@ -69,7 +69,7 @@ end)
 
 ## Frame methods worth remembering
 
-Primary page: <https://warcraft.wiki.gg/wiki/UIOBJECT_Frame>
+Local source: /home/sam/wow-ui-source — Blizzard_FrameXML Frame widget (branch: classic_anniversary)
 
 Frequently used methods:
 
@@ -98,7 +98,7 @@ Common script handlers:
 
 ## `OnEvent` pattern
 
-Primary page: <https://warcraft.wiki.gg/wiki/UIHANDLER_OnEvent>
+Local source: /home/sam/wow-ui-source — Blizzard_FrameXML OnEvent handler (branch: classic_anniversary)
 
 ```lua
 frame:SetScript("OnEvent", function(self, event, ...)
@@ -115,7 +115,7 @@ end)
 
 ## `OnUpdate` pattern
 
-Primary page: <https://warcraft.wiki.gg/wiki/UIHANDLER_OnUpdate>
+Local source: /home/sam/wow-ui-source — Blizzard_FrameXML OnUpdate handler (branch: classic_anniversary)
 
 - Signature: `OnUpdate(self, elapsed)`
 - It only runs while the frame and its parents are visible.
@@ -139,7 +139,7 @@ end)
 
 ## Status bars
 
-Primary page: <https://warcraft.wiki.gg/wiki/UIOBJECT_StatusBar>
+Local source: /home/sam/wow-ui-source — Blizzard_FrameXML StatusBar widget (branch: classic_anniversary)
 
 ```lua
 local bar = CreateFrame("StatusBar", nil, UIParent)
@@ -168,7 +168,7 @@ Practical rule:
 
 ## Textures
 
-Primary page: <https://warcraft.wiki.gg/wiki/UIOBJECT_Texture>
+Local source: /home/sam/wow-ui-source — Blizzard_FrameXML Texture region (branch: classic_anniversary)
 
 ```lua
 local tex = frame:CreateTexture(nil, "OVERLAY")
@@ -195,7 +195,7 @@ Use cases:
 
 ## Font strings
 
-Primary page: <https://warcraft.wiki.gg/wiki/UIOBJECT_FontString>
+Local source: /home/sam/wow-ui-source — Blizzard_FrameXML FontString region (branch: classic_anniversary)
 
 ```lua
 local label = frame:CreateFontString(nil, "OVERLAY", "GameTooltipText")
@@ -216,10 +216,10 @@ Useful methods:
 
 ## Draw layers
 
-Primary pages:
+Local sources (Blizzard_FrameXML, branch: classic_anniversary):
 
-- <https://warcraft.wiki.gg/wiki/Layer>
-- <https://warcraft.wiki.gg/wiki/Widget_API>
+- Layer draw order: widget templates under `Blizzard_FrameXML/`
+- Widget API: widget templates under `Blizzard_FrameXML/`
 
 Layer order inside a frame:
 
@@ -252,7 +252,7 @@ Notes:
 
 ## Scroll frames
 
-Primary page: <https://warcraft.wiki.gg/wiki/UIOBJECT_ScrollFrame>
+Local source: /home/sam/wow-ui-source — Blizzard_FrameXML ScrollFrame widget (branch: classic_anniversary)
 
 Useful methods:
 
@@ -267,11 +267,11 @@ Good fit for:
 - texture browsers
 - dynamic lists
 
-See also: <https://warcraft.wiki.gg/wiki/Making_scrollable_frames>
+See also: `Interface/AddOns/Blizzard_FrameXML/` scroll-frame templates in the local mirror
 
 ## Sliders
 
-Primary page: <https://warcraft.wiki.gg/wiki/UIOBJECT_Slider>
+Local source: /home/sam/wow-ui-source — Blizzard_FrameXML Slider widget (branch: classic_anniversary)
 
 ```lua
 local slider = CreateFrame("Slider", nil, UIParent, "UISliderTemplateWithLabels")
@@ -300,10 +300,10 @@ Relevant handlers:
 
 ## Dropdowns
 
-Primary pages:
+Local sources (Blizzard_FrameXML, branch: classic_anniversary):
 
-- <https://warcraft.wiki.gg/wiki/API_UIDropDownMenu_Initialize>
-- <https://warcraft.wiki.gg/wiki/API_UIDropDownMenu_CreateInfo>
+- `UIDropDownMenu_Initialize`: `Blizzard_FrameXML` dropdown templates
+- `UIDropDownMenu_CreateInfo`: `Blizzard_FrameXML` dropdown templates
 
 Classic pattern:
 
@@ -349,9 +349,9 @@ Update label + saved value
 
 ## Buttons, check buttons, and edit boxes
 
-Useful `Widget_script_handlers` page:
+Useful `Widget_script_handlers` source:
 
-- <https://warcraft.wiki.gg/wiki/Widget_script_handlers>
+- widget templates under `Blizzard_FrameXML/` (branch: classic_anniversary)
 
 Highlights:
 

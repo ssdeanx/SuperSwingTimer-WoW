@@ -567,7 +567,7 @@ function ns.StopSanityTicker()
     end
 end
 
-function ns.OnPlayerEnteringWorld()
+function ns.OnPlayerEnteringWorld(isInitialLogin, isReloadingUi)
     ns.isMoving = false
     ns.lastStoppedMovingAt = nil
     ns.druidFormChangeTime = nil

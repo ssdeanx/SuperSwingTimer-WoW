@@ -1,5 +1,15 @@
 # Active Context
 
+## Active Context Update (2026-07-15 - WoW API LuaLS diagnostics pass)
+
+- **WoW API Lua diagnostics are now active** in the editor (LuaLS + WoW API stubs). Ran `get_errors` across all Lua sources.
+- **Bugs fixed (all confirmed clean after re-run):**
+  1. `setResetCallback` colon-call bug in `SuperSwingTimer_Config.lua` (4 call sites) — real crash bug, fixed via dot syntax. See correction note below.
+  2. `ns.OnPlayerEnteringWorld(isInitialLogin, isReloadingUi)` arg mismatch in `SuperSwingTimer.lua` — definition updated to accept the two params (`SuperSwingTimer_State.lua`).
+  3. `UpdateHunterCastLatencyVisual(nil, false)` type error in `SuperSwingTimer_UI.lua` — `duration` param annotated `number|nil` (body already handles nil).
+  4. Implicit global creation for `SuperSwingTimerDB`/`HunterTimerDB`/`SwangThangDB` (SavedVariables) in `SuperSwingTimer.lua` — writes now use explicit `_G.` prefix matching the existing `rawget(_G, ...)` read pattern.
+- **Result**: 0 diagnostics across `SuperSwingTimer.lua`, `SuperSwingTimer_State.lua`, `SuperSwingTimer_UI.lua`, `SuperSwingTimer_Config.lua`, `SuperSwingTimer_Tests.lua`, `test_migrations.lua`, and all other Lua sources.
+
 ## Active Context Update (2026-07-05 - v0.1.7: Phases 4/6/7/9 enterprise UX finalization)
 
 - **Show Advanced toggle** (Phase 6): `SuperSwingTimerDB.showAdvanced` toggle at top-right of panel, below Minimal Mode. Reveals 16 advanced rows: texture layers (MH/OH, Spark, Weave, Spell Icon), spark dimensions/alpha, Indicator Glow Mode, bar background/border settings, weave spark dimensions/alpha, weave marker note. Tagged `isAdvanced = true` per row. `SetRowsShown` modified to filter by flag. Default false, migration fill-in added in `MigrateDB()`.
@@ -7,7 +17,8 @@
 - **Texture preview chips** (Phase 7): Browser-mode texture rows now show a 24×16 inline thumbnail with UI-Tooltip-Border frame. Updates live on `Refresh()`. PathBox width reduced by 20px to accommodate chip.
 - **Keyboard navigation audit** (Phase 9): Section headers and Quick Controls tab buttons now respond to Enter/Space via `OnKeyDown`. All other controls use Blizzard widget templates with native keyboard handling.
 - **CHANGELOG updated**: Added entries for all 4 phases. **AUDIT.md gap analysis table updated**: SST now at or near target for search, per-section reset, tooltips/help, section help, progressive disclosure, texture previews, keyboard nav, and category tabs. Profile system deferred.
-- **Quality gates**: `luac -p` passes on all 7 files. Zero syntax errors. The only lint diagnostics are false-positive `setResetCallback` arg-count warnings (linter miscounts self + 1 arg as 2).
+- **Quality gates**: `luac -p` passes on all 7 files. Zero syntax errors.
+- **CORRECTION (2026-07-15)**: The old `setResetCallback` arg-count warning was NOT a false positive. With the new WoW API LuaLS diagnostics active, it is confirmed as a real runtime bug — the method is defined `function (callback)` (1 param) but was called with `:` colon syntax (`mhOhHeader:setResetCallback(fn)`), which passes `self` + `fn` = 2 args. At runtime `callback` received the row object, not the reset function, so clicking a section Reset button would crash. Fixed by switching the 4 call sites to dot syntax (`.setResetCallback`).
 - **Known follow-up**: Profile system (Phase 8) deferred as too large. File splitting of Config.lua (~4600+ lines) pending. Quick Controls section doesn't have a reset button (complex tab structure — could add simple toggle/color reset later).
 
 ## Active Context Update (2026-06-17 - Hunter buff icon redesign + Shaman buff icon group)

@@ -4470,7 +4470,7 @@ local function CreatePanel()
     -- ============================================================
 
     -- Appearance section reset
-    mhOhHeader:setResetCallback(function ()
+    mhOhHeader.setResetCallback(function ()
         local d = ns.DB_DEFAULTS
         local set = function (dbKey, slider, defVal)
             SuperSwingTimerDB[dbKey] = defVal
@@ -4541,7 +4541,7 @@ local function CreatePanel()
     end)
 
     -- Shaman Weave Assist section reset
-    shamanHeader:setResetCallback(function ()
+    shamanHeader.setResetCallback(function ()
         local d = ns.DB_DEFAULTS
         SuperSwingTimerDB.weaveSparkTexture = d.weaveSparkTexture
         SuperSwingTimerDB.weaveSparkTextureLayer = d.weaveSparkTextureLayer
@@ -4574,7 +4574,7 @@ local function CreatePanel()
     end)
 
     -- Combat & Timer Behavior section reset
-    generalHeader:setResetCallback(function ()
+    generalHeader.setResetCallback(function ()
         local d = ns.DB_DEFAULTS
         SuperSwingTimerDB.lockBars = d.lockBars
         if lockBarsRow and lockBarsRow.refresh then lockBarsRow.refresh() end
@@ -4582,7 +4582,7 @@ local function CreatePanel()
     end)
 
     -- Shaman Weave Spells section reset
-    weaveFamiliesHeader:setResetCallback(function ()
+    weaveFamiliesHeader.setResetCallback(function ()
         local d = ns.DB_DEFAULTS
         SuperSwingTimerDB.weaveSpellFamilies = {}
         for key, val in pairs(d.weaveSpellFamilies) do

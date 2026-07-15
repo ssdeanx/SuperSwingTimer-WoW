@@ -35,15 +35,19 @@ latency-sensitive logic.
 
 ## Verified starting points
 
-- Classic API hub: <https://warcraft.wiki.gg/wiki/World_of_Warcraft_API/Classic>
-- Combat log: <https://warcraft.wiki.gg/wiki/API_CombatLogGetCurrentEventInfo>
-- Melee speed: <https://warcraft.wiki.gg/wiki/API_UnitAttackSpeed>
-- Ranged speed: <https://warcraft.wiki.gg/wiki/API_UnitRangedDamage>
-- Casting: <https://warcraft.wiki.gg/wiki/API_UnitCastingInfo>
-- Channeling: <https://warcraft.wiki.gg/wiki/API_UnitChannelInfo>
-- Spell haste: <https://warcraft.wiki.gg/wiki/API_UnitSpellHaste>
-- Cooldowns: <https://warcraft.wiki.gg/wiki/API_GetSpellCooldown>
-- Latency: <https://warcraft.wiki.gg/wiki/API_GetNetStats>
+All API signatures below are confirmed against the local Blizzard FrameXML
+mirror at `/home/sam/wow-ui-source/` (use the `classic_anniversary` branch for
+this project). Read the exact doc with:
+`git -C /home/sam/wow-ui-source show classic_anniversary:Interface/AddOns/Blizzard_APIDocumentationGenerated/API_<Name>.lua`
+
+- Combat log: `CombatLogGetCurrentEventInfo()` — `Blizzard_APIDocumentationGenerated/API_CombatLogGetCurrentEventInfo.lua`
+- Melee speed: `UnitAttackSpeed(unit)` — `Blizzard_APIDocumentationGenerated/API_UnitAttackSpeed.lua`
+- Ranged speed: `UnitRangedDamage(unit)` — `Blizzard_APIDocumentationGenerated/API_UnitRangedDamage.lua`
+- Casting: `UnitCastingInfo(unit)` — `Blizzard_APIDocumentationGenerated/API_UnitCastingInfo.lua`
+- Channeling: `UnitChannelInfo(unit)` — `Blizzard_APIDocumentationGenerated/API_UnitChannelInfo.lua`
+- Spell haste: `UnitSpellHaste(unit)` / `GetMeleeHaste()` — `Blizzard_APIDocumentationGenerated/API_UnitSpellHaste.lua`
+- Cooldowns: `GetSpellCooldown(spell)` — `Blizzard_APIDocumentationGenerated/API_GetSpellCooldown.lua`
+- Latency: `GetNetStats()` — `Blizzard_APIDocumentationGenerated/API_GetNetStats.lua`
 
 ## Combat log
 
@@ -71,7 +75,7 @@ end
 ### `UnitAttackSpeed(unit)`
 
 - Returns `mainSpeed, offSpeed`.
-- Warcraft Wiki explicitly verifies `"player"` and `"target"` usage.
+- The local Blizzard source explicitly verifies `"player"` and `"target"` usage.
 - This should usually be treated as the current melee-speed truth source.
 
 ### `UnitRangedDamage(unit)`
@@ -86,7 +90,7 @@ end
 - `GetMeleeHaste()` is useful for melee timing adjustments.
 - `UnitSpellHaste("player")` is the spell-haste-aware path for cast breakpoint
   math.
-- Warcraft Wiki notes `UnitSpellHaste` was added for Classic in 1.15.3, so keep
+- The local Blizzard source notes `UnitSpellHaste` was added for Classic in 1.15.3, so keep
   fallback thinking available for older-era assumptions.
 
 ## Casting and channels
@@ -95,7 +99,7 @@ end
 
 - Use for cast-time spells.
 - Returns cast start/end timestamps in milliseconds.
-- Current Classic/TBC docs note `notInterruptible` may be `nil`.
+- The local Blizzard source notes `notInterruptible` may be `nil`.
 - Spell identity can vary across clients; name-based fallback remains useful.
 - Do not use it as the only source of truth for channels.
 
@@ -122,7 +126,7 @@ Typical returns include:
 ### `GetSpellCooldown(spell)`
 
 - Returns `startTime, duration, enabled, modRate`.
-- Warcraft Wiki notes cooldown values may not be updated immediately on the same
+- The local Blizzard source notes cooldown values may not be updated immediately on the same
   `UNIT_SPELLCAST_SUCCEEDED` frame.
 - Spell `61304` is the common GCD probe when you need the global cooldown.
 - Good for reactive start/resync hints, but not always the only authoritative

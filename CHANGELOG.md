@@ -126,6 +126,16 @@
 - **CHANGELOG.md + README.md:** Updated for v0.1.9 (version string, DB schema chain, default colours, texture sources table)
 - **Result:** 0 undefined-variable warnings in addon Lua files (77 remaining all in docs/blizzard/* reference excerpts)
 
+### GitHub Copilot (OpenCode Zen / Hy3 Free, 2026-07-15)
+
+### Changed
+
+- **Class power bar text simplified (ClassMods.lua):** Removed the redundant resource-type labels ("RAGE", "MANA", "EN") from the class power bar. Warrior (rage) and Rogue (energy) now display only the numeric amount. Mana classes (Shaman, Hunter, Druid, Paladin) now display `current/max` (e.g. `1234/2000`) instead of the "MANA" label.
+
+### Fixed
+
+- **WoW API LuaLS diagnostics pass (v0.1.9 session):** Resolved 4 real issues surfaced by the newly-enabled WoW API Lua diagnostics across `SuperSwingTimer.lua`, `SuperSwingTimer_State.lua`, `SuperSwingTimer_UI.lua`, and `SuperSwingTimer_Config.lua` — including a genuine `setResetCallback` colon-call crash bug on section Reset buttons, an `OnPlayerEnteringWorld` argument mismatch, a `nil` duration type annotation, and implicit SavedVariables global creation. All Lua sources now report 0 diagnostics.
+
 ---
 
 ## v0.1.8 - 2026-07-12

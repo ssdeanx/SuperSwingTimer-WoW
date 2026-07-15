@@ -17,22 +17,18 @@ for other Classic/TBC addons.
 
 ## Source-of-truth order
 
-When API behavior is unclear, prefer sources in this order:
+The authoritative reference is the **local official Blizzard-authored FrameXML + SharedXML source mirror** at `/home/sam/wow-ui-source/SKILL.md`. It is extracted directly from the WoW game client and tracked across **all** active client versions via git branches (`live`, `ptr`, `beta`, `classic`, `classic_anniversary`, `classic_era`, `classic_era_ptr`, `classic_ptr`, `classic_titan`, etc.), so it covers every version of the game — Classic Era, TBC Anniversary, WotLK, and Retail.
 
-1. `warcraft.wiki.gg` Classic API and widget pages
-2. Blizzard / extracted UI source such as `Gethe/wow-ui-source`
-3. The current addon's proven local wrappers and patterns
-4. Older Wowpedia/Fandom mirrors only as fallback context
+When API behavior is unclear, consult this repo first:
 
-Start with these pages first:
+1. **Read `/home/sam/wow-ui-source/SKILL.md`** for the file-to-responsibility matrix, 593 API namespaces, version-branch mapping, architecture deep-dive, taint model, and secure-template reference.
+2. **Branch-diff for version-specific behavior** — the single most useful operation. Examples:
+   - `git diff classic..live -- Interface/AddOns/Blizzard_CombatLog/` → Classic-vs-Retail API divergence
+   - `git show classic_anniversary:Interface/AddOns/Blizzard_FrameXML/SecureTemplates.lua` → read a specific client's file
+   - `git diff --stat classic..live -- Interface/AddOns/` → which files differ between clients
+3. **The current addon's proven local wrappers and patterns** (this skill's `references/` pack and the addon's own code) for project-specific conventions.
 
-- `https://warcraft.wiki.gg/wiki/World_of_Warcraft_API/Classic`
-- `https://warcraft.wiki.gg/wiki/API_CreateFrame`
-- `https://warcraft.wiki.gg/wiki/Widget_API`
-- `https://warcraft.wiki.gg/wiki/Widget_script_handlers`
-- `https://warcraft.wiki.gg/wiki/XML_schema`
-- `https://warcraft.wiki.gg/wiki/UIOBJECT_Frame`
-- `https://warcraft.wiki.gg/wiki/UIOBJECT_StatusBar`
+The local mirror above is the sole source of truth — do not rely on any external web mirrors, as they are incomplete and outdated for Classic/TBC work.
 
 The reference pack under `references/` expands these into task-oriented notes.
 
@@ -184,7 +180,7 @@ The reference pack under `references/` expands these into task-oriented notes.
 
 ## Current research snapshot
 
-These references were refreshed against `warcraft.wiki.gg` on 2026-05-30.
+These references were refreshed against the local Blizzard FrameXML mirror at `/home/sam/wow-ui-source/` on 2026-05-30.
 Relevant pages reviewed included the Classic API index, `CreateFrame`, Frame,
 StatusBar, Texture, FontString, ScrollFrame, Slider, widget script handlers,
 combat-log APIs, cast/channel APIs, `GetSpellCooldown`, `GetNetStats`, and XML

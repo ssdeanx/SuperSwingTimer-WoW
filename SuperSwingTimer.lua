@@ -44,10 +44,10 @@ local function MigrateDB(targetDb)
     -- Migrate from v1: HunterTimerDB = {point, relativePoint, x, y}
     if not SuperSwingTimerDB then
         if legacyAddonDB then
-            SuperSwingTimerDB = legacyAddonDB
-            SwangThangDB = nil
+            _G.SuperSwingTimerDB = legacyAddonDB
+            _G.SwangThangDB = nil
         elseif legacyHunterDB then
-            SuperSwingTimerDB = {
+            _G.SuperSwingTimerDB = {
                 version = 2,
                 showMH = true,
                 showOH = true,
@@ -62,7 +62,7 @@ local function MigrateDB(targetDb)
                     }
                 }
             }
-            HunterTimerDB = nil -- clear legacy SavedVariable
+            _G.HunterTimerDB = nil -- clear legacy SavedVariable
         end
     end
 
@@ -80,7 +80,7 @@ local function MigrateDB(targetDb)
 
     -- Fresh install
     if not SuperSwingTimerDB then
-        SuperSwingTimerDB = DeepCopyDefaults(ns.DB_DEFAULTS)
+        _G.SuperSwingTimerDB = DeepCopyDefaults(ns.DB_DEFAULTS)
     end
 
     -- Fill any missing fields for upgrades
