@@ -81,7 +81,11 @@
       "immolationTrapBar",
       "explosiveTrapBar",
       "freezingTrapBar",
-      "frostTrapBar"
+      "frostTrapBar",
+      "ClearReplaces",
+      "SlashCmdList",
+      "SLASH_SSTTEST1",
+      "WoWUnit"
     ]
   }
 }

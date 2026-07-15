@@ -36,15 +36,23 @@ local function RegisterSSTTests()
     function Core:MigrateDB_Fresh() local db={}; local ok,_=pc(ns.MigrateDB,db); IsTrue(ok) end
     function Core:MigrateDB_V1()
         local db={version=1}; local ok,_=pc(ns.MigrateDB,db)
-        IsTrue(ok); AreEqual(db.version, 54)
+        IsTrue(ok); AreEqual(db.version, 56)
     end
     function Core:MigrateDB_V53()
         local db={version=53}; local ok,_=pc(ns.MigrateDB,db)
-        IsTrue(ok); AreEqual(db.version, 54)
+        IsTrue(ok); AreEqual(db.version, 56)
     end
     function Core:MigrateDB_V54()
         local db={version=54}; local ok,_=pc(ns.MigrateDB,db)
-        IsTrue(ok); AreEqual(db.version, 54)
+        IsTrue(ok); AreEqual(db.version, 56)
+    end
+    function Core:MigrateDB_V55()
+        local db={version=55}; local ok,_=pc(ns.MigrateDB,db)
+        IsTrue(ok); AreEqual(db.version, 56)
+    end
+    function Core:MigrateDB_V56()
+        local db={version=56}; local ok,_=pc(ns.MigrateDB,db)
+        IsTrue(ok); AreEqual(db.version, 56)
     end
     function Core:FactoryReset() IsTrue(pc(ns.ResetConfigDefaults)) end
     function Core:GetSpellInfo_Wraps() Exists(ns.GetSpellInfo(ns.AUTO_SHOT_ID)) end
@@ -98,16 +106,6 @@ local function RegisterSSTTests()
         IsFalse(T.GetHarmfulAuraData('target',1,'HARMFUL'))
         ClearReplaces()
     end
-    function Auras:Flurry_3Charges()
-        if not T or not T.GetFlurryBuffInfo then return end
-        Replace('UnitBuff',function(u,i)
-            if i==1 then return 'Flurry',132316,3,nil,nil,nil,nil,nil,nil,nil,16280 end
-        end)
-        local c,_=T.GetFlurryBuffInfo(); AreEqual(c,3)
-        ClearReplaces()
-    end
-    function Auras:Flurry_Nil() if not T or not T.GetFlurryBuffInfo then return end
-        Replace('UnitBuff',function() end); IsFalse(T.GetFlurryBuffInfo()); ClearReplaces() end
     function Auras:PaladinSeal_Command()
         if playerClass == "PALADIN" and ns.GetPaladinSealFamilyByAuraName then
             AreEqual(ns.GetPaladinSealFamilyByAuraName('Seal of Command'),'COMMAND') end end
@@ -127,16 +125,19 @@ local function RegisterSSTTests()
     local Combat = WoWUnit('SST-Combat', 'PLAYER_ENTERING_WORLD')
 
     function Combat:StackOffset_SingleBar()
-        if not T or not T.GetDebuffStackOffset then return end
-        local ref={GetTop=function() return 100 end}
-        local b1={IsShown=function() return true end,GetTop=function() return 96 end,GetBottom=function()return 102 end}
-        IsTrue(T.GetDebuffStackOffset({b1},ref) < 0)
+        if not T or not T.RestackDebuffBars or not T.GetDebuffStackOffset then return end
+        local ref = {GetTop = function() return 100 end, GetAlpha = function() return 1 end}
+        local b1 = {IsShown = function() return true end, GetHeight = function() return 6 end,
+            ClearAllPoints = function() end, SetPoint = function() end}
+        T.RestackDebuffBars({b1}, ref, 2)
+        IsTrue(T.GetDebuffStackOffset() < 0)
     end
     function Combat:StackOffset_HiddenBars()
-        if not T or not T.GetDebuffStackOffset then return end
-        local ref={GetTop=function() return 100 end}
-        local b1={IsShown=function() return false end,GetTop=function() return 96 end,GetBottom=function()return 102 end}
-        IsTrue(type(T.GetDebuffStackOffset({b1},ref)) == "number")
+        if not T or not T.RestackDebuffBars or not T.GetDebuffStackOffset then return end
+        local ref = {GetTop = function() return 100 end, GetAlpha = function() return 1 end}
+        local b1 = {IsShown = function() return false end, GetHeight = function() return 6 end}
+        T.RestackDebuffBars({b1}, ref, 2)
+        IsTrue(type(T.GetDebuffStackOffset()) == 'number')
     end
     function Combat:StartSwing_MH()
         if not ns.StartSwing then return end

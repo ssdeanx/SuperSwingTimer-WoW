@@ -934,6 +934,97 @@ local function MigrateDB()
                 if db.showHunterFreezingTrapBar == nil then db.showHunterFreezingTrapBar = true end
                 if db.showHunterFrostTrapBar == nil then db.showHunterFrostTrapBar = true end
             end
+        },
+        {
+            version = 55,
+            apply = function (db)
+                -- Enable rage bar for Protection spec by default
+                if db.showWarriorRageProtection ~= nil then
+                    db.showWarriorRageProtection = true
+                end
+            end
+        },
+        {
+            version = 56,
+            apply = function (db)
+                -- Class colors on by default
+                db.useClassColors = true
+            end
+        },
+        {
+            version = 57,
+            apply = function (db)
+                -- Repair invisible bars: earlier migrations (v10/v22) force the
+                -- mh/oh/ranged fill to pure black, which renders as an invisible
+                -- bar when class colors are off. Restore a visible default fill.
+                db.colors = db.colors or {}
+                local visible = { r = 0.25, g = 0.72, b = 1.00, a = 1 }
+                for _, key in ipairs({ "mh", "oh", "ranged" }) do
+                    local c = db.colors[key]
+                    if not c or (c.r == 0 and c.g == 0 and c.b == 0) then
+                        db.colors[key] = { r = visible.r, g = visible.g, b = visible.b, a = visible.a }
+                    end
+                end
+                -- Re-enable class colors if the old forced-black migration
+                -- disabled them (v22).
+                if db.useClassColors == false then
+                    db.useClassColors = true
+                end
+            end
+        },
+        {
+            version = 58,
+            apply = function (db)
+                -- Repair invisible bars caused by a stored statusbar texture that
+                -- renders blank on a StatusBar (e.g. Blizzard "Casting Fill"
+                -- = Interface\CastingBar\UI-CastingBar-Fill, or any path the
+                -- current Media folder no longer ships). v57 fixed the *fill color*
+                -- but not the *texture path*, and since v57 already ran on this
+                -- profile it will never re-run. Force the bundled SuperSwingTimer
+                -- fill so every bar is visible by default.
+                local goodTexture = "Interface\\AddOns\\SuperSwingTimer\\Media\\statusbar\\MerfinMain.tga"
+                local function isVisibleBarTexture(path)
+                    if not path or path == "" then return false end
+                    if path:find("SuperSwingTimer\\Media\\statusbar\\", 1, true) then return true end
+                    if path:find("TargetingFrame\\UI-StatusBar", 1, true) then return true end
+                    if path:find("Statusbar_", 1, true) or path:find("Statusbar-", 1, true) then return true end
+                    if path:find("CastingBar\\UI-CastingBar-", 1, true) then return false end
+                    if path:find("UI-StatusBar", 1, true) then return true end
+                    return false
+                end
+                for _, key in ipairs({ "barTexture", "rangedBarTexture" }) do
+                    if not isVisibleBarTexture(db[key]) then
+                        db[key] = goodTexture
+                    end
+                end
+                -- Re-assert a visible fill color on the main bars.
+                db.colors = db.colors or {}
+                local visible = { r = 0.25, g = 0.72, b = 1.00, a = 1 }
+                for _, key in ipairs({ "mh", "oh", "ranged" }) do
+                    local c = db.colors[key]
+                    if not c or (c.r == 0 and c.g == 0 and c.b == 0) then
+                        db.colors[key] = { r = visible.r, g = visible.g, b = visible.b, a = visible.a }
+                    end
+                end
+            end
+        },
+        {
+            version = 59,
+            apply = function (db)
+                local CASTING_FILL = "Interface\\CastingBar\\UI-CastingBar-Fill"
+                local GOOD = "Interface\\AddOns\\SuperSwingTimer\\Media\\statusbar\\MerfinMain.tga"
+                if db.barTexture == CASTING_FILL then db.barTexture = GOOD end
+                if db.rangedBarTexture == CASTING_FILL then db.rangedBarTexture = GOOD end
+                db.colors = db.colors or {}
+                local visible = { r = 0.25, g = 0.72, b = 1.00, a = 1 }
+                for _, key in ipairs({ "mh", "oh", "ranged" }) do
+                    local c = db.colors[key]
+                    if not c or (c.r == 0 and c.g == 0 and c.b == 0) then
+                        db.colors[key] = { r = visible.r, g = visible.g, b = visible.b, a = visible.a }
+                    end
+                end
+                db.useClassColors = true
+            end
         }
     }
 
@@ -1198,6 +1289,15 @@ frame:SetScript("OnEvent", function (self, event, ...)
         if ns.playerClass == "WARRIOR" and ns.UpdateWarriorDeepWoundsBar then
             ns.UpdateWarriorDeepWoundsBar(true)
         end
+        if ns.playerClass == "WARRIOR" and ns.UpdateWarriorRendBar then
+            ns.UpdateWarriorRendBar(true)
+        end
+        if ns.playerClass == "WARRIOR" and ns.UpdateWarriorThunderClapBar then
+            ns.UpdateWarriorThunderClapBar(true)
+        end
+        if ns.playerClass == "WARRIOR" and ns.UpdateWarriorDemoShoutBar then
+            ns.UpdateWarriorDemoShoutBar(true)
+        end
         if ns.playerClass == "DRUID" and ns.UpdateDruidMangleBar then
             ns.UpdateDruidMangleBar(true)
         end
@@ -1265,6 +1365,12 @@ frame:SetScript("OnEvent", function (self, event, ...)
             ns.UpdateShamanFlameShockBar(true)
         elseif unit == "target" and ns.playerClass == "WARRIOR" and ns.UpdateWarriorDeepWoundsBar then
             ns.UpdateWarriorDeepWoundsBar(true)
+        elseif unit == "target" and ns.playerClass == "WARRIOR" and ns.UpdateWarriorRendBar then
+            ns.UpdateWarriorRendBar(true)
+        elseif unit == "target" and ns.playerClass == "WARRIOR" and ns.UpdateWarriorThunderClapBar then
+            ns.UpdateWarriorThunderClapBar(true)
+        elseif unit == "target" and ns.playerClass == "WARRIOR" and ns.UpdateWarriorDemoShoutBar then
+            ns.UpdateWarriorDemoShoutBar(true)
         elseif unit == "target" and ns.playerClass == "DRUID" and ns.UpdateDruidMangleBar then
             ns.UpdateDruidMangleBar(true)
         elseif unit == "target" and ns.playerClass == "DRUID" and ns.UpdateDruidRipBar then

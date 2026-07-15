@@ -1,30 +1,137 @@
 # Super Swing Timer Changelog
 
+> All notable changes to Super Swing Timer. This file documents user-facing and structural changes per release.
+> Sections: **Added** / **Changed** / **Fixed** / **Removed** / **Performance** / **Security** / **Docs** / **Internal** / **Notes**
+> DB schema migrations are listed under **Notes** per version.
+
+---
+
+## v0.1.9 - 2026-07-14
+
+### Added
+- **SoD rune support (`SuperSwingTimer_SoD.lua`):** New file providing Season of Discovery rune ability spell IDs and classifications. Injects SoD-specific spell IDs into the existing swing classification tables defined in Constants.lua. Safely no-ops on TBC Anniversary / Classic Era 1.15 where these spell IDs don't exist. Loaded via `.toc` after Constants.lua.
+  - **NO_RESET_SWING_SPELLS** for SoD instant attacks verified to not reset the swing timer: Quick Strike (429765), Raging Blow (402911), Flanking Strike (415320), Lava Lash (408507), Carve (425711), Divine Storm (407778). Includes rune passive vs. actual cast ID separation.
+  - **Rend debuff tracking:** 7 rank IDs (772, 6546, 6547, 6548, 11572, 11573, 11574) for Warrior bleed, massively buffed by Blood Frenzy rune.
+  - **Blood Frenzy proc buff:** 412507.
+  - **Sudden Death proc buff:** 440114 (rune passive 440113 hidden, 440114 is the visible proc buff enabling Execute at any health %).
+  - **Endless Rage active ability:** 403349 (25% more rage from damage).
+  - **Flanking Strike damage debuff:** 415320 (9% increased damage taken, 10s) for Hunter.
+- **Bundled statusbar media (`Media/`):** The MerfinPlus statusbar texture set is now shipped inside the addon's own `Media/statusbar/` folder, rehomed under `Interface\AddOns\SuperSwingTimer\Media\...`. A self-contained `Media/SuperSwingTimer_Media.lua` registrar (no external-lib dependencies; LibSharedMedia registration is optional and guarded) loads via `Media/Media.xml` in the `.toc`. Five fill textures ship locally — `MerfinMain`, `MerfinMainDark`, `MerfinFlatt` (`.tga`) and `MerfinTexture`, `Flatt` (`.blp`) — and appear in the in-game bar-texture picker, so the default bar is always a visible, locally-hosted skin with no dependency on a missing/external texture. Removed ~16 MB of unused Merfin assets (fonts, sound packs, spell overlays, icons, border caps) and the original Merfin-namespaced loader scripts, which referenced foreign `MerfinPlus`/`LibStub`/`LibSharedMedia` globals and would have crashed on load.
+
+### Fixed
+- **Classic Era `/sst` panel crash (OnEscape → OnEscapePressed):** `searchBox:HookScript("OnEscape", ...)` used an event name that does not exist on Classic Era EditBox widgets. Classic Era exposes `OnEscapePressed`, not `OnEscape`. TBC Anniversary aliases `OnEscape` internally so the bug was invisible until Classic Era testing. Changed all hook registrations to `"OnEscapePressed"` across Config.lua (search box, value boxes, path boxes). Resolves `/sst` error: `EditBoxHookScript; Doesn't have a 'Onescape' script`.
+- **Init-time crash on Classic Era (missing `GetBarWidth`/`GetBarHeight`):** `UI.lua:1524` called two getter functions (`GetBarWidth`, `GetBarHeight`) that were referenced at runtime but never defined in any file. This threw a Lua error during `ApplyBarSize` on Classic Era where the `pcall` guard caught it silently — but the panel never loaded and bars failed to render. Added both function definitions to `Constants.lua` returning the appropriate dimension from `ns.mhBar`.
+- **`panel` upvalue nil in `CreatePanel()`:** A module-level `local panel` was declared but assigned via a late-assignment pattern (the function was defined before the assignment). Inside `CreatePanel()`, `panel` was nil at the point of first use. Added `panel = f` at the top of `CreatePanel()` so the upvalue is populated before any consumer reads it.
+- **Invisible bars (black fill × texture):** The real root cause of "invisible" bars was the fill *color*, not the texture. `DB_DEFAULTS.colors.mh/oh/ranged` were pure black `(0,0,0,1)`; migration v22 force-set them to black while disabling `useClassColors`, and migration v10 also forces black when the color matches the class-blue `(0.25,0.72,1.0)`. A black vertex color zeroes any statusbar texture, so bars rendered black-on-dark and looked invisible. Changed the default fill colors to class blue `(0.25,0.72,1.0)`, repointed `barTexture`/`rangedBarTexture` defaults to the bundled `MerfinMain.tga`, and added **migration v57**, which repairs existing saved variables locked to black fills and re-enables class colors when the old forced-black migration disabled them.
+
+### Changed
+- **Version metadata:** `SuperSwingTimer.toc` bumped from `v0.1.8` to `v0.1.9`. `Constants.lua` DB version updated to `56`.
+
+### Notes
+- **DB schema:** v56 → v57 → v58 (texture allowlist repair) → v59 (final texture+color repair, exact-match denylist).
+- **Affected clients:** Classic Era / SoD (1.15.x) — SoD rune support and Classic Era config panel fixes. TBC Anniversary (2.5.x) was unaffected by either.
+- **Root cause investigation:** The Classic Era breakage was initially suspected to be caused by a "migration 57" issue. Investigation traced the failure to three distinct root causes: (1) EditBox event name mismatch between Classic and TBC, (2) missing getter functions referenced before definition, and (3) Lua upvalue nil timing in the panel factory. No problematic migration was found for the config crash — at that point the migration table ended at v56. This release now adds migration 57 for the separate invisible-bar fix (see Fixed).
+- **wow-ui-source cross-reference:** Verified Classic Era (1.15.8) EditBox API against `FrameXML/EditBox.lua` — confirmed `OnEscapePressed` is the correct event name. `OnEscape` exists only in TBC Anniversary and later clients via engine aliasing.
+- **SoD spell ID research:** Rune ability IDs sourced from Wowhead Season of Discovery spell database. Verified each ID by rune passive vs. actual cast dual-ID pattern. All IDs are nil-safe on non-SoD clients via `ns.GetSpellInfo()` returning nil for unknown spell IDs.
+- **Version metadata:** `SuperSwingTimer.toc` → `v0.1.9`, `Constants.lua` → `version = 56` (migrations 57–59 applied in this release).
+
+### Hermes / deepseek-v4-flash (2026-07-14) — Full session audit, Media prune, bar texture+color fix, luacheck cleanup
+
+- **Media/ — NEW (7 files):**
+  - `Media/Media.xml` — loads `SuperSwingTimer_Media.lua` via `<Script/>`
+  - `Media/SuperSwingTimer_Media.lua` — self-contained LSM registrar (no external deps), registers 5 fills + guards missing LibSharedMedia
+  - `Media/statusbar/MerfinMain.tga` (13586 B), `MerfinMainDark.tga` (2255 B), `MerfinFlatt.tga` (32786 B), `MerfinTexture.blp` (12164 B), `Flatt.blp` (6684 B)
+- **Media/ — DELETED (~16 MB):**
+  - `Media/font/` (7 fonts: ArchivoNarrow, Expressway, HOOGE, PTSansNarrow, SFUIDisplayCondensed, CNMerged, plus Merfin ttf) — referenced nowhere in addon code (only ns.FONT_PATH = FRIZQT used)
+  - `Media/MediaSettings.lua` — 0-byte empty stub
+  - `Media/statusbar/MerfinBorderPlater.tga`, `MerfinBorderPlater_1px.tga`, `MerfinMainLeft.tga`, `MerfinMainRight.tga` — border/cap textures, not needed
+  - `Media/statusbar/statusbar.lua` — Merfin LSM loader referencing `MerfinPlus`/`AceAddon`/`LibStub` globals (would crash)
+  - `Media/font/font.lua` — same pattern
+  - `Media/icons/`, `Media/sound/`, `Media/SpellActivationOverlays/`, `Media/background/`, `Media/textures/` — full MerfinPlus junk dirs
+- **SuperSwingTimer.toc:** Added `Media\Media.xml` (between Constants.lua and State.lua)
+- **SuperSwingTimer_Constants.lua:**
+  - Line 933–934: `barTexture`/`rangedBarTexture` default: `UI-StatusBar` → `MerfinMain.tga`
+  - Line 962–964: `colors.mh/oh/ranged` default: `{0,0,0,1}` → `{0.25,0.72,1.00,1}`
+  - Line 1194: REMOVED `addEntry("Blizzard", "Casting Fill", …)` from texture library
+  - Line 1520: `GetBarTexture()` — added guard: `and db.barTexture ~= "Interface\\CastingBar\\UI-CastingBar-Fill"`
+  - Line 1528: `GetRangedBarTexture()` — same guard
+- **SuperSwingTimer.lua:**
+  - v57 migration: repairs black mh/oh/ranged fills → light blue, re-enables useClassColors
+  - v58 migration (garbage): allowlist-based texture repair — clobbered valid textures like `Statusbar_Clean`
+  - v59 migration: exact-match denylist — only rewrites literal `"Casting Fill"` path + re-asserts colors + useClassColors
+  - REMOVED always-run `IsVisibleBarTexture()` block (was after colors loop, before sparkColor) — broke valid textures
+  - Added warrior Rend/ThunderClap/DemoShout bar callbacks (nil-guarded)
+- **SuperSwingTimer_Config.lua:**
+  - ~Line 3602: bar texture row `getTexture` — `SuperSwingTimerDB.barTexture or defaults` → `ns.GetBarTexture()`
+  - ~Line 3632: ranged texture row `getTexture` — same pattern → `ns.GetRangedBarTexture()`
+  - REMOVED `CreateHelpButton` function (~line 1931–1952) — dead code, config uses `AddControlTooltip`
+  - REMOVED `AddSearchRow` function (~line 2267–2271) — dead wrapper, never called
+  - ~Line 768: `UpdateBtnLabel` — renamed inner `c` → `color` to fix shadowing of outer `c`
+  - ~Line 2276: `FilterSearchRows` — removed unused `anyVisible` variable
+  - REMOVED duplicate `scollFrame` content block (was at ~line 2226–2230, then again at 2196–2200 — one scroll child wins, other was orphan)
+- **SuperSwingTimer_ClassMods.lua:**
+  - REMOVED `GetCooldownRemaining` (~line 1650–1662) — dead, was to query spell cooldowns, never called
+  - REMOVED `EnsureWarriorBadge` (~line 1699–1710) — dead, was to create cooldown badge FontStrings
+  - REMOVED `UpdateWarriorCooldownBadges` (~line 1712–1717) + call at line 2882 — empty stub, never did anything
+  - Wired `protBuffTimer` throttle (~line 2870–2878): per-frame ShieldWall/LastStand/SpellReflection calls → 0.1s throttled (elapsed accumulator)
+  - Fixed corrupted function header: `IsWarriorProtectionSpec` → `UpdateWarriorSlamBar` (patch error)
+  - Restored missing `local function IsWarriorProtectionSpec()` header
+  - Added missing `end` after `UpdateWarriorSlamBar()` in throttle block
+- **SuperSwingTimer_UI.lua:**
+  - Line 1521: REMOVED unused `local scale = ns.GetGlobalScale()` (was in `ApplyGlobalScale`)
+  - Line 1575: REMOVED unused `local scale = ns.GetGlobalScale()` (was in `ApplyBarSize`)
+- **.**luarc.json: Added 4 globals: `ClearReplaces`, `SlashCmdList`, `SLASH_SSTTEST1`, `WoWUnit`
+- **.**luacheckrc: Added 10 globals: `ClearReplaces`, `GetMeleeHaste`, `GetTimePreciseSec`, `SlashCmdList`, `SLASH_SSTTEST1`, `UnitAura`, `UnitBuff`, `UnitClass`, `UnitDebuff`, `WoWUnit`
+- **CHANGELOG.md + README.md:** Updated for v0.1.9 (version string, DB schema chain, default colours, texture sources table)
+- **Result:** 0 undefined-variable warnings in addon Lua files (77 remaining all in docs/blizzard/* reference excerpts)
+
+---
+
+## v0.1.8 - 2026-07-12
+
+### Added
+- **Global Scale slider:** Master UI scale control (0.5×–3.0×, default 1.0×) at the top of the `/sst` panel. Proportionally scales all bars, icons, sparks, borders, and fonts relative to their configured base size. Gold label with descriptive subtitle. Implemented across Constants (defaults), Config (slider + tooltip), UI (apply on init + refresh), and ClassMods (per-element scaling). Fresh install, migration, reset-defaults, and panel-refresh paths all wired.
+- **`/sst` search bar:** "Search settings..." EditBox pinned below the scroll frame. Filters all section rows in real-time — matching rows stay at full opacity, non-matching rows dim to 25% alpha. Escape clears the filter. Every toggle, slider, color swatch, dropdown, texture row, action button, and description text is searchable (case-insensitive, substring match).
+- **Tabbed Quick Controls section:** The Quick Controls section now has 3 tab-selectable views — **Visibility** (toggles only, single column), **Colors** (swatches only, 2-column grid), and **Class** (combined view for class-specific controls). Tab buttons with gold active state sit below the section header. Switching tabs preserves the panel scroll position. Tabs collapse/expand correctly with the section header.
+- **`ns.RegisterOnUpdateHook()` infrastructure (`SuperSwingTimer_Hooks.lua`):** Replaced the fragile 9-link OnUpdate chain-overwriting pattern with a registration-based hook system. All 9 class-mod functions converted from direct chain-wrapping to hooks via `ns.RegisterOnUpdateHook()`. Hooks are independently registered and executed — a failure in one cannot break the others. The core render path registers as hook #1; Test Bars animation inserts at position 1 for pre-render priority. Eliminates `Duplicate field OnUpdate` errors.
+- **Per-section Reset buttons:** Each collapsible section header (Appearance, Shaman Weave Assist, Combat & Timer Behavior, Shaman Weave Spells) now has a small red Reset button on the right side. Clicking resets only that section's DB keys to defaults and updates all live controls. Hover highlight on the button; `OnMouseDown` handler prevents click-through to the collapse toggle.
+- **Texture preview chips:** Texture path rows (Spark Texture, Cast Breakpoint Spark Texture) now show a 24×16 inline thumbnail of the current texture bordered with `UI-Tooltip-Border`. Preview updates live when texture changes.
+- **`setResetCallback` helper:** New method on section headers enabling deferred assignment of reset callbacks after all controls are created.
+- **`clampFrameLevel` / `clampAlpha` helpers:** Added to `options.lua` to enforce valid WoW frame-level and alpha ranges on all dropdown popups and sliders.
+
+### Changed
+- **Flurry icon merged into unified CD/buff icon group:** Removed the dedicated 30×30 Flurry icon system (`CreateFlurryIconFrame`, `UpdateWarriorFlurryCounter`, `UpdateShamanFlurryIcon`). Flurry is now tracked by the same 25×25 CD/buff icon group as every other class buff — same size, centering, dynamic positioning as Death Wish, Rapid Fire, etc. Eliminates the redundant double-icon on Shaman (Flurry appeared both as a dedicated icon AND in the group) and the hardcoded 12px offset that overlapped debuff bars.
+- **CD/buff icon groups re-centered:** All 6 class icon groups (Paladin, Warrior, Shaman, Druid, Hunter, Rogue) changed from right-edge alignment to true horizontal centering over the bar width.
+- **Flurry icon strata lowered:** `SetFrameStrata` from `DIALOG` to `MEDIUM` to prevent destructive visual overlap with debuff bars when both are active.
+- **Buff icon Y-position computed independently per class:** Replaced the shared `GetDebuffStackOffset()` → `_debuffStackIconOffset` chain with `ComputeBuffIconOffset(barList, referenceBar)` in all 6 classes. The old approach used a module-level local set by `RestackDebuffBars`, which had early-return paths that set the offset to nil — causing `GetDebuffStackOffset()` to return the default -8 fallback and ignore visible stacked debuff bars. The new helper uses synthetic arithmetic (no `GetTop()` calls) and takes the bar list + reference bar directly, computed fresh each frame with zero shared mutable state.
+- **Shield Block icon moved to CD/buff group:** Removed from the Warrior debuff bar stack. Added to `WARRIOR_TRACKED_SPELLS` (spellId=2565, label="SB", kind="buff") so it renders as a centered CD/buff icon. The dedicated Shield Block bar remains available via `UpdateWarriorShieldBlockBar` for users who prefer it.
+- **Buff icon gap reduced 16px → 8px:** Tighter, cleaner spacing between buff icons and the topmost debuff bar.
+
+### Fixed
+- **Hunter MH bar flicker during ranged auto shot:** A stale `hunterQueuedMeleeSpell` from an unlanded Raptor Strike (queued then the player moved out of melee range) kept `IsHunterMeleeBarVisible()` returning true, causing the MH bar to briefly pop up when the ranged active-state holdover dipped between Auto Shot cycles. Fixed by clearing the stale queue in `ApplyVisibility()` when the MH is not actively swinging.
+
+### Removed
+- **~100 lines of dead code:** `GetFlurryBuffInfo()`, `CreateFlurryIconFrame()`, `FLURRY_BUFF_NAMES`, `FLURRY_BUFF_NAME_LOOKUP`, `FLURRY_BUFF_SPELL_IDS`, and all dedicated Flurry icon update/refresh functions.
+- **2 stale Flurry tests** (`SST-Flurry` test group) — tested `GetFlurryBuffInfo` which no longer exists.
+
+### Docs
+- `README.md`: Updated feature summary to reflect unified icon groups, removed dedicated Flurry references.
+- `docs/WIRING.md`: Flurry removed from OnUpdate chain diagram and Warrior setup documentation; all references to `UpdateWarriorFlurryCounter` and `UpdateShamanFlurryIcon` replaced with unified icon group.
+- `CHANGELOG.md`: This entry.
+
+### Notes
+- **DB schema:** v54 → v55 → v56. Migration 55: Enable Warrior rage bar for Protection spec by default. Migration 56: Class colors on by default.
+- **OnUpdate hook ordering:** Hooks execute in registration order. Test Bars hook registers at position 1 for pre-render priority. All class-mod hooks register during `InitClassMods()`.
+- **Version metadata:** `SuperSwingTimer.toc` → `v0.1.8`, `Constants.lua` → `version = 56`.
+
+---
+
 ## v0.1.7 - 2026-07-06
 
-### Core architecture
-- **Canonical `ns.UnitAura` wrapper** (Constants.lua): Centralized all UnitAura/UnitBuff/UnitDebuff shape detection into a single function with 3 explicit branches — Classic 1.13.x (9-ret, no icon), Classic 1.15.x/Retail (string icon at r3), and TBC Anniversary 2.5.5 (AuraUtil.UnpackAuraData, 15+ returns with FileID icon at r2 + spellId at r10). Added convenience wrappers `ns.UnitBuff()` and `ns.UnitDebuff()`. No more raw `UnitAura()` calls — all callers go through the wrapper.
-- **`GetHarmfulAuraData` / `GetHelpfulAuraData` refactored**: Both collapsed from ~80 lines combined to ~10 lines each by delegating shape detection to `ns.UnitAura`. Eliminated the duplicated, drifting detection logic that caused the TBC Anniversary spellId extraction bug.
+### Added
+- **Canonical `ns.UnitAura` wrapper** (Constants.lua): Centralized all `UnitAura`/`UnitBuff`/`UnitDebuff` shape detection into a single function with 3 explicit branches — Classic 1.13.x (9-ret, no icon), Classic 1.15.x/Retail (string icon at r3), and TBC Anniversary 2.5.5 (`AuraUtil.UnpackAuraData`, 15+ returns with FileID icon at r2 + spellId at r10). Added convenience wrappers `ns.UnitBuff()` and `ns.UnitDebuff()`. No more raw `UnitAura()` calls — all callers go through the wrapper.
+- **`GetHarmfulAuraData` / `GetHelpfulAuraData` refactored**: Both collapsed from ~80 lines combined to ~10 lines each by delegating shape detection to `ns.UnitAura`. Eliminated duplicated, drifting detection logic that caused the TBC Anniversary spellId extraction bug.
 - **File map updated**: 9 Lua files total (Hooks.lua and Tests.lua added), strict dependency order maintained.
-
-### Bug fixes
-- **GetHarmfulAuraData shape detection**: The old boolean gate (`type(pos3) == "string"`) could not distinguish TBC Anniversary's AuraUtil.UnpackAuraData shape (icon as FileID number at r3) from Classic 1.13.x (count at r3). This caused spellId to be extracted from the wrong position, silently producing nil for every debuff on TBC Anniversary. Fixed with three-branch detection that checks r10 type to identify the TBC shape.
-- **GetDebuffStackOffset sign inversion**: Was tracking `maxBarTop` (bars below reference bar) instead of `minBarTop` (bars above). Caused buff icons to overlap debuff duration bars by ~6px. Added visibility-bitmask cache to prevent one-frame bounce from WoW's deferred SetPoint layout.
-- **Buff icon border**: Was a full-face black `(0, 0, 0, 0.65)` overlay covering the entire icon, causing permanent dimming. Replaced with 4 separate 1px edge strips matching the debuff bar glow border pattern.
-- **Permission fix**: WoWUnit test file created at 600 (owner-only) — WoW under Wine needs 644. Added explicit chmod after every write_file.
-
-### Visual changes
-- **Buff icon positioning**: Gap above debuff bars doubled from 8px → 16px. Duration text moved from floating above icon to `SetPoint("CENTER", icon, "TOP", 0, 0)` — reads as a centered label at the top edge of each icon.
-- **Concussion Shot color**: Dark blue `(0.10, 0.15, 0.60)` → grey `(0.55, 0.55, 0.55)` for visibility.
-- **Serpent Sting color**: Forest green `(0.05, 0.55, 0.20)` → bright serpent green `(0.10, 0.85, 0.15)`.
-
-### Combat gating
-- **All 6 buff icon update functions** (Paladin, Warrior, Shaman, Druid, Hunter, Rogue) now check `ns.playerInCombat` — buff icons are hidden when out of combat to prevent stale display.
-
-### Code quality
-- **AGENTS.md compressed**: 11,204 chars → 6,135 chars (~45% reduction). Stripped discoverable content (file maps, verbose tables). Added canonical wrapper docs, WoWUnit test reference, Wine 644 permission rule, and Lua 5.1 `<<` restriction.
-- **AUDIT.md updated**: Date revised, scope expanded to cover 9 Lua files + test suite.
-- **Project conventions enforced**: All raw Blizzard API calls now route through `ns.*` wrappers. Remaining violations in `GetHarmfulAuraData`/`GetHelpfulAuraData` eliminated.
 
 ### WoWUnit test suite ⚠️
 - **18 groups consolidated to 4**: SST-Core (constants/clock/migrate), SST-Auras (wrapper parsing), SST-Combat (CLEU/timers), SST-Hunter (class-gated).
@@ -36,35 +143,40 @@
 - **WoWUnit** (Jaliborc fork v12.0.1): Installed at `_anniversary_/Interface/AddOns/WoWUnit/`. Toggle button on right side of screen shows failure count; click to open scrollable panel. Tests register via `WoWUnit('GroupName', 'EVENT')`, assertions `AreEqual`/`IsTrue`/`IsFalse`/`Exists`, mocking via `Replace`/`ClearReplaces`.
 - **AGENTS.md research**: Sourced from ICSE 2026 JAWs paper "On the Impact of AGENTS.md Files on the Efficiency of AI Coding Agents" and ICLR 2026 workshop "Evaluating AGENTS.md" (ETH Zurich) — AGENTS.md adds ~0% task improvement at 20%+ inference cost.
 
-- **Show Advanced toggle** (Phase 6): New "Show Advanced" toggle at top of panel (right side, below Minimal Mode) with descriptive label. When enabled, reveals fine-tuning controls across all sections: texture layer selectors (MH/OH, Spark, Weave, Spell Icon), spark dimensions and alpha, Indicator Glow Mode, bar background/border settings, and weave spark dimensions/alpha. Controlled by `SuperSwingTimerDB.showAdvanced` (defaults false). Each advanced row tagged with `isAdvanced = true` — hidden automatically when toggle is off. Migration fill-in added for existing users.
-- **Per-section Reset buttons** (Phase 4): Each collapsible section header (Appearance, Shaman Weave Assist, Combat & Timer Behavior, Shaman Weave Spells) now has a small red "Reset" button on the right side. Clicking resets only that section's DB keys to defaults and updates all controls (sliders, texture rows, color swatches) without affecting other sections. Reset button has hover highlighting and an `OnMouseDown` handler that prevents the click from also toggling section collapse. Reset callbacks defined after all controls exist for safe variable access.
-- **Texture preview chips** (Phase 7): Browser-mode texture path rows (Spark Texture, Cast Breakpoint Spark Texture) now show a small 24×16 inline thumbnail preview of the current texture, bordered with a subtle UI-Tooltip-Border edge frame. The preview chip updates live when the texture changes. PathBox width adjusted by 20px to accommodate the chip and its border.
-- **Keyboard navigation audit** (Phase 9): Section headers now register `OnKeyDown` for Enter/Space to toggle collapse. Quick Controls tab buttons also handle Enter/Space for keyboard activation. All other controls (checkboxes via UICheckButtonTemplate, sliders via OptionsSliderTemplate, buttons via UIPanelButtonTemplate, edit boxes via InputBoxTemplate) already handle keyboard input natively through their Blizzard widget templates.
-- **`setResetCallback` helper**: New method on section headers allows deferred assignment of reset callbacks after all controls are created. Reset buttons are created eagerly in `CreateSectionHeader` with an `OnMouseDown` consumer to prevent collapse-toggle propagation.
-- **Minimal Mode moved to top area**: The "Minimal Mode" toggle was moved from the Combat & Timer Behavior section to the top of the panel, right below the Global Scale slider. It sits on the right side with a descriptive label on the left explaining what it does ("Hide non-essential overlays for a cleaner combat view"). The rest of the panel sections shift down to accommodate it.
-- **Tabbed Quick Controls**: The Quick Controls section now has 3 tabs: **Visibility** (toggles only, single column), **Colors** (swatches only, 2-column grid), and **Class** (combined view for class-specific settings). Tab buttons with gold active state sit below the section header. Switching tabs preserves scroll position and collapses/expands correctly with the section header.
-- **Search bar added**: New "Search settings..." EditBox at the bottom of the /sst panel (always visible below the scroll frame). Filters all section rows in real-time — matching rows stay at full opacity, non-matching rows dim to 25% alpha. Press Escape to clear. Every toggle, slider, color swatch, dropdown, texture row, action button, and description text is searchable. Case-insensitive, matches any portion of the label.
-- **Global Scale slider added**: Master scale control (0.5x–3.0x) at the very top of `/sst` panel. Proportionally scales all bars, icons, sparks, borders, and fonts relative to their base (default) size. Individual sliders still fine-tune each dimension; the global scale multiplier applies on top. Gold label with descriptive subtitle. Implemented across 4 files with fresh-install, migration, reset-defaults, and panel-refresh wiring.
-- **OnUpdate hook infrastructure created**: Replaced the fragile 9-link chain-overwriting pattern with `ns.RegisterOnUpdateHook()` via new `SuperSwingTimer_Hooks.lua`. **All 9 ClassMods chains converted to hooks** — Paladin (3), Warrior (1), Shaman (1), Druid (2), Hunter (1), Rogue (1). Core render path registered as hook #1 via `CoreRenderHook`. Test Bars hook inserts at position 1 for pre-render priority. The `Duplicate field OnUpdate` errors are eliminated. Each hook is now independent — a failure in one cannot break others. 
-- **Config panel UX improvements — Phase 1+2**: Section help texts added to all collapsible sections (Appearance, Shaman Weave Assist, Combat & Timer Behavior, Weave Families) with descriptive subtitles. `CreateSlider`/`CreateCompactSlider` now accept custom `tooltipText`. `CreateCycleRow` now accepts custom tooltip text. 20+ sliders and cycle rows got descriptive tooltips (Bar Width, Bar Height, Cast Spark Width/Height, Spark Alpha/Width/Height, Bar Border Size, Background Alpha, Indicator Glow Mode, and all class-specific size sliders). `CreateHelpButton` function added for future [?] help buttons on complex concepts. Quick Controls column labels updated from "Visibility"/"Key Colors" to "Visibility (show/hide bars)"/"Colors (bar/swatch tint)".
-- **Color swatch labels in Quick Controls**: Swatch buttons now display text labels directly on the colored surface (e.g. "MH Color") with OUTLINE font. Labels auto-invert for readability.
-- **Enterprise UX blueprint**: Full redesign documented in AUDIT.md with 9 implementation phases based on research of WeakAuras, Details!, Plater, and Blizzard Interface Options patterns. Covers search bar, tabbed Quick Controls, section help text, per-section reset, progressive disclosure, texture previews, profile system, and keyboard navigation.
-- **Config panel walkthrough in README**: Added annotated ASCII layout diagram and section-by-section guide.
-- **LDoc docstrings added**: 20+ core public functions now documented with `--- @param` / `--- @return` / `@usage` / `@see` across Constants.lua, State.lua, Weaving.lua, UI.lua, Config.lua, ClassMods.lua, and Hooks.lua. Critical engine functions (ns.GetAlignedTime, ns.GetSpellInfo, ns.HandleCLEU, ns.StartSwing, ns.ApplyParryHaste, etc.) now have full enterprise-grade documentation.
-- **Hunter bar globals fixed**: 8 hunter trap/debuff bar globals (`serpentStingBar` through `frostTrapBar`) added to `.luarc.json` diagnostics globals. These are closure-local upvalues in `SetupHunter()` that the linter cannot trace through nested closures — same approach the old `.luacheckrc` used. `get_errors` will clear after window reload.
-- **Deep quality audit completed**: `AUDIT.md` created with 10-section scoring (overall 7.2/10), competitive analysis, file metrics, and checkbox-based roadmap to 10/10 covering critical fixes, UX overhaul, testing infrastructure, file splitting, and enterprise-grade documentation.
-- **Codebase conventions established**: Phase 7 enterprise-grade Lua docstring standard defined in AGENTS.md and AUDIT.md — all new code and refactored files must use `--- @param` / `--- @return` LDoc-style comments. Module-level headers required for each file describing role and dependency order.
-- **Roadmap made actionable**: AUDIT.md roadmap converted to checkbox format with 7 phases. Phase 1 items (OnUpdate chain fix, Hunter globals) marked [x]. Phase 2 item A (Global Scale) marked [x].
-- **GetCurrentTime() shims removed**: 5 identical `GetCurrentTime()` shims across all files replaced with direct `ns.GetAlignedTime()`. Eliminates duplicated clock-domain wrappers. `GetTime`/`GetTimePreciseSec` rawgets removed from files where they were only used by the shim.
-- **Fresh-install block replaced with DeepCopyDefaults**: 155-line inline table literal replaced with `DeepCopyDefaults(ns.DB_DEFAULTS)`. Eliminates drift risk — adding a new default to Constants.lua now automatically applies to fresh installs.
-- **Font path constant**: `ns.FONT_PATH = "Fonts\\FRIZQT__.TTF"` defined in Constants.lua. 39 hardcoded FRIZQT paths replaced in ClassMods.lua.
-- **Config panel UX improvements**: Comprehensive help blurb, section headers renamed ("General Behavior" → "Combat & Timer Behavior", "Weave Families" → "Shaman Weave Spells"), 7 missing tooltips added to Quick Toggles.
-- **LDoc docstrings added**: 6 core public functions (`ns.StartSwing`, `ns.HandleCLEU`, `ns.RefreshLatencyCache`, `ns.ApplyBarSize`, `ns.ApplyVisibility`, `ns.InitBars`).
+### Changed
+- **Buff icon positioning**: Gap above debuff bars doubled from 8px → 16px. Duration text moved to `SetPoint("CENTER", icon, "TOP", 0, 0)` — reads as a centered label at the top edge of each icon.
+- **Concussion Shot color**: Dark blue `(0.10, 0.15, 0.60)` → grey `(0.55, 0.55, 0.55)` for better visibility.
+- **Serpent Sting color**: Forest green `(0.05, 0.55, 0.20)` → bright serpent green `(0.10, 0.85, 0.15)`.
+
+### Fixed
+- **GetHarmfulAuraData shape detection on TBC Anniversary**: The old boolean gate (`type(pos3) == "string"`) could not distinguish TBC Anniversary's `AuraUtil.UnpackAuraData` shape (icon as FileID number at r3) from Classic 1.13.x (count at r3). This caused spellId to be extracted from the wrong position, silently producing nil for every debuff on TBC Anniversary. Fixed with three-branch detection that checks r10 type to identify the TBC shape.
+- **GetDebuffStackOffset sign inversion**: Was tracking `maxBarTop` (bars below reference bar) instead of `minBarTop` (bars above). Caused buff icons to overlap debuff duration bars by ~6px. Added visibility-bitmask cache to prevent one-frame bounce from WoW's deferred `SetPoint` layout.
+- **Buff icon overlay dimming**: Was a full-face black `(0, 0, 0, 0.65)` overlay covering the entire icon, causing permanent dimming. Replaced with 4 separate 1px edge strips matching the debuff bar glow border pattern.
+- **WoWUnit file permissions**: Test file created at 600 (owner-only) — WoW under Wine needs 644. Added explicit `chmod` after every `write_file`.
+
+### Removed
+- **Project conventions enforced**: All raw Blizzard API calls now route through `ns.*` wrappers. Remaining violations in `GetHarmfulAuraData`/`GetHelpfulAuraData` eliminated.
+
+### Docs
+- **AGENTS.md compressed**: 11,204 chars → 6,135 chars (~45% reduction). Stripped discoverable content (file maps, verbose tables). Added canonical wrapper docs, WoWUnit test reference, Wine 644 permission rule, and Lua 5.1 `<<` restriction.
+- **AUDIT.md updated**: Date revised, scope expanded to cover 9 Lua files + test suite.
+
+### Internal
+- **LDoc docstrings added**: 20+ core public functions documented with `--- @param` / `--- @return` / `@usage` / `@see` across Constants.lua, State.lua, Weaving.lua, UI.lua, Config.lua, ClassMods.lua, and Hooks.lua. Critical engine functions (`ns.GetAlignedTime`, `ns.GetSpellInfo`, `ns.HandleCLEU`, `ns.StartSwing`, `ns.ApplyParryHaste`, etc.) documented.
+- **GetCurrentTime() shims removed**: 5 identical `GetCurrentTime()` shims across all files replaced with direct `ns.GetAlignedTime()`. Eliminates duplicated clock-domain wrappers.
+- **Fresh-install block replaced with DeepCopyDefaults**: 155-line inline table literal replaced with `DeepCopyDefaults(ns.DB_DEFAULTS)`. Eliminates drift risk — adding a default to Constants.lua now auto-applies to fresh installs.
+- **Font path constant**: `ns.FONT_PATH = "Fonts\\FRIZQT__.TTF"` defined in Constants.lua. 39 hardcoded `FRIZQT` paths replaced in ClassMods.lua.
+- **Hunter bar globals fixed**: 8 hunter trap/debuff bar globals added to `.luarc.json` diagnostics globals (closure-local upvalues the linter can't trace).
 - **CI pipeline**: `.github/workflows/luac.yml` — auto-runs `luac -p` on push/PR.
 - **QA checklist**: `docs/QA.md` — step-by-step manual smoke-test checklist.
 - **Migration test harness**: `test_migrations.lua` — 37 tests for DeepCopyDefaults correctness.
-- **DB schema**: v54 (unchanged — no migration needed for these changes)
-- **Quality gates**: `luac -p` passes on all 9 files
+- **Project conventions enforced**: All raw Blizzard API calls routed through `ns.*` wrappers.
+
+### Notes
+- **DB schema:** v54 (unchanged — no migration needed for these changes).
+- **Quality gates:** `luac -p` passes on all 9 files.
+
+---
 
 ## v0.1.6 - 2026-06-23
 

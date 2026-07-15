@@ -1518,10 +1518,6 @@ end
 --         during OnAddonLoaded after InitBars() creates the initial frames.
 --  @see ns.GetGlobalScale, ns.Scale, ns.ApplyBarSize
 function ns.ApplyGlobalScale()
-    local scale = ns.GetGlobalScale()
-
-    -- Re-apply main bar sizes with current DB values (scale applied inside ApplyBarSize)
-    ns.ApplyBarSize(ns.GetBarWidth(), ns.GetBarHeight())
 
     -- Refresh class-specific helpers and their sizes
     if ns.UpdateHunterRapidFire then ns.UpdateHunterRapidFire(0, true) end
@@ -1575,7 +1571,6 @@ end
 --  @return (nil)
 --  @see ns.Scale, ns.GetGlobalScale
 function ns.ApplyBarSize(width, height)
-    local scale = ns.GetGlobalScale()
     local scaledWidth = ns.Scale(width)
     local scaledHeight = ns.Scale(height)
 
@@ -2333,6 +2328,12 @@ function ns.ApplyVisibility()
     local rangedActive = ns.timers and ns.timers.ranged and ns.timers.ranged.state == "swinging"
     local hunterCastVisible = ShouldShowHunterCastBar()
     local hunterMeleeActive = IsHunterMeleeActive()
+    -- Clear stale Raptor Strike queue if MH isn't actively swinging — prevents
+    -- the MH bar from popping up during ranged-only auto shot transitions when
+    -- effectiveRangedActive briefly dips.
+    if not hunterMeleeActive and ns.hunterQueuedMeleeSpell ~= nil then
+        ns.hunterQueuedMeleeSpell = nil
+    end
     local hunterMeleeVisible = IsHunterMeleeBarVisible()
     local hunterAutoRepeatActive = ns.playerClass == "HUNTER" and ns.IsHunterAutoRepeatActive
         and ns.IsHunterAutoRepeatActive() or false
@@ -2651,8 +2652,6 @@ local function CoreRenderHook(elapsed)
     if ns.UpdateHunterRangeHelperVisual then ns.UpdateHunterRangeHelperVisual() end
     -- Phase 2: Hunter Rapid Fire bar
     if ns.UpdateHunterRapidFire then ns.UpdateHunterRapidFire(elapsed) end
-    -- Phase 2: Warrior Flurry counter (throttled internally)
-    if ns.UpdateWarriorFlurryCounter then ns.UpdateWarriorFlurryCounter(elapsed) end
     -- Phase 2: Rogue Adrenaline Rush bar
     if ns.UpdateRogueAdrenalineRush then ns.UpdateRogueAdrenalineRush(elapsed) end
     -- Phase 2: Shaman Windfury ICD tracker

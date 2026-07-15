@@ -73,9 +73,8 @@ flowchart TD
     R8 --> W3["UpdateHunterQueueTint"]
     R8 --> W4["UpdateHunterRangeHelperVisual"]
     OU --> R9["9. UpdateHunterRapidFire(elapsed)"]
-    OU --> R10["10. UpdateWarriorFlurryCounter"]
-    OU --> R11["11. UpdateRogueAdrenalineRush"]
-    OU --> R12["12. UpdateShamanWindfuryIcd"]
+    OU --> R10["10. UpdateRogueAdrenalineRush"]
+    OU --> R11["11. UpdateShamanWindfuryIcd"]
 
     style OU fill:#4a6,color:#fff
     style R8 fill:#84a,color:#fff
@@ -180,7 +179,7 @@ Every event is registered in `SuperSwingTimer.lua` and dispatched to handler fun
 7. UpdateSwingFlash(elapsed) + RenderSwingFlash()
 8. ns.UpdateWarriorQueueTint / UpdateDruidQueueTint / UpdateHunterQueueTint
 9. ns.UpdateHunterRangeHelperVisual / UpdateHunterRapidFire
-10. ns.UpdateWarriorFlurryCounter / UpdateRogueAdrenalineRush / UpdateShamanWindfuryIcd
+10. UpdateRogueAdrenalineRush / UpdateShamanWindfuryIcd
 
 **Styling:** `ApplyBarSize/Colors/Background*/Border*/Texture*`, `ApplySpark*`, `ApplyWeave*`, `ApplyIndicatorBlendMode`, `ApplyMinimalMode`, `ApplyVisibility`, `ApplyLockBars`, `ApplyRogueCueLayer`
 
@@ -192,7 +191,7 @@ Every event is registered in `SuperSwingTimer.lua` and dispatched to handler fun
 
 **SetupHunter()** registers: `UpdateCastZoneVisual`, `UpdateHunterQueueTint`, `UpdateHunterRangeHelperVisual`, `UpdateHunterRapidFire`, `ClearHunterCastState`, `IsHunterRangedPinnedByMovement`
 
-**SetupWarrior()** registers: `UpdateWarriorRageBar`, `UpdateWarriorShieldBlockBar`, `UpdateWarriorFlurryCounter`, `UpdateWarriorQueueTint`, `ClearPendingMeleeQueueState`
+**SetupWarrior()** registers: `UpdateWarriorRageBar`, `UpdateWarriorShieldBlockBar`, `UpdateWarriorQueueTint`, `ClearPendingMeleeQueueState`
 
 **SetupRogue()** registers: `HandleRogueSliceAndDiceAura`, `HandleRogueEnergyPowerUpdate`, `UpdateRogueAdrenalineRush`
 
@@ -240,9 +239,8 @@ ns.OnUpdate(elapsed)
   │     → UpdateWarriorQueueTint / UpdateDruidQueueTint / UpdateHunterQueueTint
   │     → UpdateHunterRangeHelperVisual
   ├── 9. UpdateHunterRapidFire(elapsed)
-  ├── 10. UpdateWarriorFlurryCounter(elapsed)
-  ├── 11. UpdateRogueAdrenalineRush(elapsed)
-  └── 12. UpdateShamanWindfuryIcd()
+  ├── 10. UpdateRogueAdrenalineRush(elapsed)
+  └── 11. UpdateShamanWindfuryIcd()
 ```
 
 ## 6. Dependency graph

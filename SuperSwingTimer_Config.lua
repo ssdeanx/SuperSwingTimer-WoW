@@ -5,12 +5,12 @@ local UIParent = rawget(_G, "UIParent")
 local ColorPickerFrame = rawget(_G, "ColorPickerFrame")
 local GameTooltip = rawget(_G, "GameTooltip")
 local C_Timer = rawget(_G, "C_Timer")
-local UIDropDownMenu_AddButton = _G.UIDropDownMenu_AddButton
-local UIDropDownMenu_CreateInfo = _G.UIDropDownMenu_CreateInfo
-local UIDropDownMenu_Initialize = _G.UIDropDownMenu_Initialize
-local UIDropDownMenu_SetText = _G.UIDropDownMenu_SetText
-local UIDropDownMenu_SetWidth = _G.UIDropDownMenu_SetWidth
-local ToggleDropDownMenu = rawget(_G, "ToggleDropDownMenu")
+local UIDropDownMenu_AddButton = _G.UIDropDownMenu_AddButton or function() end
+local UIDropDownMenu_CreateInfo = _G.UIDropDownMenu_CreateInfo or function() return {} end
+local UIDropDownMenu_Initialize = _G.UIDropDownMenu_Initialize or function() end
+local UIDropDownMenu_SetText = _G.UIDropDownMenu_SetText or function() end
+local UIDropDownMenu_SetWidth = _G.UIDropDownMenu_SetWidth or function() end
+local ToggleDropDownMenu = rawget(_G, "ToggleDropDownMenu") or function() end
 local strtrim = rawget(_G, "strtrim")
 local BackdropTemplateMixin = rawget(_G, "BackdropTemplateMixin")
 
@@ -765,10 +765,10 @@ local function CreateColorButton(parent, label, colorKey, yOffset, options)
         btn.btnLabel = btnLabel
 
         local function UpdateBtnLabel()
-            local c = getColor()
-            if c then
+            local color = getColor()
+            if color then
                 -- Dark backgrounds get white text, light backgrounds get dark text
-                local luminance = (c.r or 0) * 0.3 + (c.g or 0) * 0.6 + (c.b or 0) * 0.1
+                local luminance = (color.r or 0) * 0.3 + (color.g or 0) * 0.6 + (color.b or 0) * 0.1
                 local textAlpha = compactLayout and 0.85 or 0
                 if luminance > 0.5 then
                     btnLabel:SetTextColor(0, 0, 0, textAlpha)
@@ -1921,36 +1921,6 @@ end
 -- ------------------------------------------------------------
 -- [?] help button — small clickable font string that shows a
 -- GameTooltip explaining a complex concept. Placed next to a
--- control label for settings that need conceptual explanation
--- beyond what the label and tooltip provide.
--- parent: the row or frame to anchor to
--- anchor: anchor point on the parent (e.g. "TOPRIGHT")
--- relativeTo: frame to anchor relative to
--- helpText: multi-line explanation shown in the tooltip
--- ------------------------------------------------------------
-local function CreateHelpButton(parent, anchor, relativeTo, helpText)
-    local btn = parent:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    btn:SetPoint(anchor, relativeTo, anchor, 0, 0)
-    btn:SetText("[?]")
-    btn:SetTextColor(0.45, 0.65, 1.0, 0.85)
-    btn:SetJustifyH("RIGHT")
-    btn:SetJustifyV("TOP")
-
-    local function ShowHelp()
-        GameTooltip:SetOwner(btn, "ANCHOR_TOPLEFT")
-        GameTooltip:SetText("Help", 1, 1, 1)
-        GameTooltip:AddLine(helpText, 0.85, 0.85, 0.85, true)
-        GameTooltip:Show()
-    end
-
-    btn:HookScript("OnEnter", ShowHelp)
-    btn:HookScript("OnLeave", function ()
-        GameTooltip:Hide()
-    end)
-
-    return btn
-end
-
 local function CreateSectionHeader(parent, label, yOffset, options)
     local row = CreateOptionalBackdropFrame("Button", nil, parent)
     row:SetPoint("TOPLEFT", parent, "TOPLEFT", 20, yOffset)
@@ -2160,6 +2130,7 @@ end
 -- ============================================================
 local function CreatePanel()
     local f = CreateOptionalBackdropFrame("Frame", "SuperSwingTimerConfigPanel", UIParent)
+    panel = f
     f:SetSize(780, 760)
     f:SetPoint("CENTER")
     SetFrameBackdrop(f, {
@@ -2222,12 +2193,6 @@ local function CreatePanel()
     scrollFrame:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -20, 54)
     EnableScrollFrameMouseWheel(scrollFrame, 36)
 
-    local content = CreateFrame("Frame", nil, scrollFrame)
-    content:SetSize(720, 4000)
-    scrollFrame:SetScrollChild(content)
-    f.scrollFrame = scrollFrame
-    f.content = content
-
     -- ============================================================
     -- Search bar — fixed above scroll frame, filters rows in real-time
     -- ============================================================
@@ -2263,16 +2228,9 @@ local function CreatePanel()
         end
     end
 
-    local function AddSearchRow(row, text)
-        if ns._panelSearchAdder then
-            ns._panelSearchAdder(row, text)
-        end
-    end
-
     local function FilterSearchRows()
         local searchText = string.lower(searchBox:GetText() or "")
         local hasSearch = searchText ~= ""
-        local anyVisible = false
 
         for _, entry in ipairs(searchRows) do
             local frame = entry.frame
@@ -2281,7 +2239,6 @@ local function CreatePanel()
                 if match then
                     frame:SetAlpha(1)
                     frame:Show()
-                    anyVisible = true
                 else
                     frame:SetAlpha(0.25)
                 end
@@ -2292,7 +2249,7 @@ local function CreatePanel()
     end
 
     searchBox:HookScript("OnTextChanged", FilterSearchRows)
-    searchBox:HookScript("OnEscape", function (self)
+    searchBox:HookScript("OnEscapePressed", function (self)
         self:SetText("")
         FilterSearchRows()
     end)
@@ -3598,7 +3555,7 @@ local function CreatePanel()
     local barTextureRow = CreateTexturePathRow(content, "MH/OH Bar Texture", PostQuickY(ShiftY(-280)), {
         mode = "barList",
         defaultTexture = ns.DB_DEFAULTS.barTexture,
-        getTexture = function () return SuperSwingTimerDB.barTexture or ns.DB_DEFAULTS.barTexture end,
+        getTexture = function () return ns.GetBarTexture() end,
         applyTexture = function (texturePath)
             ns.ApplyBarTexture(texturePath, SuperSwingTimerDB.barTextureLayer or ns.DB_DEFAULTS.barTextureLayer)
         end,
@@ -3628,7 +3585,7 @@ local function CreatePanel()
     local rangedTextureRow = CreateTexturePathRow(content, "Ranged Bar Texture", PostQuickY(ShiftY(-335)), {
         mode = "barList",
         defaultTexture = ns.DB_DEFAULTS.rangedBarTexture,
-        getTexture = function () return SuperSwingTimerDB.rangedBarTexture or ns.DB_DEFAULTS.rangedBarTexture end,
+        getTexture = function () return ns.GetRangedBarTexture() end,
         applyTexture = function (texturePath)
             ns.ApplyRangedBarTexture(
                 texturePath,

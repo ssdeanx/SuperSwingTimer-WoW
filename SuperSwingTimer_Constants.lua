@@ -257,6 +257,15 @@ end
 ns.ROGUE_SLICE_AND_DICE_ID = 5171
 ns.SHIELD_BLOCK_ID = 2565
 ns.SHIELD_BLOCK_NAME = ns.GetSpellInfo(ns.SHIELD_BLOCK_ID) or "Shield Block"
+-- Shield Wall (Warrior - 50% damage reduction, 10s duration)
+ns.SHIELD_WALL_ID = 871
+ns.SHIELD_WALL_NAME = ns.GetSpellInfo(ns.SHIELD_WALL_ID) or "Shield Wall"
+-- Last Stand (Warrior - 30% HP increase, 20s duration)
+ns.LAST_STAND_ID = 12975
+ns.LAST_STAND_NAME = ns.GetSpellInfo(ns.LAST_STAND_ID) or "Last Stand"
+-- Spell Reflection (Warrior TBC - reflects spells, 5s duration)
+ns.SPELL_REFLECTION_ID = 23920
+ns.SPELL_REFLECTION_NAME = ns.GetSpellInfo(ns.SPELL_REFLECTION_ID) or "Spell Reflection"
 ns.RAVAGE_ID = 6785
 ns.RAVAGE_NAME = ns.GetSpellInfo(ns.RAVAGE_ID) or "Ravage"
 -- Deep Wounds (Warrior bleed debuff from Mortal Strike talent crit proc)
@@ -321,6 +330,18 @@ ns.HUNTER_FROST_TRAP_NAME = ns.GetSpellInfo(13809) or "Frost Trap"
 -- Sunder Armor (Warrior armor reduction debuff, stacks 1-5)
 ns.WARRIOR_SUNDER_ARMOR_IDS = { [7386] = true, [7405] = true, [8380] = true, [11596] = true, [11597] = true, [25225] = true }
 ns.WARRIOR_SUNDER_ARMOR_NAME = ns.GetSpellInfo(7386) or "Sunder Armor"
+-- Thunder Clap (Warrior attack speed reduction debuff)
+ns.WARRIOR_THUNDER_CLAP_IDS = {}
+for _, id in ipairs({ 6343, 8198, 8204, 8205, 11580, 11581 }) do
+    ns.WARRIOR_THUNDER_CLAP_IDS[id] = true
+end
+ns.WARRIOR_THUNDER_CLAP_NAME = ns.GetSpellInfo(6343) or "Thunder Clap"
+-- Demoralizing Shout (Warrior attack power reduction debuff)
+ns.WARRIOR_DEMO_SHOUT_IDS = {}
+for _, id in ipairs({ 1160, 6190, 11554, 11555, 11556 }) do
+    ns.WARRIOR_DEMO_SHOUT_IDS[id] = true
+end
+ns.WARRIOR_DEMO_SHOUT_NAME = ns.GetSpellInfo(1160) or "Demoralizing Shout"
 -- Expose Armor (Rogue armor reduction finisher)
 ns.ROGUE_EXPOSE_ARMOR_IDS = { [8647] = true, [8649] = true, [8650] = true, [11197] = true, [11198] = true, [26996] = true }
 ns.ROGUE_EXPOSE_ARMOR_NAME = ns.GetSpellInfo(8647) or "Expose Armor"
@@ -763,6 +784,8 @@ addSpellNamesToLookup(ns.RESET_SWING_SPELLS)
 addSpellNamesToLookup(ns.NO_RESET_SWING_SPELLS)
 addSpellNamesToLookup(ns.PAUSE_SWING_SPELLS)
 addSpellNamesToLookup(ns.RESET_RANGED_SWING_SPELLS)
+addSpellNamesToLookup(ns.WARRIOR_THUNDER_CLAP_IDS)
+addSpellNamesToLookup(ns.WARRIOR_DEMO_SHOUT_IDS)
 
 -- Druid form aura IDs (trigger MH timer reset on apply)
 ns.DRUID_FORM_IDS = {
@@ -827,7 +850,7 @@ ns.CLASS_CONFIG = {
 -- SavedVariables defaults
 -- ============================================================
 ns.DB_DEFAULTS = {
-    version = 54,
+    version = 56,
     showMH = true,
     showOH = true,
     showRanged = true,
@@ -844,7 +867,7 @@ ns.DB_DEFAULTS = {
     showPaladinTwistFlash = true,
     showWarriorRageBar = true,
     showDruidEnergyTickBar = true,
-    showWarriorRageProtection = false,
+    showWarriorRageProtection = true,
     showWarriorShieldBlockBar = true,
     showSwingFlash = true,
     showGcdTicker = true,
@@ -879,7 +902,7 @@ ns.DB_DEFAULTS = {
     showHunterFrostTrapBar = true,
     showWarriorSunderArmorBar = true,
     showRogueExposeArmorBar = true,
-    useClassColors = false,
+    useClassColors = true,
     weaveSpellFamilies = {
 
         LB = true,
@@ -907,8 +930,8 @@ ns.DB_DEFAULTS = {
     shamanLightningTrackerGap = 6,
     -- Global scale multiplier (0.5x–3.0x): proportionally scales all bars, icons, and fonts
     globalScale = 1.0,
-    barTexture = "Interface\\TargetingFrame\\UI-StatusBar",
-    rangedBarTexture = "Interface\\TargetingFrame\\UI-StatusBar",
+    barTexture = "Interface\\AddOns\\SuperSwingTimer\\Media\\statusbar\\MerfinMain.tga",
+    rangedBarTexture = "Interface\\AddOns\\SuperSwingTimer\\Media\\statusbar\\MerfinMain.tga",
     barTextureLayer = "ARTWORK",
     sparkTexture = "Interface\\AddOns\\WeakAuras\\Media\\Textures\\Square_FullWhite",
     sparkTextureLayer = "OVERLAY",
@@ -936,9 +959,9 @@ ns.DB_DEFAULTS = {
     minimalMode = false,
     lockBars = false,
     colors = {
-        mh = { r = 0, g = 0, b = 0, a = 1 },
-        oh = { r = 0, g = 0, b = 0, a = 1 },
-        ranged = { r = 0, g = 0, b = 0, a = 1 },
+        mh = { r = 0.25, g = 0.72, b = 1.00, a = 1 },
+        oh = { r = 0.25, g = 0.72, b = 1.00, a = 1 },
+        ranged = { r = 0.25, g = 0.72, b = 1.00, a = 1 },
         hunterCastBar = { r = 0.35, g = 0.65, b = 0.95, a = 1 },
         hunterRangeMelee = { r = 0.20, g = 0.85, b = 0.25, a = 1 },
         hunterRangeSweetSpot = { r = 0.98, g = 0.82, b = 0.18, a = 1 },
@@ -1168,7 +1191,6 @@ function ns.BuildTextureLibrary()
     end
 
     addEntry("Blizzard", "Status Bar", "Interface\\TargetingFrame\\UI-StatusBar", "fallback", "both")
-    addEntry("Blizzard", "Casting Fill", "Interface\\CastingBar\\UI-CastingBar-Fill", "fallback", "both")
     addEntry("Blizzard", "Casting Spark", "Interface\\CastingBar\\UI-CastingBar-Spark", "fallback", "spark")
     addEntry("Blizzard", "Casting Shield", "Interface\\CastingBar\\UI-CastingBar-Shield", "fallback", "spark")
     addEntry("Blizzard", "Tooltip Background", "Interface\\Tooltips\\UI-Tooltip-Background", "fallback", "spark")
@@ -1266,6 +1288,22 @@ function ns.GetBarColor(colorKey)
     return ns.DB_DEFAULTS.colors and ns.DB_DEFAULTS.colors[colorKey] or nil
 end
 
+function ns.GetBarWidth()
+    local db = rawget(_G, "SuperSwingTimerDB")
+    if db and db.barWidth then
+        return db.barWidth
+    end
+    return ns.BAR_WIDTH or ns.DB_DEFAULTS.barWidth
+end
+
+function ns.GetBarHeight()
+    local db = rawget(_G, "SuperSwingTimerDB")
+    if db and db.barHeight then
+        return db.barHeight
+    end
+    return ns.BAR_HEIGHT or ns.DB_DEFAULTS.barHeight
+end
+
 function ns.GetIndicatorBlendMode()
     local db = rawget(_G, "SuperSwingTimerDB")
     if db and db.indicatorBlendMode and db.indicatorBlendMode ~= "" then
@@ -1320,7 +1358,7 @@ end
 --- @return number  The scaled pixel size, min 1.
 function ns.Scale(value)
     if type(value) ~= "number" then
-        return value
+        return value --[[@as number]]
     end
     return math.max(1, math.floor(value * ns.GetGlobalScale() + 0.5))
 end
@@ -1480,7 +1518,7 @@ end
 
 function ns.GetBarTexture()
     local db = rawget(_G, "SuperSwingTimerDB")
-    if db and db.barTexture then
+    if db and db.barTexture and db.barTexture ~= "Interface\\CastingBar\\UI-CastingBar-Fill" then
         return db.barTexture
     end
     return ns.DB_DEFAULTS.barTexture
@@ -1488,7 +1526,7 @@ end
 
 function ns.GetRangedBarTexture()
     local db = rawget(_G, "SuperSwingTimerDB")
-    if db and db.rangedBarTexture then
+    if db and db.rangedBarTexture and db.rangedBarTexture ~= "Interface\\CastingBar\\UI-CastingBar-Fill" then
         return db.rangedBarTexture
     end
     return ns.GetBarTexture()

@@ -1,12 +1,12 @@
 # Super Swing Timer
 
-Melee, ranged, and current-target enemy swing timer for World of Warcraft Classic and TBC (including Anniversary Edition).
+Melee, ranged, and current-target enemy swing timer for World of Warcraft Classic, Season of Discovery, and TBC (including Anniversary Edition).
 
 Super Swing Timer tracks white-hit swing timers across main hand, off hand, ranged attacks, and your current hostile target. It is tuned for Classic/TBC mechanics such as next-melee-attack abilities, dual-wield desync, parry haste, extra-attack suppression, haste rescaling, druid form resets with a lightweight Maul queue tint path, warrior Shield Block duration timing, rogue Sinister Strike end-window timing, a Rogue energy-tick helper plus Slice and Dice upkeep bar, ret paladin seal-breakpoint timing, shaman weave breakpoints, and current-target enemy swing detection. All melee classes now have target debuff duration bars (Deep Wounds, Mangle/Rip/Rake, Rupture, Serpent Sting, Judgement, Seal Vengeance, Flame Shock) with small spell icons equal to bar height, gold glow in the last 4 seconds, and dynamic stacking — buff/CD icons always sit above all visible debuff bars. The current timing model keeps swing motion on a `GetTime()`-aligned precise clock, applies cached latency only to predictive windows such as Auto Shot safe-stop timing, rogue Sinister Strike queue guidance, and weave clip math, keeps Maul, Heroic Strike, Cleave, and Raptor Strike on separate next-attack paths, and avoids mixed clock-domain drift.
 
 **Dual-client CLEU architecture:** Classic Era `COMBAT_LOG_EVENT` payloads use numeric spell IDs; TBC Anniversary sends localized spell names (strings) instead. All swing-affecting spell lookup tables (`RESET_SWING_SPELLS`, `NO_RESET_SWING_SPELLS`, `PAUSE_SWING_SPELLS`, `RESET_RANGED_SWING_SPELLS`) populate both key types at init time via `ns.GetSpellInfo(id)` so swing resets, pauses, ranged resets, and NMA queue detection work identically on both clients.
 
-Current version: **v0.1.7**. Status: release-ready. All 4 Hunter traps tracked as target debuff bars (Immolation, Explosive, Freezing, Frost). Hunter debuff bars and buff icons dynamically anchor to MH bar (in melee) or ranged bar (at range) — no more invisible bars when out of melee. IsPlayerSpell guard removed from all class buff icon systems — talent spells (Bestial Wrath, Shamanistic Rage, etc.) now show correctly. Buff icon countdown text moved to icon top with larger 12pt font, low-alpha swipe keeps icons bright by default, gold ADD glow flashes in the last 4 seconds, elapsed-based throttle for smooth glow animation. Unlocked bar drag direction fixed. DB schema v54.
+Current version: **v0.1.9**. Status: release-ready. Bundled statusbar textures ship locally so bars are always visible by default; invisible-bar root cause (black fill color + Casting Fill texture) fixed. Buff icon positioning fixed — icons no longer overlap the bar when debuff duration bars appear/disappear, with dynamic stacking above all visible bars and an 8px gap. Hunter MH bar no longer flickers during ranged-only auto shot. DB schema v56 → v57 → v58 → v59.
 
 ## At a glance
 
@@ -74,6 +74,7 @@ Current version: **v0.1.7**. Status: release-ready. All 4 Hunter traps tracked a
 | Blizzard | Bar textures | Built-in fallback skins are always available in the scrolling bar-texture picker |
 | SharedMedia | Bar / ranged textures | Any installed LibSharedMedia statusbar pack, including SharedMedia-Blizzard when present, shows up automatically |
 | WeakAuras media | Spark and weave thumbnail browsers | `Square_FullWhite` is surfaced as `Normal` in the picker |
+| Super Swing Timer (`Media/statusbar`) | Bar / ranged fill textures | Ships its own fill textures (`MerfinMain`, `MerfinMainDark`, `MerfinFlatt`, `MerfinTexture`, `Flatt`) so the default bar is always a visible, locally-hosted skin — no dependency on a missing external texture |
 | Installed addon packs | Extra texture catalogs | Bar-style textures are auto-discovered when the pack exposes them |
 
 ## Installation
@@ -91,14 +92,14 @@ Opening `/sst` previews the bars for setup, but the live gameplay bars remain co
 
 | Bar | Default | Meaning |
 | --- | --- | --- |
-| Ranged | Black | Auto Shot cooldown |
+| Ranged | Class blue (0.25,0.72,1.0) by default | Auto Shot cooldown |
 | Ranged | Green by default | Safe stop before the cast-window breakpoint (configurable) |
 | Ranged | Red by default | Cast window - you are still moving (configurable) |
 | Enemy | Red | Current hostile target main-hand swing cooldown |
 | Hunter Cast | Light blue (independent) | Auto Shot hidden-window bar, stored short Multi-Shot shot bar, or real Steady Shot / Aimed Shot cast progress beneath the ranged timer, with a trailing latency slice. Defaults to its own `hunterCastBar` color (0.35/0.65/0.95) independent from the ranged bar fill |
 | Hunter Range Helper | Green / Yellow / Blue / Gray | 4-state distance strip: green melee, yellow sweet spot, blue ranged, gray out of range |
-| Main Hand | Black | MH swing cooldown |
-| Off Hand | Black | OH swing cooldown |
+| Main Hand | Class blue (0.25,0.72,1.0) by default | MH swing cooldown |
+| Off Hand | Class blue (0.25,0.72,1.0) by default | OH swing cooldown |
 
 The main commands are `/sst`, `/super`, and `/superswingtimer`. `/swang` remains as a legacy alias.
 
@@ -107,10 +108,10 @@ The main commands are `/sst`, `/super`, and `/superswingtimer`. `/swang` remains
 | Class | Bars | Special |
 | --- | --- | --- |
 | Hunter | Ranged + MH + cast bar + Range Helper + CD icons | Auto Shot cooldown sync, a ranged-linked MH bar that only appears for live melee / queued Raptor Strike, yellow Raptor queue tint, movement clipping protection with green/red safe-stop feedback, real auto-repeat gating for cleaner cycle starts, a dedicated hunter helper bar for the hidden Auto Shot window plus real Steady Shot / Aimed Shot casts with live no-clip feedback and a latency end slice, a 4-state Range Helper strip (melee/sweet spot/ranged/OOR), an aspect/stance icon, a Rapid Fire CD bar toggle, and an adaptive 25x25 CD/buff icon group with countdown dimming. Cast bar has its own independent color (default light blue) and default height 13px. |
-| Warrior | MH + OH + Shield Block + CD icons + debuff bars | Heroic Strike, Cleave, Shield Block timing, Slam handling, an Overpower proc glow on the MH bar, a 30x30 Flurry icon with stack count + duration (centered above all bars, only visible while Flurry buff is active), a Deep Wounds target debuff bar (6px, orange-red, above MH), and a full buff/CD 25x25 icon group above the debuff bars tracking Death Wish, Bloodrage, Rampage, Sweeping Strikes, Recklessness, Bloodthirst, Shield Wall, Last Stand, Retaliation, racials, and external buffs (Bloodlust, Heroism, Drums, Haste Potion) with gold glow in last 4s (toggle + icon size slider in Quick Controls) |
+| Warrior | MH + OH + Shield Block + CD icons + debuff bars | Heroic Strike, Cleave, Shield Block timing, Slam handling, an Overpower proc glow on the MH bar, a Deep Wounds target debuff bar (6px, orange-red, above MH), a Sunder Armor debuff bar (6px, tan, above MH), and a full buff/CD 25x25 icon group above the debuff bars tracking Flurry, Death Wish, Bloodrage, Rampage, Sweeping Strikes, Recklessness, Bloodthirst, Shield Wall, Last Stand, Retaliation, racials, and external buffs (Bloodlust, Heroism, Drums, Haste Potion) with gold glow in last 4s |
 | Rogue | MH + OH + Rogue helpers + CD icons + debuff bar | Dual-wield tracking plus a latency-adjusted MH end-window cue for Sinister Strike timing, a slim Slice and Dice duration bar directly above MH with Classic-safe helpful-aura parsing, a dedicated Adrenaline Rush duration/cooldown bar with adjustable height, Blade Flurry and Cold Blood badges, a Rogue energy-cap warning tint, a single vertical energy-tick helper to the left of MH, a Rupture target debuff bar (6px, purple, above MH), and a full buff/CD 25x25 icon group above debuff bars tracking Adrenaline Rush, Blade Flurry, Cold Blood, Sprint, Evasion, Cloak of Shadows, racials, and external buffs with gold glow in last 4s |
 | Paladin | MH + debuff bars + CD icons | Seal breakpoint line plus a small Reckoning stack badge. Judgement of the Crusader debuff bar (6px, gold, above MH) and Seal of Vengeance/Corruption debuff bar (5px, dark gold, above MH), both with left-aligned spell icons + gold countdown + glow in last 4s. Full buff/CD 25x25 icon group above debuff bars tracking Avenging Wrath, Divine Shield, Hammer of Justice, Blessing of Protection, Holy Wrath, Lay on Hands, Holy Shield, Divine Protection, Vengeance, racials, and external buffs with gold glow in last 4s (toggle + icon size slider in Quick Controls) |
-| Enhancement Shaman | MH + OH + CD icons + debuff bar | Weave assist for LB, CL, HW, LHW, and CH breakpoints with spell-haste fallback support (`UnitSpellHaste` → `GetSpellHaste`), fixed breakpoint markers plus a moving active-cast icon/spark that starts from the live cast-start point and continuously resizes with current haste/buffs toward projected impact timing on the MH bar, Windfury ICD tracking, a 30x30 Flurry icon with stack count + duration (centered above all bars, only visible while Flurry buff is active), a Flame Shock target-duration bar above MH (6px, with left-aligned spell icon), a Lightning Shield / Water Shield 3-bar charge tracker to the left of the MH bar with configurable color, and a full buff/CD 25x25 icon group above debuff bars tracking Shamanistic Rage, Heroism, Stormstrike, Flurry, Windfury Weapon, racials, and external buffs with gold glow in last 4s |
+| Enhancement Shaman | MH + OH + CD icons + debuff bar | Weave assist for LB, CL, HW, LHW, and CH breakpoints with spell-haste fallback support (`UnitSpellHaste` → `GetSpellHaste`), fixed breakpoint markers plus a moving active-cast icon/spark that starts from the live cast-start point and continuously resizes with current haste/buffs toward projected impact timing on the MH bar, Windfury ICD tracking, a Flame Shock target debuff bar (6px, fire orange, above MH), a Lightning Shield charge tracker (rectangles to the left of the bar), and a full buff/CD 25x25 icon group above debuff bars tracking Flurry, Shamanistic Rage, Stormstrike, Heroism, Bloodlust, Windfury Weapon, Elemental Devastation, racials, and external buffs |
 | Feral Druid | MH + debuff bars + CD icons | Form reset support, Maul queue tinting, Mangle target debuff bar (6px, orange, above MH), Rip target debuff bar (6px, green, dynamically above Mangle), Rake target debuff bar (5px, burnt orange, dynamically above Rip), all with left-aligned spell icons + gold countdown + glow in last 4s. Full buff/CD 25x25 icon group above all debuff bars tracking Tiger's Fury, Frenzied Regeneration, Barkskin, Dash, Enrage, Bash, Innervate, racials, and external buffs with gold glow in last 4s (toggle + icon size slider in Quick Controls) |
 | Mage / Priest / Warlock | None | No auto-attack bars |
 
@@ -228,11 +229,10 @@ Tests run automatically on `PLAYER_ENTERING_WORLD` and relevant game events. 9 t
 | `SST-HunterSerpentSting` | 4 | Detection by ID + name, caster filtering, no-target safety |
 | `SST-MigrateDB` | 4 | Fresh DB, v1→v54 chain, v54 no-op, factory reset |
 | `SST-Dispatch` | 3 | Nil-guards on public API functions |
-| `SST-HelpfulAura` | 2 | `GetHelpfulAuraData` both API shapes |
-| `SST-Flurry` | 3 | `GetFlurryBuffInfo` charges + expiration, nil when inactive |
+|| `SST-HelpfulAura` | 2 | `GetHelpfulAuraData` both API shapes |
 
 Tests are loaded as `## OptionalDeps: WoWUnit` and skipped entirely when WoWUnit is not installed — zero overhead outside testing.
 
 ### CI (GitHub Actions)
 
-Every push to `main` runs `luac -p` syntax check on all 8 Lua files via `.github/workflows/luac.yml`.
+Every push to `main` runs `luac -p` syntax check on all addon Lua files via `.github/workflows/luac.yml`.

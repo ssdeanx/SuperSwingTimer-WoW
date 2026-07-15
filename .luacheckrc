@@ -23,6 +23,16 @@ globals = {
     "serpentStingBar", "wingClipBar", "concussionShotBar",
     "immolationTrapBar", "explosiveTrapBar",
     "freezingTrapBar", "frostTrapBar",
+    "ClearReplaces",
+    "GetMeleeHaste",
+    "GetTimePreciseSec",
+    "SlashCmdList",
+    "SLASH_SSTTEST1",
+    "UnitAura",
+    "UnitBuff",
+    "UnitClass",
+    "UnitDebuff",
+    "WoWUnit",
 }
 -- Allow longer lines in this addon repository to avoid false positives
 max_line_length = 260
