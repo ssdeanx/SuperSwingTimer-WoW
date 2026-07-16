@@ -1051,7 +1051,7 @@ local function MigrateDB(targetDb)
 
     -- Optional db param lets the test harness migrate an isolated table.
     -- Falls back to the real global when called during addon load.
-    local db = targetDB or SuperSwingTimerDB ---@diagnostic disable-line: undefined-global
+    local db = targetDb or SuperSwingTimerDB ---@diagnostic disable-line: undefined-global
     local currentVersion = tonumber(db.version) or 0
     for _, migration in ipairs(migrations) do
         if currentVersion < migration.version then

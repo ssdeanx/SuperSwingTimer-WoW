@@ -3211,6 +3211,47 @@ local function SetupWarrior()
     end
 
     ns.UpdateWarriorSunderArmorBar = UpdateWarriorSunderArmorBar
+
+    -- ============================================================
+    -- Post-bars refresh hook.
+    -- SetupWarrior() runs during InitClassMods (before InitBars creates
+    -- ns.mhBar/ns.ohBar), so the initial ns.UpdateWarriorRageBar() call at the
+    -- top of SetupWarrior runs while the swing bars do not yet exist. The rage
+    -- bar is created with alpha 0 and no anchor there, and because the global
+    -- OnUpdate loop is gated on HasActiveTimers() (false when out of combat),
+    -- the bar would never be re-shown or re-anchored until a swing starts
+    -- (e.g. /ssttest). Every other class has an OnBarsCreated hook that runs
+    -- after the swing bars exist; Warrior was the only one missing it.
+    -- This re-anchors and re-shows the rage bar once ns.mhBar is available.
+    -- ============================================================
+    ns.OnBarsCreated = function ()
+        if not ns.mhBar then
+            return
+        end
+
+        -- Re-anchor the rage bar beneath the swing bars. SetupWarrior() runs
+        -- during InitClassMods (before InitBars creates ns.mhBar/ns.ohBar), so
+        -- the initial ns.UpdateWarriorRageBar() call up top created the bar with
+        -- alpha 0 and no anchor. RestoreAllBarPositions/ApplyLockBars only run
+        -- once the swing bars exist; this mirrors that layout for the rage bar.
+        if ns.warriorRageBar and ns.ohBar then
+            ns.warriorRageBar:ClearAllPoints()
+            ns.warriorRageBar:SetPoint("TOPLEFT", ns.ohBar, "BOTTOMLEFT", 0, -4)
+            ns.warriorRageBar:SetPoint("TOPRIGHT", ns.ohBar, "BOTTOMRIGHT", 0, -4)
+        elseif ns.warriorRageBar and ns.mhBar then
+            ns.warriorRageBar:ClearAllPoints()
+            ns.warriorRageBar:SetPoint("TOPLEFT", ns.mhBar, "BOTTOMLEFT", 0, -4)
+            ns.warriorRageBar:SetPoint("TOPRIGHT", ns.mhBar, "BOTTOMRIGHT", 0, -4)
+        end
+
+        -- Re-show with current power. The global OnUpdate loop that normally
+        -- drives UpdateWarriorRageBar is gated on HasActiveTimers() (false when
+        -- out of combat), so without this the bar would stay hidden until a
+        -- swing starts (e.g. /ssttest). Guarded so a nil bar is a no-op.
+        if ns.UpdateWarriorRageBar then
+            ns.UpdateWarriorRageBar()
+        end
+    end
 end
 
 local function SetupEnhShaman()

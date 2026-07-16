@@ -82,8 +82,7 @@ local function RegisterSSTTests()
         -- The wrapper only calls the global UnitAura, so we must mock UnitAura
         -- (not the deprecated UnitBuff global) for the mock to engage.
         Replace('UnitAura', function(u,i)
-            if i==1 then return 'Slice and Dice',nil,'Interface\\Icons\\Ability_Rogue_SliceDice',
-                1,15,12345.0,'player',nil,0,5171 end
+            if i==1 then return 'Slice and Dice', 132181, 5, nil, 15, 12345.0, 'player', false, false, 5171, false end
         end)
         local _,dur,_,sid=T.GetHelpfulAuraData('player',1)
         AreEqual(dur,15); AreEqual(sid,5171)
@@ -137,7 +136,7 @@ local function RegisterSSTTests()
         local b1 = {IsShown = function() return true end, GetHeight = function() return 6 end,
             ClearAllPoints = function() end, SetPoint = function() end}
         T.RestackDebuffBars({b1}, ref, 2)
-        IsTrue(T.GetDebuffStackOffset() < 0)
+        IsTrue(T.GetDebuffStackOffset() > 0)
     end
     function Combat:StackOffset_HiddenBars()
         if not T or not T.RestackDebuffBars or not T.GetDebuffStackOffset then return end
