@@ -14,7 +14,6 @@ local IsSpellInRange = rawget(_G, "IsSpellInRange")
 local SpellHasRange = rawget(_G, "SpellHasRange")
 local CheckInteractDistance = rawget(_G, "CheckInteractDistance")
 local GetSpellTexture = rawget(_G, "GetSpellTexture")
-local InCombatLockdown = rawget(_G, "InCombatLockdown")
 local GetSpecialization = rawget(_G, "GetSpecialization")
 local GetNumTalentTabs = rawget(_G, "GetNumTalentTabs")
 local GetTalentTabInfo = rawget(_G, "GetTalentTabInfo")
@@ -856,6 +855,11 @@ local function SetupRetPaladin()
     for _, racial in ipairs(PALADIN_RACIAL_SPELLS) do
         table.insert(PALADIN_TRACKED_SPELLS, racial)
     end
+    if ns.SOD_TRACKED_SPELLS and ns.SOD_TRACKED_SPELLS.PALADIN then
+        for _, sodSpell in ipairs(ns.SOD_TRACKED_SPELLS.PALADIN) do
+            table.insert(PALADIN_TRACKED_SPELLS, sodSpell)
+        end
+    end
 
     local paladinBuffIcons = {}
     local paladinBuffTimer = 0
@@ -1464,6 +1468,21 @@ local function SetupRetPaladin()
         if ns.UpdatePaladinBuffIcons then ns.UpdatePaladinBuffIcons(elapsed) end
     end)
 
+    ns.UpdatePaladinPowerBar = function ()
+        local bar = ns.warriorRageBar
+        if not bar or ns.playerClass ~= "PALADIN" then return end
+        local db = SuperSwingTimerDB
+        if not db or db.showWarriorRageBar == false then bar:SetAlpha(0); bar:Hide(); return end
+        local maxPower = (type(UnitPowerMax) == "function") and (UnitPowerMax("player", 0) or 100) or 100
+        local colorRef = (db.colors and db.colors.paladinManaBarColor) or { r = 0.20, g = 0.45, b = 1.00, a = 0.85 }
+        local power = (type(UnitPower) == "function") and (UnitPower("player", 0) or 0) or 0
+        bar:SetMinMaxValues(0, maxPower)
+        bar:SetValue(power)
+        bar:SetStatusBarColor(colorRef.r, colorRef.g, colorRef.b, colorRef.a or 0.85)
+        bar:SetAlpha(1); bar:Show()
+        if bar.label then bar.label:SetText(power .. "/" .. maxPower) end
+    end
+
     -- Initial forced update
     pcall(UpdatePaladinSealVengeanceBar, true)
     RestackDebuffBars({ns.paladinJudgementBar, ns.paladinSealVengeanceBar}, ns.mhBar)
@@ -1681,6 +1700,7 @@ local function SetupWarrior()
         nextWarriorProtectionScanAt = now + 1.0
         return isProtection
     end
+    ns.IsWarriorProtectionSpec = IsWarriorProtectionSpec
 
 
 
@@ -1806,9 +1826,7 @@ local function SetupWarrior()
 
     ns.UpdateWarriorRageBar = function ()
         local bar = ns.warriorRageBar
-        if not bar then
-            return
-        end
+        if not bar then return end
 
         local db = SuperSwingTimerDB
         if not db or db.showWarriorRageBar == false then
@@ -1817,51 +1835,22 @@ local function SetupWarrior()
             return
         end
 
-        local class = ns.playerClass
-        local supportedClasses = {
-            WARRIOR = true,
-            SHAMAN = true,
-            ROGUE = true,
-            HUNTER = true,
-            DRUID = true,
-            PALADIN = true,
-        }
-        if not class or not supportedClasses[class] then
+        if ns.playerClass ~= "WARRIOR" then
             bar:SetAlpha(0)
             bar:Hide()
             return
         end
 
-        local powerType, maxPower, colorRef
+        local powerType = 1 -- Rage
+        local maxPower = 100
+        local colorRef = GetWarriorRageBarColor()
 
-        if class == "WARRIOR" then
-            powerType = 1
-            maxPower = 100
-            colorRef = (db.colors and db.colors.warriorRageBarColor) or { r = 0.80, g = 0.20, b = 0.10, a = 0.85 }
-        elseif class == "SHAMAN" then
-            powerType = 0
-            maxPower = (type(UnitPowerMax) == "function") and (UnitPowerMax("player", 0) or 100) or 100
-            colorRef = (db.colors and db.colors.shamanManaBarColor) or { r = 0.20, g = 0.45, b = 1.00, a = 0.85 }
-        elseif class == "ROGUE" then
-            powerType = 3
-            maxPower = (type(UnitPowerMax) == "function") and (UnitPowerMax("player", 3) or 100) or 100
-            colorRef = (db.colors and db.colors.rogueEnergyBarColor) or { r = 1.00, g = 0.82, b = 0.18, a = 0.85 }
-        elseif class == "HUNTER" then
-            powerType = 0
-            maxPower = (type(UnitPowerMax) == "function") and (UnitPowerMax("player", 0) or 100) or 100
-            colorRef = (db.colors and db.colors.hunterManaBarColor) or { r = 0.20, g = 0.45, b = 1.00, a = 0.85 }
-        elseif class == "DRUID" then
-            powerType = 0
-            maxPower = (type(UnitPowerMax) == "function") and (UnitPowerMax("player", 0) or 100) or 100
-            colorRef = (db.colors and db.colors.druidManaBarColor) or { r = 0.20, g = 0.45, b = 1.00, a = 0.85 }
-        elseif class == "PALADIN" then
-            powerType = 0
-            maxPower = (type(UnitPowerMax) == "function") and (UnitPowerMax("player", 0) or 100) or 100
-            colorRef = (db.colors and db.colors.paladinManaBarColor) or { r = 0.20, g = 0.45, b = 1.00, a = 0.85 }
-        else
-            bar:SetAlpha(0)
-            bar:Hide()
-            return
+        local GetPowerBarColorFn = rawget(_G, "GetPowerBarColor")
+        if type(GetPowerBarColorFn) == "function" then
+            local pr, pg, pb = GetPowerBarColorFn(powerType)
+            if pr and pg and pb then
+                colorRef = { r = pr, g = pg, b = pb, a = 0.85 }
+            end
         end
 
         local power = (type(UnitPower) == "function") and (UnitPower("player", powerType) or 0) or 0
@@ -1873,33 +1862,23 @@ local function SetupWarrior()
         bar:Show()
 
         if bar.label then
-            -- Warrior (rage) and Rogue (energy) show only the numeric amount.
-            -- Mana classes (Shaman, Hunter, Druid, Paladin) show current/max.
-            if class == "WARRIOR" or class == "ROGUE" then
-                bar.label:SetText(tostring(power))
-            else
-                bar.label:SetText(power .. "/" .. maxPower)
-            end
+            bar.label:SetText(tostring(power))
         end
 
         -- Execute range display (Warrior only)
-        if class == "WARRIOR" then
-            local targetHealth = UnitHealth and UnitHealth("target") or 0
-            local targetMaxHealth = UnitHealthMax and UnitHealthMax("target") or 0
-            local executeActive = targetHealth > 0 and targetMaxHealth > 0 and (targetHealth / targetMaxHealth) <= 0.20
-            if executeActive then
-                if not bar.executeText then
-                    bar.executeText = bar:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-                    bar.executeText:SetPoint("LEFT", bar, "RIGHT", 3, 0)
-                    bar.executeText:SetJustifyH("LEFT")
-                    bar.executeText:SetFont("Fonts\\FRIZQT__.TTF", 9, "OUTLINE")
-                    bar.executeText:SetTextColor(1.0, 0.35, 0.20, 0.95)
-                end
-                bar.executeText:SetText("EXEC")
-                bar.executeText:Show()
-            elseif bar.executeText then
-                bar.executeText:Hide()
+        local targetHealth = UnitHealth and UnitHealth("target") or 0
+        local targetMaxHealth = UnitHealthMax and UnitHealthMax("target") or 0
+        local executeActive = targetHealth > 0 and targetMaxHealth > 0 and (targetHealth / targetMaxHealth) <= 0.20
+        if executeActive then
+            if not bar.executeText then
+                bar.executeText = bar:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+                bar.executeText:SetPoint("LEFT", bar, "RIGHT", 3, 0)
+                bar.executeText:SetJustifyH("LEFT")
+                bar.executeText:SetFont("Fonts\\FRIZQT__.TTF", 9, "OUTLINE")
+                bar.executeText:SetTextColor(1.0, 0.35, 0.20, 0.95)
             end
+            bar.executeText:SetText("EXEC")
+            bar.executeText:Show()
         elseif bar.executeText then
             bar.executeText:Hide()
         end
@@ -2979,6 +2958,8 @@ local function SetupWarrior()
         { spellId = 28730, name = "Arcane Torrent", label = "AT", kind = "buff" },
     }
     local WARRIOR_TRACKED_SPELLS = {
+        { spellId = 6673, name = "Battle Shout", label = "BS", kind = "buff" },
+        { spellId = 7384, name = "Overpower", label = "OP", kind = "buff" },
         { spellId = 2565, name = "Shield Block", label = "SB", kind = "buff" },
         { spellId = 12319, name = "Flurry", label = "Flur", kind = "buff" },
         { spellId = 12292, name = "Death Wish", label = "DW", kind = "buff" },
@@ -3001,6 +2982,11 @@ local function SetupWarrior()
     }
     for _, racial in ipairs(WARRIOR_RACIAL_SPELLS) do
         table.insert(WARRIOR_TRACKED_SPELLS, racial)
+    end
+    if ns.SOD_TRACKED_SPELLS and ns.SOD_TRACKED_SPELLS.WARRIOR then
+        for _, sodSpell in ipairs(ns.SOD_TRACKED_SPELLS.WARRIOR) do
+            table.insert(WARRIOR_TRACKED_SPELLS, sodSpell)
+        end
     end
 
     local warriorBuffIcons = {}
@@ -4124,6 +4110,9 @@ local function SetupEnhShaman()
     -- Phase 4: Shaman CD/Buff Duration Icon Group (configurable via shamanBuffIconSize)
     -- ============================================================
     local SHAMAN_TRACKED_SPELLS = {
+        { spellId = 324, name = "Lightning Shield", label = "LS", kind = "buff" },
+        { spellId = 52127, name = "Water Shield", label = "WS", kind = "buff" },
+        { spellId = 8017, name = "Rockbiter Weapon", label = "RB", kind = "buff" },
         { spellId = 30823, name = "Shamanistic Rage", label = "SR", kind = "buff" },
         { spellId = 32182, name = "Heroism", label = "Hero", kind = "buff" },
         { spellId = 17364, name = "Stormstrike", label = "SS", kind = "cd" },
@@ -4141,6 +4130,11 @@ local function SetupEnhShaman()
     }
     for _, racial in ipairs(SHAMAN_RACIAL_SPELLS) do
         table.insert(SHAMAN_TRACKED_SPELLS, racial)
+    end
+    if ns.SOD_TRACKED_SPELLS and ns.SOD_TRACKED_SPELLS.SHAMAN then
+        for _, sodSpell in ipairs(ns.SOD_TRACKED_SPELLS.SHAMAN) do
+            table.insert(SHAMAN_TRACKED_SPELLS, sodSpell)
+        end
     end
 
     local shamanBuffIcons = {}
@@ -4370,7 +4364,20 @@ local function SetupEnhShaman()
     end)
     SafeInitCall(UpdateShamanStormstrikeBadge)
     SafeInitCall(UpdateShamanisticRageBadge)
-    SafeInitCall(UpdateLightningShieldVisual)
+    ns.UpdateShamanPowerBar = function ()
+        local bar = ns.warriorRageBar
+        if not bar or ns.playerClass ~= "SHAMAN" then return end
+        local db = SuperSwingTimerDB
+        if not db or db.showWarriorRageBar == false then bar:SetAlpha(0); bar:Hide(); return end
+        local maxPower = (type(UnitPowerMax) == "function") and (UnitPowerMax("player", 0) or 100) or 100
+        local colorRef = (db.colors and db.colors.shamanManaBarColor) or { r = 0.20, g = 0.45, b = 1.00, a = 0.85 }
+        local power = (type(UnitPower) == "function") and (UnitPower("player", 0) or 0) or 0
+        bar:SetMinMaxValues(0, maxPower)
+        bar:SetValue(power)
+        bar:SetStatusBarColor(colorRef.r, colorRef.g, colorRef.b, colorRef.a or 0.85)
+        bar:SetAlpha(1); bar:Show()
+        if bar.label then bar.label:SetText(power .. "/" .. maxPower) end
+    end
 end
 
 local function SetupDruid()
@@ -5048,6 +5055,7 @@ local function SetupDruid()
         { spellId = 28880, name = "Gift of the Naaru", label = "GN", kind = "buff" },
     }
     local DRUID_TRACKED_SPELLS = {
+        { spellId = 16870, name = "Clearcasting", label = "OoC", kind = "buff" },
         { spellId = 5217, name = "Tiger's Fury", label = "TF", kind = "buff" },
         { spellId = 22842, name = "Frenzied Regeneration", label = "FR", kind = "buff" },
         { spellId = 22812, name = "Barkskin", label = "Brk", kind = "buff" },
@@ -5064,6 +5072,11 @@ local function SetupDruid()
     }
     for _, racial in ipairs(DRUID_RACIAL_SPELLS) do
         table.insert(DRUID_TRACKED_SPELLS, racial)
+    end
+    if ns.SOD_TRACKED_SPELLS and ns.SOD_TRACKED_SPELLS.DRUID then
+        for _, sodSpell in ipairs(ns.SOD_TRACKED_SPELLS.DRUID) do
+            table.insert(DRUID_TRACKED_SPELLS, sodSpell)
+        end
     end
 
     local druidBuffIcons = {}
@@ -5289,6 +5302,38 @@ local function SetupDruid()
         RestackDebuffBars({mangleBar, ripBar, rakeBar}, ns.mhBar)
         if ns.UpdateDruidBuffIcons then ns.UpdateDruidBuffIcons(elapsed) end
     end)
+
+    ns.UpdateDruidPowerBar = function ()
+        local bar = ns.warriorRageBar
+        if not bar or ns.playerClass ~= "DRUID" then return end
+        local db = SuperSwingTimerDB
+        if not db or db.showWarriorRageBar == false then bar:SetAlpha(0); bar:Hide(); return end
+        local druidPowerType = (type(UnitPowerType) == "function") and UnitPowerType("player") or 0
+        local powerType = druidPowerType
+        local maxPower, colorRef
+        if druidPowerType == 1 then -- Bear Form (Rage)
+            maxPower = 100
+            colorRef = { r = 0.80, g = 0.20, b = 0.10, a = 0.85 }
+        elseif druidPowerType == 3 then -- Cat Form (Energy)
+            maxPower = (type(UnitPowerMax) == "function") and (UnitPowerMax("player", 3) or 100) or 100
+            colorRef = (db.colors and db.colors.rogueEnergyBarColor) or { r = 1.00, g = 0.82, b = 0.18, a = 0.85 }
+        else -- Caster / Mana Form
+            maxPower = (type(UnitPowerMax) == "function") and (UnitPowerMax("player", 0) or 100) or 100
+            colorRef = (db.colors and db.colors.druidManaBarColor) or { r = 0.20, g = 0.45, b = 1.00, a = 0.85 }
+        end
+        local power = (type(UnitPower) == "function") and (UnitPower("player", powerType) or 0) or 0
+        bar:SetMinMaxValues(0, maxPower)
+        bar:SetValue(power)
+        bar:SetStatusBarColor(colorRef.r, colorRef.g, colorRef.b, colorRef.a or 0.85)
+        bar:SetAlpha(1); bar:Show()
+        if bar.label then
+            if powerType == 1 or powerType == 3 then
+                bar.label:SetText(tostring(power))
+            else
+                bar.label:SetText(power .. "/" .. maxPower)
+            end
+        end
+    end
 end
 
 local function SetupHunter()
@@ -5917,6 +5962,8 @@ local function SetupHunter()
         { spellId = 28730, name = "Arcane Torrent", label = "AT", kind = "buff" },
     }
     local HUNTER_TRACKED_SPELLS = {
+        { spellId = 13165, name = "Aspect of the Hawk", label = "Hawk", kind = "buff" },
+        { spellId = 19506, name = "Trueshot Aura", label = "TSA", kind = "buff" },
         { spellId = 19574, name = "Bestial Wrath", label = "BW", kind = "buff" },
         { spellId = 3045, name = "Rapid Fire", label = "RF", kind = "buff" },
         { spellId = 34692, name = "The Beast Within", label = "TBW", kind = "buff" },
@@ -5929,6 +5976,11 @@ local function SetupHunter()
     -- Merge racials into tracked spells
     for _, racial in ipairs(HUNTER_RACIAL_SPELLS) do
         table.insert(HUNTER_TRACKED_SPELLS, racial)
+    end
+    if ns.SOD_TRACKED_SPELLS and ns.SOD_TRACKED_SPELLS.HUNTER then
+        for _, sodSpell in ipairs(ns.SOD_TRACKED_SPELLS.HUNTER) do
+            table.insert(HUNTER_TRACKED_SPELLS, sodSpell)
+        end
     end
     local hunterBuffIcons = {}
     local hunterBuffTimer = 0
@@ -7037,10 +7089,19 @@ local function SetupHunter()
     ns.UpdateHunterExplosiveTrapBar = UpdateHunterExplosiveTrapBar
     ns.UpdateHunterFreezingTrapBar = UpdateHunterFreezingTrapBar
     ns.UpdateHunterFrostTrapBar = UpdateHunterFrostTrapBar
-    -- WoWUnit test harness
-    if WoWUnit then ---@diagnostic disable-line: undefined-global
-        if not ns._Test then ns._Test = {} end
-        ns._Test.GetTargetSerpentStingData = GetTargetSerpentStingData
+    ns.UpdateHunterPowerBar = function ()
+        local bar = ns.warriorRageBar
+        if not bar or ns.playerClass ~= "HUNTER" then return end
+        local db = SuperSwingTimerDB
+        if not db or db.showWarriorRageBar == false then bar:SetAlpha(0); bar:Hide(); return end
+        local maxPower = (type(UnitPowerMax) == "function") and (UnitPowerMax("player", 0) or 100) or 100
+        local colorRef = (db.colors and db.colors.hunterManaBarColor) or { r = 0.20, g = 0.45, b = 1.00, a = 0.85 }
+        local power = (type(UnitPower) == "function") and (UnitPower("player", 0) or 0) or 0
+        bar:SetMinMaxValues(0, maxPower)
+        bar:SetValue(power)
+        bar:SetStatusBarColor(colorRef.r, colorRef.g, colorRef.b, colorRef.a or 0.85)
+        bar:SetAlpha(1); bar:Show()
+        if bar.label then bar.label:SetText(power .. "/" .. maxPower) end
     end
 end
 
@@ -8031,6 +8092,9 @@ local function SetupRogue()
             UpdateRogueColdBloodBadge()
             UpdateRogueRuptureBar(false)
             UpdateRogueExposeArmorBar(false)
+            if ns.UpdateRoguePowerBar then
+                ns.UpdateRoguePowerBar()
+            end
             -- Restack all visible debuff bars above MH dynamically
             RestackDebuffBars({ruptureBar, exposeArmorBar}, ns.mhBar)
             if ns.UpdateRogueBuffIcons then ns.UpdateRogueBuffIcons(elapsed) end
@@ -8157,6 +8221,7 @@ local function SetupRogue()
         { spellId = 28730, name = "Arcane Torrent", label = "AT", kind = "buff" },
     }
     local ROGUE_TRACKED_SPELLS = {
+        { spellId = 5171, name = "Slice and Dice", label = "SnD", kind = "buff" },
         { spellId = 13750, name = "Adrenaline Rush", label = "AR", kind = "buff" },
         { spellId = 13877, name = "Blade Flurry", label = "BF", kind = "buff" },
         { spellId = 14177, name = "Cold Blood", label = "CB", kind = "buff" },
@@ -8175,6 +8240,11 @@ local function SetupRogue()
     }
     for _, racial in ipairs(ROGUE_RACIAL_SPELLS) do
         table.insert(ROGUE_TRACKED_SPELLS, racial)
+    end
+    if ns.SOD_TRACKED_SPELLS and ns.SOD_TRACKED_SPELLS.ROGUE then
+        for _, sodSpell in ipairs(ns.SOD_TRACKED_SPELLS.ROGUE) do
+            table.insert(ROGUE_TRACKED_SPELLS, sodSpell)
+        end
     end
 
     local rogueBuffIcons = {}
@@ -8383,10 +8453,33 @@ local function SetupRogue()
             if icon.Show then icon:Show() end
         end
     end
-end
+    -- ============================================================
+    -- Rogue: power bar update (energy).
+    -- ============================================================
+    ns.UpdateRoguePowerBar = function ()
+        local bar = ns.warriorRageBar
+        if not bar or ns.playerClass ~= "ROGUE" then return end
+        local db = SuperSwingTimerDB
+        if not db or db.showWarriorRageBar == false then bar:SetAlpha(0); bar:Hide(); return end
+        local maxPower = (type(UnitPowerMax) == "function") and (UnitPowerMax("player", 3) or 100) or 100
+        local colorRef = (db.colors and db.colors.rogueEnergyBarColor) or { r = 1.00, g = 0.82, b = 0.18, a = 0.85 }
+        local power = (type(UnitPower) == "function") and (UnitPower("player", 3) or 0) or 0
+        bar:SetMinMaxValues(0, maxPower)
+        bar:SetValue(power)
+        bar:SetStatusBarColor(colorRef.r, colorRef.g, colorRef.b, colorRef.a or 0.85)
+        bar:SetAlpha(1); bar:Show()
+        if bar.label then bar.label:SetText(tostring(power)) end
+    end
 
--- ============================================================
--- Dispatch: pick class mods for the current class
+    -- Inject power bar update into OnBarsCreated and OnUpdate.
+    local prevRogueOnBarsCreated = ns.OnBarsCreated
+    ns.OnBarsCreated = function()
+        if prevRogueOnBarsCreated then prevRogueOnBarsCreated() end
+        if ns.UpdateRoguePowerBar then
+            ns.UpdateRoguePowerBar()
+        end
+    end
+end
 -- ============================================================
 -- ============================================================
 -- Dispatch: pick class mods for the current class
@@ -8533,6 +8626,114 @@ function ns.InitClassMods()
     elseif class == "DRUID" then
         pcall(SetupDruid)
     end
+
+    pcall(function()
+        local supported = { WARRIOR = true, SHAMAN = true, ROGUE = true, HUNTER = true, DRUID = true, PALADIN = true }
+        if not class or not supported[class] then return end
+
+        local RESOURCE_BAR_HEIGHT = 8
+        if not ns.warriorRageBar then
+            local bar = rawget(_G, "SuperSwingTimerWarriorRageBar")
+            if not bar then
+                bar = CreateFrame("StatusBar", "SuperSwingTimerWarriorRageBar", UIParent)
+            end
+            bar:SetStatusBarTexture(ns.GetBarTexture and ns.GetBarTexture() or "Interface\\TargetingFrame\\UI-StatusBar")
+            bar:SetSize((ns.mhBar and ns.mhBar:GetWidth()) or ns.BAR_WIDTH or 240, RESOURCE_BAR_HEIGHT)
+            bar:SetMinMaxValues(0, 100)
+            bar:SetValue(0)
+            bar:SetFrameStrata((ns.mhBar and ns.mhBar:GetFrameStrata()) or "MEDIUM")
+            bar:SetFrameLevel(((ns.mhBar and ns.mhBar:GetFrameLevel()) or 0) + 1)
+            bar:EnableMouse(false)
+            local statusBarTexture = bar:GetStatusBarTexture()
+            if statusBarTexture then
+                statusBarTexture:SetDrawLayer(ns.GetBarTextureLayer and ns.GetBarTextureLayer() or "ARTWORK")
+            end
+
+            local backgroundTexture = bar.backgroundTexture or bar:CreateTexture(nil, "BACKGROUND")
+            backgroundTexture:SetAllPoints(true)
+            local backgroundColor = ns.GetBarBackgroundColor and ns.GetBarBackgroundColor()
+                or (ns.DB_DEFAULTS and ns.DB_DEFAULTS.barBackgroundColor)
+            backgroundColor = backgroundColor or { r = 0, g = 0, b = 0, a = 0.5 }
+            backgroundTexture:SetColorTexture(backgroundColor.r or 0, backgroundColor.g or 0, backgroundColor.b or 0, 1)
+            backgroundTexture:SetAlpha(backgroundColor.a ~= nil and backgroundColor.a or 0.5)
+
+            if not bar.borderTextures then
+                local borderColor = ns.GetBarBorderColor and ns.GetBarBorderColor()
+                    or (ns.DB_DEFAULTS and ns.DB_DEFAULTS.barBorderColor)
+                borderColor = borderColor or { r = 0, g = 0, b = 0, a = 1 }
+                local borderTop = bar:CreateTexture(nil, "OVERLAY")
+                borderTop:SetColorTexture(borderColor.r or 0, borderColor.g or 0, borderColor.b or 0, borderColor.a or 1)
+                borderTop:SetPoint("TOPLEFT", -1, 1)
+                borderTop:SetPoint("TOPRIGHT", 1, 1)
+                borderTop:SetHeight(1)
+
+                local borderBottom = bar:CreateTexture(nil, "OVERLAY")
+                borderBottom:SetColorTexture(borderColor.r or 0, borderColor.g or 0, borderColor.b or 0, borderColor.a or 1)
+                borderBottom:SetPoint("BOTTOMLEFT", -1, -1)
+                borderBottom:SetPoint("BOTTOMRIGHT", 1, -1)
+                borderBottom:SetHeight(1)
+
+                local borderLeft = bar:CreateTexture(nil, "OVERLAY")
+                borderLeft:SetColorTexture(borderColor.r or 0, borderColor.g or 0, borderColor.b or 0, borderColor.a or 1)
+                borderLeft:SetPoint("TOPLEFT", -1, 1)
+                borderLeft:SetPoint("BOTTOMLEFT", -1, -1)
+                borderLeft:SetWidth(1)
+
+                local borderRight = bar:CreateTexture(nil, "OVERLAY")
+                borderRight:SetColorTexture(borderColor.r or 0, borderColor.g or 0, borderColor.b or 0, borderColor.a or 1)
+                borderRight:SetPoint("TOPRIGHT", 1, 1)
+                borderRight:SetPoint("BOTTOMRIGHT", 1, -1)
+                borderRight:SetWidth(1)
+
+                bar.borderTextures = { top = borderTop, bottom = borderBottom, left = borderLeft, right = borderRight }
+            end
+
+            bar.backgroundTexture = backgroundTexture
+            bar.statusBarTexture = statusBarTexture
+
+            bar.label = bar:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+            bar.label:SetPoint("LEFT", bar, "LEFT", 2, 0)
+            bar.label:SetJustifyH("LEFT")
+            bar.label:SetFont("Fonts\\FRIZQT__.TTF", 10, "OUTLINE")
+            bar.label:SetTextColor(1, 1, 1, 0.95)
+
+            bar:SetAlpha(0)
+            ns.warriorRageBar = bar
+        end
+
+        -- Each class defines its own power bar updater in its own Setup*()
+        -- function. No if/else dispatcher needed — only the current class's
+        -- function exists at this point.
+
+        local prevOnBarsCreated = ns.OnBarsCreated
+        ns.OnBarsCreated = function()
+            if prevOnBarsCreated then prevOnBarsCreated() end
+            if ns.warriorRageBar then
+                if ns.ohBar and ns.ohBar:IsShown() then
+                    ns.warriorRageBar:ClearAllPoints()
+                    ns.warriorRageBar:SetPoint("TOPLEFT", ns.ohBar, "BOTTOMLEFT", 0, -4)
+                    ns.warriorRageBar:SetPoint("TOPRIGHT", ns.ohBar, "BOTTOMRIGHT", 0, -4)
+                elseif ns.mhBar then
+                    ns.warriorRageBar:ClearAllPoints()
+                    ns.warriorRageBar:SetPoint("TOPLEFT", ns.mhBar, "BOTTOMLEFT", 0, -4)
+                    ns.warriorRageBar:SetPoint("TOPRIGHT", ns.mhBar, "BOTTOMRIGHT", 0, -4)
+                end
+                if ns.UpdateWarriorRageBar then
+                    ns.UpdateWarriorRageBar()
+                end
+            end
+        end
+
+        ns.RegisterOnUpdateHook(function()
+            if ns.UpdateWarriorRageBar then
+                ns.UpdateWarriorRageBar()
+            end
+        end)
+
+        if ns.mhBar and ns.OnBarsCreated then
+            ns.OnBarsCreated()
+        end
+    end)
 end
 
 -- ============================================================

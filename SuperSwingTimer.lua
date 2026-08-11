@@ -1046,12 +1046,26 @@ local function MigrateDB(targetDb)
                     db.colors.paladinManaBarColor = { r = 0.20, g = 0.45, b = 1.00, a = 0.85 }
                 end
             end
+        },
+        {
+            version = 61,
+            apply = function (db)
+                if db.showWarriorRageBar == nil then db.showWarriorRageBar = true end
+                if db.showWarriorBuffIcons == nil then db.showWarriorBuffIcons = true end
+                if not db.warriorBuffIconSize then db.warriorBuffIconSize = 25 end
+                db.colors = db.colors or {}
+                if not db.colors.shamanManaBarColor then db.colors.shamanManaBarColor = { r = 0.20, g = 0.45, b = 1.00, a = 0.85 } end
+                if not db.colors.rogueEnergyBarColor then db.colors.rogueEnergyBarColor = { r = 1.00, g = 0.82, b = 0.18, a = 0.85 } end
+                if not db.colors.hunterManaBarColor then db.colors.hunterManaBarColor = { r = 0.20, g = 0.45, b = 1.00, a = 0.85 } end
+                if not db.colors.druidManaBarColor then db.colors.druidManaBarColor = { r = 0.20, g = 0.45, b = 1.00, a = 0.85 } end
+                if not db.colors.paladinManaBarColor then db.colors.paladinManaBarColor = { r = 0.20, g = 0.45, b = 1.00, a = 0.85 } end
+            end
         }
     }
 
     -- Optional db param lets the test harness migrate an isolated table.
     -- Falls back to the real global when called during addon load.
-    local db = targetDb or SuperSwingTimerDB ---@diagnostic disable-line: undefined-global
+    local db = targetDB or SuperSwingTimerDB
     local currentVersion = tonumber(db.version) or 0
     for _, migration in ipairs(migrations) do
         if currentVersion < migration.version then
@@ -1065,7 +1079,7 @@ end
 -- Highest migration version currently defined. Tests assert against this
 -- instead of a hard-coded number so they don't go stale when the
 -- migration ladder grows.
-ns.DB_CURRENT_VERSION = 60
+ns.DB_CURRENT_VERSION = 61
 
 -- ============================================================
 -- Initialization

@@ -7,7 +7,7 @@ globals = {
     "SuperSwingTimerDB", "C_Timer", "C_UnitAuras", "C_UnitAuras.GetPlayerAuraBySpellID",
     "GetTime", "GetSpellInfo", "GetItemInfo", "GetInventoryItemLink", "GetInventoryItemID",
     "SLASH_SUPERSWINGTIMER1", "SLASH_SUPERSWINGTIMER2", "SLASH_SUPERSWINGTIMER3", "SLASH_SUPERSWINGTIMER4",
-    "GetTimePrecise", "GetSpellCooldown", "HunterTimerDB", "SwangThangDB",
+    "GetTimePrecise", "GetSpellCooldown", "HunterTimerDB", "SwangThangDB", "UnitGUID",
     -- UIDropDownMenu internal globals used by nested menu level-2+ init functions
     "UIDROPDOWNMENU_MENU_VALUE", "UIDROPDOWNMENU_MENU_LEVEL",
     "UIDropDownMenu_AddButton", "UIDropDownMenu_CreateInfo", "UIDropDownMenu_Initialize",
@@ -33,6 +33,21 @@ globals = {
     "UnitClass",
     "UnitDebuff",
     "WoWUnit",
+    "UnitPowerMax",
+    "GetClassicExpansionLevel",
+    "C_Seasons",
+    "C_Engraving",
+    "PowerBarColor",
+    "GetWeaponEnchantInfo",
+    "PlaySound",
+    "GetComboPoints",
+    "UnitAttackPower",
+    "UnitDamage",
+    "GetPlayerGUID",
+    "UnitExists",
+    "UnitIsDead",
+    "InCombatLockdown",
+    "UnitPowerType",
 }
 -- Allow longer lines in this addon repository to avoid false positives
 max_line_length = 260

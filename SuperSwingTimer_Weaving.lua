@@ -291,7 +291,8 @@ local function CaptureWeaveCastTiming(state, spellInfo)
 	else
 		local spellHaste = state.spellHaste or GetSpellHastePercent()
 		local hasteMultiplier = 1 + (math_max(spellHaste, 0) / 100)
-		local effectiveCastTime = math_max(0, spellInfo.castTime / hasteMultiplier)
+		local maelstromMult = (ns.maelstromCastTimeMultiplier ~= nil) and ns.maelstromCastTimeMultiplier or 1.0
+		local effectiveCastTime = math_max(0, (spellInfo.castTime / hasteMultiplier) * maelstromMult)
 		state.spellExpirationTime = castStartTime + effectiveCastTime
 	end
 

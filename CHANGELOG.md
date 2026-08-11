@@ -4,6 +4,61 @@
 > Sections: **Added** / **Changed** / **Fixed** / **Removed** / **Performance** / **Security** / **Docs** / **Internal** / **Notes**
 > DB schema migrations are listed under **Notes** per version.
 
+## v0.2.1 - 2026-07-29
+
+### Added
+
+- **Exhaustive Season of Discovery (SoD 1.15.9) Tank & DPS Integration (`SuperSwingTimer_SoD.lua`)**:
+  - Populated complete Tank and DPS SoD rune matrices for all 6 physical classes (`WARRIOR`, `ROGUE`, `SHAMAN`, `HUNTER`, `PALADIN`, `DRUID`).
+  - **Warrior**: Added Rampage active spell ID (`426940`), Rampage Proc Buff (`426942`), Quick Strike (`429765`), Raging Blow (`402911`), Devastate (`407133`/`407135`), Blood Surge Slam (`413380`/`413399`), Precise Timing (`426956`), and Sudden Death audio/visual proc alert (`440114`).
+  - **Rogue**: Added Saber Slash (`402780`), Main Gauche (`409509`), Envenom (`400011`), Blade Dance (`400012`), Mutilate (`409510`/`409513`), Shadowstrike (`400029`), Quick Draw (`409898`), Poison Knife (`424785`), Crimson Tempest (`412096`), and Secret Technique (`426640`).
+  - **Shaman**: Added Way of Earth (`408531`), Shield Mastery (`408527`), Molten Blast (`408247`), Lava Lash (`408507`), Fire Nova (`408331`), Dual Wield Spec (`408498`), Power Surge (`415100`), and event-driven Maelstrom Weapon (`408505`) 5-stack cast-time reduction tracker.
+  - **Hunter**: Added Melee Specialist (`415318`), Dual Wield Specialization (`425515`), Aspect of the Viper (`415423`), Flanking Strike (`415320`), Carve (`425711`), Chimera Shot (`53209`/`409433`), and Explosive Shot (`53301`/`409552`).
+  - **Paladin**: Added Aegis (`407630`), Hand of Reckoning (`409859`), Guarded by the Light (`408435`), Sacred Shield (`407627`), Fanaticism (`408434`), Art of War (`408432`), Divine Storm (`407778`), Crusader Strike (`409553`), Hammer of the Righteous (`409456`), and Rebuke (`409540`).
+  - **Druid**: Added Savage Roar (`407988`), Wild Strikes (`407982`), Berserk (`417141`), Mangle Cat/Bear (`3355`/`409805`/`33878`/`409804`), Lacerate (`414644`), Sunfire Cat/Bear (`414689`/`414684`), and Survival Instincts (`408005`).
+
+- **Base Class Buff & Aura Resolution Across All 6 Physical Classes (`SuperSwingTimer_ClassMods.lua`)**:
+  - Integrated localized aura string name matching alongside numeric spell IDs (`auraSpellId == info.spellId or auraName == info.name`) in `GetWarriorSpellRemaining` and `ns.GetSoDAuraData`.
+  - Added Warrior **Battle Shout** (`6673`) and **Overpower** (`7384`) to `WARRIOR_TRACKED_SPELLS`.
+  - Added Rogue **Slice and Dice** (`5171`) to `ROGUE_TRACKED_SPELLS`.
+  - Added Hunter **Aspect of the Hawk** (`13165`) and **Trueshot Aura** (`19506`) to `HUNTER_TRACKED_SPELLS`.
+  - Added Shaman **Lightning Shield** (`324`), **Water Shield** (`52127`), and **Rockbiter Weapon** (`8017`) to `SHAMAN_TRACKED_SPELLS`.
+  - Added Druid **Clearcasting / Omen of Clarity** (`16870`) to `DRUID_TRACKED_SPELLS`.
+  - Implemented dynamic buff icon vertical offset calculation (`_debuffStackIconOffset`) positioning active buff icons cleanly above target debuff duration bars.
+
+- **Shaman Maelstrom Weaving Adjustment (`SuperSwingTimer_Weaving.lua`)**:
+  - Wired event-driven Maelstrom Weapon stack count into weaving cast-time reduction math (20% per stack up to 100% instant at 5 stacks).
+
+- **Blizzard Native UI API Integration (`SuperSwingTimer_ClassMods.lua`)**:
+  - Integrated `GetPowerBarColor` native fallback into power bar rendering pipeline.
+
+- **Unit Test Coverage Expansion (`SuperSwingTimer_Tests.lua` & `test_migrations.lua`)**:
+  - Added unit test cases in `SuperSwingTimer_Tests.lua` for SoD rune registration and aura lookups.
+  - Added SavedVariables Migration v61 test harness assertions in `test_migrations.lua` (41/41 tests passing).
+
+### Fixed
+
+- **Dedicated Per-Class Power Bars (`SuperSwingTimer_ClassMods.lua`)**:
+  - Extracted power bar rendering into isolated per-class functions (`ns.UpdateWarriorRageBar`, `ns.UpdateRoguePowerBar`, `ns.UpdateShamanPowerBar`, `ns.UpdateHunterPowerBar`, `ns.UpdateDruidPowerBar`, `ns.UpdatePaladinPowerBar`).
+  - Druid power bar dynamically switches between Bear (Rage), Cat (Energy), and Caster/Moonkin (Mana) based on active form.
+- **Cleaned Baseline CLEU Tables (`SuperSwingTimer_SoD.lua`)**:
+  - Purged duplicate baseline Era spell IDs from `SuperSwingTimer_SoD.lua`, maintaining strict architecture isolation.
+  - Restored instant physical special abilities (`Victory Rush` `34428`, `Envenom` `32645`, `Stormstrike` `17364`) to `ns.NO_RESET_SWING_SPELLS`.
+- **Fixed `GetPlayerGUID` Linter Warning in `SuperSwingTimer_SoD.lua`**:
+  - Replaced non-standard `GetPlayerGUID` global check with `(type(UnitGUID) == "function") and UnitGUID("player")`. Zero warnings/errors across all files in `luacheck`.
+
+### Changed
+
+- **Version Sync**: `SuperSwingTimer.toc` set to `v0.2.1`.
+- **Linter Configuration (`.luacheckrc`)**: Suppressed false positives for addon global namespaces (0 warnings / 0 errors across 12 files).
+- **Documentation Synchronization (`README.md`)**: Updated feature list and At a glance table to match v0.2.1 release specifications.
+
+### Notes
+
+- **SavedVariables DB Migration v61 (`SuperSwingTimer.lua`)**:
+  - Incremented `ns.DB_CURRENT_VERSION` to 61 in `SuperSwingTimer.lua`.
+  - Automatically initializes `showWarriorRageBar = true`, `showWarriorBuffIcons = true`, `warriorBuffIconSize = 25`, and class power colors (`shamanManaBarColor`, `rogueEnergyBarColor`, `hunterManaBarColor`, `druidManaBarColor`, `paladinManaBarColor`) for existing profiles.
+
 ---
 
 ## v0.1.9 - 2026-07-14

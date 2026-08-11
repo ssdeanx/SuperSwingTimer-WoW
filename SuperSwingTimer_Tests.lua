@@ -213,7 +213,33 @@ local function RegisterSSTTests()
         end
     end
 
-    print("|cff44ff44[SST] 4 groups registered. Click WoWUnit toggle or type /ssttest.|r")
+    -- ============================================================
+    -- SST-SoD: SoD rune spell registration & aura filters
+    -- ============================================================
+    local SoD = WoWUnit('SST-SoD', 'PLAYER_ENTERING_WORLD')
+
+    function SoD:MaelstromMultiplier_Bounds()
+        if ns.maelstromCastTimeMultiplier ~= nil then
+            IsTrue(ns.maelstromCastTimeMultiplier >= 0.0 and ns.maelstromCastTimeMultiplier <= 1.0, 'Maelstrom multiplier bounded')
+        end
+    end
+    function SoD:TrackedSpells_AllNineClasses()
+        if not ns.SOD_TRACKED_SPELLS then return end
+        for _, classKey in ipairs{'WARRIOR','ROGUE','SHAMAN','HUNTER','PALADIN','DRUID','WARLOCK','MAGE','PRIEST'} do
+            Exists(ns.SOD_TRACKED_SPELLS[classKey], 'SoD tracked spells for '..classKey)
+        end
+    end
+
+    -- ============================================================
+    -- SST-ClassMods: per-class power bars & setups
+    -- ============================================================
+    local ClassMods = WoWUnit('SST-ClassMods', 'PLAYER_ENTERING_WORLD')
+
+    function ClassMods:UpdateWarriorRageBar_Exists()
+        IsTrue(type(ns.UpdateWarriorRageBar) == "function", 'UpdateWarriorRageBar function exists')
+    end
+
+    print("|cff44ff44[SST] 6 groups registered. Click WoWUnit toggle or type /ssttest.|r")
 end
 
 SLASH_SSTTEST1 = "/ssttest"
