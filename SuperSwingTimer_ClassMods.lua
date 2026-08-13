@@ -8104,6 +8104,10 @@ local function SetupRogue()
         pcall(UpdateRogueExposeArmorBar, true)
         -- Restack after initial force-update
         RestackDebuffBars({ruptureBar, exposeArmorBar}, ns.mhBar)
+        -- Update power bar immediately on bars creation (also driven by OnUpdate hook above)
+        if ns.UpdateRoguePowerBar then
+            ns.UpdateRoguePowerBar()
+        end
     end
 
     -- Phase 2: Rogue Adrenaline Rush CD + duration bar
@@ -8466,15 +8470,6 @@ local function SetupRogue()
         local power = (type(UnitPower) == "function") and (UnitPower("player", 3) or 0) or 0
         bar:SetMinMaxValues(0, maxPower)
         bar:SetValue(power)
-        bar:SetStatusBarColor(colorRef.r, colorRef.g, colorRef.b, colorRef.a or 0.85)
-        bar:SetAlpha(1); bar:Show()
-        if bar.label then bar.label:SetText(tostring(power)) end
-    end
-
-    -- Inject power bar update into OnBarsCreated and OnUpdate.
-    local prevRogueOnBarsCreated = ns.OnBarsCreated
-    ns.OnBarsCreated = function()
-        if prevRogueOnBarsCreated then prevRogueOnBarsCreated() end
         if ns.UpdateRoguePowerBar then
             ns.UpdateRoguePowerBar()
         end
