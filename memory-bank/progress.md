@@ -1,5 +1,25 @@
 # Progress
 
+## Progress Update (2026-09-12 - v0.2.2: Multi-class power bars, Hunter cast bar 15px, CurseForge fixes, debuff icon alignment)
+
+- **Unified Multi-Class Power Bar**:
+  - Implemented live power tracking for all 6 physical classes: Warrior (Rage + Execute text), Rogue (Energy), Druid (dynamic shapeshift Rage/Energy/Mana), Paladin (Mana), Shaman (Mana), Hunter (Mana).
+  - Consolidated duplicate frame creation to canonical `ns.playerPowerBar` (`SuperSwingTimerPlayerPowerBar`) with backward-compatible alias `ns.warriorRageBar = ns.playerPowerBar`.
+  - Wired into `UNIT_POWER_UPDATE`, `UNIT_POWER_FREQUENT`, `UNIT_DISPLAYPOWER`, `UNIT_MAXPOWER`, and `UPDATE_SHAPESHIFT_FORM`.
+  - Added power bar preview and smooth resource cycling animation to `/ssttest`.
+- **Hunter Auto Shot Cast Bar Enlarge**:
+  - Enlarged default Hunter Auto Shot cast bar height from 10/13px to 15px (matching standard main-hand/ranged bar height).
+- **CurseForge Bug Fixes**:
+  - Fixed non-localized font path and excessive backslash escapes (`Fonts\\\\FRIZQT__.TTF`) across all 11 files by creating dynamic `ns.GetDefaultFont()` resolver querying `STANDARD_TEXT_FONT`.
+  - Fixed `Texture:SetPoint(): Invalid region point Height` by re-architecting `CreateGlowBorderFrames()` with 4 explicit named border textures (`top`, `bottom`, `left`, `right`).
+- **Debuff Bar Icon Overlapping & Alignment**:
+  - Re-anchored all debuff bar icons to outside left (`RIGHT`, `bar`, `LEFT`, -2, 0) with `SetTexCoord(0.07, 0.93, 0.07, 0.93)`.
+  - Debuff status bars remain in 100% alignment with swing bars while icons never overlap bars or text.
+- **Enterprise Code Quality & Clean Linting**:
+  - Fixed `SuperSwingTimer_UI.lua` line 1077 `boolean|nil` warning.
+  - Zero warnings and zero errors in `luacheck .` across all 11 Lua files.
+  - SavedVariables DB migration v62 in `SuperSwingTimer.lua`.
+
 ## Progress Update (2026-07-05 - v0.1.7: Phases 4/6/7/9 enterprise UX finalization)
 
 - **Show Advanced toggle** (Phase 6): New toggle at top of panel (right, below Minimal Mode). When enabled, reveals 16 advanced rows across all sections: texture layers, spark dimensions/alpha, Indicator Glow Mode, bar background/border, weave spark dimensions/alpha/layer, weave marker note, spell icon layer. Controlled by `SuperSwingTimerDB.showAdvanced` (default false). Migration fill-in added.

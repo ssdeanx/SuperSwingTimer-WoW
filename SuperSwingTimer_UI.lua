@@ -336,7 +336,7 @@ function ns.RefreshBarLabelStyles()
         ns.rogueSliceAndDiceBar,
         ns.rogueEnergyTickBar,
         ns.rogueEnergyTotalBar,
-        ns.warriorRageBar
+        ns.playerPowerBar
     }) do
         if bar and bar.labelText then
             ApplyBarLabelStyle(bar)
@@ -656,7 +656,7 @@ function ns.ApplyHunterRangedBarLabel(labelText)
 end
 
 local function CreateHunterCastBar()
-    local f = CreateBar("SuperSwingTimerHunterCastBar", nil, ns.HUNTER_CAST_BAR_HEIGHT or 10)
+    local f = CreateBar("SuperSwingTimerHunterCastBar", nil, ns.HUNTER_CAST_BAR_HEIGHT or 15)
     local rangedBar = ns.rangedBar
     if not rangedBar then
         -- No ranged bar yet — hide until bars are fully initialized
@@ -877,7 +877,7 @@ local function ApplyHunterCastBarColor(spellId, remainingCastTime, now)
 end
 
 ---@param duration number|nil
----@param showVisual boolean
+---@param showVisual boolean|nil
 local function UpdateHunterCastLatencyVisual(duration, showVisual)
     local f = ns.hunterCastBar
     if not f or not f.latencyOverlay then
@@ -1074,7 +1074,7 @@ local function UpdateHunterCastBar()
     else
         ApplyHunterCastBarColor(spellId, (showActualCastLabel or showMultiShotLabel) and remainingTime or nil, now)
     end
-    UpdateHunterCastLatencyVisual(duration, showActualCastLabel or showMultiShotLabel or showAutoShotLabel)
+    UpdateHunterCastLatencyVisual(duration, (showActualCastLabel or showMultiShotLabel or showAutoShotLabel) == true)
 
     f:SetAlpha(1)
     f:SetMinMaxValues(0, duration)
@@ -1144,14 +1144,22 @@ function ns.RestoreAllBarPositions()
         ns.rogueSliceAndDiceBar:SetPoint("BOTTOMRIGHT", ns.mhBar, "TOPRIGHT", 0, 2)
     end
 
-    if ns.warriorRageBar and ns.ohBar then
-        ns.warriorRageBar:ClearAllPoints()
-        ns.warriorRageBar:SetPoint("TOPLEFT", ns.ohBar, "BOTTOMLEFT", 0, -4)
-        ns.warriorRageBar:SetPoint("TOPRIGHT", ns.ohBar, "BOTTOMRIGHT", 0, -4)
-    elseif ns.warriorRageBar and ns.mhBar then
-        ns.warriorRageBar:ClearAllPoints()
-        ns.warriorRageBar:SetPoint("TOPLEFT", ns.mhBar, "BOTTOMLEFT", 0, -4)
-        ns.warriorRageBar:SetPoint("TOPRIGHT", ns.mhBar, "BOTTOMRIGHT", 0, -4)
+    local powerBar = ns.playerPowerBar
+    if powerBar then
+        local anchor
+        if ns.playerClass == "HUNTER" then
+            anchor = (ns.hunterCastBar and ns.hunterCastBar:IsShown() and ns.hunterCastBar)
+                or (ns.rangedBar and ns.rangedBar:IsShown() and ns.rangedBar)
+                or (ns.ohBar and ns.ohBar:IsShown() and ns.ohBar)
+                or ns.mhBar
+        else
+            anchor = (ns.ohBar and ns.ohBar:IsShown() and ns.ohBar) or ns.mhBar
+        end
+        if anchor then
+            powerBar:ClearAllPoints()
+            powerBar:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", 0, -4)
+            powerBar:SetPoint("TOPRIGHT", anchor, "BOTTOMRIGHT", 0, -4)
+        end
     end
 
     if ns.UpdateRogueEnergyTickVisual then
@@ -1526,7 +1534,7 @@ function ns.ApplyGlobalScale()
     if ns.UpdateHunterRangeHelperVisual then ns.UpdateHunterRangeHelperVisual() end
     if ns.UpdateHunterBuffIcons then ns.UpdateHunterBuffIcons(0) end
     if ns.UpdateWarriorShieldBlockBar then ns.UpdateWarriorShieldBlockBar(0, true) end
-    if ns.UpdateWarriorRageBar then ns.UpdateWarriorRageBar() end
+    if ns.UpdatePlayerPowerBar then ns.UpdatePlayerPowerBar() end
     if ns.UpdateWarriorBuffIcons then ns.UpdateWarriorBuffIcons(0) end
     if ns.UpdateRogueEnergyTickVisual then ns.UpdateRogueEnergyTickVisual() end
     if ns.UpdateRogueComboPointVisual then ns.UpdateRogueComboPointVisual() end
@@ -1546,7 +1554,7 @@ function ns.ApplyGlobalScale()
     -- Re-anchor GCD ticker to the BOTTOM of the resource/power bar (lowest bar).
     -- Falls back to OH then MH when no resource bar exists.
     if ns.gcdTickerBar then
-        local anchorBar = ns.warriorRageBar or ns.ohBar or ns.mhBar
+        local anchorBar = ns.playerPowerBar or ns.ohBar or ns.mhBar
         if anchorBar then
             ns.gcdTickerBar:ClearAllPoints()
             ns.gcdTickerBar:SetPoint("BOTTOMLEFT", anchorBar, "BOTTOMLEFT", 0, -ns.Scale(6))
@@ -1586,17 +1594,19 @@ function ns.ApplyBarSize(width, height)
     SuperSwingTimerDB.barHeight = height
 
     local bars = {
-        ns.enemyBar, ns.mhBar, ns.ohBar, ns.rangedBar, ns.hunterCastBar, ns.rogueSliceAndDiceBar, ns.warriorRageBar
+        ns.enemyBar, ns.mhBar, ns.ohBar, ns.rangedBar, ns.hunterCastBar, ns.rogueSliceAndDiceBar, ns.playerPowerBar
     }
     for _, bar in ipairs(bars) do
         if bar then
             local barHeight = scaledHeight
             if bar == ns.hunterCastBar then
-                barHeight = ns.Scale(ns.HUNTER_CAST_BAR_HEIGHT or 10)
+                barHeight = ns.Scale(ns.HUNTER_CAST_BAR_HEIGHT or 15)
             elseif bar == ns.ohBar then
                 barHeight = GetOffHandBarHeight(scaledHeight)
             elseif bar == ns.rogueSliceAndDiceBar then
                 barHeight = GetRogueSliceAndDiceBarHeight(scaledHeight)
+            elseif bar == ns.playerPowerBar then
+                barHeight = ns.Scale(ns.POWER_BAR_HEIGHT or 10)
             end
             bar:SetSize(scaledWidth, barHeight)
             bar.barWidth = scaledWidth
@@ -1622,14 +1632,22 @@ function ns.ApplyBarSize(width, height)
         ns.rogueSliceAndDiceBar:SetPoint("BOTTOMLEFT", ns.mhBar, "TOPLEFT", 0, 2)
         ns.rogueSliceAndDiceBar:SetPoint("BOTTOMRIGHT", ns.mhBar, "TOPRIGHT", 0, 2)
     end
-    if ns.warriorRageBar and ns.ohBar then
-        ns.warriorRageBar:ClearAllPoints()
-        ns.warriorRageBar:SetPoint("TOPLEFT", ns.ohBar, "BOTTOMLEFT", 0, -4)
-        ns.warriorRageBar:SetPoint("TOPRIGHT", ns.ohBar, "BOTTOMRIGHT", 0, -4)
-    elseif ns.warriorRageBar and ns.mhBar then
-        ns.warriorRageBar:ClearAllPoints()
-        ns.warriorRageBar:SetPoint("TOPLEFT", ns.mhBar, "BOTTOMLEFT", 0, -4)
-        ns.warriorRageBar:SetPoint("TOPRIGHT", ns.mhBar, "BOTTOMRIGHT", 0, -4)
+    local powerBar = ns.playerPowerBar
+    if powerBar then
+        local anchor
+        if ns.playerClass == "HUNTER" then
+            anchor = (ns.hunterCastBar and ns.hunterCastBar:IsShown() and ns.hunterCastBar)
+                or (ns.rangedBar and ns.rangedBar:IsShown() and ns.rangedBar)
+                or (ns.ohBar and ns.ohBar:IsShown() and ns.ohBar)
+                or ns.mhBar
+        else
+            anchor = (ns.ohBar and ns.ohBar:IsShown() and ns.ohBar) or ns.mhBar
+        end
+        if anchor then
+            powerBar:ClearAllPoints()
+            powerBar:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", 0, -4)
+            powerBar:SetPoint("TOPRIGHT", anchor, "BOTTOMRIGHT", 0, -4)
+        end
     end
     ns.UpdateCastZoneVisual()
     if ns.UpdateRogueSinisterAssistVisual then
@@ -1674,7 +1692,7 @@ function ns.ApplyBarBorderSize(borderSize)
         ns.rogueEnergyTickBar,
         ns.rogueEnergyTotalBar,
         ns.rogueSliceAndDiceBar,
-        ns.warriorRageBar
+        ns.playerPowerBar
     }) do
         local borderTextures = bar and bar.borderTextures or nil
         if borderTextures then
@@ -1721,7 +1739,7 @@ function ns.ApplyBarTexture(texturePath, layer)
         ns.rogueEnergyTickBar,
         ns.rogueEnergyTotalBar,
         ns.rogueSliceAndDiceBar,
-        ns.warriorRageBar
+        ns.playerPowerBar
     }) do
         if bar then
             bar:SetStatusBarTexture(texturePath)
@@ -1783,7 +1801,7 @@ function ns.ApplyBarTextureLayer(layer)
         ns.rogueEnergyTickBar,
         ns.rogueEnergyTotalBar,
         ns.rogueSliceAndDiceBar,
-        ns.warriorRageBar
+        ns.playerPowerBar
     }) do
         if bar and bar.statusBarTexture then
             bar.statusBarTexture:SetDrawLayer(layer)
@@ -1841,7 +1859,7 @@ function ns.ApplyBarBackgroundColor(color)
         ns.rogueEnergyTickBar,
         ns.rogueEnergyTotalBar,
         ns.rogueSliceAndDiceBar,
-        ns.warriorRageBar
+        ns.playerPowerBar
     }) do
         if bar and bar.backgroundTexture then
             bar.backgroundTexture:SetColorTexture(r, g, b, 1)
@@ -1894,7 +1912,7 @@ function ns.ApplyBarBorderColor(color)
         ns.rogueEnergyTickBar,
         ns.rogueEnergyTotalBar,
         ns.rogueSliceAndDiceBar,
-        ns.warriorRageBar
+        ns.playerPowerBar
     }) do
         local borderTextures = bar and bar.borderTextures or nil
         if borderTextures then
@@ -2027,7 +2045,7 @@ local function CreateGcdTickerBar()
     f:SetFrameLevel(0)
     -- Sit BELOW the resource/power bar chain (bottom of the entire stack).
     -- GCD ticker is the lowest bar on screen. Falls back to OH then MH.
-    local anchorBar = ns.warriorRageBar or ns.ohBar or ns.mhBar
+    local anchorBar = ns.playerPowerBar or ns.ohBar or ns.mhBar
     if anchorBar then
         f:ClearAllPoints()
         f:SetPoint("BOTTOMLEFT", anchorBar, "BOTTOMLEFT", 0, -ns.Scale(6))
@@ -2491,6 +2509,9 @@ function ns.ApplyVisibility()
     if ns.UpdateHunterFrostTrapBar then
         ns.UpdateHunterFrostTrapBar(true)
     end
+    if ns.UpdatePlayerPowerBar then
+        ns.UpdatePlayerPowerBar()
+    end
     ns.ApplyLockBars()
 end
 
@@ -2546,8 +2567,8 @@ function ns.ApplyBarColors()
     if ns.UpdateWarriorQueueTint then
         ns.UpdateWarriorQueueTint()
     end
-    if ns.UpdateWarriorRageBar then
-        ns.UpdateWarriorRageBar()
+    if ns.UpdatePlayerPowerBar then
+        ns.UpdatePlayerPowerBar()
     end
     if ns.UpdateWarriorShieldBlockBar then
         ns.UpdateWarriorShieldBlockBar(0, true)

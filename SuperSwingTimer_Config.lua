@@ -368,7 +368,8 @@ local function ShowBarPreview()
     ns.ApplyBarColors()
     ns.ApplyIndicatorBlendMode(ns.GetIndicatorBlendMode())
     ns.ApplyVisibility()
-    local bars = { ns.enemyBar, ns.mhBar, ns.ohBar, ns.rangedBar, ns.hunterCastBar }
+    local pBar = ns.playerPowerBar
+    local bars = { ns.enemyBar, ns.mhBar, ns.ohBar, ns.rangedBar, ns.hunterCastBar, pBar }
     for _, bar in ipairs(bars) do
         if bar then
             bar:SetAlpha(1)
@@ -378,6 +379,9 @@ local function ShowBarPreview()
                 ns.RefreshBarSparkPosition(bar, 1)
             end
         end
+    end
+    if ns.UpdatePlayerPowerBar then
+        ns.UpdatePlayerPowerBar()
     end
     if ns.UpdateRogueEnergyTickVisual then
         ns.UpdateRogueEnergyTickVisual()
@@ -399,7 +403,8 @@ local function HideBarPreview()
         return
     end
     -- Fallback only if the shared visibility helper is unavailable.
-    local bars = { ns.enemyBar, ns.mhBar, ns.ohBar, ns.rangedBar, ns.hunterCastBar }
+    local pBar = ns.playerPowerBar
+    local bars = { ns.enemyBar, ns.mhBar, ns.ohBar, ns.rangedBar, ns.hunterCastBar, pBar }
     for _, bar in ipairs(bars) do
         if bar then bar:SetAlpha(0) end
     end
@@ -438,6 +443,19 @@ local function AnimateTestBars()
     animateOne(ns.rangedBar, 2.8, 1.5)
     animateOne(ns.enemyBar, 2.2, 0.3)
     animateOne(ns.hunterCastBar, 1.5, 2.0)
+    local pBar = ns.playerPowerBar
+    if pBar then
+        local period = 4.0
+        local phase = ((t + 0.5) % period) / period
+        local maxVal = 100
+        local curVal = math.floor(phase * maxVal)
+        pBar:SetMinMaxValues(0, maxVal)
+        pBar:SetValue(curVal)
+        pBar:SetAlpha(1)
+        if pBar.label then
+            pBar.label:SetText(tostring(curVal))
+        end
+    end
 end
 
 local function StartBarTestPreview(duration)
@@ -760,7 +778,8 @@ local function CreateColorButton(parent, label, colorKey, yOffset, options)
         btnLabel:SetPoint("CENTER", btn, "CENTER", 0, 0)
         btnLabel:SetText(label)
         btnLabel:SetJustifyH("CENTER")
-        btnLabel:SetFont("Fonts\\FRIZQT__.TTF", 10, "OUTLINE")
+        local fontPath = (ns.GetDefaultFont and ns.GetDefaultFont()) or "Fonts\\FRIZQT__.TTF"
+        btnLabel:SetFont(fontPath, 10, "OUTLINE")
         btnLabel:SetTextColor(1, 1, 1, 0.9)
         btn.btnLabel = btnLabel
 
@@ -2893,13 +2912,6 @@ local function CreatePanel()
         })
     end
 
-    if ns.playerClass == "WARRIOR" then
-        AddQuickColor("Rage Bar", "warriorRageBar", {
-            allowAlpha = true,
-            tooltipText = "Pick the warrior rage bar color for the slim rage bar under the main-hand/off-hand bars."
-        })
-    end
-
     if ns.playerClass == "HUNTER" then
         -- Hunter cast bar color is separate from the ranged bar fill color
         AddQuickColor("Cast Bar", "hunterCastBar", {
@@ -2989,9 +3001,9 @@ local function CreatePanel()
             }
         )
         AddQuickToggle(
-            "Warrior Rage Bar", function () return SuperSwingTimerDB.showWarriorRageBar ~= false end,
+            "Rage Bar", function () return SuperSwingTimerDB.showPowerBar ~= false end,
             function (enabled)
-                SuperSwingTimerDB.showWarriorRageBar = enabled
+                SuperSwingTimerDB.showPowerBar = enabled
                 ns.ApplyVisibility()
             end,
             {
@@ -3007,103 +3019,6 @@ local function CreatePanel()
                 tooltipText = "When enabled, show the rage bar even in Protection spec (hidden by default)."
             }
         )
-        -- Phase 2: Warrior Flurry counter color swatch
-        AddQuickColor("Flurry Counter", "flurryCounter", {
-            allowAlpha = true,
-            tooltipText = "Pick the color for the Flurry charges text (⚡1-3) on the main-hand bar."
-        })
-        AddQuickColor("Shield Block", "shieldBlockBar", {
-            allowAlpha = true,
-            tooltipText = "Pick the color for the Shield Block duration bar above the main-hand stack."
-        })
-    end
-
-    if ns.playerClass == "PALADIN" then
-        AddQuickToggle(
-            "Paladin Seal Color", function () return SuperSwingTimerDB.showPaladinSealColor ~= false end,
-            function (enabled)
-                SuperSwingTimerDB.showPaladinSealColor = enabled
-                ns.ApplyBarColors()
-            end,
-            {
-                tooltipText = "Color the main-hand bar to match your currently active seal (Command=gold, Blood=red, Martyr=purple, etc.)."
-            }
-        )
-
-        AddQuickToggle(
-            "Paladin Seal Label", function () return SuperSwingTimerDB.showPaladinSealLabel ~= false end,
-            function (enabled)
-                SuperSwingTimerDB.showPaladinSealLabel = enabled
-                ns.ApplyBarColors()
-            end,
-            {
-                tooltipText = "Show the name of your active seal on the main-hand bar (e.g., Command, Blood, Righteousness)."
-            }
-        )
-
-        AddQuickToggle(
-            "Paladin Judgement CD", function () return SuperSwingTimerDB.showPaladinJudgementMarker ~= false end,
-            function (enabled)
-                SuperSwingTimerDB.showPaladinJudgementMarker = enabled
-                ns.ApplyBarColors()
-            end,
-            {
-                tooltipText = "Show a gold marker on the swing bar when Judgement cooldown is available."
-            }
-        )
-
-        AddQuickToggle(
-            "Paladin Twist Flash", function () return SuperSwingTimerDB.showPaladinTwistFlash ~= false end,
-            function (enabled)
-                SuperSwingTimerDB.showPaladinTwistFlash = enabled
-                ns.ApplyBarColors()
-            end,
-            {
-                tooltipText = "Flash the seal-twist zone red on the swing end when a twist-family seal (Command, Blood, Martyr) is active."
-            }
-        )
-
-        AddQuickColor("Seal Line", "sealTwist", { allowAlpha = true })
-
-        AddQuickToggle(
-            "Buff Icons", function () return SuperSwingTimerDB.showPaladinBuffIcons ~= false end,
-            function (enabled)
-                SuperSwingTimerDB.showPaladinBuffIcons = enabled
-            end,
-            {
-                tooltipText = "Show icons above the MH bar for active Paladin buffs and CDs (Avenging Wrath, Divine Shield, Hammer of Justice, Blessing of Protection, Holy Wrath, Lay on Hands, racials). Icons glow gold in the last 4 seconds."
-            }
-        )
-    end
-
-    -- Phase 2: Shaman Windfury ICD color swatch + Lightning Shield tracker
-    if ns.playerClass == "SHAMAN" then
-        AddQuickToggle(
-            "Lightning Shield Tracker", function () return SuperSwingTimerDB.showShamanLightningTracker ~= false end,
-            function (enabled)
-                SuperSwingTimerDB.showShamanLightningTracker = enabled
-                if ns.UpdateLightningShieldVisual then
-                    ns.UpdateLightningShieldVisual()
-                end
-            end,
-            {
-                tooltipText = "Show 3 small dot indicators to the left of your melee bars tracking Lightning Shield charges. Fills with class color; dims as charges are consumed. Water Shield always renders in light blue."
-            }
-        )
-
-        AddQuickToggle(
-            "Flame Shock Bar", function () return SuperSwingTimerDB.showShamanFlameShockBar ~= false end,
-            function (enabled)
-                SuperSwingTimerDB.showShamanFlameShockBar = enabled
-                if ns.UpdateShamanFlameShockBar then
-                    ns.UpdateShamanFlameShockBar(true)
-                end
-            end,
-            {
-                tooltipText = "Show a thin duration bar above the MH bar for your own Flame Shock on the current target."
-            }
-        )
-
         AddQuickToggle(
             "Deep Wounds Bar", function () return SuperSwingTimerDB.showWarriorDeepWoundsBar ~= false end,
             function (enabled)
@@ -3116,7 +3031,6 @@ local function CreatePanel()
                 tooltipText = "Show a thin duration bar above the MH bar for your own Deep Wounds bleed on the current target (Arms Warrior)."
             }
         )
-
         AddQuickToggle(
             "Sunder Armor Bar", function () return SuperSwingTimerDB.showWarriorSunderArmorBar ~= false end,
             function (enabled)
@@ -3129,173 +3043,72 @@ local function CreatePanel()
                 tooltipText = "Show a thin duration bar above the MH bar tracking Sunder Armor stacks (1-5) on the current target (Warrior)."
             }
         )
+        -- Phase 2: Warrior Flurry counter color swatch
+        AddQuickColor("Flurry Counter", "flurryCounter", {
+            allowAlpha = true,
+            tooltipText = "Pick the color for the Flurry charges text (⚡1-3) on the main-hand bar."
+        })
+        AddQuickColor("Shield Block", "shieldBlockBar", {
+            allowAlpha = true,
+            tooltipText = "Pick the color for the Shield Block duration bar above the main-hand stack."
+        })
+        AddQuickColor("Rage Bar", "warriorRageBarColor", {
+            allowAlpha = true,
+            tooltipText = "Pick the color for the warrior rage bar under the swing bars."
+        })
+    end
 
+    if ns.playerClass == "PALADIN" then
         AddQuickToggle(
-            "Mangle Bar", function () return SuperSwingTimerDB.showDruidMangleBar ~= false end,
+            "Mana Bar", function () return SuperSwingTimerDB.showPowerBar ~= false end,
             function (enabled)
-                SuperSwingTimerDB.showDruidMangleBar = enabled
-                if ns.UpdateDruidMangleBar then
-                    ns.UpdateDruidMangleBar(true)
-                end
+                SuperSwingTimerDB.showPowerBar = enabled
+                ns.ApplyVisibility()
             end,
             {
-                tooltipText = "Show a thin duration bar above the MH bar for your own Mangle debuff on the current target (Feral Druid)."
+                tooltipText = "Show a slim mana bar under the swing bars tracking your current and maximum mana."
             }
         )
-
         AddQuickToggle(
-            "Rip Bar", function () return SuperSwingTimerDB.showDruidRipBar ~= false end,
+            "Paladin Seal Color", function () return SuperSwingTimerDB.showPaladinSealColor ~= false end,
             function (enabled)
-                SuperSwingTimerDB.showDruidRipBar = enabled
-                if ns.UpdateDruidRipBar then
-                    ns.UpdateDruidRipBar(true)
-                end
+                SuperSwingTimerDB.showPaladinSealColor = enabled
+                ns.ApplyBarColors()
             end,
             {
-                tooltipText = "Show a thin duration bar above the MH bar for your own Rip bleed on the current target (Feral Cat)."
+                tooltipText = "Color the main-hand bar to match your currently active seal (Command=gold, Blood=red, Martyr=purple, etc.)."
             }
         )
-
         AddQuickToggle(
-            "Rake Bar", function () return SuperSwingTimerDB.showDruidRakeBar ~= false end,
+            "Paladin Seal Label", function () return SuperSwingTimerDB.showPaladinSealLabel ~= false end,
             function (enabled)
-                SuperSwingTimerDB.showDruidRakeBar = enabled
-                if ns.UpdateDruidRakeBar then
-                    ns.UpdateDruidRakeBar(true)
-                end
+                SuperSwingTimerDB.showPaladinSealLabel = enabled
+                ns.ApplyBarColors()
             end,
             {
-                tooltipText = "Show a thin duration bar above the Mangle/Rip bars for your own Rake bleed on the current target (Feral Cat)."
+                tooltipText = "Show the name of your active seal on the main-hand bar (e.g., Command, Blood, Righteousness)."
             }
         )
-
         AddQuickToggle(
-            "Buff Icons", function () return SuperSwingTimerDB.showDruidBuffIcons ~= false end,
+            "Paladin Judgement CD", function () return SuperSwingTimerDB.showPaladinJudgementMarker ~= false end,
             function (enabled)
-                SuperSwingTimerDB.showDruidBuffIcons = enabled
+                SuperSwingTimerDB.showPaladinJudgementMarker = enabled
+                ns.ApplyBarColors()
             end,
             {
-                tooltipText = "Show icons above the MH bar for active Druid buffs and CDs (Tiger's Fury, Barkskin, Enrage, Dash, Frenzied Regeneration, Innervate, racials). Icons glow gold in the last 4 seconds."
+                tooltipText = "Show a gold marker on the swing bar when Judgement cooldown is available."
             }
         )
-
         AddQuickToggle(
-            "Rupture Bar", function () return SuperSwingTimerDB.showRogueRuptureBar ~= false end,
+            "Paladin Twist Flash", function () return SuperSwingTimerDB.showPaladinTwistFlash ~= false end,
             function (enabled)
-                SuperSwingTimerDB.showRogueRuptureBar = enabled
-                if ns.UpdateRogueRuptureBar then
-                    ns.UpdateRogueRuptureBar(true)
-                end
+                SuperSwingTimerDB.showPaladinTwistFlash = enabled
+                ns.ApplyBarColors()
             end,
             {
-                tooltipText = "Show a thin duration bar above the MH bar for your own Rupture bleed on the current target (Rogue)."
+                tooltipText = "Flash the seal-twist zone red on the swing end when a twist-family seal (Command, Blood, Martyr) is active."
             }
         )
-
-        AddQuickToggle(
-            "Expose Armor Bar", function () return SuperSwingTimerDB.showRogueExposeArmorBar ~= false end,
-            function (enabled)
-                SuperSwingTimerDB.showRogueExposeArmorBar = enabled
-                if ns.UpdateRogueExposeArmorBar then
-                    ns.UpdateRogueExposeArmorBar(true)
-                end
-            end,
-            {
-                tooltipText = "Show a thin duration bar above the MH bar for your own Expose Armor on the current target (Rogue)."
-            }
-        )
-
-        AddQuickToggle(
-            "Serpent Sting Bar", function () return SuperSwingTimerDB.showHunterSerpentStingBar ~= false end,
-            function (enabled)
-                SuperSwingTimerDB.showHunterSerpentStingBar = enabled
-                if ns.UpdateHunterSerpentStingBar then
-                    ns.UpdateHunterSerpentStingBar(true)
-                end
-            end,
-            {
-                tooltipText = "Show a thin duration bar above the MH bar for your own Serpent Sting on the current target (Hunter)."
-            }
-        )
-
-        AddQuickToggle(
-            "Wing Clip Bar", function () return SuperSwingTimerDB.showHunterWingClipBar ~= false end,
-            function (enabled)
-                SuperSwingTimerDB.showHunterWingClipBar = enabled
-                if ns.UpdateHunterWingClipBar then
-                    ns.UpdateHunterWingClipBar(true)
-                end
-            end,
-            {
-                tooltipText = "Show a thin duration bar above the MH bar for your own Wing Clip snare on the current target (Hunter)."
-            }
-        )
-
-        AddQuickToggle(
-            "Concussion Shot Bar", function () return SuperSwingTimerDB.showHunterConcussionShotBar ~= false end,
-            function (enabled)
-                SuperSwingTimerDB.showHunterConcussionShotBar = enabled
-                if ns.UpdateHunterConcussionShotBar then
-                    ns.UpdateHunterConcussionShotBar(true)
-                end
-            end,
-            {
-                tooltipText = "Show a thin duration bar above the MH bar for your own Concussion Shot snare on the current target (Hunter)."
-            }
-        )
-
-        AddQuickToggle(
-            "Immolation Trap Bar", function () return SuperSwingTimerDB.showHunterImmolationTrapBar ~= false end,
-            function (enabled)
-                SuperSwingTimerDB.showHunterImmolationTrapBar = enabled
-                if ns.UpdateHunterImmolationTrapBar then
-                    ns.UpdateHunterImmolationTrapBar(true)
-                end
-            end,
-            {
-                tooltipText = "Show a thin duration bar above the MH/ranged bar for your own Immolation Trap fire DoT on the current target (Hunter)."
-            }
-        )
-
-        AddQuickToggle(
-            "Explosive Trap Bar", function () return SuperSwingTimerDB.showHunterExplosiveTrapBar ~= false end,
-            function (enabled)
-                SuperSwingTimerDB.showHunterExplosiveTrapBar = enabled
-                if ns.UpdateHunterExplosiveTrapBar then
-                    ns.UpdateHunterExplosiveTrapBar(true)
-                end
-            end,
-            {
-                tooltipText = "Show a thin duration bar above the MH/ranged bar for your own Explosive Trap fire DoT on the current target (Hunter)."
-            }
-        )
-
-        AddQuickToggle(
-            "Freezing Trap Bar", function () return SuperSwingTimerDB.showHunterFreezingTrapBar ~= false end,
-            function (enabled)
-                SuperSwingTimerDB.showHunterFreezingTrapBar = enabled
-                if ns.UpdateHunterFreezingTrapBar then
-                    ns.UpdateHunterFreezingTrapBar(true)
-                end
-            end,
-            {
-                tooltipText = "Show a thin duration bar above the MH/ranged bar for your own Freezing Trap CC on the current target (Hunter)."
-            }
-        )
-
-        AddQuickToggle(
-            "Frost Trap Bar", function () return SuperSwingTimerDB.showHunterFrostTrapBar ~= false end,
-            function (enabled)
-                SuperSwingTimerDB.showHunterFrostTrapBar = enabled
-                if ns.UpdateHunterFrostTrapBar then
-                    ns.UpdateHunterFrostTrapBar(true)
-                end
-            end,
-            {
-                tooltipText = "Show a thin duration bar above the MH/ranged bar for your own Frost Trap snare on the current target (Hunter)."
-            }
-        )
-
         AddQuickToggle(
             "Judgement Bar", function () return SuperSwingTimerDB.showPaladinJudgementBar ~= false end,
             function (enabled)
@@ -3308,7 +3121,6 @@ local function CreatePanel()
                 tooltipText = "Show a thin duration bar above the MH bar for your own Judgement of the Crusader on the current target (Retribution Paladin)."
             }
         )
-
         AddQuickToggle(
             "Seal Vengeance Bar", function () return SuperSwingTimerDB.showPaladinSealVengeanceBar ~= false end,
             function (enabled)
@@ -3321,7 +3133,57 @@ local function CreatePanel()
                 tooltipText = "Show a thin duration bar above the MH bar for your own Seal of Vengeance / Corruption stacking Holy DoT on the current target (Retribution Paladin)."
             }
         )
+        AddQuickToggle(
+            "Buff Icons", function () return SuperSwingTimerDB.showPaladinBuffIcons ~= false end,
+            function (enabled)
+                SuperSwingTimerDB.showPaladinBuffIcons = enabled
+            end,
+            {
+                tooltipText = "Show icons above the MH bar for active Paladin buffs and CDs (Avenging Wrath, Divine Shield, Hammer of Justice, Blessing of Protection, Holy Wrath, Lay on Hands, racials). Icons glow gold in the last 4 seconds."
+            }
+        )
+        AddQuickColor("Seal Line", "sealTwist", { allowAlpha = true })
+        AddQuickColor("Mana Bar", "paladinManaBarColor", {
+            allowAlpha = true,
+            tooltipText = "Pick the color for the paladin mana bar under the swing bars."
+        })
+    end
 
+    if ns.playerClass == "SHAMAN" then
+        AddQuickToggle(
+            "Mana Bar", function () return SuperSwingTimerDB.showPowerBar ~= false end,
+            function (enabled)
+                SuperSwingTimerDB.showPowerBar = enabled
+                ns.ApplyVisibility()
+            end,
+            {
+                tooltipText = "Show a slim mana bar under the swing bars tracking your current and maximum mana."
+            }
+        )
+        AddQuickToggle(
+            "Lightning Shield Tracker", function () return SuperSwingTimerDB.showShamanLightningTracker ~= false end,
+            function (enabled)
+                SuperSwingTimerDB.showShamanLightningTracker = enabled
+                if ns.UpdateLightningShieldVisual then
+                    ns.UpdateLightningShieldVisual()
+                end
+            end,
+            {
+                tooltipText = "Show 3 small dot indicators to the left of your melee bars tracking Lightning Shield charges. Fills with class color; dims as charges are consumed. Water Shield always renders in light blue."
+            }
+        )
+        AddQuickToggle(
+            "Flame Shock Bar", function () return SuperSwingTimerDB.showShamanFlameShockBar ~= false end,
+            function (enabled)
+                SuperSwingTimerDB.showShamanFlameShockBar = enabled
+                if ns.UpdateShamanFlameShockBar then
+                    ns.UpdateShamanFlameShockBar(true)
+                end
+            end,
+            {
+                tooltipText = "Show a thin duration bar above the MH bar for your own Flame Shock on the current target."
+            }
+        )
         AddQuickToggle(
             "Buff Icons", function () return SuperSwingTimerDB.showShamanBuffIcons ~= false end,
             function (enabled)
@@ -3331,15 +3193,221 @@ local function CreatePanel()
                 tooltipText = "Show icons above the MH bar for active Shaman buffs and CDs (Shamanistic Rage, Heroism, Flurry, Windfury Weapon, Stormstrike, racials). Icons glow gold in the last 4 seconds."
             }
         )
-
         AddQuickColor("Lightning Shield", "shamanLightningShield", {
             allowAlpha = true,
             tooltipText = "Pick the fill color for Lightning Shield charge dots on the left side of the main-hand bar (class color blue by default). Water Shield always uses light blue regardless of this setting."
         })
-
         AddQuickColor("Windfury ICD", "windfuryIcd", {
             allowAlpha = true,
             tooltipText = "Pick the color for the 3px Windfury ICD tracker bar on the right side of the main-hand bar."
+        })
+        AddQuickColor("Mana Bar", "shamanManaBarColor", {
+            allowAlpha = true,
+            tooltipText = "Pick the color for the shaman mana bar under the swing bars."
+        })
+    end
+
+    if ns.playerClass == "DRUID" then
+        AddQuickToggle(
+            "Resource Bar", function () return SuperSwingTimerDB.showPowerBar ~= false end,
+            function (enabled)
+                SuperSwingTimerDB.showPowerBar = enabled
+                ns.ApplyVisibility()
+            end,
+            {
+                tooltipText = "Show a slim resource bar under the swing bars tracking Mana, Rage (Bear), or Energy (Cat)."
+            }
+        )
+        AddQuickToggle(
+            "Mangle Bar", function () return SuperSwingTimerDB.showDruidMangleBar ~= false end,
+            function (enabled)
+                SuperSwingTimerDB.showDruidMangleBar = enabled
+                if ns.UpdateDruidMangleBar then
+                    ns.UpdateDruidMangleBar(true)
+                end
+            end,
+            {
+                tooltipText = "Show a thin duration bar above the MH bar for your own Mangle debuff on the current target (Feral Druid)."
+            }
+        )
+        AddQuickToggle(
+            "Rip Bar", function () return SuperSwingTimerDB.showDruidRipBar ~= false end,
+            function (enabled)
+                SuperSwingTimerDB.showDruidRipBar = enabled
+                if ns.UpdateDruidRipBar then
+                    ns.UpdateDruidRipBar(true)
+                end
+            end,
+            {
+                tooltipText = "Show a thin duration bar above the MH bar for your own Rip bleed on the current target (Feral Cat)."
+            }
+        )
+        AddQuickToggle(
+            "Rake Bar", function () return SuperSwingTimerDB.showDruidRakeBar ~= false end,
+            function (enabled)
+                SuperSwingTimerDB.showDruidRakeBar = enabled
+                if ns.UpdateDruidRakeBar then
+                    ns.UpdateDruidRakeBar(true)
+                end
+            end,
+            {
+                tooltipText = "Show a thin duration bar above the Mangle/Rip bars for your own Rake bleed on the current target (Feral Cat)."
+            }
+        )
+        AddQuickToggle(
+            "Buff Icons", function () return SuperSwingTimerDB.showDruidBuffIcons ~= false end,
+            function (enabled)
+                SuperSwingTimerDB.showDruidBuffIcons = enabled
+            end,
+            {
+                tooltipText = "Show icons above the MH bar for active Druid buffs and CDs (Tiger's Fury, Barkskin, Enrage, Dash, Frenzied Regeneration, Innervate, racials). Icons glow gold in the last 4 seconds."
+            }
+        )
+        AddQuickColor("Resource Bar", "druidManaBarColor", {
+            allowAlpha = true,
+            tooltipText = "Pick the color for the druid mana/resource bar under the swing bars."
+        })
+    end
+
+    if ns.playerClass == "ROGUE" then
+        AddQuickToggle(
+            "Energy Bar", function () return SuperSwingTimerDB.showPowerBar ~= false end,
+            function (enabled)
+                SuperSwingTimerDB.showPowerBar = enabled
+                ns.ApplyVisibility()
+            end,
+            {
+                tooltipText = "Show a slim energy bar under the swing bars tracking your energy (0-100)."
+            }
+        )
+        AddQuickToggle(
+            "Rupture Bar", function () return SuperSwingTimerDB.showRogueRuptureBar ~= false end,
+            function (enabled)
+                SuperSwingTimerDB.showRogueRuptureBar = enabled
+                if ns.UpdateRogueRuptureBar then
+                    ns.UpdateRogueRuptureBar(true)
+                end
+            end,
+            {
+                tooltipText = "Show a thin duration bar above the MH bar for your own Rupture bleed on the current target (Rogue)."
+            }
+        )
+        AddQuickToggle(
+            "Expose Armor Bar", function () return SuperSwingTimerDB.showRogueExposeArmorBar ~= false end,
+            function (enabled)
+                SuperSwingTimerDB.showRogueExposeArmorBar = enabled
+                if ns.UpdateRogueExposeArmorBar then
+                    ns.UpdateRogueExposeArmorBar(true)
+                end
+            end,
+            {
+                tooltipText = "Show a thin duration bar above the MH bar for your own Expose Armor on the current target (Rogue)."
+            }
+        )
+        AddQuickColor("Energy Bar", "rogueEnergyBarColor", {
+            allowAlpha = true,
+            tooltipText = "Pick the color for the rogue energy bar under the swing bars."
+        })
+    end
+
+    if ns.playerClass == "HUNTER" then
+        AddQuickToggle(
+            "Mana Bar", function () return SuperSwingTimerDB.showPowerBar ~= false end,
+            function (enabled)
+                SuperSwingTimerDB.showPowerBar = enabled
+                ns.ApplyVisibility()
+            end,
+            {
+                tooltipText = "Show a slim mana bar under the swing bars tracking your current and maximum mana."
+            }
+        )
+        AddQuickToggle(
+            "Serpent Sting Bar", function () return SuperSwingTimerDB.showHunterSerpentStingBar ~= false end,
+            function (enabled)
+                SuperSwingTimerDB.showHunterSerpentStingBar = enabled
+                if ns.UpdateHunterSerpentStingBar then
+                    ns.UpdateHunterSerpentStingBar(true)
+                end
+            end,
+            {
+                tooltipText = "Show a thin duration bar above the MH bar for your own Serpent Sting on the current target (Hunter)."
+            }
+        )
+        AddQuickToggle(
+            "Wing Clip Bar", function () return SuperSwingTimerDB.showHunterWingClipBar ~= false end,
+            function (enabled)
+                SuperSwingTimerDB.showHunterWingClipBar = enabled
+                if ns.UpdateHunterWingClipBar then
+                    ns.UpdateHunterWingClipBar(true)
+                end
+            end,
+            {
+                tooltipText = "Show a thin duration bar above the MH bar for your own Wing Clip snare on the current target (Hunter)."
+            }
+        )
+        AddQuickToggle(
+            "Concussion Shot Bar", function () return SuperSwingTimerDB.showHunterConcussionShotBar ~= false end,
+            function (enabled)
+                SuperSwingTimerDB.showHunterConcussionShotBar = enabled
+                if ns.UpdateHunterConcussionShotBar then
+                    ns.UpdateHunterConcussionShotBar(true)
+                end
+            end,
+            {
+                tooltipText = "Show a thin duration bar above the MH bar for your own Concussion Shot snare on the current target (Hunter)."
+            }
+        )
+        AddQuickToggle(
+            "Immolation Trap Bar", function () return SuperSwingTimerDB.showHunterImmolationTrapBar ~= false end,
+            function (enabled)
+                SuperSwingTimerDB.showHunterImmolationTrapBar = enabled
+                if ns.UpdateHunterImmolationTrapBar then
+                    ns.UpdateHunterImmolationTrapBar(true)
+                end
+            end,
+            {
+                tooltipText = "Show a thin duration bar above the MH/ranged bar for your own Immolation Trap fire DoT on the current target (Hunter)."
+            }
+        )
+        AddQuickToggle(
+            "Explosive Trap Bar", function () return SuperSwingTimerDB.showHunterExplosiveTrapBar ~= false end,
+            function (enabled)
+                SuperSwingTimerDB.showHunterExplosiveTrapBar = enabled
+                if ns.UpdateHunterExplosiveTrapBar then
+                    ns.UpdateHunterExplosiveTrapBar(true)
+                end
+            end,
+            {
+                tooltipText = "Show a thin duration bar above the MH/ranged bar for your own Explosive Trap fire DoT on the current target (Hunter)."
+            }
+        )
+        AddQuickToggle(
+            "Freezing Trap Bar", function () return SuperSwingTimerDB.showHunterFreezingTrapBar ~= false end,
+            function (enabled)
+                SuperSwingTimerDB.showHunterFreezingTrapBar = enabled
+                if ns.UpdateHunterFreezingTrapBar then
+                    ns.UpdateHunterFreezingTrapBar(true)
+                end
+            end,
+            {
+                tooltipText = "Show a thin duration bar above the MH/ranged bar for your own Freezing Trap CC on the current target (Hunter)."
+            }
+        )
+        AddQuickToggle(
+            "Frost Trap Bar", function () return SuperSwingTimerDB.showHunterFrostTrapBar ~= false end,
+            function (enabled)
+                SuperSwingTimerDB.showHunterFrostTrapBar = enabled
+                if ns.UpdateHunterFrostTrapBar then
+                    ns.UpdateHunterFrostTrapBar(true)
+                end
+            end,
+            {
+                tooltipText = "Show a thin duration bar above the MH/ranged bar for your own Frost Trap snare on the current target (Hunter)."
+            }
+        )
+        AddQuickColor("Mana Bar", "hunterManaBarColor", {
+            allowAlpha = true,
+            tooltipText = "Pick the color for the hunter mana bar under the swing bars."
         })
     end
 
@@ -3393,7 +3461,7 @@ local function CreatePanel()
         })
         SetRowClassRequirement(hunterCastBarHeightSlider, "HUNTER")
         hunterCastBarHeightSlider:SetValue(
-            SuperSwingTimerDB.hunterCastBarHeight or ns.DB_DEFAULTS.hunterCastBarHeight or 10
+            SuperSwingTimerDB.hunterCastBarHeight or ns.DB_DEFAULTS.hunterCastBarHeight or 15
         )
         SyncSliderDisplay(hunterCastBarHeightSlider, hunterCastBarHeightSlider:GetValue())
     end
@@ -4836,7 +4904,7 @@ function ns.ToggleConfig()
         panel.heightSlider:SetValue(SuperSwingTimerDB.barHeight or ns.DB_DEFAULTS.barHeight)
         if panel.hunterCastBarHeightSlider then
             panel.hunterCastBarHeightSlider:SetValue(
-                SuperSwingTimerDB.hunterCastBarHeight or ns.DB_DEFAULTS.hunterCastBarHeight or 10
+                SuperSwingTimerDB.hunterCastBarHeight or ns.DB_DEFAULTS.hunterCastBarHeight or 15
             )
         end
         if panel.rogueSndBarHeightSlider then

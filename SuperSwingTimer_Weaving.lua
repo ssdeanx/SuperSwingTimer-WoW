@@ -43,6 +43,199 @@ local function GetSpellHastePercent()
 	return 0
 end
 
+local function GetLiveSpellHasteMultiplier()
+	local spellHaste = GetSpellHastePercent()
+	local hasteMultiplier = 1 + (math_max(spellHaste, 0) / 100)
+
+	-- Check active player buffs in case API returns 0 (e.g. Classic Era / SoD)
+	-- Bloodlust (2825) / Heroism (32182): +30% haste (multiplier 1.30)
+	-- Berserking (20554, 26285): 10% - 30%
+	local buffHasteMult = 1.0
+	if type(ns.UnitBuff) == "function" or type(ns.GetSoDAuraData) == "function" then
+		local bl = false
+		if ns.GetSoDAuraData then
+			bl = (ns.GetSoDAuraData("player", 2825, "HELPFUL") ~= nil) or (ns.GetSoDAuraData("player", 32182, "HELPFUL") ~= nil)
+		end
+		if not bl and type(ns.UnitBuff) == "function" then
+			local idx = 1
+			while idx <= 40 do
+				local name, _, _, _, _, _, _, _, _, _, sId = ns.UnitBuff("player", idx)
+				if not name then break end
+				if sId == 2825 or sId == 32182 or name == "Bloodlust" or name == "Heroism" then
+					bl = true
+					break
+				end
+				idx = idx + 1
+			end
+		end
+		if bl then
+			buffHasteMult = buffHasteMult * 1.30
+		end
+
+		local berserk = false
+		if type(ns.UnitBuff) == "function" then
+			local idx = 1
+			while idx <= 40 do
+				local name, _, _, _, _, _, _, _, _, _, sId = ns.UnitBuff("player", idx)
+				if not name then break end
+				if sId == 20554 or sId == 26285 or sId == 26284 or name == "Berserking" then
+					berserk = true
+					break
+				end
+				idx = idx + 1
+			end
+		end
+		if berserk then
+			buffHasteMult = buffHasteMult * 1.10
+		end
+	end
+
+	return math_max(hasteMultiplier, buffHasteMult)
+end
+
+local function GetEffectiveSpellCastTime(spellInfo)
+	if not spellInfo then
+		return 0
+	end
+
+	local baseCastTime = spellInfo.castTime or 0
+	local liveCastTime = baseCastTime
+
+	-- Query current spell time directly via GetSpellInfo
+	if spellInfo.spellId and ns.GetSpellInfo then
+		local _, _, _, castTimeMs = ns.GetSpellInfo(spellInfo.spellId)
+		if type(castTimeMs) == "number" and castTimeMs >= 0 then
+			liveCastTime = castTimeMs / 1000
+		end
+	end
+
+	-- Check for instant-cast buffs
+	if type(ns.UnitBuff) == "function" or type(ns.GetSoDAuraData) == "function" then
+		-- Nature's Swiftness (16188): next Nature spell is instant
+		local nsBuff = false
+		if ns.GetSoDAuraData then
+			nsBuff = (ns.GetSoDAuraData("player", 16188, "HELPFUL") ~= nil)
+		end
+		if not nsBuff and type(ns.UnitBuff) == "function" then
+			local idx = 1
+			while idx <= 40 do
+				local name, _, _, _, _, _, _, _, _, _, sId = ns.UnitBuff("player", idx)
+				if not name then break end
+				if sId == 16188 or name == "Nature's Swiftness" then
+					nsBuff = true
+					break
+				end
+				idx = idx + 1
+			end
+		end
+		if nsBuff then
+			return 0.0
+		end
+
+		-- Elemental Mastery (16166): next Fire/Frost/Nature damage spell is instant
+		local isDamageSpell = (spellInfo.abbrev == "LB" or spellInfo.abbrev == "CL")
+		if isDamageSpell then
+			local emBuff = false
+			if ns.GetSoDAuraData then
+				emBuff = (ns.GetSoDAuraData("player", 16166, "HELPFUL") ~= nil)
+			end
+			if not emBuff and type(ns.UnitBuff) == "function" then
+				local idx = 1
+				while idx <= 40 do
+					local name, _, _, _, _, _, _, _, _, _, sId = ns.UnitBuff("player", idx)
+					if not name then break end
+					if sId == 16166 or name == "Elemental Mastery" then
+						emBuff = true
+						break
+					end
+					idx = idx + 1
+				end
+			end
+			if emBuff then
+				return 0.0
+			end
+		end
+
+		-- Power Surge (415100): Chain Lightning / Lava Burst / Healing Wave instant
+		local isPowerSurgeSpell = (spellInfo.abbrev == "CL" or spellInfo.abbrev == "HW" or spellInfo.abbrev == "LHW" or spellInfo.abbrev == "CH")
+		if isPowerSurgeSpell then
+			local psBuff = false
+			if ns.GetSoDAuraData then
+				psBuff = (ns.GetSoDAuraData("player", 415100, "HELPFUL") ~= nil)
+			end
+			if not psBuff and type(ns.UnitBuff) == "function" then
+				local idx = 1
+				while idx <= 40 do
+					local name, _, _, _, _, _, _, _, _, _, sId = ns.UnitBuff("player", idx)
+					if not name then break end
+					if sId == 415100 or name == "Power Surge" then
+						psBuff = true
+						break
+					end
+					idx = idx + 1
+				end
+			end
+			if psBuff then
+				return 0.0
+			end
+		end
+	end
+
+	-- Maelstrom Weapon (SoD: 408505)
+	local maelstromMult = 1.0
+	if type(ns.GetSoDAuraData) == "function" or type(ns.UnitBuff) == "function" then
+		local mswData = (ns.GetSoDAuraData and ns.GetSoDAuraData("player", 408505, "HELPFUL"))
+		if mswData then
+			local count = mswData.count or 1
+			local stacks = math_max(0, math_min(count, 5))
+			maelstromMult = math_max(1.0 - (0.20 * stacks), 0.0)
+			ns.maelstromStacks = stacks
+			ns.maelstromCastTimeMultiplier = maelstromMult
+		elseif type(ns.UnitBuff) == "function" then
+			local idx = 1
+			local found = false
+			while idx <= 40 do
+				local name, _, _, count, _, _, _, _, _, _, sId = ns.UnitBuff("player", idx)
+				if not name then break end
+				if sId == 408505 or name == "Maelstrom Weapon" then
+					found = true
+					local stacks = math_max(1, math_min(count or 1, 5))
+					maelstromMult = math_max(1.0 - (0.20 * stacks), 0.0)
+					ns.maelstromStacks = stacks
+					ns.maelstromCastTimeMultiplier = maelstromMult
+					break
+				end
+				idx = idx + 1
+			end
+			if not found and ns.isSoD and (ns.maelstromStacks or 0) > 0 then
+				ns.maelstromStacks = 0
+				ns.maelstromCastTimeMultiplier = 1.0
+			end
+		end
+	end
+	if maelstromMult == 1.0 and ns.maelstromCastTimeMultiplier ~= nil then
+		maelstromMult = ns.maelstromCastTimeMultiplier
+	end
+
+	-- If Maelstrom is 5 stacks, it's instant cast (0 cast time)
+	if maelstromMult <= 0 then
+		return 0.0
+	end
+
+	local hasteMult = GetLiveSpellHasteMultiplier()
+
+	-- If GetSpellInfo already reduced cast time below base, apply any unapplied Maelstrom multiplier
+	if liveCastTime < baseCastTime and baseCastTime > 0 then
+		if maelstromMult < 1.0 and liveCastTime > 0 then
+			return math_max(0, liveCastTime * maelstromMult)
+		end
+		return math_max(0, liveCastTime)
+	end
+
+	return math_max(0, (liveCastTime / hasteMult) * maelstromMult)
+end
+ns.GetEffectiveSpellCastTime = GetEffectiveSpellCastTime
+
 local function ResolveSpellInfo(group)
 	local hasKnownCheck =
 		type(IsSpellKnownOrOverridesKnown) == "function"
@@ -289,10 +482,7 @@ local function CaptureWeaveCastTiming(state, spellInfo)
 	if type(endTime) == "number" and endTime > castStartTime then
 		state.spellExpirationTime = endTime
 	else
-		local spellHaste = state.spellHaste or GetSpellHastePercent()
-		local hasteMultiplier = 1 + (math_max(spellHaste, 0) / 100)
-		local maelstromMult = (ns.maelstromCastTimeMultiplier ~= nil) and ns.maelstromCastTimeMultiplier or 1.0
-		local effectiveCastTime = math_max(0, (spellInfo.castTime / hasteMultiplier) * maelstromMult)
+		local effectiveCastTime = GetEffectiveSpellCastTime(spellInfo)
 		state.spellExpirationTime = castStartTime + effectiveCastTime
 	end
 
@@ -322,9 +512,7 @@ local function BuildDisplayInfo(spellInfo)
 
 	local now = GetClock()
 	local latency = state.cachedLatency or GetLatencySeconds()
-	local spellHaste = state.spellHaste or GetSpellHastePercent()
-	local hasteMultiplier = 1 + (math_max(spellHaste, 0) / 100)
-	local effectiveCastTime = math_max(0, spellInfo.castTime / hasteMultiplier)
+	local effectiveCastTime = GetEffectiveSpellCastTime(spellInfo)
 	local isCasting = state.isCasting and state.currentSpellId == spellInfo.spellId
 	local castStartTime = type(state.castStartTime) == "number" and state.castStartTime or nil
 	local castElapsed = castStartTime and math_max(now - castStartTime, 0) or 0
@@ -339,9 +527,11 @@ local function BuildDisplayInfo(spellInfo)
 			castElapsed = math_max(now - castStartTime, 0)
 			castRemaining = math_max(liveCastEnd - now, 0)
 			liveCastDuration = math_max(liveCastEnd - liveCastStart, 0)
+			effectiveCastTime = liveCastDuration
 		elseif type(state.baseSpellCastTime) == "number" and state.baseSpellCastTime > 0 then
-			local baseHastedCastTime = math_max(state.baseSpellCastTime / hasteMultiplier, 0.01)
-			castRemaining = math_max(baseHastedCastTime - castElapsed, 0)
+			local baseEffective = GetEffectiveSpellCastTime(spellInfo)
+			castRemaining = math_max(baseEffective - castElapsed, 0)
+			effectiveCastTime = baseEffective
 		elseif type(state.spellExpirationTime) == "number" then
 			castRemaining = math_max(0, state.spellExpirationTime - now)
 		end
@@ -391,6 +581,15 @@ local function BuildDisplayInfo(spellInfo)
 
 	local color = GetSpellFamilyColor(spellInfo, safe)
 
+	-- Spark color: Shaman class color if cast before breakpoint (safe, won't clip),
+	-- bright red if cast after breakpoint (will clip MH swing)
+	local isClipped = (clipAmount > 0) or (castStartSwingFraction and castStartSwingFraction > markerFraction)
+	local shamanClassColor = (ns.GetPlayerClassColor and ns.GetPlayerClassColor())
+		or (rawget(_G, "RAID_CLASS_COLORS") and rawget(_G, "RAID_CLASS_COLORS")["SHAMAN"])
+		or { r = 0.0, g = 0.44, b = 0.87, a = 1.0 }
+	local redColor = { r = 1.0, g = 0.15, b = 0.15, a = 1.0 }
+	local sparkColor = isClipped and redColor or shamanClassColor
+
 	return {
 		spellId = spellInfo.spellId,
 		spellName = spellInfo.spellName,
@@ -414,6 +613,7 @@ local function BuildDisplayInfo(spellInfo)
 		sparkFraction = sparkFraction,
 		text = text,
 		color = color,
+		sparkColor = sparkColor,
 	}
 end
 

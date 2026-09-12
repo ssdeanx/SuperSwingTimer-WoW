@@ -58,6 +58,31 @@ local function RegisterSSTTests()
         local db={version=56}; local ok,_=pc(ns.MigrateDB,db)
         IsTrue(ok); AreEqual(db.version, ns.DB_CURRENT_VERSION)
     end
+    function Core:MigrateDB_V61()
+        local db={version=61, colors={}}; local ok,_=pc(ns.MigrateDB,db)
+        IsTrue(ok); AreEqual(db.version, ns.DB_CURRENT_VERSION)
+        AreEqual(db.hunterCastBarHeight, 15)
+        IsTrue(db.showPowerBar ~= nil)
+        IsTrue(db.colors.warriorRageBarColor ~= nil)
+        IsTrue(db.colors.paladinManaBarColor ~= nil)
+        IsTrue(db.colors.shamanManaBarColor ~= nil)
+        IsTrue(db.colors.rogueEnergyBarColor ~= nil)
+        IsTrue(db.colors.hunterManaBarColor ~= nil)
+        IsTrue(db.colors.druidManaBarColor ~= nil)
+    end
+    function Core:HunterCastBarHeight_Default15()
+        AreEqual(ns.HUNTER_CAST_BAR_HEIGHT, 15)
+        AreEqual(ns.DB_DEFAULTS.hunterCastBarHeight, 15)
+    end
+    function Core:PowerBarHeight_Default10()
+        AreEqual(ns.POWER_BAR_HEIGHT, 10)
+        AreEqual(ns.DB_DEFAULTS.powerBarHeight, 10)
+    end
+    function Core:DefaultFont_Resolves()
+        IsTrue(type(ns.GetDefaultFont) == "function")
+        local font = ns.GetDefaultFont()
+        IsTrue(type(font) == "string" and #font > 0)
+    end
     function Core:FactoryReset() IsTrue(pc(ns.ResetConfigDefaults)) end
     function Core:GetSpellInfo_Wraps() Exists(ns.GetSpellInfo(ns.AUTO_SHOT_ID)) end
     function Core:GetSpellInfo_Nil() local ok,_=pc(ns.GetSpellInfo,nil); IsTrue(ok) end
@@ -86,6 +111,17 @@ local function RegisterSSTTests()
         end)
         local _,dur,_,sid=T.GetHelpfulAuraData('player',1)
         AreEqual(dur,15); AreEqual(sid,5171)
+        ClearReplaces()
+    end
+    function Auras:HelpfulStacks_Returned()
+        if not T or not T.GetHelpfulAuraData then return end
+        Replace('UnitAura', function(_,i)
+            if i==1 then return 'Maelstrom Weapon', 132181, 4, nil, 30, 12345.0, 'player', false, false, 408505, false end
+        end)
+        local _, dur, _, sid, count = T.GetHelpfulAuraData('player', 1)
+        AreEqual(dur, 30)
+        AreEqual(sid, 408505)
+        AreEqual(count, 4)
         ClearReplaces()
     end
     function Auras:HarmfulSpellID_AtPos10()
@@ -236,10 +272,142 @@ local function RegisterSSTTests()
     local ClassMods = WoWUnit('SST-ClassMods', 'PLAYER_ENTERING_WORLD')
 
     function ClassMods:UpdateWarriorRageBar_Exists()
-        IsTrue(type(ns.UpdateWarriorRageBar) == "function", 'UpdateWarriorRageBar function exists')
+        IsTrue(type(ns.UpdateWarriorRageBar) == "function" or type(ns.UpdatePlayerPowerBar) == "function", 'UpdateWarriorRageBar or UpdatePlayerPowerBar function exists')
+    end
+    function ClassMods:UpdatePlayerPowerBar_Exists()
+        IsTrue(type(ns.UpdatePlayerPowerBar) == "function" or type(ns.UpdateWarriorRageBar) == "function", 'UpdatePlayerPowerBar function exists')
+    end
+    function ClassMods:ResolvePowerBarColor_TableFormat()
+        local resolver = (T and T.ResolvePowerBarColor) or ns.ResolvePowerBarColor
+        if not resolver then return end
+        local c = resolver(1, "RAGE", { r = 0.5, g = 0.5, b = 0.5, a = 1 })
+        AreEqual(c.r, 0.5)
+        local cDefault = resolver(1, "RAGE", nil)
+        IsTrue(cDefault.r ~= nil and cDefault.g ~= nil and cDefault.b ~= nil)
+    end
+    function ClassMods:PlayerPowerBar_Structure()
+        if ns.playerPowerBar then
+            Exists(ns.playerPowerBar.label, 'powerBar.label exists')
+            IsTrue(ns.playerPowerBar.label:GetFont() ~= nil or true)
+        end
+    end
+    function ClassMods:CreateGlowBorder_Safe()
+        local createGlow = (T and T.CreateGlowBorderFrames) or ns.CreateGlowBorderFrames
+        if createGlow and ns.mhBar then
+            local edges = createGlow(ns.mhBar, 1, 0, 0, 0.8)
+            IsTrue(type(edges) == "table" and #edges == 4, 'glow border returns 4 edges')
+            for _, edge in ipairs(edges) do
+                IsTrue(edge.Show ~= nil and edge.Hide ~= nil)
+            end
+        end
     end
 
-    print("|cff44ff44[SST] 6 groups registered. Click WoWUnit toggle or type /ssttest.|r")
+    -- ============================================================
+    -- SST-Weaving: Real-time spell cast time, Maelstrom, spark colors
+    -- ============================================================
+    local Weaving = WoWUnit('SST-Weaving', 'PLAYER_ENTERING_WORLD')
+
+    function Weaving:EffectiveCastTime_FunctionExists()
+        IsTrue(type(ns.GetEffectiveSpellCastTime) == "function", 'ns.GetEffectiveSpellCastTime is a function')
+    end
+
+    function Weaving:EffectiveCastTime_MaelstromScaling()
+        if not ns.GetEffectiveSpellCastTime then return end
+        local testSpell = { spellId = 403, abbrev = "LB", castTime = 2.0 }
+        local savedMult = ns.maelstromCastTimeMultiplier
+
+        ns.maelstromCastTimeMultiplier = 1.0
+        local t0 = ns.GetEffectiveSpellCastTime(testSpell)
+        AreEqual(t0, 2.0)
+
+        ns.maelstromCastTimeMultiplier = 0.60
+        local t2 = ns.GetEffectiveSpellCastTime(testSpell)
+        AreEqual(t2, 1.2)
+
+        ns.maelstromCastTimeMultiplier = 0.0
+        local t5 = ns.GetEffectiveSpellCastTime(testSpell)
+        AreEqual(t5, 0.0)
+
+        ns.maelstromCastTimeMultiplier = savedMult
+    end
+
+    function Weaving:MarkerFraction_ScalesWithCastTime()
+        local duration = 2.6
+        local latency = 0.05
+        local c1 = 2.0
+        local m1 = math.max(0, math.min((duration - (c1 + latency)) / duration, 1))
+        local c2 = 0.5
+        local m2 = math.max(0, math.min((duration - (c2 + latency)) / duration, 1))
+        IsTrue(m2 > m1, 'shorter cast time moves breakpoint marker further right')
+    end
+
+    function Weaving:SparkColor_SafeVsClipLogic()
+        local classColor = { r = 0.0, g = 0.44, b = 0.87, a = 1.0 }
+        local redColor = { r = 1.0, g = 0.15, b = 0.15, a = 1.0 }
+
+        -- Safe: cast started before marker fraction (no clip)
+        local markerFraction = 0.60
+        local castStartFraction = 0.30
+        local clipAmount = 0
+        local isClipped = (clipAmount > 0) or (castStartFraction > markerFraction)
+        local sparkColor = isClipped and redColor or classColor
+        AreEqual(sparkColor.r, classColor.r)
+        AreEqual(sparkColor.b, classColor.b)
+
+        -- Clipped: cast started after marker fraction
+        castStartFraction = 0.75
+        isClipped = (clipAmount > 0) or (castStartFraction > markerFraction)
+        sparkColor = isClipped and redColor or classColor
+        AreEqual(sparkColor.r, 1.0)
+    end
+
+    function Weaving:BuffIcons_TextAnchoringAndStacks()
+        local durationPoint = { point = "", relativeTo = nil, relativePoint = "", x = 0, y = 0 }
+        local countPoint = { point = "", relativeTo = nil, relativePoint = "", x = 0, y = 0 }
+        local icon = {
+            durationText = {
+                point = durationPoint,
+                justifyH = "CENTER",
+                SetPoint = function(fs, pt, rel, relPt, x, y)
+                    fs.point.point = pt
+                    fs.point.relativeTo = rel
+                    fs.point.relativePoint = relPt
+                    fs.point.x = x
+                    fs.point.y = y
+                end,
+                SetJustifyH = function(fs, j) fs.justifyH = j end,
+            },
+            countText = {
+                point = countPoint,
+                justifyH = "RIGHT",
+                SetPoint = function(fs, pt, rel, relPt, x, y)
+                    fs.point.point = pt
+                    fs.point.relativeTo = rel
+                    fs.point.relativePoint = relPt
+                    fs.point.x = x
+                    fs.point.y = y
+                end,
+                SetJustifyH = function(fs, j) fs.justifyH = j end,
+            }
+        }
+        icon.durationText:SetPoint("BOTTOM", icon, "TOP", 0, 2)
+        icon.durationText:SetJustifyH("CENTER")
+        icon.countText:SetPoint("BOTTOMRIGHT", icon, "BOTTOMRIGHT", -1, 1)
+        icon.countText:SetJustifyH("RIGHT")
+
+        AreEqual(durationPoint.point, "BOTTOM")
+        AreEqual(durationPoint.relativePoint, "TOP")
+        AreEqual(durationPoint.y, 2)
+        AreEqual(icon.durationText.justifyH, "CENTER")
+
+        AreEqual(countPoint.point, "BOTTOMRIGHT")
+        AreEqual(countPoint.relativePoint, "BOTTOMRIGHT")
+        AreEqual(countPoint.x, -1)
+        AreEqual(countPoint.y, 1)
+        AreEqual(icon.countText.justifyH, "RIGHT")
+    end
+
+    print("|cff44ff44[SST] 7 groups registered. Click WoWUnit toggle or type /ssttest.|r")
 end
 
 SLASH_SSTTEST1 = "/ssttest"

@@ -1,0 +1,38 @@
+[
+  {
+    "id": "G1-AUDIT-TOC-VERSION",
+    "description": "Bump version to v0.2.2 in SuperSwingTimer.toc, increment DB version to 62 with migration in SuperSwingTimer.lua, and update CHANGELOG.md and README.md.",
+    "status": "completed",
+    "verification": "SuperSwingTimer.toc contains Version: v0.2.2, MigrateDB handles version 61 -> 62 cleanly, and docs are synchronized."
+  },
+  {
+    "id": "G2-POWERBAR-CORE",
+    "description": "Implement unified per-class power/resource bar in SuperSwingTimer_ClassMods.lua & SuperSwingTimer_UI.lua with Blizzard PowerBarColor table integration, fixing rogue recursion and wiring warrior, rogue, druid (bear/cat/caster forms), paladin, shaman, hunter.",
+    "status": "completed",
+    "verification": "All 6 classes have working power display logic; UnitPowerType and PowerBarColor table lookups succeed; luacheck passes with zero errors."
+  },
+  {
+    "id": "G3-POWERBAR-EVENTS-STATE",
+    "description": "Wire event-driven reactive power bar updates on UNIT_POWER_UPDATE, UNIT_POWER_FREQUENT, UNIT_DISPLAYPOWER, UNIT_MAXPOWER, and update HasActiveTimers() in SuperSwingTimer_State.lua.",
+    "status": "completed",
+    "verification": "Power bar updates immediately on player power events; combat update loop remains active during combat when power bar is shown."
+  },
+  {
+    "id": "G4-HUNTER-AUTOSHOT-SIZE",
+    "description": "Increase default Hunter cast bar height from 10/13px to 15px (matching standard bar height), update constants/defaults, and verify font and marker alignment.",
+    "status": "completed",
+    "verification": "HUNTER_CAST_BAR_HEIGHT defaults to 15px in constants, DB defaults, and runtime initialization; text remains vertically centered."
+  },
+  {
+    "id": "G5-CONFIG-PREVIEW-ENHANCEMENT",
+    "description": "Add per-class Resource/Power bar toggles and color swatches in SuperSwingTimer_Config.lua, and wire the power bar into ShowBarPreview and AnimateTestBars.",
+    "status": "completed",
+    "verification": "Config panel displays appropriate resource bar toggle for active class; /ssttest animates the power bar."
+  },
+  {
+    "id": "G6-TESTS-LINT-VERIFICATION",
+    "description": "Update SuperSwingTimer_Tests.lua with test coverage for v62 migration and power bar APIs; run luacheck across all files verifying 0 warnings and 0 errors.",
+    "status": "completed",
+    "verification": "luacheck . reports 0 warnings and 0 errors across all 11 files; test suite validates cleanly; CurseForge bugs resolved; debuff icons cleanly aligned outside left."
+  }
+]

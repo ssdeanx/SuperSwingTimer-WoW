@@ -104,7 +104,11 @@ local function MigrateDB(targetDb)
     SuperSwingTimerDB.showPaladinSealLabel = (SuperSwingTimerDB.showPaladinSealLabel ~= false)
     SuperSwingTimerDB.showPaladinJudgementMarker = (SuperSwingTimerDB.showPaladinJudgementMarker ~= false)
     SuperSwingTimerDB.showPaladinTwistFlash = (SuperSwingTimerDB.showPaladinTwistFlash ~= false)
-    SuperSwingTimerDB.showWarriorRageBar = (SuperSwingTimerDB.showWarriorRageBar ~= false)
+    if SuperSwingTimerDB.showPowerBar == nil then
+        SuperSwingTimerDB.showPowerBar = (SuperSwingTimerDB.showWarriorRageBar ~= false)
+    else
+        SuperSwingTimerDB.showPowerBar = (SuperSwingTimerDB.showPowerBar ~= false)
+    end
     SuperSwingTimerDB.showWarriorShieldBlockBar = (SuperSwingTimerDB.showWarriorShieldBlockBar ~= false)
     -- Phase 1 toggle defaults
     SuperSwingTimerDB.showSwingFlash = (SuperSwingTimerDB.showSwingFlash ~= false)
@@ -1060,6 +1064,27 @@ local function MigrateDB(targetDb)
                 if not db.colors.druidManaBarColor then db.colors.druidManaBarColor = { r = 0.20, g = 0.45, b = 1.00, a = 0.85 } end
                 if not db.colors.paladinManaBarColor then db.colors.paladinManaBarColor = { r = 0.20, g = 0.45, b = 1.00, a = 0.85 } end
             end
+        },
+        {
+            version = 62,
+            apply = function (db)
+                if db.showPowerBar == nil then
+                    db.showPowerBar = (db.showWarriorRageBar ~= false)
+                end
+                if db.showWarriorRageBar == nil then
+                    db.showWarriorRageBar = (db.showPowerBar ~= false)
+                end
+                if db.hunterCastBarHeight == nil or db.hunterCastBarHeight == 10 or db.hunterCastBarHeight == 13 then
+                    db.hunterCastBarHeight = 15
+                end
+                db.colors = db.colors or {}
+                if not db.colors.warriorRageBarColor then db.colors.warriorRageBarColor = { r = 0.80, g = 0.20, b = 0.10, a = 0.85 } end
+                if not db.colors.shamanManaBarColor then db.colors.shamanManaBarColor = { r = 0.20, g = 0.45, b = 1.00, a = 0.85 } end
+                if not db.colors.rogueEnergyBarColor then db.colors.rogueEnergyBarColor = { r = 1.00, g = 0.82, b = 0.18, a = 0.85 } end
+                if not db.colors.hunterManaBarColor then db.colors.hunterManaBarColor = { r = 0.20, g = 0.45, b = 1.00, a = 0.85 } end
+                if not db.colors.druidManaBarColor then db.colors.druidManaBarColor = { r = 0.20, g = 0.45, b = 1.00, a = 0.85 } end
+                if not db.colors.paladinManaBarColor then db.colors.paladinManaBarColor = { r = 0.20, g = 0.45, b = 1.00, a = 0.85 } end
+            end
         }
     }
 
@@ -1079,7 +1104,7 @@ end
 -- Highest migration version currently defined. Tests assert against this
 -- instead of a hard-coded number so they don't go stale when the
 -- migration ladder grows.
-ns.DB_CURRENT_VERSION = 61
+ns.DB_CURRENT_VERSION = 62
 
 -- ============================================================
 -- Initialization
@@ -1093,7 +1118,7 @@ local function OnAddonLoaded()
     ns.BAR_WIDTH = SuperSwingTimerDB.barWidth or ns.DB_DEFAULTS.barWidth
     ns.BAR_HEIGHT = SuperSwingTimerDB.barHeight or ns.DB_DEFAULTS.barHeight
     ns.HUNTER_CAST_BAR_HEIGHT = SuperSwingTimerDB.hunterCastBarHeight or ns.HUNTER_CAST_BAR_HEIGHT
-        or ns.DB_DEFAULTS.hunterCastBarHeight or 10
+        or ns.DB_DEFAULTS.hunterCastBarHeight or 15
     ns.ROGUE_SLICE_AND_DICE_BAR_HEIGHT = SuperSwingTimerDB.rogueSliceAndDiceBarHeight or ns.ROGUE_SLICE_AND_DICE_BAR_HEIGHT
         or ns.DB_DEFAULTS.rogueSliceAndDiceBarHeight or 4
     ns.ROGUE_ENERGY_TICK_BAR_WIDTH = SuperSwingTimerDB.rogueEnergyTickBarWidth or ns.ROGUE_ENERGY_TICK_BAR_WIDTH
@@ -1202,12 +1227,15 @@ local function RegisterEvents()
         frame:RegisterEvent("SPELLS_CHANGED")
     end
 
-    if cfg.melee and (ns.playerClass == "ROGUE" or ns.playerClass == "DRUID") then
+    local powerClasses = { WARRIOR = true, PALADIN = true, SHAMAN = true, ROGUE = true, DRUID = true, HUNTER = true }
+    if powerClasses[ns.playerClass] then
         frame:RegisterEvent("UNIT_POWER_UPDATE")
         frame:RegisterEvent("UNIT_POWER_FREQUENT")
+        frame:RegisterEvent("UNIT_DISPLAYPOWER")
+        frame:RegisterEvent("UNIT_MAXPOWER")
     end
 
-    if cfg.melee and ns.playerClass == "DRUID" then
+    if ns.playerClass == "DRUID" then
         frame:RegisterEvent("UPDATE_SHAPESHIFT_FORM")
     end
 
@@ -1441,14 +1469,18 @@ frame:SetScript("OnEvent", function (self, event, ...)
         elseif unit == "target" and ns.playerClass == "HUNTER" and ns.UpdateHunterExplosiveTrapBar then
             ns.UpdateHunterExplosiveTrapBar(true)
         end
-    elseif event == "UNIT_POWER_UPDATE" or event == "UNIT_POWER_FREQUENT" then
+    elseif event == "UNIT_POWER_UPDATE" or event == "UNIT_POWER_FREQUENT"
+        or event == "UNIT_DISPLAYPOWER" or event == "UNIT_MAXPOWER" then
         local unit, powerType = ...
-        if ns.playerClass == "ROGUE" and unit == "player"
-            and ns.HandleRogueEnergyPowerUpdate and (powerType == nil or powerType == "ENERGY") then
-            ns.HandleRogueEnergyPowerUpdate(unit, powerType)
-        elseif ns.playerClass == "DRUID" and unit == "player"
-            and ns.HandleDruidEnergyPowerUpdate and (powerType == nil or powerType == "ENERGY") then
-            ns.HandleDruidEnergyPowerUpdate(unit, powerType)
+        if unit == "player" then
+            if ns.playerClass == "ROGUE" and ns.HandleRogueEnergyPowerUpdate and (powerType == nil or powerType == "ENERGY") then
+                ns.HandleRogueEnergyPowerUpdate(unit, powerType)
+            elseif ns.playerClass == "DRUID" and ns.HandleDruidEnergyPowerUpdate and (powerType == nil or powerType == "ENERGY") then
+                ns.HandleDruidEnergyPowerUpdate(unit, powerType)
+            end
+            if ns.UpdatePlayerPowerBar then
+                ns.UpdatePlayerPowerBar()
+            end
         end
     elseif event == "UNIT_RANGEDDAMAGE" then
         local unit = ...
@@ -1539,19 +1571,17 @@ frame:SetScript("OnEvent", function (self, event, ...)
     elseif event == "PLAYER_REGEN_DISABLED" then
         ns.playerInCombat = true
         ns.ShowBars()
-        if ns.playerClass == "WARRIOR" then
-            if ns.UpdateWarriorRageBar then
-                ns.UpdateWarriorRageBar()
-            end
-            if ns.UpdateWarriorShieldBlockBar then
-                ns.UpdateWarriorShieldBlockBar(0, true)
-            end
+        if ns.UpdatePlayerPowerBar then
+            ns.UpdatePlayerPowerBar()
+        end
+        if ns.playerClass == "WARRIOR" and ns.UpdateWarriorShieldBlockBar then
+            ns.UpdateWarriorShieldBlockBar(0, true)
         end
         ns.StartSanityTicker()
     elseif event == "PLAYER_REGEN_ENABLED" then
         ns.playerInCombat = false
-        if ns.playerClass == "WARRIOR" and ns.UpdateWarriorRageBar then
-            ns.UpdateWarriorRageBar()
+        if ns.UpdatePlayerPowerBar then
+            ns.UpdatePlayerPowerBar()
         end
         ns.warriorOverpowerProcUntil = nil
         ns.casting = false
@@ -1590,6 +1620,9 @@ frame:SetScript("OnEvent", function (self, event, ...)
         if ns.OnDruidFormChange then
             local form = GetShapeshiftForm and GetShapeshiftForm() or 0
             ns.OnDruidFormChange(form)
+        end
+        if ns.UpdatePlayerPowerBar then
+            ns.UpdatePlayerPowerBar()
         end
     end
 end)

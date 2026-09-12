@@ -4,6 +4,78 @@
 > Sections: **Added** / **Changed** / **Fixed** / **Removed** / **Performance** / **Security** / **Docs** / **Internal** / **Notes**
 > DB schema migrations are listed under **Notes** per version.
 
+## v0.2.2 - 2026-09-12
+
+### Added
+
+- **Unified Multi-Class Resource/Power Bar (`SuperSwingTimer_ClassMods.lua` & `SuperSwingTimer_UI.lua`)**:
+  - Fully implemented live power tracking for all 6 physical classes:
+    - **Warrior**: Rage (0–100) with Execute range icon alert with active glow when target health is <= 20%.
+    - **Rogue**: Energy (0–UnitPowerMax).
+    - **Druid**: Dynamic shapeshift adaptation — automatically transitions between Bear Form (Rage), Cat Form (Energy), and Caster/Travel/Tree/Moonkin (Mana).
+    - **Paladin**: Mana (0–UnitPowerMax, displayed as `current/max`).
+    - **Shaman**: Mana (0–UnitPowerMax, displayed as `current/max`).
+    - **Hunter**: Mana (0–UnitPowerMax, displayed as `current/max`).
+  - Standardized Power Bar height to **10px** (`ns.POWER_BAR_HEIGHT = 10`), matching UI scale and improving readability.
+  - Integrated Blizzard's `PowerBarColor` table mapping with fallback to per-class customizable DB color swatches.
+  - Connected event-driven reactive power updates on `UNIT_POWER_UPDATE`, `UNIT_POWER_FREQUENT`, `UNIT_DISPLAYPOWER`, and `UNIT_MAXPOWER`.
+  - Anchored cleanly beneath off-hand or main-hand bars for melee classes, and beneath the Auto Shot cast bar for Hunters.
+  - Added power bar preview and smooth resource cycle animation to `/ssttest`.
+  - Added per-class Resource/Power Bar toggle in Quick Controls and Options panel.
+
+- **Hunter Auto Shot Cast Bar Enlarge (`SuperSwingTimer_UI.lua` & `SuperSwingTimer_Constants.lua`)**:
+  - Enlarged default Hunter Auto Shot cast bar height from 10/13px to **15px** (matching standard main-hand/ranged bar height).
+  - Adjusted typography and latency markers for clean vertical alignment in the taller frame.
+
+- **Buff Icon Timer Centering & Stack Counter Overlay (`SuperSwingTimer_ClassMods.lua`)**:
+  - Re-anchored buff countdown timer text centered directly **above** the icon (`"BOTTOM", icon, "TOP", 0, 2`, centered horizontal justification, 12pt outline), keeping the icon face completely clear and unobstructed.
+  - Added dedicated stack count text overlaid on the icon face (`"BOTTOMRIGHT", icon, "BOTTOMRIGHT", -1, 1`, right-justified, 11pt outline, white text). Stacks are the **only** text rendered overtop the icon face.
+  - Formatted stacks to display when `stacks > 1`, as well as when `stacks == 1` for special stacking auras such as Maelstrom Weapon (`408505` / `MSW`) and Paladin Reckoning.
+  - Fully implemented and standardized across all 6 physical class modules: Warrior, Paladin, Shaman, Druid, Hunter, and Rogue.
+  - Replaced `icon.durationText` inside the icon with clean child frame show/hide management on aura expiration.
+
+- **Shaman Spell-Weaving Real-Time Breakpoint & Spark Overlay (`SuperSwingTimer_Weaving.lua` & `SuperSwingTimer_ClassMods.lua`)**:
+  - **Dynamic Real-Time Breakpoint Scaling**: Breakpoint location for Lightning Bolt (and other tracked weave spells) dynamically adjusts in real time based on live cast duration.
+  - **Haste & Season of Discovery Maelstrom Scaling**: Automatically queries live spell cast time via `GetSpellInfo(spellId)`, applying active spell haste buffs (Bloodlust/Heroism 30%, Berserking, Drums of Battle) and Season of Discovery Maelstrom Weapon stack reductions (20% per stack down to 0s instant cast at 5 stacks), as well as Nature's Swiftness, Elemental Mastery, and Power Surge procs.
+  - **Fixed Breakpoint Target Icons**: Cutoff marker icons (`ns.weaveTriangleTop` and `ns.weaveTriangleBottom`) remain anchored at the exact breakpoint location on the swing bar, giving the player a reliable target cutoff before which they must initiate the cast to weave cleanly between swings without clipping.
+  - **Over-Bar Cast Spark Overlay**: Weave spark (`ns.weaveSpark` and `ns.weaveSparkOH`) renders cleanly overtop of the main-hand bar only while actively casting (`isCasting == true`), animating smoothly across the bar over the cast's duration.
+  - **Safe vs. Clipped Spark Visual Feedback**:
+    - **Shaman Class Color** (`#0070DE` / `{ r = 0.0, g = 0.44, b = 0.87 }`): Rendered when the cast was started *before* the swing passed the breakpoint (clean weave, no swing clip).
+    - **Bright Red** (`#FF2626` / `{ r = 1.0, g = 0.15, b = 0.15 }`): Rendered when the cast was started *after* the swing passed the breakpoint (clipped weave, delaying the main-hand swing).
+
+### Fixed
+
+- **Warrior Rampage Duplicate Buff Icon (`SuperSwingTimer_ClassMods.lua`)**:
+  - Fixed an issue where the Warrior Rampage buff displayed twice in the buff icon stack when both Classic/TBC and SoD entries were registered.
+  - Implemented `MergeTrackedSpells` and `seenAuras` deduplication across all class buff tracking systems to prevent duplicate buff/CD icons.
+
+- **CurseForge Bug 1: Non-Localized Font Path & Escape Errors (`ClassMods.lua`)**:
+  - Eliminated hardcoded `Fonts\\FRIZQT__.TTF` and excessive backslash escapes (`Fonts\\\\FRIZQT__.TTF`) that broke on non-English clients (ruRU, koKR, zhCN, zhTW).
+  - Implemented dynamic `ns.GetDefaultFont()` resolver querying Blizzard's client-localized `STANDARD_TEXT_FONT` global with safe fallback across all 11 files.
+- **CurseForge Bug 2: `Texture:SetPoint(): Invalid region point Height` (`ClassMods.lua`)**:
+  - Re-architected glow border edge builder `CreateGlowBorderFrames()` from fragile positional array slicing to 4 explicit named border textures (`top`, `bottom`, `left`, `right`), preventing dimension strings (`"Height"`) from ever being passed to `SetPoint()`.
+- **Debuff Bar Icon Overlapping & Alignment (`ClassMods.lua`)**:
+  - Re-anchored all debuff bar icons (Paladin Judgement/SoV, Warrior Shield Block/Rend/Thunder Clap/Demo Shout/Sunder Armor, Shaman Flame Shock, Druid Mangle/Rip/Rake, Hunter Traps & Stings, Rogue Rupture/Expose Armor) cleanly to the outside left (`RIGHT`, `bar`, `LEFT`, -2, 0) with `SetTexCoord(0.07, 0.93, 0.07, 0.93)`.
+  - Debuff status bars remain 100% aligned with the swing bars without icon occlusion or text clipping.
+- **SuperSwingTimer_UI.lua Line 1077 Linter Warning**:
+  - Fixed `Cannot assign boolean|nil to parameter boolean` by updating `UpdateHunterCastLatencyVisual` signature and call-site to explicit boolean coercion `(...) == true`.
+- **Blizzard API Table Lookup in `GetPowerBarColor` (`SuperSwingTimer_ClassMods.lua`)**:
+  - Fixed native color lookup: Blizzard Classic FrameXML returns a color table `{ r, g, b }` rather than tuple arguments.
+- **Rogue Power Bar Recursion & Linter Warning (`SuperSwingTimer_ClassMods.lua`)**:
+  - Resolved self-recursive call in `UpdateRoguePowerBar` and fixed the `unused variable colorRef` warning in `luacheck`.
+- **Stale Class Initializers (`SuperSwingTimer_ClassMods.lua`)**:
+  - Nil-cleared all per-class power bar function references during `InitClassMods()` to prevent cross-class contamination.
+
+### Changed
+
+- **Architecture Consolidation (`SuperSwingTimer_ClassMods.lua`, `UI.lua`, `Config.lua`)**:
+  - Consolidated duplicate frame creation and legacy `ns.warriorRageBar` checks into a single canonical `ns.playerPowerBar` (`SuperSwingTimerPlayerPowerBar`) constructed during class initialization.
+  - Preserved backward-compatible alias `ns.warriorRageBar = ns.playerPowerBar` for external macros and test hooks.
+- **Version Sync**: `SuperSwingTimer.toc` updated to `v0.2.2`.
+- **SavedVariables DB Migration v62 (`SuperSwingTimer.lua`)**:
+  - Bumped `ns.DB_CURRENT_VERSION` to 62.
+  - Automatically seeds `showPowerBar`, enhanced Hunter cast bar height, and per-class resource colors for existing profiles.
+
 ## v0.2.1 - 2026-07-29
 
 ### Added

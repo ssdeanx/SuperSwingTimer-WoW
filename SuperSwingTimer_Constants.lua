@@ -155,7 +155,8 @@ end
 -- ============================================================
 ns.BAR_WIDTH = 240
 ns.BAR_HEIGHT = 15
-ns.HUNTER_CAST_BAR_HEIGHT = 13
+ns.HUNTER_CAST_BAR_HEIGHT = 15
+ns.POWER_BAR_HEIGHT = 10
 ns.HUNTER_CAST_BAR_GAP = 2
 ns.HUNTER_RANGE_HELPER_WIDTH = 7
 ns.ROGUE_SLICE_AND_DICE_BAR_HEIGHT = 4
@@ -865,6 +866,8 @@ ns.DB_DEFAULTS = {
     showPaladinSealLabel = true,
     showPaladinJudgementMarker = true,
     showPaladinTwistFlash = true,
+    showPowerBar = true,
+    powerBarHeight = 10,
     showWarriorRageBar = true,
     showDruidEnergyTickBar = true,
     showWarriorRageProtection = true,
@@ -914,7 +917,7 @@ ns.DB_DEFAULTS = {
     indicatorBlendMode = "ADD",
     barWidth = 240,
     barHeight = 15,
-    hunterCastBarHeight = 13,
+    hunterCastBarHeight = 15,
     rogueSliceAndDiceBarHeight = 4,
     rogueEnergyTickBarWidth = 4,
     druidEnergyTickBarWidth = 4,
@@ -1015,8 +1018,17 @@ ns.DB_DEFAULTS = {
     }
 }
 
--- Shared font path for all class-mod overlay text and icons.
-ns.FONT_PATH = "Fonts\\FRIZQT__.TTF"
+-- Shared font resolution for all class-mod overlay text, labels, and badges.
+-- Resolves Blizzard's client-localized STANDARD_TEXT_FONT (e.g., Cyrillic, Korean, Chinese)
+-- with fallback to "Fonts\FRIZQT__.TTF" on Western clients.
+function ns.GetDefaultFont()
+    local standardFont = rawget(_G, "STANDARD_TEXT_FONT")
+    if type(standardFont) == "string" and standardFont ~= "" then
+        return standardFont
+    end
+    return "Fonts\\FRIZQT__.TTF"
+end
+ns.FONT_PATH = ns.GetDefaultFont()
 
 ns.TEXTURE_LAYER_OPTIONS = {
     { label = "Background", value = "BACKGROUND" }, { label = "Border", value = "BORDER" },

@@ -244,20 +244,22 @@ function ns.HasActiveTimers()
         return true
     end
 
-    -- Warrior combat visuals (rage bar + Shield Block bar) need the update loop
+    -- Combat visuals (power bar + class-specific overlays) need the update loop
     -- even when no swing timer is active yet; otherwise the bars can fail to
     -- refresh during combat until another timer starts.
-    if ns.playerClass == "WARRIOR" and ns.playerInCombat == true then
+    if ns.playerInCombat == true then
         local db = SuperSwingTimerDB or ns.DB_DEFAULTS
-        if db and (db.showWarriorRageBar ~= false or db.showWarriorShieldBlockBar ~= false) then
+        local powerClasses = { WARRIOR = true, PALADIN = true, SHAMAN = true, ROGUE = true, DRUID = true, HUNTER = true }
+        if powerClasses[ns.playerClass] and db and db.showPowerBar ~= false then
             return true
         end
-    end
-
-    if ns.playerClass == "DRUID" and ns.playerInCombat == true and ns.IsDruidCatFormActive and ns.IsDruidCatFormActive() then
-        local db = SuperSwingTimerDB or ns.DB_DEFAULTS
-        if db and db.showDruidEnergyTickBar ~= false then
+        if ns.playerClass == "WARRIOR" and db and db.showWarriorShieldBlockBar ~= false then
             return true
+        end
+        if ns.playerClass == "DRUID" and ns.IsDruidCatFormActive and ns.IsDruidCatFormActive() then
+            if db and db.showDruidEnergyTickBar ~= false then
+                return true
+            end
         end
     end
 
