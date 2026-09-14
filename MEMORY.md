@@ -5,7 +5,7 @@
 ## Overview & Addon Identity
 
 - **Name**: SuperSwingTimer
-- **Current Version**: `v0.2.2` (DB schema migration `v62`)
+- **Current Version**: `v0.2.3` (DB schema migration `v63`)
 - **Author**: AcidBomb
 - **Target Clients**: Classic Era (`11509`) and TBC Anniversary (`20506`), including Season of Discovery (SoD).
 - **Core Purpose**: Ultra-accurate melee, ranged, and target swing timers with class-specific power/debuff bars, spell-weaving assistance, and buff tracking.
@@ -23,7 +23,7 @@
 | [SuperSwingTimer_UI.lua](file:///home/sam/SuperSwingTimer-WoW/SuperSwingTimer_UI.lua) | Primary swing bars, Hunter 15px Auto Shot cast bar, latency markers. |
 | [SuperSwingTimer_ClassMods.lua](file:///home/sam/SuperSwingTimer-WoW/SuperSwingTimer_ClassMods.lua) | Class modules (6 physical classes), unified power bar, debuff bars, buff icons. |
 | [SuperSwingTimer_Config.lua](file:///home/sam/SuperSwingTimer-WoW/SuperSwingTimer_Config.lua) | Settings UI panel, Quick Controls, `/sst` slash commands. |
-| [SuperSwingTimer.lua](file:///home/sam/SuperSwingTimer-WoW/SuperSwingTimer.lua) | Addon lifecycle, DB migrations (v62), event dispatching. |
+| [SuperSwingTimer.lua](file:///home/sam/SuperSwingTimer-WoW/SuperSwingTimer.lua) | Addon lifecycle, DB migrations (v63), event dispatching. |
 | [SuperSwingTimer_SoD.lua](file:///home/sam/SuperSwingTimer-WoW/SuperSwingTimer_SoD.lua) | Season of Discovery rune matrices, aura maps, spell definitions. |
 | [SuperSwingTimer_Tests.lua](file:///home/sam/SuperSwingTimer-WoW/SuperSwingTimer_Tests.lua) | In-game WoWUnit test suite across 7 functional groups (`/ssttest`). |
 

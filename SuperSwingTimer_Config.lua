@@ -526,12 +526,11 @@ local function OpenColorPicker(options)
         end
     }
 
-    if allowAlpha then
-        info.opacityFunc = function ()
-            local r, g, b = ColorPickerFrame:GetColorRGB()
-            local a = ColorPickerFrame.GetColorAlpha and ColorPickerFrame:GetColorAlpha() or c.a or 1
-            Commit(r, g, b, a)
-        end
+    if ColorPickerFrame.SetColorRGB then
+        ColorPickerFrame:SetColorRGB(c.r or 1, c.g or 1, c.b or 1)
+    end
+    if allowAlpha and ColorPickerFrame.SetColorAlpha then
+        ColorPickerFrame:SetColorAlpha(c.a or 1)
     end
 
     ColorPickerFrame:SetupColorPickerAndShow(info)
@@ -810,6 +809,15 @@ local function CreateColorButton(parent, label, colorKey, yOffset, options)
                 SuperSwingTimerDB.useClassColors = false
             end
             SuperSwingTimerDB.colors[colorKey] = { r = r, g = g, b = b, a = alpha }
+            if colorKey == "autoShotUnsafe" then
+                SuperSwingTimerDB.colors.clipZone = { r = r, g = g, b = b, a = alpha }
+            elseif colorKey == "clipZone" then
+                SuperSwingTimerDB.colors.autoShotUnsafe = { r = r, g = g, b = b, a = alpha }
+            elseif colorKey == "autoShotSafe" then
+                SuperSwingTimerDB.colors.clipSafe = { r = r, g = g, b = b, a = alpha }
+            elseif colorKey == "clipSafe" then
+                SuperSwingTimerDB.colors.autoShotSafe = { r = r, g = g, b = b, a = alpha }
+            end
             ns.ApplyBarColors()
             if panel and panel.useClassColorsRow and panel.useClassColorsRow.refresh then
                 panel.useClassColorsRow.refresh()
@@ -2913,10 +2921,11 @@ local function CreatePanel()
     end
 
     if ns.playerClass == "HUNTER" then
-        -- Hunter cast bar color is separate from the ranged bar fill color
+        -- Hunter cast bar fill color: never repainted by the Auto Shot window
+        -- zone colors (the ranged bar end zone stays fully separate).
         AddQuickColor("Cast Bar", "hunterCastBar", {
             allowAlpha = true,
-            tooltipText = "Pick the Hunter cast bar fill color (Steady Shot, Multi-Shot, etc.) independent from the ranged bar fill."
+            tooltipText = "Pick the Hunter cast bar fill color (Auto Shot, Steady Shot, Multi-Shot, Aimed Shot). Independent from the ranged bar fill and the clip zone."
         })
         AddQuickColor("Range Melee", "hunterRangeMelee", {
             allowAlpha = true,
@@ -2934,13 +2943,13 @@ local function CreatePanel()
             allowAlpha = true,
             tooltipText = "Pick the Hunter out-of-range color for targets beyond usable Auto Shot range."
         })
-        AddQuickColor("Auto Shot Safe", "autoShotSafe", {
+        AddQuickColor("Clip Safe", "autoShotSafe", {
             allowAlpha = true,
-            tooltipText = "Pick the green stop-safe Auto Shot window color and overlay opacity."
+            tooltipText = "Pick the green stop-safe zone color and opacity on the ranged swing bar."
         })
-        AddQuickColor("Auto Shot Late", "autoShotUnsafe", {
+        AddQuickColor("Clip Zone", "autoShotUnsafe", {
             allowAlpha = true,
-            tooltipText = "Pick the red late / still-moving Auto Shot window color and overlay opacity."
+            tooltipText = "Pick the red late / moving clip zone color and opacity on the ranged swing bar."
         })
         -- Phase 2: Hunter Rapid Fire bar color swatch
         AddQuickColor("Rapid Fire", "rapidFireBar", {

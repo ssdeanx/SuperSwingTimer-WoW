@@ -12,18 +12,20 @@ Defined in `SuperSwingTimer.toc` for Classic Era (`11509`) and TBC Anniversary (
 6. `SuperSwingTimer_UI.lua`: Primary frame construction (`ns.mhBar`, `ns.ohBar`, `ns.rangedBar`, `ns.enemyBar`), layout management, Hunter Auto Shot cast bar (15px), latency overlays.
 7. `SuperSwingTimer_ClassMods.lua`: Class-specific mechanics (Warrior, Paladin, Shaman, Druid, Hunter, Rogue), debuff duration bars, buff icons, unified power bar (`SuperSwingTimerPlayerPowerBar`).
 8. `SuperSwingTimer_Config.lua`: Blizzard Settings / Interface Options panels, Quick Controls, slash command dispatcher (`/sst`).
-9. `SuperSwingTimer.lua`: Addon initialization (`ADDON_LOADED`, `PLAYER_LOGIN`), SavedVariables migration pipeline (`ns.DB_CURRENT_VERSION = 62`), event dispatcher.
+9. `SuperSwingTimer.lua`: Addon initialization (`ADDON_LOADED`, `PLAYER_LOGIN`), SavedVariables migration pipeline (`ns.DB_CURRENT_VERSION = 63`), event dispatcher.
 10. `SuperSwingTimer_SoD.lua`: Season of Discovery rune database, spell matrices, aura maps.
 11. `SuperSwingTimer_Tests.lua`: WoWUnit in-game test suite (`/ssttest`), test registration across 7 functional groups.
 
 ## Core Namespace & State
 
 - All internal tables and routines share the private namespace `ns` passed into each file: `local _, ns = ...`.
-- SavedVariables: `SuperSwingTimerDB` (primary), with legacy profile imports from `SwangThangDB` and `HunterTimerDB`.
+- SavedVariables: `SuperSwingTimerDB` (primary schema v63), with legacy profile imports from `SwangThangDB` and `HunterTimerDB`.
+- Timing Engine: Uses `GetTimePreciseSec()` for sub-millisecond precision with `GetTime()` fallback backup.
 
 ## Frame Strata & Layering
 
 - Swing Bars (`ns.mhBar`, `ns.ohBar`, `ns.rangedBar`, `ns.enemyBar`): `MEDIUM` strata.
+- Hunter Cast Bar: 15px standard height, maintaining an unobstructed dark status bar background with fill colored by `colors.hunterCastBar`.
 - Debuff Duration Bars: Anchored dynamically above the swing bars via `RestackDebuffBars`.
 - Unified Power Bar: `SuperSwingTimerPlayerPowerBar`, anchored beneath the lowest active bar at height 10px.
 - Weave Spark Overlay: Dedicated child frame at `FrameLevel + 6` to avoid being clipped by bar textures or borders.

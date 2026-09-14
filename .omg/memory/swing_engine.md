@@ -44,3 +44,9 @@ Classic World of Warcraft parry haste model:
 - When `SWING_MISSED` or `SPELL_MISSED` occurs with `missType == "DODGE"`:
   - Sets `ns.warriorOverpowerProcUntil = eventTime + 5.0` (5.0s active window).
   - Triggers the Overpower ready visual and audio cue.
+
+## 6. High-Precision Clock Domain
+
+- The core timing engine is powered by `GetTimePreciseSec()` for sub-millisecond precision.
+- `GetTime()` is retained strictly as an automatic fallback when high-precision timing is unavailable.
+- Prevents timer jitter and phase drift during high-haste combat, flurry procs, and weaving calculations.

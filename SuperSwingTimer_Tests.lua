@@ -70,6 +70,18 @@ local function RegisterSSTTests()
         IsTrue(db.colors.hunterManaBarColor ~= nil)
         IsTrue(db.colors.druidManaBarColor ~= nil)
     end
+    function Core:MigrateDB_V62()
+        local db = { version = 62, colors = { autoShotUnsafe = { r = 1, g = 1, b = 1, a = 0.4 } } }
+        local ok, _ = pc(ns.MigrateDB, db)
+        IsTrue(ok)
+        AreEqual(db.version, ns.DB_CURRENT_VERSION)
+        AreEqual(db.colors.autoShotUnsafe.r, 1)
+        AreEqual(db.colors.autoShotUnsafe.g, 0)
+        AreEqual(db.colors.autoShotUnsafe.b, 0)
+        AreEqual(db.colors.clipZone.r, 1)
+        AreEqual(db.colors.clipZone.g, 0)
+        AreEqual(db.colors.clipZone.b, 0)
+    end
     function Core:HunterCastBarHeight_Default15()
         AreEqual(ns.HUNTER_CAST_BAR_HEIGHT, 15)
         AreEqual(ns.DB_DEFAULTS.hunterCastBarHeight, 15)

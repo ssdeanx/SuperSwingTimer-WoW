@@ -11,6 +11,8 @@ The Hunter ranged system operates two synchronized bars:
    - Standardized height: **15px** (`ns.HUNTER_CAST_BAR_HEIGHT = 15`).
    - Displays the 0.5s internal "windup" cast time before an arrow/bullet is released.
    - Also tracks hard-cast shots: Aimed Shot (3.0s base) and Steady Shot (1.5s base).
+   - **Clean Dark Background**: `clipZoneOverlay` was completely removed so the dark status bar background remains unobstructed during Auto Shot, Multi-Shot, and Steady Shot. Fills with `colors.hunterCastBar`.
+   - **Stored Cast Cleanup**: Cleared immediately at cast landing in `HandleSpellcastSucceeded()` so the trailing cycle displays Auto Shot cleanly instead of a stale cast name.
 
 ## 2. Transient Stop Event Filtering (Anniversary / Classic Bug Fix)
 
@@ -18,6 +20,7 @@ The Hunter ranged system operates two synchronized bars:
 - **Solution**: Auto-repeat state gating:
   - SuperSwingTimer checks `GetAutoRepeatSpell()` or cooldown state before tearing down the ranged timer mid-cycle.
   - Seeding occurs immediately on `START_AUTOREPEAT_SPELL` rather than waiting for cooldown updates.
+  - **Melee Keep-Alive**: `ShouldKeepHunterRangedTimerActive()` verifies `ns.IsHunterTargetInMeleeRange() == true` before keeping melee active, preventing MH bar flash and ranged timer resets when the hunter meleed earlier in combat.
 
 ## 3. Clip Detection & Latency Buffers
 
@@ -25,6 +28,8 @@ The Hunter ranged system operates two synchronized bars:
   - Hard-cast abilities can clip into the next Auto Shot cycle if cast too late.
   - The cast bar renders a trailing latency slice based on real-time `ns.cachedLatency` from `GetNetStats()`.
   - Visual color cues distinguish "safe" cast windows (Auto Shot will fire cleanly without clipping) from "clipped" windows (Auto Shot will be delayed).
+  - **Independent Clip Zone ("Red Zone") Colors**: `clipZone` (`autoShotUnsafe`) and `clipSafe` (`autoShotSafe`) colors are fully separated from the Cast Bar color (`hunterCastBar`).
+  - **Color Picker Hardening**: `OpenColorPicker` seeds `ColorPickerFrame:SetColorRGB()` and `ColorPickerFrame:SetColorAlpha()` prior to opening so swatches never default to opaque white.
 
 ## 4. Movement & Range Gating
 

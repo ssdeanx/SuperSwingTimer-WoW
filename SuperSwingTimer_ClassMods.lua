@@ -380,13 +380,17 @@ local function CreatePlayerPowerBar()
         return ns.playerPowerBar
     end
 
-    local RESOURCE_BAR_HEIGHT = ns.POWER_BAR_HEIGHT or 10
     local bar = rawget(_G, "SuperSwingTimerPlayerPowerBar")
     if not bar then
         bar = CreateFrame("StatusBar", "SuperSwingTimerPlayerPowerBar", UIParent)
     end
     bar:SetStatusBarTexture(ns.GetBarTexture and ns.GetBarTexture() or "Interface\\TargetingFrame\\UI-StatusBar")
-    bar:SetSize((ns.mhBar and ns.mhBar:GetWidth()) or ns.BAR_WIDTH or 240, RESOURCE_BAR_HEIGHT)
+    -- Same width as every other swing bar; fixed 10px resource height
+    -- (global-scale aware, matching ns.ApplyBarSize's power-bar sizing).
+    bar:SetSize(
+        (ns.mhBar and ns.mhBar:GetWidth()) or ns.Scale(ns.BAR_WIDTH or 240),
+        ns.Scale(ns.POWER_BAR_HEIGHT or 10)
+    )
     bar:SetMinMaxValues(0, 100)
     bar:SetValue(0)
     bar:SetFrameStrata((ns.mhBar and ns.mhBar:GetFrameStrata()) or "MEDIUM")
@@ -1616,6 +1620,9 @@ local function SetupRetPaladin()
         UpdatePaladinSealVengeanceBar(false)
         -- Restack all visible debuff bars above MH dynamically
         RestackDebuffBars({ ns.paladinJudgementBar, ns.paladinSealVengeanceBar }, ns.mhBar)
+        if ns.UpdatePaladinPowerBar then
+            ns.UpdatePaladinPowerBar()
+        end
         -- Re-call buff icons so they use the restacked bar positions
         if ns.UpdatePaladinBuffIcons then ns.UpdatePaladinBuffIcons(elapsed) end
     end)
@@ -2908,10 +2915,20 @@ local function SetupWarrior()
         UpdateWarriorSunderArmorBar(false)
         -- Restack all visible debuff bars above MH dynamically
         RestackDebuffBars({ deepWoundsBar, sunderArmorBar, rendBar, thunderClapBar, demoShoutBar }, ns.mhBar)
+        if ns.UpdateWarriorRageBar then
+            ns.UpdateWarriorRageBar()
+        end
         if ns.UpdateWarriorBuffIcons then ns.UpdateWarriorBuffIcons(elapsed) end
     end)
 
-    if ns.UpdatePlayerPowerBar then ns.UpdatePlayerPowerBar() end
+    -- Warrior's own power-bar delegate (rage). Each class registers only its own
+    -- updater; it forwards to the shared canonical renderer.
+    ns.UpdateWarriorRageBar = function()
+        if ns.UpdatePlayerPowerBar then ns.UpdatePlayerPowerBar() end
+    end
+    if ns.UpdateWarriorRageBar then
+        ns.UpdateWarriorRageBar()
+    end
     ns.UpdateWarriorShieldBlockBar(0, true)
     if ns.UpdateWarriorShieldWallBar then ns.UpdateWarriorShieldWallBar() end
     if ns.UpdateWarriorLastStandBar then ns.UpdateWarriorLastStandBar() end
@@ -4361,6 +4378,9 @@ local function SetupEnhShaman()
         UpdateLightningShieldVisual()
         -- Restack all visible debuff bars above MH dynamically
         RestackDebuffBars({ flameShockBar }, ns.mhBar)
+        if ns.UpdateShamanPowerBar then
+            ns.UpdateShamanPowerBar()
+        end
         if ns.UpdateShamanBuffIcons then ns.UpdateShamanBuffIcons(elapsed) end
     end)
 
@@ -5328,6 +5348,9 @@ local function SetupDruid()
         UpdateDruidRakeBar(false)
         -- Restack all visible debuff bars above MH dynamically
         RestackDebuffBars({ mangleBar, ripBar, rakeBar }, ns.mhBar)
+        if ns.UpdateDruidPowerBar then
+            ns.UpdateDruidPowerBar()
+        end
         if ns.UpdateDruidBuffIcons then ns.UpdateDruidBuffIcons(elapsed) end
     end)
 
@@ -7103,6 +7126,9 @@ local function SetupHunter()
             RestackDebuffBars(
             { serpentStingBar, wingClipBar, concussionShotBar, immolationTrapBar, explosiveTrapBar, freezingTrapBar,
                 frostTrapBar }, GetDebuffAnchorBar())
+            if ns.UpdateHunterPowerBar then
+                ns.UpdateHunterPowerBar()
+            end
             if ns.UpdateHunterBuffIcons then ns.UpdateHunterBuffIcons(elapsed) end
         end)
         ns._hunterHookRegistered = true
@@ -8695,6 +8721,43 @@ end
 ns.UpdatePlayerPowerBar = UpdatePlayerPowerBar
 ns.UpdateWarriorRageBar = UpdatePlayerPowerBar -- backward-compatibility alias
 
+--- Re-anchor and re-size the player power bar so it is ALWAYS the very
+--  bottom bar of the class stack and matches the swing bars' width.
+--  Height is the fixed 10px resource-bar height (global-scale aware).
+--  Anchors beneath the bottom-most visible bar: Hunter cast bar for
+--  Hunters, OH bar when present otherwise MH bar for everyone else.
+--  Called on bar creation, equipment changes (OH appear/disappear),
+--  size changes, and position restores.
+--  @return (nil)
+function ns.UpdatePowerBarAnchor()
+    local bar = ns.playerPowerBar
+    if not bar then
+        return
+    end
+
+    local width = (ns.mhBar and ns.mhBar:GetWidth()) or ns.Scale(ns.BAR_WIDTH or 240)
+    local height = ns.Scale(ns.POWER_BAR_HEIGHT or 10)
+    if bar:GetWidth() ~= width or bar:GetHeight() ~= height then
+        bar:SetSize(width, height)
+    end
+
+    local anchor
+    if ns.playerClass == "HUNTER" then
+        anchor = (ns.hunterCastBar and ns.hunterCastBar:IsShown() and ns.hunterCastBar)
+            or (ns.rangedBar and ns.rangedBar:IsShown() and ns.rangedBar)
+            or ns.mhBar
+    else
+        anchor = (ns.ohBar and ns.ohBar:IsShown() and ns.ohBar) or ns.mhBar
+    end
+    if not anchor then
+        return
+    end
+
+    bar:ClearAllPoints()
+    bar:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", 0, -4)
+    bar:SetPoint("TOPRIGHT", anchor, "BOTTOMRIGHT", 0, -4)
+end
+
 -- ============================================================
 -- Dispatch: pick class mods for the current class
 -- ============================================================
@@ -8713,8 +8776,12 @@ function ns.InitClassMods()
     ns.IsHunterTargetInMeleeRange = nil
     ns.UpdateWarriorQueueTint = nil
     ns.ClearWarriorQueueTint = nil
-    ns.UpdatePlayerPowerBar = nil
-    ns.UpdateWarriorRageBar = nil
+    -- NOTE: ns.UpdatePlayerPowerBar / ns.UpdateWarriorRageBar are the SHARED
+    -- canonical power-bar updater (assigned at file scope). It is class-agnostic
+    -- and reads the live class/power type on every call, so it must NOT be
+    -- nil-cleared here. Every runtime call site is guarded with
+    -- `if ns.UpdatePlayerPowerBar then`, so clearing it permanently disabled
+    -- power-bar rendering for all classes.
     ns.UpdateRoguePowerBar = nil
     ns.UpdateDruidPowerBar = nil
     ns.UpdatePaladinPowerBar = nil
@@ -8856,32 +8923,20 @@ function ns.InitClassMods()
             ns.warriorRageBar = pBar
         end
 
-        -- Each class defines its own power bar updater in its own Setup*()
-        -- function. No if/else dispatcher needed — only the current class's
-        -- function exists at this point.
+        -- The power bar uses the shared canonical implementation
+        -- (ns.UpdatePlayerPowerBar, defined at file scope). It is class-agnostic
+        -- and reads the live class/power type on every call. Each class's own
+        -- Setup*() may wrap it in a per-class delegate (e.g.
+        -- ns.UpdateRoguePowerBar) that only exists for the loaded class.
 
         local prevOnBarsCreated = ns.OnBarsCreated
         ns.OnBarsCreated = function()
             if prevOnBarsCreated then prevOnBarsCreated() end
-            local bar = ns.playerPowerBar
-            if bar then
-                local anchor
-                if ns.playerClass == "HUNTER" then
-                    anchor = (ns.hunterCastBar and ns.hunterCastBar:IsShown() and ns.hunterCastBar)
-                        or (ns.rangedBar and ns.rangedBar:IsShown() and ns.rangedBar)
-                        or (ns.ohBar and ns.ohBar:IsShown() and ns.ohBar)
-                        or ns.mhBar
-                else
-                    anchor = (ns.ohBar and ns.ohBar:IsShown() and ns.ohBar) or ns.mhBar
-                end
-                if anchor then
-                    bar:ClearAllPoints()
-                    bar:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", 0, -4)
-                    bar:SetPoint("TOPRIGHT", anchor, "BOTTOMRIGHT", 0, -4)
-                end
-                if ns.UpdatePlayerPowerBar then
-                    ns.UpdatePlayerPowerBar()
-                end
+            if ns.UpdatePowerBarAnchor then
+                ns.UpdatePowerBarAnchor()
+            end
+            if ns.UpdatePlayerPowerBar then
+                ns.UpdatePlayerPowerBar()
             end
         end
 

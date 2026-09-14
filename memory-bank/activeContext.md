@@ -1,5 +1,19 @@
 # Active Context
 
+## Active Context Update (2026-09-14 - v0.2.3: Hunter cast bar overlay cleanup, clip zone color separation, migration v63)
+
+- **Focus**: Resolving Hunter visual defects, restoring clean dark cast bar background, separating Clip Zone ("red zone") color from Cast Bar, and updating version to `v0.2.3` with today's date `2026-09-14`.
+- **Hunter Cast Bar Background Fixed (`SuperSwingTimer_UI.lua`, `SuperSwingTimer_State.lua`)**: Removed `clipZoneOverlay` entirely from `hunterCastBar`. It had covered the entire bar with an opaque/tinted overlay that turned the background white during Auto Shot, Multi-Shot, and Steady Shot. Dark background is now fully preserved, and the fill uses `colors.hunterCastBar` exclusively.
+- **Hunter Clip Zone ("Red Zone") Color Independence (`SuperSwingTimer.lua`, `SuperSwingTimer_Constants.lua`, `SuperSwingTimer_Config.lua`)**:
+  - SavedVariables `autoShotUnsafe` had been corrupted to white `{ r = 1, g = 1, b = 1 }` due to `ColorPickerFrame` opening unseeded.
+  - Added DB Migration 63 to heal corrupted white `autoShotUnsafe` values back to red `{ r = 1, g = 0, b = 0, a = 0.4 }`.
+  - Added explicit `clipZone` / `clipSafe` settings and UI swatches ("Clip Zone" / "Clip Safe") separated from "Cast Bar".
+  - Hardened `OpenColorPicker` so `ColorPickerFrame:SetColorRGB()` and `ColorPickerFrame:SetColorAlpha()` are seeded before opening.
+- **Hunter Stored Cast Display**: Clears immediately at cast landing so the cycle tail transitions smoothly to Auto Shot.
+- **Hunter Melee Keep-Alive**: Requires `ns.IsHunterTargetInMeleeRange() == true` before keeping melee active.
+- **Power Bar Initialization & Anchoring**: Fixed shared power updater being cleared at init, added `ns.UpdateWarriorRageBar`, and anchored to bottom of stack via `ns.UpdatePowerBarAnchor()`.
+- **Version & Docs Sync**: Bumped `SuperSwingTimer.toc` to `v0.2.3`, `ns.DB_CURRENT_VERSION` to 63, updated `CHANGELOG.md` (clean `v0.2.3 - 2026-09-14` section with pristine historical `v0.2.2`), and synced `README.md` and `MEMORY.md`.
+
 ## Active Context Update (2026-07-15 - WoW API LuaLS diagnostics pass)
 
 - **WoW API Lua diagnostics are now active** in the editor (LuaLS + WoW API stubs). Ran `get_errors` across all Lua sources.

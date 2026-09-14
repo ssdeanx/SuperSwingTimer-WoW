@@ -1085,6 +1085,34 @@ local function MigrateDB(targetDb)
                 if not db.colors.druidManaBarColor then db.colors.druidManaBarColor = { r = 0.20, g = 0.45, b = 1.00, a = 0.85 } end
                 if not db.colors.paladinManaBarColor then db.colors.paladinManaBarColor = { r = 0.20, g = 0.45, b = 1.00, a = 0.85 } end
             end
+        },
+        {
+            version = 63,
+            apply = function (db)
+                db.colors = db.colors or {}
+                local unsafe = db.colors.autoShotUnsafe
+                if not unsafe or (unsafe.r == 1 and unsafe.g == 1 and unsafe.b == 1) then
+                    db.colors.autoShotUnsafe = { r = 1, g = 0, b = 0, a = 0.4 }
+                end
+                db.colors.clipZone = {
+                    r = db.colors.autoShotUnsafe.r,
+                    g = db.colors.autoShotUnsafe.g,
+                    b = db.colors.autoShotUnsafe.b,
+                    a = db.colors.autoShotUnsafe.a,
+                }
+                if not db.colors.autoShotSafe then
+                    db.colors.autoShotSafe = { r = 0.2, g = 0.78, b = 0.25, a = 0.4 }
+                end
+                db.colors.clipSafe = {
+                    r = db.colors.autoShotSafe.r,
+                    g = db.colors.autoShotSafe.g,
+                    b = db.colors.autoShotSafe.b,
+                    a = db.colors.autoShotSafe.a,
+                }
+                if not db.colors.hunterCastBar then
+                    db.colors.hunterCastBar = { r = 0.35, g = 0.65, b = 0.95, a = 1 }
+                end
+            end
         }
     }
 
@@ -1104,7 +1132,7 @@ end
 -- Highest migration version currently defined. Tests assert against this
 -- instead of a hard-coded number so they don't go stale when the
 -- migration ladder grows.
-ns.DB_CURRENT_VERSION = 62
+ns.DB_CURRENT_VERSION = 63
 
 -- ============================================================
 -- Initialization

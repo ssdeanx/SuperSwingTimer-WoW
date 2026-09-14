@@ -1,4 +1,10 @@
-# Visual Context - `/sst` Config UI
+# Visual Context - `/sst` Config UI & Bar Mini-Maps
+
+## Visual Context Update (2026-09-14 - Hunter Cast Bar 15px, Clip Zone Color Separation, Unified Power Bar 10px)
+
+- **Hunter Auto Shot Cast Bar**: Standardized at 15px height with an unobstructed dark status bar background (`clipZoneOverlay` removed).
+- **Independent Hunter Swatches in `/sst`**: Separated "Cast Bar" (`hunterCastBar`), "Clip Safe" (`autoShotSafe`), and "Clip Zone" (`autoShotUnsafe`).
+- **Unified Power Bar**: `SuperSwingTimerPlayerPowerBar` standardized at 10px height anchored beneath active swing bars across all physical classes.
 
 ## Visual Context Update (2026-05-31 - Druid quick-control correction)
 
@@ -112,4 +118,29 @@ Shaman: Flame Shock Bar                  Windfury ICD swatch
          |        OH BAR         |
          +-----------------------+
                                     dual-wield: height = MH + gap + OH
+```
+
+## Hunter dual-bar & cast bar mini-map
+
+```text
+         +---------------------------------------+
+         | [Clip Zone]      RANGED BAR           |   <- 15px weapon cycle
+         +---------------------------------------+   <- Clip Zone ("red zone") color
+         +---------------------------------------+
+         |   Auto Shot / Steady Shot (15px)      |   <- 15px Auto Shot Cast Bar
+         +---------------------------------------+   <- Dark status bar background
+                                                        Fill: hunterCastBar color
+```
+
+## Unified player power bar mini-map
+
+```text
+         +---------------------------------------+
+         |               MH BAR                  |
+         +---------------------------------------+
+         |               OH BAR                  |
+         +---------------------------------------+
+ [5308]  |   Power Bar (10px, Rage/Energy/Mana)  |   <- SuperSwingTimerPlayerPowerBar
+ Execute +---------------------------------------+   <- 10px standard height
+ (<=20%)                                                Red pulsing border glow
 ```

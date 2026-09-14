@@ -972,6 +972,8 @@ ns.DB_DEFAULTS = {
         hunterRangeOutOfRange = { r = 0.50, g = 0.50, b = 0.50, a = 1 },
         autoShotSafe = { r = 0.2, g = 0.78, b = 0.25, a = 0.4 },
         autoShotUnsafe = { r = 1, g = 0, b = 0, a = 0.4 },
+        clipZone = { r = 1, g = 0, b = 0, a = 0.4 },
+        clipSafe = { r = 0.2, g = 0.78, b = 0.25, a = 0.4 },
         enemy = { r = 1, g = 0, b = 0, a = 1 },
         rogueSinister = { r = 1, g = 0, b = 0, a = 0.35 },
         rogueEnergyTick = { r = 1.0, g = 0.82, b = 0.18, a = 1 },
@@ -1300,6 +1302,16 @@ function ns.GetBarColor(colorKey)
     local colors = db and db.colors
     if colors and colors[colorKey] then
         return colors[colorKey]
+    end
+
+    if colorKey == "clipZone" and colors and colors.autoShotUnsafe then
+        return colors.autoShotUnsafe
+    elseif colorKey == "autoShotUnsafe" and colors and colors.clipZone then
+        return colors.clipZone
+    elseif colorKey == "clipSafe" and colors and colors.autoShotSafe then
+        return colors.autoShotSafe
+    elseif colorKey == "autoShotSafe" and colors and colors.clipSafe then
+        return colors.clipSafe
     end
 
     return ns.DB_DEFAULTS.colors and ns.DB_DEFAULTS.colors[colorKey] or nil

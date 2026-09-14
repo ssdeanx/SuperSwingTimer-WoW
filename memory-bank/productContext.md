@@ -16,13 +16,16 @@ Players need an accurate swing timer that reflects melee and ranged cooldowns wh
 - Configurable textures and overlays so the addon can fit different UI setups.
 - Clear weave breakpoint feedback for Lightning Bolt, Chain Lightning, Healing Wave, Lesser Healing Wave, and Chain Heal.
 
-## Current user-reported issue
+## Current Focus & Value Areas
 
-The melee/weave visuals appear to become incorrect after a landed strike. The suspicion is that weave overlays or timing math are hiding the expected breakpoint markers or misrepresenting the swing position.
+- **Hunter Dual-Bar Engine**: Standardized 15px Auto Shot cast bar with an unobstructed dark status bar background, independent Clip Zone ("red zone") and Clip Safe colors separate from Cast Bar color, and immediate stored-cast clearing at cast landing.
+- **Unified Multi-Class Power Bar**: 10px resource tracking across all physical classes (Rage, Energy, Mana, and dynamic shapeshifting) with Warrior Execute range indicator.
+- **Timing Engine Precision**: Sub-millisecond swing and cast timing via `GetTimePreciseSec()` with `GetTime()` fallback to prevent timer drift during high-haste combat and weaving.
+- **Shaman Weaving Assist**: Dynamic breakpoint markers above and below the MH bar showing safe cast-by thresholds, scaling with haste, Maelstrom Weapon, and latency.
 
-## Desired behavior
+## Desired Behavior & Invariants
 
-- The MH bar should continue to animate normally after swings land.
-- Weave markers should sit above and below the MH bar as breakpoint indicators.
-- The breakpoint should show where a cast must begin to avoid clipping the next MH swing.
-- The assist should use latency-aware cast timing, not a static snapshot.
+- Hunter cast bar maintains a clean dark status bar background; color changes to the cast bar never alter the clip zone ("red zone") color on the ranged bar.
+- Hunter melee keep-alive verifies distance to prevent main-hand bar flash at cycle end.
+- Swing bars animate smoothly without stutter, jitter, or jump on haste changes (`RescaleTimer`).
+- Weave breakpoint markers and latency slices accurately reflect real-time network latency via `GetNetStats()`.

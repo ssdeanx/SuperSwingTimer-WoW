@@ -57,7 +57,13 @@ local function ShouldKeepHunterRangedTimerActive(now)
         return false
     end
 
-    if IsHunterMeleeActive() then
+    -- Only treat melee as authoritative while the target is ACTUALLY in melee
+    -- range. The MH timer state stays "swinging" for the rest of combat after
+    -- any melee swing, so keying off it alone reset the ranged timer at every
+    -- cycle end for hunters who meleed earlier in the fight — that reset
+    -- flashed the MH bar and made the ranged bar disappear/jump each cycle.
+    if IsHunterMeleeActive() and type(ns.IsHunterTargetInMeleeRange) == "function"
+        and ns.IsHunterTargetInMeleeRange() == true then
         return false
     end
 
@@ -842,7 +848,7 @@ local function ApplyHunterCastBarColor(spellId, remainingCastTime, now)
 
     -- Use the dedicated hunter cast bar color, not the ranged bar fill color
     -- This allows users to set the cast bar color independently from the ranged bar
-    local baseColor = (ns.GetBarColor and ns.GetBarColor("hunterCastBar")) or { r = 0, g = 0, b = 0, a = 1 }
+    local baseColor = (ns.GetBarColor and ns.GetBarColor("hunterCastBar")) or { r = 0.35, g = 0.65, b = 0.95, a = 1 }
     local alpha = baseColor.a ~= nil and baseColor.a or 1
     local clipSafe = nil
     if spellId and remainingCastTime and remainingCastTime > 0 then
@@ -860,19 +866,13 @@ local function ApplyHunterCastBarColor(spellId, remainingCastTime, now)
                 -- TBC hunter clip behavior for both spell types.
                 local gracePeriod = isMultiShot and 0 or (ns.STEADY_SHOT_GRACE or 0.5)
                 clipSafe = remainingCastTime <= math.max(timeUntilNextShot + gracePeriod - safetyBuffer, 0)
-                if clipSafe then
-                    local safeColor = GetAutoShotWindowColor("autoShotSafe", { r = 0.2, g = 0.78, b = 0.25, a = 0.4 })
-                    f:SetStatusBarColor(safeColor.r or 0.2, safeColor.g or 0.78, safeColor.b or 0.25, alpha)
-                else
-                    local unsafeColor = GetAutoShotWindowColor("autoShotUnsafe", { r = 1, g = 0, b = 0, a = 0.4 })
-                    f:SetStatusBarColor(unsafeColor.r or 1, unsafeColor.g or 0, unsafeColor.b or 0, alpha)
-                end
+                f:SetStatusBarColor(baseColor.r or 0.35, baseColor.g or 0.65, baseColor.b or 0.95, alpha)
                 return clipSafe
             end
         end
     end
 
-    f:SetStatusBarColor(baseColor.r or 0, baseColor.g or 0, baseColor.b or 0, alpha)
+    f:SetStatusBarColor(baseColor.r or 0.35, baseColor.g or 0.65, baseColor.b or 0.95, alpha)
     return clipSafe
 end
 
@@ -1060,17 +1060,8 @@ local function UpdateHunterCastBar()
     end
 
     if showAutoShotLabel then
-        -- Tint with safe/unsafe auto shot window coloring matching the ranged bar
-        local rangedWindowLead = GetRangedCastWindow()
-        local rangedTimer = ns.timers and ns.timers.ranged
-        local safeStop = rangedTimer and IsRangedCastWindowSafe(rangedTimer, rangedWindowLead) or false
-        if safeStop then
-            local safeColor = GetAutoShotWindowColor("autoShotSafe", { r = 0.2, g = 0.78, b = 0.25, a = 0.4 })
-            f:SetStatusBarColor(safeColor.r or 0.2, safeColor.g or 0.78, safeColor.b or 0.25, 1)
-        else
-            local unsafeColor = GetAutoShotWindowColor("autoShotUnsafe", { r = 1, g = 0, b = 0, a = 0.4 })
-            f:SetStatusBarColor(unsafeColor.r or 1, unsafeColor.g or 0, unsafeColor.b or 0, 1)
-        end
+        local baseColor = (ns.GetBarColor and ns.GetBarColor("hunterCastBar")) or { r = 0.35, g = 0.65, b = 0.95, a = 1 }
+        f:SetStatusBarColor(baseColor.r or 0.35, baseColor.g or 0.65, baseColor.b or 0.95, baseColor.a or 1)
     else
         ApplyHunterCastBarColor(spellId, (showActualCastLabel or showMultiShotLabel) and remainingTime or nil, now)
     end
@@ -1144,22 +1135,8 @@ function ns.RestoreAllBarPositions()
         ns.rogueSliceAndDiceBar:SetPoint("BOTTOMRIGHT", ns.mhBar, "TOPRIGHT", 0, 2)
     end
 
-    local powerBar = ns.playerPowerBar
-    if powerBar then
-        local anchor
-        if ns.playerClass == "HUNTER" then
-            anchor = (ns.hunterCastBar and ns.hunterCastBar:IsShown() and ns.hunterCastBar)
-                or (ns.rangedBar and ns.rangedBar:IsShown() and ns.rangedBar)
-                or (ns.ohBar and ns.ohBar:IsShown() and ns.ohBar)
-                or ns.mhBar
-        else
-            anchor = (ns.ohBar and ns.ohBar:IsShown() and ns.ohBar) or ns.mhBar
-        end
-        if anchor then
-            powerBar:ClearAllPoints()
-            powerBar:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", 0, -4)
-            powerBar:SetPoint("TOPRIGHT", anchor, "BOTTOMRIGHT", 0, -4)
-        end
+    if ns.UpdatePowerBarAnchor then
+        ns.UpdatePowerBarAnchor()
     end
 
     if ns.UpdateRogueEnergyTickVisual then
@@ -1632,22 +1609,8 @@ function ns.ApplyBarSize(width, height)
         ns.rogueSliceAndDiceBar:SetPoint("BOTTOMLEFT", ns.mhBar, "TOPLEFT", 0, 2)
         ns.rogueSliceAndDiceBar:SetPoint("BOTTOMRIGHT", ns.mhBar, "TOPRIGHT", 0, 2)
     end
-    local powerBar = ns.playerPowerBar
-    if powerBar then
-        local anchor
-        if ns.playerClass == "HUNTER" then
-            anchor = (ns.hunterCastBar and ns.hunterCastBar:IsShown() and ns.hunterCastBar)
-                or (ns.rangedBar and ns.rangedBar:IsShown() and ns.rangedBar)
-                or (ns.ohBar and ns.ohBar:IsShown() and ns.ohBar)
-                or ns.mhBar
-        else
-            anchor = (ns.ohBar and ns.ohBar:IsShown() and ns.ohBar) or ns.mhBar
-        end
-        if anchor then
-            powerBar:ClearAllPoints()
-            powerBar:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", 0, -4)
-            powerBar:SetPoint("TOPRIGHT", anchor, "BOTTOMRIGHT", 0, -4)
-        end
+    if ns.UpdatePowerBarAnchor then
+        ns.UpdatePowerBarAnchor()
     end
     ns.UpdateCastZoneVisual()
     if ns.UpdateRogueSinisterAssistVisual then
@@ -2781,6 +2744,11 @@ function ns.UpdateOHBar()
     elseif ns.ohBar then
         ns.ohBar:Hide()
         ns.ResetTimer("oh")
+    end
+    -- OH appearing/disappearing changes the bottom of the bar stack; keep
+    -- the power bar anchored as the very bottom bar.
+    if ns.UpdatePowerBarAnchor then
+        ns.UpdatePowerBarAnchor()
     end
     if ns.UpdateRogueEnergyTickVisual then
         ns.UpdateRogueEnergyTickVisual()

@@ -4,7 +4,44 @@
 > Sections: **Added** / **Changed** / **Fixed** / **Removed** / **Performance** / **Security** / **Docs** / **Internal** / **Notes**
 > DB schema migrations are listed under **Notes** per version.
 
+## v0.2.3 - 2026-09-14
+
+### Fixed
+
+- **Hunter Cast Bar Background Obscuration (`SuperSwingTimer_UI.lua`, `SuperSwingTimer_State.lua`)**:
+  - Removed `clipZoneOverlay` entirely from `hunterCastBar` and deleted `ShowHunterClipZone()` / `HideHunterClipZone()`.
+  - Restored the clean dark status bar background across Auto Shot, Multi-Shot, and Steady Shot windows; cast bar fill uses its independent `hunterCastBar` color (`0.35, 0.65, 0.95, 1.0`).
+- **Hunter Clip Zone ("Red Zone") Color Key & Migration 63 (`SuperSwingTimer.lua`, `SuperSwingTimer_Constants.lua`, `SuperSwingTimer_Config.lua`)**:
+  - Added SavedVariables DB Migration 63 to heal corrupted white `autoShotUnsafe` back to default red `{ r = 1, g = 0, b = 0, a = 0.4 }`.
+  - Added independent `clipZone` / `clipSafe` settings and UI swatches ("Clip Zone" / "Clip Safe") separated from "Cast Bar" in config, with bidirectional alias synchronization.
+  - Hardened `OpenColorPicker` to pre-seed `ColorPickerFrame:SetColorRGB()` and `ColorPickerFrame:SetColorAlpha()` before opening, preventing the color picker from defaulting to opaque white.
+
+### Changed
+
+- **Version Sync**: `SuperSwingTimer.toc` updated to `v0.2.3`.
+- **SavedVariables DB Migration v63 (`SuperSwingTimer.lua`)**:
+  - Bumped `ns.DB_CURRENT_VERSION` to 63.
+  - Heals corrupted white `autoShotUnsafe` color values, seeds `clipZone` and `clipSafe` aliases, and ensures `hunterCastBar` is populated.
+
 ## v0.2.2 - 2026-09-12
+
+### Recent Changes (2026-09-13)
+
+| Area | Change |
+| --- | --- |
+| Power bar — wiring | Shared updater is no longer cleared at init, and every class's own delegate now runs from its own OnUpdate hook (Warrior gained `ns.UpdateWarriorRageBar`) |
+| Power bar — stack position & size | New `ns.UpdatePowerBarAnchor()` keeps the resource bar as the bottom-most bar of the swing stack with the swing bars' width and its fixed 10px height (global-scale aware); runs on bar creation, equipment changes, size changes, and position restores |
+| Hunter cast display | Stored Steady Shot / Aimed Shot / Volley display clears at cast landing, so the end-of-cycle tail shows "Auto Shot" instead of a stale "Steady Shot" |
+| Hunter ranged keep-alive | Melee only counts as active while the target is actually in melee range — no more MH-bar flash or ranged-bar reset/jump after cycles for hunters who meleed earlier in the fight |
+| Hunter colors | The Cast Bar swatch always owns the cast-bar fill; Auto Shot Safe/Late now paint only the window zones (ranged bar end zone + cast-bar zone overlay) |
+
+### Fixed (2026-09-13 post-test pass)
+
+- **Power bar never rendered — shared updater deleted at init (`SuperSwingTimer_ClassMods.lua`)**: `InitClassMods()` nil-cleared `ns.UpdatePlayerPowerBar` / `ns.UpdateWarriorRageBar`, but those are the shared, class-agnostic implementations assigned at file scope — every per-class delegate (`ns.UpdateRoguePowerBar`, `ns.UpdatePaladinPowerBar`, `ns.UpdateShamanPowerBar`, `ns.UpdateDruidPowerBar`, `ns.UpdateHunterPowerBar` are thin wrappers that call through the shared one) and the Warrior event paths depend on them, and nothing re-assigned them. All guarded `if ns.UpdatePlayerPowerBar then` call sites became no-ops, so no class ever rendered its power bar. The shared names are no longer nil-cleared; the per-class delegate nil-clears remain (each class's own `Setup*()` re-registers only its own delegate — "each class loads only its own stuff"). Every class's own delegate is now also invoked from that class's own OnUpdate hook — Warrior gained its own `ns.UpdateWarriorRageBar` delegate for this — so the resource bar updates through the class-local wiring for all 6 classes.
+- **Power bar stack position and size (`SuperSwingTimer_ClassMods.lua` / `SuperSwingTimer_UI.lua`)**: new shared helper `ns.UpdatePowerBarAnchor()` keeps the resource bar re-anchored as the very bottom bar of the stack and re-sized to match the swing bars' width with its fixed 10px resource height (global-scale aware). It runs on bar creation, equipment changes, size changes, and position restores, and replaces three copies of the duplicated inline anchor/size blocks (init hook, `ApplyBarSize`, `RestoreAllBarPositions`).
+- **Hunter bar kept showing "Steady Shot" over the Auto Shot window (`SuperSwingTimer_State.lua`)**: `HandleSpellcastSucceeded` re-seeded the stored cast display for real casts and `GetHunterStoredCastDuration` forced the `GetSpellInfo` base cast time (1.5s), so after a hasted Steady/Aimed cast the stored display outlived the actual cast end and shadowed the Auto Shot hidden window. Real casts (Steady Shot / Aimed Shot / Volley) now clear the stored display at landing; instant Multi-Shot keeps its seeded short helper window.
+- **MH bar flash + ranged bar jump after each Auto Shot (`SuperSwingTimer_UI.lua`)**: `ShouldKeepHunterRangedTimerActive()` treated the stale MH timer state (stays `"swinging"` for the rest of combat after any melee swing) as active melee, so the ranged timer was hard-reset at each cycle end for hunters who meleed earlier — flashing the MH bar on and resetting/relatching the ranged bar until the next Auto Shot event arrived. The melee shortcut now applies only when the target is actually in melee range (`ns.IsHunterTargetInMeleeRange() == true`).
+- **Hunter cast bar color and ranged zone were the same setting (`SuperSwingTimer_UI.lua` / `SuperSwingTimer_Config.lua`)**: the Auto Shot Safe/Late colors repainted the ENTIRE cast bar fill during every cast and Auto Shot window (in addition to the ranged bar end zone), so "Cast Bar" appeared to do nothing and the window colors acted as the bar color. The cast bar fill now always uses the Cast Bar color and the safe/unsafe feedback is drawn as a `clipZoneOverlay` zone above the fill using the existing Auto Shot Safe/Late colors (same coverage as before). The ranged bar end zone is unchanged. No new settings, no DB migration, no version bump.
 
 ### Added
 
@@ -611,7 +648,7 @@
 - Fixed the shared spark drifting behind the visible fill by anchoring it from the actual rendered status-bar texture edge instead of only re-deriving it from the saved frame width.
 - Changed the stock spark width default to 3px and migrated older untouched 4px default installs down to the new width while preserving custom user sizes.
 - Synced the addon metadata and docs to the requested v0.0.4 release line.
-  
+
 ## 3.1.26 - 2026-05-05
 
 - Final release-prep session pass: re-audited the swing timer against current Classic/TBC API behavior and kept the live timer model on latency-adjusted `GetTimePreciseSec()` with `GetTime()` fallback, including priming the precise clock once before the first live timestamp.
@@ -626,7 +663,7 @@
 - Kept the bar-texture picker focused on bar media only: it now surfaces the guaranteed built-in Blizzard fallback textures plus all LibSharedMedia-registered statusbar entries from installed media packs such as SharedMedia-Blizzard, while leaving the spark and weave-spark pickers on the dedicated thumbnail-browser path.
 
 ## 3.1.18 - 2026-05-02
-  
+
 - Added next-melee-attack (NMA) queue tinting for Druid Maul. The Main Hand bar now turns yellow when Maul is queued, matching the Warrior Heroic Strike behavior.
 - Registered additional Maul spell IDs for TBC Classic Anniversary compatibility.
 - Wired Druid queue tint updates into the main UI loop and color restoration logic.

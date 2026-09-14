@@ -1381,7 +1381,19 @@ function ns.HandleSpellcastSucceeded(unit, castGUIDOrSpellName, spellId)
     elseif ns.playerClass == "HUNTER" and ns.IsHunterCastSpell and ns.IsHunterCastSpell(spellToken) then
         local isAutoShotSpell = ns.IsAutoShotSpell and ns.IsAutoShotSpell(spellToken)
         if not isAutoShotSpell then
-            SeedHunterStoredCastState(spellToken, ns.hunterCastStartTime or now, ns.hunterCastDuration)
+            if ns.IsHunterActualCastSpell and ns.IsHunterActualCastSpell(spellToken) then
+                -- Real cast (Steady Shot / Aimed Shot / Volley) landed: end the
+                -- stored display immediately. Re-seeding here kept the base cast
+                -- window (GetSpellInfo cast time, e.g. 1.5s for Steady Shot)
+                -- alive past the actual hasted cast end, so the bar kept showing
+                -- "Steady Shot" and shadowed the Auto Shot hidden window at the
+                -- end of the ranged cycle.
+                ClearHunterCastState()
+            else
+                -- Instant Multi-Shot: seed the short stored helper window (the
+                -- client does not expose live cast info for it).
+                SeedHunterStoredCastState(spellToken, ns.hunterCastStartTime or now, ns.hunterCastDuration)
+            end
         end
     elseif ns.RESET_SWING_SPELLS
         and (ns.RESET_SWING_SPELLS[spellToken] or (spellIdNumber and ns.RESET_SWING_SPELLS[spellIdNumber])) then

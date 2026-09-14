@@ -1,5 +1,23 @@
 # Progress
 
+## Progress Update (2026-09-14 - v0.2.3: Hunter cast bar overlay cleanup, clip zone color separation, migration v63)
+
+- **Hunter Cast Bar Background Fixed (`SuperSwingTimer_UI.lua`, `SuperSwingTimer_State.lua`)**:
+  - Removed `clipZoneOverlay` entirely from `hunterCastBar` and deleted `ShowHunterClipZone()` / `HideHunterClipZone()`.
+  - Cast bar now maintains its clean dark background and renders using its independent `hunterCastBar` fill color (`0.35, 0.65, 0.95, 1.0`).
+- **Hunter Clip Zone ("Red Zone") Color Independence & Migration 63 (`SuperSwingTimer.lua`, `SuperSwingTimer_Constants.lua`, `SuperSwingTimer_Config.lua`)**:
+  - Repaired corrupted white `autoShotUnsafe` setting in SavedVariables by introducing DB Migration 63, which heals white values back to default red `{ r = 1, g = 0, b = 0, a = 0.4 }`.
+  - Hardened `OpenColorPicker` to seed `ColorPickerFrame:SetColorRGB()` and `ColorPickerFrame:SetColorAlpha()` before opening, preventing the color picker from defaulting to opaque white.
+  - Added dedicated `clipZone` / `clipSafe` settings and synchronized them with `autoShotUnsafe` / `autoShotSafe`, providing distinct configuration for the ranged bar clip zone and the cast bar.
+- **Hunter Stored Cast Display Handoff (`SuperSwingTimer_State.lua`)**:
+  - Cleared stored cast display immediately upon cast landing for real casts (Steady Shot, Aimed Shot, Volley) so the trailing cycle displays Auto Shot cleanly instead of a stale cast name.
+- **Hunter Melee Keep-Alive Distance Gating (`SuperSwingTimer_UI.lua`)**:
+  - `ShouldKeepHunterRangedTimerActive()` now checks `ns.IsHunterTargetInMeleeRange()`, preventing main-hand bar flash and ranged-timer resets at cycle end when the hunter meleed earlier in combat.
+- **Power Bar Initialization & Anchoring (`SuperSwingTimer_ClassMods.lua`, `SuperSwingTimer_UI.lua`)**:
+  - Preserved shared power updater function during initialization and added dedicated `ns.UpdateWarriorRageBar` delegate.
+  - Standardized bottom-stack anchoring via `ns.UpdatePowerBarAnchor()` across all classes.
+- **Version Sync**: `SuperSwingTimer.toc` updated to `v0.2.3`, `ns.DB_CURRENT_VERSION` to 63, and `CHANGELOG.md` updated with `## v0.2.3 - 2026-09-14` while preserving `## v0.2.2 - 2026-09-12` intact.
+
 ## Progress Update (2026-09-12 - v0.2.2: Multi-class power bars, Hunter cast bar 15px, CurseForge fixes, debuff icon alignment)
 
 - **Unified Multi-Class Power Bar**:

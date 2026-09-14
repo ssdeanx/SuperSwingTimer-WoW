@@ -11,11 +11,12 @@
 ## 2. Sequential Migration Pipeline (`ns.DB_MIGRATIONS`)
 
 - Located in `SuperSwingTimer.lua`.
-- Tracked via `ns.DB_CURRENT_VERSION` (currently **62**).
+- Tracked via `ns.DB_CURRENT_VERSION` (currently **63**).
 - When a user logs in with an older schema version, migrations run sequentially from `db.version + 1` up to `ns.DB_CURRENT_VERSION`:
   - Ensures seamless upgrades without resetting player configurations.
   - Seeds missing color swatches, new bar toggles, or standardized dimensions.
   - Migration **v62**: Seeds `showPowerBar`, default Hunter cast bar height (15px), and per-class resource bar colors.
+  - Migration **v63**: Repairs corrupted white `autoShotUnsafe` back to red, synchronizes `clipZone`/`clipSafe` color aliases, and guarantees independent Hunter Cast Bar color.
 
 ## 3. Options Panel Architecture (`SuperSwingTimer_Config.lua`)
 

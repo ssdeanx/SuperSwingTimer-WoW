@@ -27,3 +27,9 @@ alwaysApply: false
    - Weave spark overlay must live in a dedicated overlay frame at `FrameLevel + 6`.
    - Active only while casting (`isCasting == true`).
    - Color is Shaman class color when safe, bright red when clipped.
+
+5. **Hunter Cast Bar & Clip Zone Standards**:
+   - Standard height is 15px (`ns.HUNTER_CAST_BAR_HEIGHT = 15`).
+   - Cast bar background must remain an unobstructed dark status bar; never overlay full-bar tinted textures. Fills cleanly using `colors.hunterCastBar`.
+   - Clip Zone ("red zone") color (`clipZone`/`autoShotUnsafe`) and Clip Safe color (`clipSafe`/`autoShotSafe`) must remain independently configurable from Cast Bar color.
+   - Pre-seed `ColorPickerFrame:SetColorRGB()` and `ColorPickerFrame:SetColorAlpha()` before showing `ColorPickerFrame`.
