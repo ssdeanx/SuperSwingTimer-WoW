@@ -563,23 +563,6 @@ local function BuildDisplayInfo(spellInfo)
 		sparkFraction = ClampFraction(liveStartFraction + ((projectedImpactFraction - liveStartFraction) * castProgress))
 	end
 
-	local spellLabel = spellInfo.spellName or spellInfo.abbrev or "Weave"
-	local text
-
-	if isCasting then
-		if clipAmount > 0 then
-			text = string.format("%s clip %.1fs", spellLabel, clipAmount)
-		else
-			text = string.format("%s safe", spellLabel)
-		end
-	else
-		if safe then
-			text = string.format("%s start in %.1fs", spellLabel, safeStartIn)
-		else
-			text = string.format("%s clip %.1fs", spellLabel, -safeStartIn)
-		end
-	end
-
 	local color = GetSpellFamilyColor(spellInfo, safe)
 
 	-- Spark color: Shaman class color if cast before breakpoint (safe, won't clip),
@@ -612,7 +595,6 @@ local function BuildDisplayInfo(spellInfo)
 		castStartSwingFraction = castStartSwingFraction,
 		projectedImpactFraction = projectedImpactFraction,
 		sparkFraction = sparkFraction,
-		text = text,
 		color = color,
 		sparkColor = sparkColor,
 	}
@@ -621,7 +603,7 @@ end
 --- Get the current weave display info for Shaman class.
 --  Returns nil for non-Shaman or when weave assist is disabled.
 --  @return (table|nil) Display info with cast time, safe start, clip amount,
---          spark fraction, colors, and text, or nil if unavailable
+--          spark fraction, and colors, or nil if unavailable
 --  @see BuildDisplayInfo
 function ns.GetWeaveDisplayInfo()
 	if ns.playerClass ~= "SHAMAN" then

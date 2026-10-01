@@ -278,6 +278,17 @@ function ns.HasActiveTimers()
                 return true
             end
         end
+        -- Rogue energy tick sweeps on a continuous 2.0s cycle and Slice and Dice
+        -- on aura expiry, so both need the update loop alive even when no swing
+        -- timer, cast, or buff icon is running.
+        if ns.playerClass == "ROGUE" then
+            if db and db.showRogueEnergyTick ~= false then
+                return true
+            end
+            if db and db.showRogueSliceAndDice ~= false then
+                return true
+            end
+        end
     end
 
     if ns.channeling then

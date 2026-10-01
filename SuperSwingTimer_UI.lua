@@ -2056,6 +2056,22 @@ local function CreateGcdTickerBar()
 end
 
 local function UpdateGcdTicker(elapsed)
+    -- Expire the GCD-active flag before any visibility early-return below.
+    -- ns.HasActiveTimers keys the update loop on ns.gcdActive, so if the flag is
+    -- only cleared when the ticker is actually rendering, the OnUpdate script
+    -- stays attached for the rest of the session for Hunters (no ticker bar at
+    -- all) and for anyone who disables the ticker or uses minimal mode.
+    local now = ns.GetAlignedTime()
+    local gcdStart = ns.lastGcdTime
+    if ns.gcdActive and gcdStart and (now - gcdStart) >= (ns.gcdDuration or 1.5) then
+        ns.gcdActive = false
+        -- Edge-only: guarded on gcdActive being true and cleared before the
+        -- call, so this fires once per GCD rather than on every frame.
+        if ns.RefreshUpdateLoop then
+            ns.RefreshUpdateLoop()
+        end
+    end
+
     local f = ns.gcdTickerBar
     if not f then return end
     local db = SuperSwingTimerDB or ns.DB_DEFAULTS
@@ -2064,12 +2080,7 @@ local function UpdateGcdTicker(elapsed)
         f:Hide()
         return
     end
-    local now = ns.GetAlignedTime()
-    local gcdStart = ns.lastGcdTime
     if not gcdStart or not ns.gcdActive or (now - gcdStart) >= (ns.gcdDuration or 1.5) then
-        if gcdStart and (now - gcdStart) >= (ns.gcdDuration or 1.5) then
-            ns.gcdActive = false
-        end
         f:SetAlpha(0)
         f:Hide()
         return
@@ -2655,8 +2666,11 @@ end
 --  @see ns.RegisterOnUpdateHook
 --  @see ns.OnUpdateHooks
 function ns.OnUpdate(elapsed)
-    for i = 1, #ns.OnUpdateHooks do
-        ns.OnUpdateHooks[i](elapsed)
+    local hooks = ns.OnUpdateHooks
+    local n = #hooks
+    for i = 1, n do
+        local hook = hooks[i]
+        if hook then hook(elapsed) end
     end
 end
 

@@ -8,6 +8,11 @@
 local startTime = os.clock and os.clock() or 0
 local unpack = rawget(_G, "unpack") or rawget(table, "unpack")
 
+-- The single shared addon namespace table. Declared here (and assigned in
+-- section 3) so the per-test isolation helpers defined in section 2 can close
+-- over it.
+local ns
+
 -- ANSI color codes (disabled if NO_COLOR is set)
 local useColor = not os.getenv("NO_COLOR")
 local function color(code, text)
@@ -17,6 +22,7 @@ end
 local function green(t) return color("32", t) end
 local function red(t) return color("31", t) end
 local function cyan(t) return color("36", t) end
+local function yellow(t) return color("33", t) end
 local function bold(t) return color("1", t) end
 
 print(bold(cyan("============================================================")))
@@ -29,6 +35,11 @@ print(bold(cyan("============================================================"))
 local nowSec = 1000.0
 _G.GetTime = function() return nowSec end
 _G.GetTimePreciseSec = function() return nowSec end
+-- Deterministic clock control for tests: SetMockTime / AdvanceMockTime move the
+-- same nowSec the WoW API mocks read. No sleeps, no os.clock in test bodies.
+_G.SetMockTime = function(t) nowSec = t end
+_G.AdvanceMockTime = function(dt) nowSec = nowSec + dt return nowSec end
+_G.GetMockTime = function() return nowSec end
 _G.UnitClass = function(u) return "Hunter", "HUNTER" end
 _G.UnitName = function(u) return "Player" end
 _G.UnitGUID = function(u) return "Player-001" end
@@ -171,6 +182,124 @@ _G.UIParent = createMockObject()
 -- ============================================================
 -- 2. Mock WoWUnit Framework Implementation
 -- ============================================================
+-- Two integrity guarantees this mock provides, because a silently-green
+-- suite is worse than a red one:
+--   (a) No silent test loss. Non-function assignments to a group used to be
+--       dropped with no error, so a typo'd `function X:Foo()`-style mistake
+--       (or assigning a non-function) vanished and the suite stayed green.
+--       Every assignment to a group is now counted; function-valued ones are
+--       collected, and any gap is reported and fails the run.
+--   (b) Per-test isolation. All groups share one global `ns`, so a test that
+--       mutates ns.gcdActive / ns.timers / SuperSwingTimerDB leaks into every
+--       later test. The scalars below are snapshotted before each test body and
+--       restored after. Frames, the OnUpdate hook registry and the rest of the
+--       addon namespace are deliberately NOT touched: those are genuine
+--       cross-file state, not per-test scratch.
+-- ============================================================
+
+-- ns scalar fields snapshotted/restored around every test. Keep this list in
+-- sync with the fields the regression tests mutate.
+local ISOLATED_NS_FIELDS = {
+    "gcdActive",
+    "lastGcdTime",
+    "gcdDuration",
+    "gcdTickerBar",
+    "timers",
+    "casting",
+    "channeling",
+    "playerInCombat",
+    "playerClass",
+    "activeBuffIconCount",
+    "hunterCastActive",
+    "hunterCastSpellId",
+    "hunterCastStartTime",
+    "hunterCastDuration",
+    "currentCastSpellId",
+    "maelstromCastTimeMultiplier",
+    "RefreshUpdateLoop",
+    "lastSpellCastStart",
+}
+
+-- Recursive copy used for the state snapshot. Depth-bounded so a cyclic
+-- SavedVariables graph can't hang the harness; values are plain config data.
+local function deepCopy(value, depth)
+    if type(value) ~= "table" or (depth or 0) > 6 then
+        return value
+    end
+    local out = {}
+    for k, v in pairs(value) do
+        out[deepCopy(k, (depth or 0) + 1)] = deepCopy(v, (depth or 0) + 1)
+    end
+    return setmetatable(out, getmetatable(value))
+end
+
+-- Restores a table's contents IN PLACE (same identity) from a snapshot copy.
+-- In-place matters: addon closures may hold a reference to the live
+-- SuperSwingTimerDB / ns.timers table, so replacing the table object would
+-- desync them.
+local function restoreInPlace(live, snap)
+    if type(live) ~= "table" or type(snap) ~= "table" then
+        return
+    end
+    for k in pairs(live) do
+        if snap[k] == nil then
+            live[k] = nil
+        end
+    end
+    for k, v in pairs(snap) do
+        if type(v) == "table" and type(live[k]) == "table" then
+            restoreInPlace(live[k], v)
+        else
+            live[k] = deepCopy(v, 1)
+        end
+    end
+end
+
+local function takeStateSnapshot()
+    -- nowSec is snapshotted too: a test that advances the mocked clock must not
+    -- shift the baseline for every test after it.
+    local snap = { ns = {}, db = nil, dbExisted = SuperSwingTimerDB ~= nil, nowSec = nowSec }
+    for _, key in ipairs(ISOLATED_NS_FIELDS) do
+        snap.ns[key] = { present = ns[key] ~= nil, value = deepCopy(ns[key], 0) }
+    end
+    if SuperSwingTimerDB ~= nil then
+        snap.db = deepCopy(SuperSwingTimerDB, 0)
+    end
+    return snap
+end
+
+local function restoreStateSnapshot(snap)
+    for _, key in ipairs(ISOLATED_NS_FIELDS) do
+        local entry = snap.ns[key]
+        if entry.present then
+            if type(ns[key]) == "table" and type(entry.value) == "table" then
+                restoreInPlace(ns[key], entry.value)
+            else
+                ns[key] = entry.value
+            end
+        else
+            ns[key] = nil
+        end
+    end
+    if snap.db ~= nil then
+        if type(SuperSwingTimerDB) == "table" then
+            restoreInPlace(SuperSwingTimerDB, snap.db)
+        else
+            SuperSwingTimerDB = snap.db
+        end
+    elseif not snap.dbExisted then
+        SuperSwingTimerDB = nil
+    end
+    nowSec = snap.nowSec
+end
+
+-- Assertion bookkeeping: lets the runner flag a test that executed without
+-- ever asserting anything, which is how a no-op test body hides a regression.
+local assertionCount = 0
+local function countAssertion()
+    assertionCount = assertionCount + 1
+end
+
 local WoWUnitMock = {
     children = {},
     _replaces = {},
@@ -179,10 +308,19 @@ local WoWUnitMock = {
 setmetatable(WoWUnitMock, {
     __call = function(self, name, event)
         local group = { name = name, event = event, tests = {} }
+        -- Integrity counters for this group. See the note at the top of this
+        -- section: `assigned` counts every write to the group table, while
+        -- `tests` holds only the function-valued ones. A divergence means a
+        -- test was silently dropped.
+        local assigned, collected, dropped = 0, 0, {}
         setmetatable(group, {
             __newindex = function(t, k, v)
+                assigned = assigned + 1
                 if type(v) == "function" then
                     table.insert(t.tests, { name = k, fn = v })
+                    collected = collected + 1
+                else
+                    dropped[#dropped + 1] = string.format("%s=%s", tostring(k), type(v))
                 end
                 rawset(t, k, v)
             end,
@@ -190,16 +328,33 @@ setmetatable(WoWUnitMock, {
                 local gPass, gFail = 0, 0
                 io.write(cyan(string.format("  [%s]\n", t.name)))
                 for _, test in ipairs(t.tests) do
+                    local snap = takeStateSnapshot()
+                    assertionCount = 0
                     local ok, err = pcall(test.fn, t)
+                    local errText = ok and nil or tostring(err)
+                    -- Isolation runs even when the body failed, so a failing
+                    -- test cannot leave state behind for the next one.
+                    local rok, rerr = pcall(restoreStateSnapshot, snap)
+                    if ok and not rok then
+                        ok, errText = false, "state restore failed: " .. tostring(rerr)
+                    end
                     if ok then
                         gPass = gPass + 1
-                        io.write(string.format("    %s %s\n", green("✓"), test.name))
+                        local tag = (assertionCount == 0) and yellow("  (no assertions)") or ""
+                        io.write(string.format("    %s %s%s\n", green("✓"), test.name, tag))
                     else
                         gFail = gFail + 1
                         io.write(string.format("    %s %s\n", red("✗"), test.name))
-                        io.write(string.format("      %s\n", red(tostring(err))))
+                        io.write(string.format("      %s\n", red(errText)))
                     end
                 end
+                -- rawset, not `group.x =`: the harness's own bookkeeping must
+                -- not register as a dropped assignment on the group.
+                rawset(group, "_integrity", {
+                    assigned = assigned,
+                    collected = #t.tests,
+                    dropped = dropped,
+                })
                 return gPass, gFail
             end,
         })
@@ -209,18 +364,22 @@ setmetatable(WoWUnitMock, {
 })
 
 function WoWUnitMock.IsTrue(cond, msg)
+    countAssertion()
     assert(cond, msg or "Expected true, got " .. tostring(cond))
 end
 
 function WoWUnitMock.IsFalse(cond, msg)
+    countAssertion()
     assert(not cond, msg or "Expected false, got " .. tostring(cond))
 end
 
 function WoWUnitMock.Exists(val, msg)
+    countAssertion()
     assert(val ~= nil, msg or "Expected non-nil value")
 end
 
 function WoWUnitMock.AreEqual(a, b, msg)
+    countAssertion()
     assert(a == b, (msg and (msg .. ": ") or "") .. string.format("expected '%s', got '%s'", tostring(b), tostring(a)))
 end
 
@@ -247,7 +406,7 @@ _G.WoWUnit = WoWUnitMock
 -- ============================================================
 -- 3. Load Addon Files in TOC Order
 -- ============================================================
-local ns = {}
+ns = {}
 local files = {
     "SuperSwingTimer_Constants.lua",
     "Media/SuperSwingTimer_Media.lua",
@@ -298,11 +457,29 @@ end
 print(string.format("\nDiscovered %d test groups. Executing...\n", #WoWUnitMock.children))
 
 local totalPass, totalFail = 0, 0
+local integrityProblems = 0
+print(bold(cyan("\n--- test collection integrity ---")))
 for _, group in ipairs(WoWUnitMock.children) do
     if group.name and group.name:match("^SST%-") then
         local p, f = group()
         totalPass = totalPass + p
         totalFail = totalFail + f
+        -- Every function-valued assignment to a group must have been collected
+        -- as a runnable test. A dropped entry means a test silently vanished.
+        local info = group._integrity or {}
+        local droppedList = info.dropped or {}
+        if (info.assigned or 0) > 0 and (info.collected or 0) == 0 then
+            integrityProblems = integrityProblems + 1
+            io.write(string.format("    %s %s: %d assignment(s), 0 tests collected -- group ran nothing\n",
+                red("✗"), group.name, info.assigned or 0))
+        elseif #droppedList > 0 then
+            integrityProblems = integrityProblems + 1
+            io.write(string.format("    %s %s: %d assignment(s), %d test(s) collected; dropped non-function assignment(s): %s\n",
+                red("✗"), group.name, info.assigned or 0, info.collected or 0, table.concat(droppedList, ", ")))
+        else
+            io.write(string.format("    %s %s: %d/%d assignments collected as tests\n",
+                green("✓"), group.name, info.collected or 0, info.assigned or 0))
+        end
     end
 end
 
@@ -315,9 +492,12 @@ print(bold(string.format("RESULTS: %d Total | %s Passed | %s Failed (%.3fs)",
     (totalFail > 0 and red(tostring(totalFail)) or green("0")),
     elapsed
 )))
+if integrityProblems > 0 then
+    print(bold(red(string.format("INTEGRITY: %d test-collection problem(s) -- tests were dropped, not run.", integrityProblems))))
+end
 print(bold(cyan("============================================================")))
 
-if totalFail > 0 then
+if totalFail > 0 or integrityProblems > 0 then
     print(bold(red("\nTEST SUITE FAILED!\n")))
     os.exit(1)
 else

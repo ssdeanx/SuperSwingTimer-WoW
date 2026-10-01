@@ -28,6 +28,18 @@ local WARRIOR_CLEAVE_TINT = { r = 0.20, g = 0.80, b = 0.25 }
 local DRUID_MAUL_TINT = { r = 1.0, g = 0.78, b = 0.10 }
 local HUNTER_RAPTOR_TINT = { r = 1.0, g = 0.92, b = 0.20 }
 
+-- Classes that get the shared power/resource bar. ns.POWER_CLASSES (State.lua,
+-- loaded before this file) is the canonical list and is read once here instead
+-- of rebuilding the lookup table on every ns.UpdatePlayerPowerBar() call. The
+-- literal is a load-order fallback only.
+local POWER_BAR_CLASSES = ns.POWER_CLASSES
+    or { WARRIOR = true, SHAMAN = true, ROGUE = true, HUNTER = true, DRUID = true, PALADIN = true }
+
+-- Liveness flag for the Shaman OnUpdate hook. The hook is registered before
+-- SetupEnhShaman's failure-prone init runs, and hooks cannot be unregistered,
+-- so it must be able to neutralise itself if setup later aborts.
+ns._shamanHookLive = false
+
 -- Shared font resolver for class mods (supports localized STANDARD_TEXT_FONT)
 local function GetFontPath()
     return (ns.GetDefaultFont and ns.GetDefaultFont()) or rawget(_G, "STANDARD_TEXT_FONT") or "Fonts\\FRIZQT__.TTF"
@@ -90,6 +102,13 @@ local function ComputeBuffIconOffset(barList, referenceBar, gap)
     return BUFF_ICON_BASE_OFFSET
 end
 
+-- Fallback walk bound for RestackDebuffBars when a caller omits barCount.
+-- The longest list in this file is the Hunter's 7, so 8 leaves headroom.
+-- The walk must be bounded rather than ipairs-based: a bar whose config toggle
+-- is off is never created by its Ensure helper, so its slot legitimately holds
+-- nil, and ipairs would stop the walk there and leave every later bar unstacked.
+local MAX_RESTACK_BARS = 8
+
 -- Universal debuff bar restacker: positions visible bars in order above referenceBar.
 -- Accepts an ordered table of bar references (bottom to top stacking order).
 -- Removes old anchor points and re-stacks with (gap)px spacing between bars.
@@ -99,7 +118,11 @@ end
 -- Returns currentY (the total stack span above referenceBar).
 -- referenceBar = the main bar to stack above (typically ns.mhBar)
 -- gap = pixels between stacked bars and above the top bar (default 2)
-local function RestackDebuffBars(barList, referenceBar, gap)
+-- barCount = number of slots in barList. Pass it explicitly at every call site:
+--   the list is walked by index so a nil slot (a bar whose toggle is off, hence
+--   never created) is skipped instead of ending the walk. Omitting it falls back
+--   to a bounded walk of MAX_RESTACK_BARS, which is safe but slightly less clear.
+local function RestackDebuffBars(barList, referenceBar, gap, barCount)
     if not referenceBar then
         _debuffStackIconOffset = nil
         return 2
@@ -114,13 +137,30 @@ local function RestackDebuffBars(barList, referenceBar, gap)
     -- Track the highest bar's top offset (most positive) for icon placement.
     -- Bars extend upward from their bottom (WoW Y+up: SetPoint positive = UP).
     local highestBarTop = nil
-    for _, bar in ipairs(barList) do
+    local lastIndex = MAX_RESTACK_BARS
+    if type(barCount) == "number" and barCount > 0 then
+        lastIndex = barCount
+    end
+    for i = 1, lastIndex do
+        local bar = barList[i]
         if bar and bar.IsShown and bar:IsShown() then
             local h = (bar.GetHeight and bar:GetHeight()) or 6
             if type(h) ~= "number" then h = 6 end
-            bar:ClearAllPoints()
-            bar:SetPoint("BOTTOMLEFT", referenceBar, "TOPLEFT", 0, currentY)
-            bar:SetPoint("BOTTOMRIGHT", referenceBar, "TOPRIGHT", 0, currentY)
+            -- Anchor writes are the most expensive UI calls here (ClearAllPoints
+            -- invalidates WoW's anchor cache and forces a layout pass), so only
+            -- re-issue them when the computed target actually moved. The cache is
+            -- self-invalidating: currentY is derived from the gap plus the height
+            -- and shown-state of every preceding bar, so a resize, a show/hide,
+            -- a gap change or a different reference bar all miss it on their own.
+            local lastY = bar._lastRestackY
+            local lastRef = bar._lastRestackRef
+            if lastY ~= currentY or lastRef ~= referenceBar then
+                bar:ClearAllPoints()
+                bar:SetPoint("BOTTOMLEFT", referenceBar, "TOPLEFT", 0, currentY)
+                bar:SetPoint("BOTTOMRIGHT", referenceBar, "TOPRIGHT", 0, currentY)
+                bar._lastRestackY = currentY
+                bar._lastRestackRef = referenceBar
+            end
             -- Bar top = currentY + h (WoW Y+up coords)
             local barTop = currentY + h
             if highestBarTop == nil or barTop > highestBarTop then
@@ -488,6 +528,17 @@ local function SetupRetPaladin()
 
     local PALADIN_TWIST_WINDOW = 0.4 -- seconds before swing landing for the seal twist window
 
+    -- Hoisted debuff-bar list. RestackDebuffBars() is called every frame and a
+    -- fresh literal there is a per-frame table allocation; re-writing the slots of
+    -- this pre-allocated table is a few field writes and no allocation. The slots
+    -- are refreshed EVERY frame, never latched: the bars are created lazily by
+    -- their Ensure* helpers behind their config toggles, so a bar can appear (or
+    -- vanish) long after the first frame and the list must not go stale.
+    -- The slot count is stated once here and passed to every RestackDebuffBars
+    -- call for this class, so a nil slot is skipped rather than truncating the walk.
+    local PALADIN_RESTACK_COUNT = 2
+    local paladinRestackBars = {}
+
     local function GetPerSealColor(familyKey)
         if not familyKey or not SuperSwingTimerDB or not SuperSwingTimerDB.colors then
             return nil
@@ -803,10 +854,21 @@ local function SetupRetPaladin()
     end
 
     local PALADIN_LIBRAM_SWAP_DURATION = 1.5
-    local function UpdatePaladinLibramSwapBadge()
+    local PALADIN_LIBRAM_BADGE_INTERVAL = 0.15
+    local nextPaladinLibramBadgeAt = 0
+    local function UpdatePaladinLibramSwapBadge(force)
         if not ns.mhBar then
             return
         end
+
+        -- Throttled to the same 0.15s cadence as the buff-icon updaters: this
+        -- runs from the paladin OnUpdate hook every frame and the body calls
+        -- GetInventoryItemID("player", 18) on every pass.
+        local now = GetCurrentTime()
+        if not force and now < nextPaladinLibramBadgeAt then
+            return
+        end
+        nextPaladinLibramBadgeAt = now + PALADIN_LIBRAM_BADGE_INTERVAL
 
         local libramText = ns.mhBar.paladinLibramText
         if not libramText then
@@ -850,21 +912,6 @@ local function SetupRetPaladin()
         end
         ns.paladinLibramSwapStartTime = GetCurrentTime()
         ns.paladinLibramLastItemId = GetInventoryItemID and GetInventoryItemID("player", 18) or nil
-    end
-
-    -- Twist success detection
-    local function CheckTwistSuccess()
-        if ns.playerClass ~= "PALADIN" then
-            return
-        end
-        if SuperSwingTimerDB and SuperSwingTimerDB.showPaladinTwistFlash == false then
-            return
-        end
-
-        -- On each swing landed, check if we successfully twisted
-        -- We track the previous seal family when a swing completes
-        -- If the seal changed during the swing, and both are twist families, it's a success
-        -- For now this is a read-only detection that stores the result for visual feedback
     end
 
     -- Expose the seal breakpoint-line update so ApplyBarColors (UI.lua) can call it
@@ -927,7 +974,6 @@ local function SetupRetPaladin()
             UpdateJudgementMarker()
             UpdateReckoningBadge()
             UpdatePaladinLibramSwapBadge()
-            CheckTwistSuccess()
             if ns.UpdatePaladinBuffIcons then
                 ns.UpdatePaladinBuffIcons(elapsed)
             end
@@ -937,7 +983,7 @@ local function SetupRetPaladin()
         UpdateSealBreakpointLine()
         UpdateJudgementMarker()
         UpdateReckoningBadge()
-        UpdatePaladinLibramSwapBadge()
+        UpdatePaladinLibramSwapBadge(true)
     end
 
     -- Register a handler for when a melee swing lands, used to detect seal twists.
@@ -1621,7 +1667,9 @@ local function SetupRetPaladin()
     ns.RegisterOnUpdateHook(function(elapsed)
         UpdatePaladinSealVengeanceBar(false)
         -- Restack all visible debuff bars above MH dynamically
-        RestackDebuffBars({ ns.paladinJudgementBar, ns.paladinSealVengeanceBar }, ns.mhBar)
+        paladinRestackBars[1] = ns.paladinJudgementBar
+        paladinRestackBars[2] = ns.paladinSealVengeanceBar
+        RestackDebuffBars(paladinRestackBars, ns.mhBar, nil, PALADIN_RESTACK_COUNT)
         if ns.UpdatePaladinPowerBar then
             ns.UpdatePaladinPowerBar()
         end
@@ -1635,7 +1683,7 @@ local function SetupRetPaladin()
 
     -- Initial forced update
     pcall(UpdatePaladinSealVengeanceBar, true)
-    RestackDebuffBars({ ns.paladinJudgementBar, ns.paladinSealVengeanceBar }, ns.mhBar)
+    RestackDebuffBars({ ns.paladinJudgementBar, ns.paladinSealVengeanceBar }, ns.mhBar, nil, PALADIN_RESTACK_COUNT)
 end
 
 local function SetupWarrior()
@@ -1646,6 +1694,15 @@ local function SetupWarrior()
         end
     end
 
+    -- Resolved once at Setup scope: spell names are static after load and
+    -- FindCurrentQueuedSpell() runs twice per frame from the core render hook
+    -- (4 GetSpellInfo calls/frame otherwise). Same pattern the Hunter uses for
+    -- its Raptor Strike name.
+    local WARRIOR_HEROIC_STRIKE_NAME = ns.GetSpellInfo and ns.GetSpellInfo(78) or nil
+    local WARRIOR_CLEAVE_NAME = ns.GetSpellInfo and ns.GetSpellInfo(845) or nil
+    local nextWarriorQueuePollAt = 0
+    local WARRIOR_QUEUE_POLL_INTERVAL = 0.05
+
     local function FindCurrentQueuedSpell(spellSet)
         if not IsCurrentSpell or not spellSet then
             return nil
@@ -1653,8 +1710,8 @@ local function SetupWarrior()
 
         -- Priority 1: Check by name (most reliable for Heroic Strike/Cleave in TBC)
         -- We use rank 1 IDs to get the localized names
-        local heroicName = ns.GetSpellInfo(78)
-        local cleaveName = ns.GetSpellInfo(845)
+        local heroicName = WARRIOR_HEROIC_STRIKE_NAME
+        local cleaveName = WARRIOR_CLEAVE_NAME
 
         if heroicName and spellSet == ns.WARRIOR_HEROIC_STRIKE_SPELLS and IsCurrentSpell(heroicName) then
             return heroicName
@@ -1686,9 +1743,22 @@ local function SetupWarrior()
         end
     end
 
-    local function UpdateWarriorQueueTint()
+    local function UpdateWarriorQueueTint(force)
         if ns.playerClass ~= "WARRIOR" or not ns.mhBar then
             return
+        end
+
+        -- Throttled to 20Hz (same cadence as the Hunter queue tint): this runs
+        -- from the core render hook every frame and each pass costs two
+        -- IsCurrentSpell probes plus a status-bar colour write.
+        if not force then
+            local now = GetCurrentTime()
+            if now < nextWarriorQueuePollAt then
+                return
+            end
+            nextWarriorQueuePollAt = now + WARRIOR_QUEUE_POLL_INTERVAL
+        else
+            nextWarriorQueuePollAt = 0
         end
 
         local alpha = (ns.mhBarBaseColor and ns.mhBarBaseColor.a) or 1
@@ -2886,6 +2956,17 @@ local function SetupWarrior()
         bar:Show()
     end
 
+    -- Hoisted debuff-bar list: RestackDebuffBars() runs every frame and a fresh
+    -- literal there is a per-frame table allocation; re-writing the slots of this
+    -- pre-allocated table costs a few field writes and no allocation. The slots
+    -- are refreshed EVERY frame, never latched: the bars are created lazily by
+    -- their Ensure* helpers behind their config toggles, so a bar can appear (or
+    -- vanish) long after the first frame and the list must not go stale.
+    -- The slot count is stated once here and passed to every RestackDebuffBars
+    -- call for this class, so a nil slot is skipped rather than truncating the walk.
+    local WARRIOR_RESTACK_COUNT = 5
+    local warriorRestackBars = {}
+
     -- Register Warrior OnUpdate hook (shield block + cooldown badges)
     ns.RegisterOnUpdateHook(function(elapsed)
         if ns.UpdateWarriorShieldBlockBar then
@@ -2916,7 +2997,12 @@ local function SetupWarrior()
         UpdateWarriorDemoShoutBar(false)
         UpdateWarriorSunderArmorBar(false)
         -- Restack all visible debuff bars above MH dynamically
-        RestackDebuffBars({ deepWoundsBar, sunderArmorBar, rendBar, thunderClapBar, demoShoutBar }, ns.mhBar)
+        warriorRestackBars[1] = deepWoundsBar
+        warriorRestackBars[2] = sunderArmorBar
+        warriorRestackBars[3] = rendBar
+        warriorRestackBars[4] = thunderClapBar
+        warriorRestackBars[5] = demoShoutBar
+        RestackDebuffBars(warriorRestackBars, ns.mhBar, nil, WARRIOR_RESTACK_COUNT)
         if ns.UpdateWarriorRageBar then
             ns.UpdateWarriorRageBar()
         end
@@ -2941,7 +3027,7 @@ local function SetupWarrior()
     UpdateWarriorDemoShoutBar(true)
     UpdateWarriorSunderArmorBar(true)
     -- Restack after initial force-update
-    RestackDebuffBars({ deepWoundsBar, sunderArmorBar, rendBar, thunderClapBar, demoShoutBar }, ns.mhBar)
+    RestackDebuffBars({ deepWoundsBar, sunderArmorBar, rendBar, thunderClapBar, demoShoutBar }, ns.mhBar, nil, WARRIOR_RESTACK_COUNT)
 
     -- Hook warrior queued attacks so each special gets its own tint.
     if ns.RegisterSpellcastSucceededHook then
@@ -2957,7 +3043,7 @@ local function SetupWarrior()
                 end
             end
             if ns.UpdateWarriorQueueTint then
-                ns.UpdateWarriorQueueTint()
+                ns.UpdateWarriorQueueTint(true)
             end
         end)
     end
@@ -3978,7 +4064,6 @@ local function SetupEnhShaman()
                 break
             end
 
-            local normalizedAuraName = type(auraName) == "string" and auraName:lower() or nil
             if type(auraSpellId) == "number" and ns.SHAMAN_LIGHTNING_SHIELD_IDS
                 and ns.SHAMAN_LIGHTNING_SHIELD_IDS[auraSpellId] then
                 return auraName, auraSpellId, true, index
@@ -3992,6 +4077,11 @@ local function SetupEnhShaman()
             if ns.SHAMAN_WATER_SHIELD_NAMES and ns.SHAMAN_WATER_SHIELD_NAMES[auraName] then
                 return auraName, auraSpellId, false, index
             end
+            -- Last-resort case-insensitive match on the English literals. Only
+            -- reached once the spell-ID and exact-name tables have both failed,
+            -- so the :lower() allocation is no longer paid for every one of the
+            -- 40 aura slots on the common (shield present) path.
+            local normalizedAuraName = type(auraName) == "string" and auraName:lower() or nil
             if normalizedAuraName == "lightning shield" then
                 return auraName, auraSpellId, true, index
             end
@@ -4376,14 +4466,23 @@ local function SetupEnhShaman()
     end
 
     -- Register Shaman OnUpdate hook (weave + flame shock + flurry + shields)
+    -- Hoisted debuff-bar list: RestackDebuffBars() runs every frame and a fresh
+    -- literal there is a per-frame table allocation. flameShockBar is created
+    -- lazily by its Ensure helper behind its config toggle, so the slot is
+    -- re-read EVERY frame (never latched) and can pick the bar up whenever it
+    -- is actually created.
+    local SHAMAN_RESTACK_COUNT = 1
+    local shamanRestackBars = {}
     ns.RegisterOnUpdateHook(function(elapsed)
+        if not ns._shamanHookLive then return end
         UpdateWeaveVisuals()
         UpdateShamanFlameShockBar(false)
         UpdateShamanStormstrikeBadge()
         UpdateShamanisticRageBadge()
         UpdateLightningShieldVisual()
         -- Restack all visible debuff bars above MH dynamically
-        RestackDebuffBars({ flameShockBar }, ns.mhBar)
+        shamanRestackBars[1] = flameShockBar
+        RestackDebuffBars(shamanRestackBars, ns.mhBar, nil, SHAMAN_RESTACK_COUNT)
         if ns.UpdateShamanPowerBar then
             ns.UpdateShamanPowerBar()
         end
@@ -4406,6 +4505,10 @@ local function SetupEnhShaman()
     ns.UpdateShamanPowerBar = function()
         if ns.UpdatePlayerPowerBar then ns.UpdatePlayerPowerBar() end
     end
+    -- Only reached when setup completed without throwing: release the guard so the
+    -- hook registered above starts running. Any failure aborts before this line and
+    -- the flag stays false, leaving the already-registered hook inert.
+    ns._shamanHookLive = true
 end
 
 local function SetupDruid()
@@ -4417,6 +4520,12 @@ local function SetupDruid()
             IsCurrentSpell = C_Spell.IsCurrentSpell
         end
     end
+    -- Resolved once at Setup scope: spell names are static after load and
+    -- FindCurrentQueuedSpell() runs from the core render hook every frame.
+    -- Same pattern the Hunter uses for its Raptor Strike name.
+    local DRUID_MAUL_NAME = ns.GetSpellInfo and ns.GetSpellInfo(6807) or nil
+    local nextDruidQueuePollAt = 0
+    local DRUID_QUEUE_POLL_INTERVAL = 0.05
 
     local function GetDruidFormLabel()
         local powerType = type(UnitPowerType) == "function" and UnitPowerType("player") or nil
@@ -4455,7 +4564,7 @@ local function SetupDruid()
             return nil
         end
 
-        local maulName = ns.GetSpellInfo(6807)
+        local maulName = DRUID_MAUL_NAME
         if maulName and spellSet == ns.DRUID_MAUL_SPELLS and IsCurrentSpell(maulName) then
             return maulName
         end
@@ -4482,9 +4591,22 @@ local function SetupDruid()
         end
     end
 
-    local function UpdateDruidQueueTint()
+    local function UpdateDruidQueueTint(force)
         if ns.playerClass ~= "DRUID" or not ns.mhBar then
             return
+        end
+
+        -- Throttled to 20Hz (same cadence as the Hunter queue tint): this runs
+        -- from the core render hook every frame and each pass costs an
+        -- IsCurrentSpell probe plus a status-bar colour write.
+        if not force then
+            local now = GetCurrentTime()
+            if now < nextDruidQueuePollAt then
+                return
+            end
+            nextDruidQueuePollAt = now + DRUID_QUEUE_POLL_INTERVAL
+        else
+            nextDruidQueuePollAt = 0
         end
 
         local alpha = (ns.mhBarBaseColor and ns.mhBarBaseColor.a) or 1
@@ -4526,11 +4648,21 @@ local function SetupDruid()
             return
         end
 
-        tickBar:ClearAllPoints()
-        tickBar:SetPoint("TOPRIGHT", mhBar, "TOPLEFT", -DRUID_ENERGY_TICK_GAP, 0)
-        tickBar:SetWidth(ns.DRUID_ENERGY_TICK_BAR_WIDTH or ns.DB_DEFAULTS.druidEnergyTickBarWidth or 4)
-        tickBar:SetHeight((mhBar:GetHeight() or ns.BAR_HEIGHT or 15))
-        tickBar:SetMinMaxValues(0, 1)
+        local tickWidth = ns.DRUID_ENERGY_TICK_BAR_WIDTH or ns.DB_DEFAULTS.druidEnergyTickBarWidth or 4
+        local tickHeight = (mhBar:GetHeight() or ns.BAR_HEIGHT or 15)
+        -- Anchor/size block only: these values change on resize, not per frame,
+        -- and ClearAllPoints forces a full re-layout. The per-frame fill below
+        -- (SetValue) is deliberately left outside the guard.
+        if tickBar._lastTickW ~= tickWidth or tickBar._lastTickH ~= tickHeight or tickBar._lastTickRef ~= mhBar then
+            tickBar:ClearAllPoints()
+            tickBar:SetPoint("TOPRIGHT", mhBar, "TOPLEFT", -DRUID_ENERGY_TICK_GAP, 0)
+            tickBar:SetWidth(tickWidth)
+            tickBar:SetHeight(tickHeight)
+            tickBar:SetMinMaxValues(0, 1)
+            tickBar._lastTickW = tickWidth
+            tickBar._lastTickH = tickHeight
+            tickBar._lastTickRef = mhBar
+        end
 
         local now = GetCurrentTime()
         if not ns.druidEnergyTickStartTime then
@@ -4607,7 +4739,7 @@ local function SetupDruid()
         ns.druidLastEnergy = type(UnitPower) == "function" and UnitPower("player") or ns.druidLastEnergy
         ns.druidEnergyTickStartTime = GetCurrentTime()
         UpdateDruidEnergyTickVisual()
-        UpdateDruidQueueTint()
+        UpdateDruidQueueTint(true)
     end
 
     ns.OnBarsCreated = function()
@@ -4638,7 +4770,7 @@ local function SetupDruid()
         end)
 
         UpdateDruidEnergyTickVisual()
-        UpdateDruidQueueTint()
+        UpdateDruidQueueTint(true)
     end
 
     -- Hook druid queued attacks (Maul)
@@ -4649,7 +4781,7 @@ local function SetupDruid()
                 ApplyDruidQueueTint(spellToken)
             end
             if ns.UpdateDruidQueueTint then
-                ns.UpdateDruidQueueTint()
+                ns.UpdateDruidQueueTint(true)
             end
         end)
     end
@@ -4922,6 +5054,11 @@ local function SetupDruid()
         bar:ClearAllPoints()
         bar:SetPoint("BOTTOMLEFT", ns.mhBar, "TOPLEFT", 0, ripOffset)
         bar:SetPoint("BOTTOMRIGHT", ns.mhBar, "TOPRIGHT", 0, ripOffset)
+        -- RestackDebuffBars() runs later in the same OnUpdate hook and owns the
+        -- final anchor, so drop its cache entry here — otherwise it would trust
+        -- its own (unchanged) offset and leave this bar on the one set above.
+        bar._lastRestackY = nil
+        bar._lastRestackRef = nil
 
         bar:Show()
     end
@@ -5071,6 +5208,11 @@ local function SetupDruid()
         bar:ClearAllPoints()
         bar:SetPoint("BOTTOMLEFT", ns.mhBar, "TOPLEFT", 0, rakeOffset)
         bar:SetPoint("BOTTOMRIGHT", ns.mhBar, "TOPRIGHT", 0, rakeOffset)
+        -- RestackDebuffBars() runs later in the same OnUpdate hook and owns the
+        -- final anchor, so drop its cache entry here — otherwise it would trust
+        -- its own (unchanged) offset and leave this bar on the one set above.
+        bar._lastRestackY = nil
+        bar._lastRestackRef = nil
 
         bar:Show()
     end
@@ -5350,12 +5492,25 @@ local function SetupDruid()
     ns.UpdateDruidRakeBar = UpdateDruidRakeBar
 
     -- Register Druid debuff bars + buff icons OnUpdate hook
+    -- Hoisted debuff-bar list: RestackDebuffBars() runs every frame and a fresh
+    -- literal there is a per-frame table allocation; re-writing the slots of this
+    -- pre-allocated table costs a few field writes and no allocation. The slots
+    -- are refreshed EVERY frame, never latched: the bars are created lazily by
+    -- their Ensure* helpers behind their config toggles, so a bar can appear (or
+    -- vanish) long after the first frame and the list must not go stale.
+    -- The slot count is stated once here and passed to every RestackDebuffBars
+    -- call for this class, so a nil slot is skipped rather than truncating the walk.
+    local DRUID_RESTACK_COUNT = 3
+    local druidRestackBars = {}
     ns.RegisterOnUpdateHook(function(elapsed)
         UpdateDruidMangleBar(false)
         UpdateDruidRipBar(false)
         UpdateDruidRakeBar(false)
         -- Restack all visible debuff bars above MH dynamically
-        RestackDebuffBars({ mangleBar, ripBar, rakeBar }, ns.mhBar)
+        druidRestackBars[1] = mangleBar
+        druidRestackBars[2] = ripBar
+        druidRestackBars[3] = rakeBar
+        RestackDebuffBars(druidRestackBars, ns.mhBar, nil, DRUID_RESTACK_COUNT)
         if ns.UpdateDruidPowerBar then
             ns.UpdateDruidPowerBar()
         end
@@ -7122,6 +7277,17 @@ local function SetupHunter()
 
     -- Register Hunter OnUpdate hook (aspect + debuff bars + buff icons)
     -- Guard prevents double-registration on UI reload.
+    -- Hoisted debuff-bar list: RestackDebuffBars() runs every frame and a fresh
+    -- literal there is a per-frame table allocation; re-writing the slots of this
+    -- pre-allocated table costs a few field writes and no allocation. The slots
+    -- are refreshed EVERY frame, never latched: each bar is created lazily by its
+    -- Ensure* helper behind its own config toggle (e.g. showHunterWingClipBar),
+    -- so a bar enabled mid-session must still be picked up here.
+    -- The slot count is stated once here and passed to every RestackDebuffBars
+    -- call for this class: with any slot nil, an index-based walk skips it and
+    -- still stacks the trap bars below it, where ipairs would have stopped.
+    local HUNTER_RESTACK_COUNT = 7
+    local hunterRestackBars = {}
     if not ns._hunterHookRegistered then
         ns.RegisterOnUpdateHook(function(elapsed)
             if ns.UpdateHunterAspect then ns.UpdateHunterAspect(elapsed) end
@@ -7133,9 +7299,14 @@ local function SetupHunter()
             UpdateHunterFreezingTrapBar(false)
             UpdateHunterFrostTrapBar(false)
             -- Restack all visible debuff bars above the anchor bar dynamically
-            RestackDebuffBars(
-            { serpentStingBar, wingClipBar, concussionShotBar, immolationTrapBar, explosiveTrapBar, freezingTrapBar,
-                frostTrapBar }, GetDebuffAnchorBar())
+            hunterRestackBars[1] = serpentStingBar
+            hunterRestackBars[2] = wingClipBar
+            hunterRestackBars[3] = concussionShotBar
+            hunterRestackBars[4] = immolationTrapBar
+            hunterRestackBars[5] = explosiveTrapBar
+            hunterRestackBars[6] = freezingTrapBar
+            hunterRestackBars[7] = frostTrapBar
+            RestackDebuffBars(hunterRestackBars, GetDebuffAnchorBar(), nil, HUNTER_RESTACK_COUNT)
             if ns.UpdateHunterPowerBar then
                 ns.UpdateHunterPowerBar()
             end
@@ -7153,7 +7324,7 @@ local function SetupHunter()
     -- Restack after initial force-update
     RestackDebuffBars(
     { serpentStingBar, wingClipBar, concussionShotBar, immolationTrapBar, explosiveTrapBar, freezingTrapBar, frostTrapBar },
-        GetDebuffAnchorBar())
+        GetDebuffAnchorBar(), nil, HUNTER_RESTACK_COUNT)
     ns.UpdateHunterSerpentStingBar = UpdateHunterSerpentStingBar
     ns.UpdateHunterWingClipBar = UpdateHunterWingClipBar
     ns.UpdateHunterConcussionShotBar = UpdateHunterConcussionShotBar
@@ -7523,11 +7694,20 @@ local function SetupRogue()
 
         local anchorBar = GetRogueEnergyAnchorBar() or mhBar
         local energyHeight = GetRogueEnergyBarHeight(anchorBar)
-        tickBar:ClearAllPoints()
-        tickBar:SetPoint("TOPRIGHT", mhBar, "TOPLEFT", -ROGUE_ENERGY_STACK_GAP, 0)
-        tickBar:SetWidth(ROGUE_ENERGY_TICK_BAR_WIDTH)
-        tickBar:SetHeight(energyHeight)
-        tickBar:SetMinMaxValues(0, 1)
+        -- Anchor/size block only: these values change on resize, not per frame,
+        -- and ClearAllPoints forces a full re-layout. The per-frame fill below
+        -- (SetValue) is deliberately left outside the guard.
+        if tickBar._lastTickW ~= ROGUE_ENERGY_TICK_BAR_WIDTH or tickBar._lastTickH ~= energyHeight
+            or tickBar._lastTickRef ~= mhBar then
+            tickBar:ClearAllPoints()
+            tickBar:SetPoint("TOPRIGHT", mhBar, "TOPLEFT", -ROGUE_ENERGY_STACK_GAP, 0)
+            tickBar:SetWidth(ROGUE_ENERGY_TICK_BAR_WIDTH)
+            tickBar:SetHeight(energyHeight)
+            tickBar:SetMinMaxValues(0, 1)
+            tickBar._lastTickW = ROGUE_ENERGY_TICK_BAR_WIDTH
+            tickBar._lastTickH = energyHeight
+            tickBar._lastTickRef = mhBar
+        end
 
         local now = GetCurrentTime()
         if not ns.rogueEnergyTickStartTime then
@@ -8147,6 +8327,16 @@ local function SetupRogue()
         SyncRogueSliceAndDiceAura()
 
         -- Register Rogue OnUpdate hook (sinister assist + energy + SnD + rupture + expose)
+        -- Hoisted debuff-bar list: RestackDebuffBars() runs every frame and a fresh
+        -- literal there is a per-frame table allocation; re-writing the slots of
+        -- this pre-allocated table costs a few field writes and no allocation. The
+        -- slots are refreshed EVERY frame, never latched: the bars are created
+        -- lazily by their Ensure* helpers behind their config toggles, so a bar
+        -- enabled mid-session must still be picked up here.
+        -- The slot count is stated once here and passed to every RestackDebuffBars
+        -- call for this class, so a nil slot is skipped rather than truncating the walk.
+        local ROGUE_RESTACK_COUNT = 2
+        local rogueRestackBars = {}
         ns.RegisterOnUpdateHook(function(elapsed)
             UpdateRogueSinisterAssistVisual()
             UpdateRogueEnergyTickVisual()
@@ -8159,14 +8349,16 @@ local function SetupRogue()
                 ns.UpdateRoguePowerBar()
             end
             -- Restack all visible debuff bars above MH dynamically
-            RestackDebuffBars({ ruptureBar, exposeArmorBar }, ns.mhBar)
+            rogueRestackBars[1] = ruptureBar
+            rogueRestackBars[2] = exposeArmorBar
+            RestackDebuffBars(rogueRestackBars, ns.mhBar, nil, ROGUE_RESTACK_COUNT)
             if ns.UpdateRogueBuffIcons then ns.UpdateRogueBuffIcons(elapsed) end
         end)
 
         pcall(UpdateRogueRuptureBar, true)
         pcall(UpdateRogueExposeArmorBar, true)
         -- Restack after initial force-update
-        RestackDebuffBars({ ruptureBar, exposeArmorBar }, ns.mhBar)
+        RestackDebuffBars({ ruptureBar, exposeArmorBar }, ns.mhBar, nil, ROGUE_RESTACK_COUNT)
         -- Update power bar immediately on bars creation (also driven by OnUpdate hook above)
         if ns.UpdateRoguePowerBar then
             ns.UpdateRoguePowerBar()
@@ -8605,8 +8797,7 @@ local function UpdatePlayerPowerBar()
     end
 
     local class = ns.playerClass or (UnitClass and select(2, UnitClass("player")))
-    local supported = { WARRIOR = true, SHAMAN = true, ROGUE = true, HUNTER = true, DRUID = true, PALADIN = true }
-    if not class or not supported[class] then
+    if not class or not POWER_BAR_CLASSES[class] then
         bar:SetAlpha(0)
         bar:Hide()
         return
@@ -8906,24 +9097,36 @@ function ns.InitClassMods()
     end
 
     local class = ns.playerClass
+    -- Tracks whether the loaded class's own Setup*() completed. Every supported
+    -- class registers an OnUpdate hook that calls its own power-bar delegate
+    -- (which forwards to ns.UpdatePlayerPowerBar), so the extra per-frame
+    -- fallback updater below is only needed when that Setup*() aborted.
+    local classSetupOk = true
     if class == "PALADIN" then
-        pcall(SetupRetPaladin)
+        classSetupOk = pcall(SetupRetPaladin)
     elseif class == "WARRIOR" then
-        pcall(SetupWarrior)
+        classSetupOk = pcall(SetupWarrior)
     elseif class == "ROGUE" then
-        pcall(SetupRogue)
+        classSetupOk = pcall(SetupRogue)
     elseif class == "HUNTER" then
-        pcall(SetupHunter)
+        classSetupOk = pcall(SetupHunter)
     elseif class == "SHAMAN" then
         -- Save base OnUpdate before SetupEnhShaman wraps it, so we can restore
         -- the chain if the initializer fails silently (e.g. from a weave catalog
         -- lookup error on Anniversary 2.5.5).
+        -- NOTE: the restore below is a no-op — SetupEnhShaman registers an
+        -- OnUpdate hook and never reassigns ns.OnUpdate. The hook itself is
+        -- neutralised by ns._shamanHookLive instead.
         local preShamanOnUpdate = ns.OnUpdate
         local ok = pcall(SetupEnhShaman)
+        classSetupOk = ok
         if not ok then
             -- Fail-open for production safety: keep core bars operational even if a
             -- class helper initializer throws in edge client/API states.
             -- Clear ALL partial Shaman state so OnUpdate doesn't call broken upvalues.
+            -- The Shaman OnUpdate hook was already registered before the failure and
+            -- captures its helpers directly, so it has to be flagged dead as well.
+            ns._shamanHookLive = false
             ns.OnBarsCreated = nil
             ns.UpdateLightningShieldVisual = nil
             ns.UpdateShamanFlameShockBar = nil
@@ -8936,7 +9139,7 @@ function ns.InitClassMods()
             end
         end
     elseif class == "DRUID" then
-        pcall(SetupDruid)
+        classSetupOk = pcall(SetupDruid)
     end
 
     pcall(function()
@@ -8965,11 +9168,19 @@ function ns.InitClassMods()
             end
         end
 
-        ns.RegisterOnUpdateHook(function()
-            if ns.UpdatePlayerPowerBar then
-                ns.UpdatePlayerPowerBar()
-            end
-        end)
+        -- Per-frame power-bar refresh. Every supported class's own OnUpdate hook
+        -- already calls its class power-bar delegate (which forwards here), so an
+        -- unconditional second call duplicated the unit-power query plus five frame
+        -- setters every frame. Register this as a FALLBACK only: when the class's
+        -- Setup*() aborted before registering its hook, this hook is the sole
+        -- per-frame updater and the power bar must keep refreshing (fail-open).
+        if not classSetupOk then
+            ns.RegisterOnUpdateHook(function()
+                if ns.UpdatePlayerPowerBar then
+                    ns.UpdatePlayerPowerBar()
+                end
+            end)
+        end
 
         if ns.mhBar and ns.OnBarsCreated then
             ns.OnBarsCreated()
