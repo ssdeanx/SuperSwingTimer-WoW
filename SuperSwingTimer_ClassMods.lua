@@ -1124,6 +1124,7 @@ local function SetupRetPaladin()
 
         local db = SuperSwingTimerDB or ns.DB_DEFAULTS
         if db and db.showPaladinBuffIcons == false then
+            ns.activeBuffIconCount = 0
             for _, icon in ipairs(paladinBuffIcons) do
                 if icon and icon.Hide then icon:Hide() end
             end
@@ -1166,6 +1167,7 @@ local function SetupRetPaladin()
         end
 
         local numActive = #activeIcons
+        ns.activeBuffIconCount = numActive
         if numActive == 0 then return end
 
         local referenceBar = ns.mhBar
@@ -3132,6 +3134,7 @@ local function SetupWarrior()
 
         local db = SuperSwingTimerDB or ns.DB_DEFAULTS
         if db and db.showWarriorBuffIcons == false then
+            ns.activeBuffIconCount = 0
             for _, icon in ipairs(warriorBuffIcons) do
                 if icon and icon.Hide then icon:Hide() end
             end
@@ -3174,6 +3177,7 @@ local function SetupWarrior()
         end
 
         local numActive = #activeIcons
+        ns.activeBuffIconCount = numActive
         if numActive == 0 then return end
 
         local referenceBar = ns.mhBar
@@ -4270,6 +4274,7 @@ local function SetupEnhShaman()
 
         local db = SuperSwingTimerDB or ns.DB_DEFAULTS
         if db and db.showShamanBuffIcons == false then
+            ns.activeBuffIconCount = 0
             for _, icon in ipairs(shamanBuffIcons) do
                 if icon and icon.Hide then icon:Hide() end
             end
@@ -4312,6 +4317,7 @@ local function SetupEnhShaman()
         end
 
         local numActive = #activeIcons
+        ns.activeBuffIconCount = numActive
         if numActive == 0 then return end
 
         local referenceBar = ns.mhBar
@@ -5228,6 +5234,7 @@ local function SetupDruid()
 
         local db = SuperSwingTimerDB or ns.DB_DEFAULTS
         if db and db.showDruidBuffIcons == false then
+            ns.activeBuffIconCount = 0
             for _, icon in ipairs(druidBuffIcons) do
                 if icon and icon.Hide then icon:Hide() end
             end
@@ -5270,6 +5277,7 @@ local function SetupDruid()
         end
 
         local numActive = #activeIcons
+        ns.activeBuffIconCount = numActive
         if numActive == 0 then return end
 
         local referenceBar = ns.mhBar
@@ -6130,6 +6138,7 @@ local function SetupHunter()
 
         local db = SuperSwingTimerDB or ns.DB_DEFAULTS
         if db and db.showHunterBuffIcons == false then
+            ns.activeBuffIconCount = 0
             for _, icon in ipairs(hunterBuffIcons) do
                 if icon and icon.Hide then icon:Hide() end
             end
@@ -6172,6 +6181,7 @@ local function SetupHunter()
         end
 
         local numActive = #activeIcons
+        ns.activeBuffIconCount = numActive
         if numActive == 0 then return end
 
         local anchorBar = GetDebuffAnchorBar()
@@ -8429,6 +8439,7 @@ local function SetupRogue()
 
         local db = SuperSwingTimerDB or ns.DB_DEFAULTS
         if db and db.showRogueBuffIcons == false then
+            ns.activeBuffIconCount = 0
             for _, icon in ipairs(rogueBuffIcons) do
                 if icon and icon.Hide then icon:Hide() end
             end
@@ -8471,6 +8482,7 @@ local function SetupRogue()
         end
 
         local numActive = #activeIcons
+        ns.activeBuffIconCount = numActive
         if numActive == 0 then return end
 
         local referenceBar = ns.mhBar
@@ -8584,6 +8596,9 @@ local function UpdatePlayerPowerBar()
     local db = SuperSwingTimerDB or ns.DB_DEFAULTS
     local enabled = (not db) or (db.showPowerBar ~= false)
     if not enabled then
+        bar._lastCurPower = nil
+        bar._lastMaxPower = nil
+        bar._lastPowerType = nil
         bar:SetAlpha(0)
         bar:Hide()
         return
@@ -8648,10 +8663,15 @@ local function UpdatePlayerPowerBar()
     bar:Show()
 
     if bar.label then
-        if powerType == 1 or powerType == 3 then
-            bar.label:SetText(tostring(curPower))
-        else
-            bar.label:SetText(curPower .. "/" .. maxPower)
+        if bar._lastCurPower ~= curPower or bar._lastMaxPower ~= maxPower or bar._lastPowerType ~= powerType then
+            bar._lastCurPower = curPower
+            bar._lastMaxPower = maxPower
+            bar._lastPowerType = powerType
+            if powerType == 1 or powerType == 3 then
+                bar.label:SetText(tostring(curPower))
+            else
+                bar.label:SetText(curPower .. "/" .. maxPower)
+            end
         end
     end
 
@@ -8706,6 +8726,11 @@ local function UpdatePlayerPowerBar()
                 borderRight:SetWidth(1)
 
                 bar.executeIcon = icon
+            end
+            if bar.executeIcon.glow then
+                local nowSec = (GetTime and GetTime()) or 0
+                local pulse = 0.35 + 0.25 * math.sin(nowSec * 6)
+                bar.executeIcon.glow:SetAlpha(pulse)
             end
             bar.executeIcon:Show()
             if bar.executeText then bar.executeText:Hide() end

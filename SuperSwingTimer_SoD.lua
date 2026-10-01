@@ -229,6 +229,21 @@ ns.SOD_TRACKED_SPELLS = {
         { spellId = 407993, name = "Lacerate", label = "Lac", kind = "cd" },
         { spellId = 407995, name = "Skull Bash", label = "SBash", kind = "cd" },
     },
+    WARLOCK = {
+        { spellId = 403789, name = "Metamorphosis", label = "Meta", kind = "buff" },
+        { spellId = 403629, name = "Chaos Bolt", label = "CB", kind = "cd" },
+        { spellId = 403501, name = "Haunt", label = "Haunt", kind = "cd" },
+    },
+    MAGE = {
+        { spellId = 401552, name = "Living Bomb", label = "LBomb", kind = "cd" },
+        { spellId = 401731, name = "Rewind Time", label = "Rewind", kind = "cd" },
+        { spellId = 400647, name = "Fingers of Frost", label = "FoF", kind = "buff" },
+    },
+    PRIEST = {
+        { spellId = 402174, name = "Penance", label = "Pen", kind = "cd" },
+        { spellId = 401944, name = "Circle of Healing", label = "CoH", kind = "cd" },
+        { spellId = 401977, name = "Shadow Word: Death", label = "SWD", kind = "cd" },
+    },
 }
 
 -- ============================================================

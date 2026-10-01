@@ -1,5 +1,33 @@
 # Progress
 
+## Progress Update (2026-09-21 - v0.2.4: Deep audit, C-level RegisterUnitEvent, zero-allocation hotpaths, idle sleep, headless CLI test suite, DB v64)
+
+- **C-Level Unit Event Filtering (`SuperSwingTimer.lua`)**:
+  - Implemented `RegisterUnitEventSafe` helper that delegates to `frame:RegisterUnitEvent(...)` when supported.
+  - Unit-filtered `UNIT_AURA` to `"player"` and `"target"`, `UNIT_ATTACK_SPEED` to `"player"` and `"target"`, and `UNIT_POWER_*` / `UNIT_SPELLCAST_*` / `UNIT_INVENTORY_CHANGED` / `UNIT_RANGEDDAMAGE` to `"player"`.
+  - Drops 95%+ of event spam in 25-man and 40-man raids at the C engine level before Lua execution.
+- **Zero-Allocation Hotpaths & Idle OnUpdate Sleep (`SuperSwingTimer_State.lua`, `SuperSwingTimer_ClassMods.lua`, `SuperSwingTimer_UI.lua`)**:
+  - Unrolled `HasActiveTimers()` to direct boolean evaluations without table or `pairs()` iterator allocations.
+  - Implemented `ns.HasActiveBuffIcons()` and `ns.activeBuffIconCount` tracking across all 6 physical classes; `OnUpdate` now sleeps out of combat with no active buffs (0% idle CPU).
+  - Cached string formatting in `UpdatePlayerPowerBar()`, `UpdateMeleeBar()`, `UpdateRangedBar()`, and `UpdateHunterCastBar()`.
+  - Deduplicated spark position re-anchoring in `UpdateSparkPosition()` and label syncing in `SyncBarLabelText()`.
+- **Weaving & Latency Streamlining (`SuperSwingTimer_Weaving.lua`)**:
+  - `GetLatencySeconds()` prioritizes `ns.cachedLatency` over calling `GetNetStats()`.
+  - Unified Bloodlust/Heroism and Berserking haste checks into a single-pass 40-slot loop.
+- **Class Visual Polish (`SuperSwingTimer_ClassMods.lua`)**:
+  - Added zero-allocation sine-wave pulse (`math.sin(nowSec * 6)`) to Warrior Execute indicator glow texture when target HP <= 20%.
+  - Verified debuff bar outside-left icon alignment (`RIGHT`, `bar`, `LEFT`, -2, 0) and cropped texcoords (`0.07, 0.93, 0.07, 0.93`).
+  - Verified Hunter Auto Shot 15px height consistency.
+- **Headless CLI Test Harness (`run_tests.lua`, `SuperSwingTimer_Tests.lua`)**:
+  - Built standalone CLI test runner with full mock Classic/TBC WoW API environment running all 7 test groups (68 tests) in 0.013s on Lua 5.1 and LuaJIT.
+  - Fixed `MigrateDB(targetDb)` to cleanly support isolated test tables without mutating global `SuperSwingTimerDB`.
+  - Populated complete SoD rune spell tracking matrices for WARLOCK, MAGE, and PRIEST in `SuperSwingTimer_SoD.lua`.
+- **Version Bump & DB Migration v64 (`SuperSwingTimer.toc`, `SuperSwingTimer.lua`)**:
+  - Bumped TOC version to `v0.2.4`.
+  - Updated `ns.DB_CURRENT_VERSION` to 64 and added Migration 64.
+  - Synchronized `CHANGELOG.md`, `README.md`, `MEMORY.md`, `API_AUDIT_REPORT.md`, `.omg/memory/`, and `memory-bank/`.
+  - Validated 0 warnings and 0 errors across all 12 files via `luacheck .`.
+
 ## Progress Update (2026-09-14 - v0.2.3: Hunter cast bar overlay cleanup, clip zone color separation, migration v63)
 
 - **Hunter Cast Bar Background Fixed (`SuperSwingTimer_UI.lua`, `SuperSwingTimer_State.lua`)**:

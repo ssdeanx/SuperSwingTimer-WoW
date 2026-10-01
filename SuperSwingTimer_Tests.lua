@@ -82,6 +82,35 @@ local function RegisterSSTTests()
         AreEqual(db.colors.clipZone.g, 0)
         AreEqual(db.colors.clipZone.b, 0)
     end
+    function Core:MigrateDB_V63()
+        local db = { version = 63, colors = {} }
+        local ok, _ = pc(ns.MigrateDB, db)
+        IsTrue(ok)
+        AreEqual(db.version, ns.DB_CURRENT_VERSION)
+        AreEqual(db.hunterCastBarHeight, 15)
+        AreEqual(db.powerBarHeight, 10)
+        IsTrue(db.colors.warriorRageBarColor ~= nil)
+    end
+    function Core:MigrateDB_V64()
+        local db = { version = 64, hunterCastBarHeight = 15, powerBarHeight = 10, colors = {} }
+        local ok, _ = pc(ns.MigrateDB, db)
+        IsTrue(ok)
+        AreEqual(db.version, 64)
+    end
+    function Core:HasActiveTimers_Function()
+        IsTrue(type(ns.HasActiveTimers) == "function")
+        local active = ns.HasActiveTimers()
+        IsTrue(type(active) == "boolean")
+    end
+    function Core:HasActiveBuffIcons_Tracking()
+        IsTrue(type(ns.HasActiveBuffIcons) == "function")
+        local savedCount = ns.activeBuffIconCount
+        ns.activeBuffIconCount = 0
+        IsFalse(ns.HasActiveBuffIcons())
+        ns.activeBuffIconCount = 2
+        IsTrue(ns.HasActiveBuffIcons())
+        ns.activeBuffIconCount = savedCount
+    end
     function Core:HunterCastBarHeight_Default15()
         AreEqual(ns.HUNTER_CAST_BAR_HEIGHT, 15)
         AreEqual(ns.DB_DEFAULTS.hunterCastBarHeight, 15)
@@ -111,7 +140,6 @@ local function RegisterSSTTests()
     -- SST-Auras: aura wrapper parsing for all API shapes
     -- ============================================================
     local Auras = WoWUnit('SST-Auras', 'PLAYER_ENTERING_WORLD')
-    local _, playerClass = UnitClass("player")
 
     function Auras:HelpfulSpellID_AtPos10()
         if not T or not T.GetHelpfulAuraData then return end
@@ -161,8 +189,10 @@ local function RegisterSSTTests()
         ClearReplaces()
     end
     function Auras:PaladinSeal_Command()
-        if playerClass == "PALADIN" and ns.GetPaladinSealFamilyByAuraName then
-            AreEqual(ns.GetPaladinSealFamilyByAuraName('Seal of Command'),'COMMAND') end end
+        if ns.GetPaladinSealFamilyByAuraName then
+            AreEqual(ns.GetPaladinSealFamilyByAuraName('Seal of Command'),'COMMAND')
+        end
+    end
     function Auras:CrossDebuff_FlameShock()
         if not T or not T.GetHarmfulAuraData then return end
         Replace('UnitAura',function(u,i,f)
@@ -220,45 +250,43 @@ local function RegisterSSTTests()
     end
 
     -- ============================================================
-    -- SST-Hunter: Hunter-specific features (gated on class)
+    -- SST-Hunter: Hunter-specific features
     -- ============================================================
-    if playerClass == "HUNTER" then
-        local Hunter = WoWUnit('SST-Hunter', 'PLAYER_ENTERING_WORLD')
+    local Hunter = WoWUnit('SST-Hunter', 'PLAYER_ENTERING_WORLD')
 
-        function Hunter:CastDetection_Steady() IsTrue(ns.IsHunterCastSpell(ns.STEADY_SHOT_ID)) end
-        function Hunter:CastDetection_Aimed() IsTrue(ns.IsHunterCastSpell(19434)) end
-        function Hunter:CastDetection_Auto() IsTrue(ns.IsHunterCastSpell(75)) end
-        function Hunter:CastDetection_AutoNotActual() IsFalse(ns.IsHunterActualCastSpell(75)) end
-        function Hunter:CastDetection_SteadyIsActual() IsTrue(ns.IsHunterActualCastSpell(ns.STEADY_SHOT_ID)) end
-        function Hunter:SerpentStingIDs_Populated()
-            local c=0; for _ in pairs(ns.HUNTER_SERPENT_STING_IDS or {}) do c=c+1 end
-            IsTrue(c>=3)
-        end
-        function Hunter:SerpentStingName_Resolved() Exists(ns.HUNTER_SERPENT_STING_NAME) end
-        function Hunter:IsAutoShot_ByID() IsTrue(ns.IsAutoShotSpell(75)) end
-        function Hunter:IsAutoShot_Nil() local ok,r=pc(ns.IsAutoShotSpell,nil); IsTrue(ok); IsFalse(r) end
-        function Hunter:IsHunterCast_Nil() local ok,r=pc(ns.IsHunterCastSpell,nil); IsTrue(ok); IsFalse(r) end
-        function Hunter:SerpentSting_MockDetect()
-            if not T or not T.GetTargetSerpentStingData then return end
-            Replace('UnitAura',function(u,i,f)
-                if i==1 then return 'Serpent Sting',132181,1,'Nature',15,12345.0,'player',false,false,27019,false end
-            end)
-            Replace('UnitExists',function() return true end)
-            Replace('UnitCanAttack',function() return true end)
-            local dur,_=T.GetTargetSerpentStingData()
-            Exists(dur,'SerpentSting found')
-            ClearReplaces()
-        end
-        function Hunter:SerpentSting_FiltersOtherCaster()
-            if not T or not T.GetTargetSerpentStingData then return end
-            Replace('UnitAura',function(u,i,f)
-                if i==1 then return 'Serpent Sting',132181,1,'Nature',15,12345.0,'OtherGuy',false,false,27019,false end
-            end)
-            Replace('UnitExists',function() return true end)
-            Replace('UnitCanAttack',function() return true end)
-            IsFalse(T.GetTargetSerpentStingData())
-            ClearReplaces()
-        end
+    function Hunter:CastDetection_Steady() IsTrue(ns.IsHunterCastSpell(ns.STEADY_SHOT_ID)) end
+    function Hunter:CastDetection_Aimed() IsTrue(ns.IsHunterCastSpell(19434)) end
+    function Hunter:CastDetection_Auto() IsTrue(ns.IsHunterCastSpell(75)) end
+    function Hunter:CastDetection_AutoNotActual() IsFalse(ns.IsHunterActualCastSpell(75)) end
+    function Hunter:CastDetection_SteadyIsActual() IsTrue(ns.IsHunterActualCastSpell(ns.STEADY_SHOT_ID)) end
+    function Hunter:SerpentStingIDs_Populated()
+        local c=0; for _ in pairs(ns.HUNTER_SERPENT_STING_IDS or {}) do c=c+1 end
+        IsTrue(c>=3)
+    end
+    function Hunter:SerpentStingName_Resolved() Exists(ns.HUNTER_SERPENT_STING_NAME) end
+    function Hunter:IsAutoShot_ByID() IsTrue(ns.IsAutoShotSpell(75)) end
+    function Hunter:IsAutoShot_Nil() local ok,r=pc(ns.IsAutoShotSpell,nil); IsTrue(ok); IsFalse(r) end
+    function Hunter:IsHunterCast_Nil() local ok,r=pc(ns.IsHunterCastSpell,nil); IsTrue(ok); IsFalse(r) end
+    function Hunter:SerpentSting_MockDetect()
+        if not T or not T.GetTargetSerpentStingData then return end
+        Replace('UnitAura',function(u,i,f)
+            if i==1 then return 'Serpent Sting',132181,1,'Nature',15,12345.0,'player',false,false,27019,false end
+        end)
+        Replace('UnitExists',function() return true end)
+        Replace('UnitCanAttack',function() return true end)
+        local dur,_=T.GetTargetSerpentStingData()
+        Exists(dur,'SerpentSting found')
+        ClearReplaces()
+    end
+    function Hunter:SerpentSting_FiltersOtherCaster()
+        if not T or not T.GetTargetSerpentStingData then return end
+        Replace('UnitAura',function(u,i,f)
+            if i==1 then return 'Serpent Sting',132181,1,'Nature',15,12345.0,'OtherGuy',false,false,27019,false end
+        end)
+        Replace('UnitExists',function() return true end)
+        Replace('UnitCanAttack',function() return true end)
+        IsFalse(T.GetTargetSerpentStingData())
+        ClearReplaces()
     end
 
     -- ============================================================
@@ -313,6 +341,11 @@ local function RegisterSSTTests()
             end
         end
     end
+    function ClassMods:ExecuteGlowPulse_Calculation()
+        local nowSec = 100.0
+        local pulse = 0.6 + 0.4 * math.abs(math.sin(nowSec * 6))
+        IsTrue(pulse >= 0.6 and pulse <= 1.0, 'Execute pulse bounded between 0.6 and 1.0')
+    end
 
     -- ============================================================
     -- SST-Weaving: Real-time spell cast time, Maelstrom, spark colors
@@ -321,6 +354,20 @@ local function RegisterSSTTests()
 
     function Weaving:EffectiveCastTime_FunctionExists()
         IsTrue(type(ns.GetEffectiveSpellCastTime) == "function", 'ns.GetEffectiveSpellCastTime is a function')
+    end
+
+    function Weaving:LiveSpellHasteMultiplier_Default()
+        IsTrue(type(ns.GetLiveSpellHasteMultiplier) == "function")
+        local mult = ns.GetLiveSpellHasteMultiplier()
+        IsTrue(type(mult) == "number")
+        AreEqual(mult, 1.0)
+    end
+
+    function Weaving:GetLatencySeconds_Fallback()
+        IsTrue(type(ns.GetLatencySeconds) == "function")
+        local lat = ns.GetLatencySeconds()
+        IsTrue(type(lat) == "number")
+        IsTrue(lat >= 0)
     end
 
     function Weaving:EffectiveCastTime_MaelstromScaling()

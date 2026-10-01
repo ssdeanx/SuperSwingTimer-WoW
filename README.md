@@ -6,17 +6,18 @@ Super Swing Timer tracks white-hit swing timers across main hand, off hand, rang
 
 **Dual-client CLEU architecture:** Classic Era `COMBAT_LOG_EVENT` payloads use numeric spell IDs; TBC Anniversary sends localized spell names (strings) instead. All swing-affecting spell lookup tables (`RESET_SWING_SPELLS`, `NO_RESET_SWING_SPELLS`, `PAUSE_SWING_SPELLS`, `RESET_RANGED_SWING_SPELLS`) populate both key types at init time via `ns.GetSpellInfo(id)` so swing resets, pauses, ranged resets, and NMA queue detection work identically on both clients.
 
-Current version: **v0.2.3**. Status: release-ready. Includes multi-class power/resource bars for all 6 physical classes (Warrior rage with Execute alert, Rogue energy, Druid dynamic shapeshifting rage/energy/mana, Paladin mana, Shaman mana, Hunter mana) using native Blizzard `PowerBarColor` integration, enlarged 15px Hunter Auto Shot cast bar with crisp typography, clean dark cast bar background, independent Clip Zone color settings, event-driven reactive power updates (`UNIT_POWER_*`, `UNIT_DISPLAYPOWER`, `UNIT_MAXPOWER`), SavedVariables Migration v63, Season of Discovery (1.15.9) Tank & DPS rune support, and dual-interface TOC (`## Interface: 11509, 20506`) for Classic Era and TBC Anniversary.
+Current version: **v0.2.4**. Status: release-ready. Includes zero-allocation engine optimizations, C++ engine-level `RegisterUnitEvent` raid event filtering, idle out-of-combat `OnUpdate` sleeping, standalone headless CLI test runner (`run_tests.lua`), multi-class power/resource bars for all 6 physical classes (Warrior rage with Execute alert, Rogue energy, Druid dynamic shapeshifting rage/energy/mana, Paladin mana, Shaman mana, Hunter mana) using native Blizzard `PowerBarColor` integration, enlarged 15px Hunter Auto Shot cast bar with crisp typography, clean dark cast bar background, independent Clip Zone color settings, event-driven reactive power updates (`UNIT_POWER_*`, `UNIT_DISPLAYPOWER`, `UNIT_MAXPOWER`), SavedVariables Migration v64, complete Season of Discovery (1.15.9) Tank & DPS rune support across all 9 classes, and dual-interface TOC (`## Interface: 11509, 20506`) for Classic Era and TBC Anniversary.
 
-**Recent changes (2026-09-14):**
+**Recent changes (2026-09-21):**
 
 | Area | Change |
 | --- | --- |
-| Hunter cast bar | Removed full-bar overlay to restore the clean dark status bar background across Auto Shot, Multi-Shot, and Steady Shot windows; cast bar fill uses its independent `hunterCastBar` color |
-| Hunter clip zone & colors | DB Migration v63 heals corrupted white `autoShotUnsafe` values back to red, seeds independent `clipZone` / `clipSafe` settings, and hardens the color picker against white resets |
-| Hunter cast display | Stored Steady Shot / Aimed Shot / Volley display clears at cast landing, so the end-of-cycle tail shows "Auto Shot" instead of a stale "Steady Shot" |
-| Hunter ranged keep-alive | Melee only counts as active while the target is actually in melee range — no MH-bar flash or ranged-bar reset/jump after cycles for hunters who meleed earlier in the fight |
-| Power bar — wiring & anchor | Shared updater preserved at init, Warrior gained `ns.UpdateWarriorRageBar`, and `ns.UpdatePowerBarAnchor()` keeps the resource bar as the bottom-most bar of the swing stack |
+| Event Engine | `RegisterUnitEventSafe` delegates to C++ engine unit filtering for `UNIT_AURA`, `UNIT_ATTACK_SPEED`, `UNIT_POWER_*`, and `UNIT_SPELLCAST_*`, eliminating 95%+ of raid event spam |
+| Idle CPU & Hotpath | Zero-allocation `HasActiveTimers()` unrolling, `ns.HasActiveBuffIcons()` tracking for idle out-of-combat `OnUpdate` sleep, string formatting caching, and spark position deduplication |
+| Headless CLI Testing | Standalone `run_tests.lua` test harness executing all 7 test groups (68 tests) in ~0.013s with pure Lua 5.1/LuaJIT |
+| SoD Matrices | Added missing rune spell definitions for WARLOCK, MAGE, and PRIEST in `SuperSwingTimer_SoD.lua` |
+| DB Migration v64 | SavedVariables migration ladder v64 enforcing 15px Hunter cast bar, 10px power bar, and class color defaults |
+| Class Polish | Warrior Execute glow indicator with zero-allocation sine-wave pulse below 20% target HP |
 
 ## At a glance
 

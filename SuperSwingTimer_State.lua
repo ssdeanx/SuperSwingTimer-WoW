@@ -24,6 +24,8 @@ end
 ns.cachedLatency = ns.cachedLatency or 0
 local RANGED_START_DEDUPE_WINDOW = 0.25
 local WARRIOR_OVERPOWER_PROC_WINDOW = 5.0
+local POWER_CLASSES = { WARRIOR = true, PALADIN = true, SHAMAN = true, ROGUE = true, DRUID = true, HUNTER = true }
+ns.POWER_CLASSES = POWER_CLASSES
 
 -- ============================================================
 -- Timer State
@@ -225,16 +227,32 @@ end
 
 local ClearHunterCastState
 
+--- Helper to check if any tracked buff icon is actively shown/counting down.
+--  Returns true initially (before first scan completes) to ensure clean bootstrap.
+--  @return (boolean) true if active buff icons are rendered
+function ns.HasActiveBuffIcons()
+    if ns.activeBuffIconCount == nil then
+        return true
+    end
+    return ns.activeBuffIconCount > 0
+end
+
 --- Returns true if any swing timer, cast, or channel is currently active.
 --  Used to decide whether the OnUpdate loop should keep running.
 --  Also keeps the update loop alive for Warrior combat visuals (rage bar,
 --  shield block) and Druid Cat energy tick even when no timer is swinging.
 --  @return (boolean) true if any timer, cast, or channel is active
 function ns.HasActiveTimers()
-    for _, timer in pairs(ns.timers) do
-        if timer.state == "swinging" then
-            return true
-        end
+    local timers = ns.timers
+    if timers then
+        local mh = timers.mh
+        if mh and mh.state == "swinging" then return true end
+        local oh = timers.oh
+        if oh and oh.state == "swinging" then return true end
+        local ranged = timers.ranged
+        if ranged and ranged.state == "swinging" then return true end
+        local enemy = timers.enemy
+        if enemy and enemy.state == "swinging" then return true end
     end
 
     -- Normal spellcasting must also keep the update loop alive so cast-driven
@@ -249,8 +267,7 @@ function ns.HasActiveTimers()
     -- refresh during combat until another timer starts.
     if ns.playerInCombat == true then
         local db = SuperSwingTimerDB or ns.DB_DEFAULTS
-        local powerClasses = { WARRIOR = true, PALADIN = true, SHAMAN = true, ROGUE = true, DRUID = true, HUNTER = true }
-        if powerClasses[ns.playerClass] and db and db.showPowerBar ~= false then
+        if POWER_CLASSES[ns.playerClass] and db and db.showPowerBar ~= false then
             return true
         end
         if ns.playerClass == "WARRIOR" and db and db.showWarriorShieldBlockBar ~= false then
@@ -274,16 +291,20 @@ function ns.HasActiveTimers()
     end
 
     -- Buff/CD icons: keep the update loop alive when any class has buff icons
-    -- enabled, so tracked auras render and count down outside combat.
+    -- enabled AND at least one icon is currently active, so tracked auras
+    -- render and count down outside combat without wasting CPU when idle.
     local db = SuperSwingTimerDB or ns.DB_DEFAULTS
     if db and ns.playerClass then
-        if (ns.playerClass == "WARRIOR" and db.showWarriorBuffIcons ~= false)
-        or (ns.playerClass == "PALADIN" and db.showPaladinBuffIcons ~= false)
-        or (ns.playerClass == "SHAMAN" and db.showShamanBuffIcons ~= false)
-        or (ns.playerClass == "DRUID" and db.showDruidBuffIcons ~= false)
-        or (ns.playerClass == "HUNTER" and db.showHunterBuffIcons ~= false)
-        or (ns.playerClass == "ROGUE" and db.showRogueBuffIcons ~= false) then
-            return true
+        local class = ns.playerClass
+        if (class == "WARRIOR" and db.showWarriorBuffIcons ~= false)
+        or (class == "PALADIN" and db.showPaladinBuffIcons ~= false)
+        or (class == "SHAMAN" and db.showShamanBuffIcons ~= false)
+        or (class == "DRUID" and db.showDruidBuffIcons ~= false)
+        or (class == "HUNTER" and db.showHunterBuffIcons ~= false)
+        or (class == "ROGUE" and db.showRogueBuffIcons ~= false) then
+            if ns.HasActiveBuffIcons and ns.HasActiveBuffIcons() then
+                return true
+            end
         end
     end
 

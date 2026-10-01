@@ -53,3 +53,10 @@ globals = {
 max_line_length = 260
 -- Disable warnings for unused function arguments
 unused_args = false
+
+files = {
+    ["run_tests.lua"] = {
+        std = "lua51",
+        globals = { "arg" },
+    },
+}

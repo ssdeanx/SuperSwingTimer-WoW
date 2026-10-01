@@ -4,6 +4,45 @@
 > Sections: **Added** / **Changed** / **Fixed** / **Removed** / **Performance** / **Security** / **Docs** / **Internal** / **Notes**
 > DB schema migrations are listed under **Notes** per version.
 
+## v0.2.4 - 2026-09-21
+
+### Added
+
+- **Headless CLI Test Runner (`run_tests.lua`)**:
+  - Built a standalone test execution harness with a complete mock WoW Classic/TBC environment.
+  - Compatible with standard `lua` (5.1-5.5) and `luajit`, executing all 7 test groups (68 total tests) headlessly in ~0.013s with ANSI color reporting.
+  - Expanded test suite in `SuperSwingTimer_Tests.lua` covering DB migrations through v64, zero-allocation helpers (`HasActiveTimers`, `HasActiveBuffIcons`), haste calculations, and latency caching.
+- **Complete SoD Spell Matrices (`SuperSwingTimer_SoD.lua`)**:
+  - Added Season of Discovery rune tracking matrices for WARLOCK (Metamorphosis, Chaos Bolt, Haunt), MAGE (Living Bomb, Rewind Time, Fingers of Frost), and PRIEST (Penance, Circle of Healing, Shadow Word: Death) to `ns.SOD_TRACKED_SPELLS`.
+
+### Performance
+
+- **C-Level Unit Event Filtering (`SuperSwingTimer.lua`)**:
+  - Implemented `RegisterUnitEventSafe` helper that delegates to `frame:RegisterUnitEvent(...)` when supported.
+  - Filtered `UNIT_AURA` to `"player"` and `"target"`, `UNIT_ATTACK_SPEED` to `"player"` and `"target"`, and `UNIT_POWER_*` / `UNIT_SPELLCAST_*` / `UNIT_INVENTORY_CHANGED` / `UNIT_RANGEDDAMAGE` to `"player"`. Eliminates 95%+ of raid combat event churn at the C engine level.
+  - Cached `POWER_CLASSES` table at file scope in `SuperSwingTimer.lua` and `SuperSwingTimer_State.lua`, removing runtime table allocations.
+- **Idle OnUpdate Sleeping (`SuperSwingTimer.lua`, `SuperSwingTimer_ClassMods.lua`)**:
+  - Implemented `ns.HasActiveBuffIcons()` and wired `ns.activeBuffIconCount` tracking across all 6 physical class modules.
+  - `SuperSwingTimer.lua` now sleeps the `OnUpdate` loop out-of-combat whenever no timers and no buff/cooldown icons are actively running, reducing idle out-of-combat CPU usage to 0%.
+- **Hotpath Render Allocation & Layout Deduplication (`SuperSwingTimer_UI.lua`, `SuperSwingTimer_ClassMods.lua`, `SuperSwingTimer_State.lua`)**:
+  - Unrolled timer table checks in `HasActiveTimers()`, eliminating `pairs()` iterator closures and GC allocations on every frame.
+  - Cached string values (`_lastCurPower`, `_lastMaxPower`, `_lastPowerType`) in `UpdatePlayerPowerBar()`, eliminating string garbage generation and redundant font layout passes when resources are static.
+  - De-duplicated spark frame re-anchoring in `UpdateSparkPosition()` by tracking `_lastSparkPos` and `_lastSparkAnchor`, bypassing redundant C++ layout dirtying when pixel offsets remain unchanged.
+  - Cached label text rendering in `SyncBarLabelText()`, skipping `SetText()` when string content is identical.
+  - Cached tenth-of-second intervals in `UpdateMeleeBar()`, `UpdateRangedBar()`, and `UpdateHunterCastBar()`, eliminating 93%+ of `string.format("%.1f", remaining)` allocations during swings.
+- **Weaving Engine Latency & Haste Optimization (`SuperSwingTimer_Weaving.lua`)**:
+  - Streamlined `GetLatencySeconds()` to prioritize `ns.cachedLatency` with fallback to `GetNetStats()`.
+  - Unified Bloodlust/Heroism and Berserking haste scans in `GetLiveSpellHasteMultiplier()` into a single-pass 40-slot aura scan with early break on detection.
+
+### Changed
+
+- **Version Bump & DB Migration v64 (`SuperSwingTimer.toc`, `SuperSwingTimer.lua`)**:
+  - TOC version bumped to `v0.2.4`.
+  - `ns.DB_CURRENT_VERSION` updated to `64`. Added Migration 64 ensuring default dimensions (Hunter Auto Shot 15px, Power Bar 10px) and class power bar colors.
+  - Fixed `MigrateDB(targetDb)` to cleanly support isolated test tables without mutating global `SuperSwingTimerDB`.
+- **Warrior Execute Indicator Glow Pulse (`SuperSwingTimer_ClassMods.lua`)**:
+  - Added smooth sine-wave alpha pulsing (`math.sin(nowSec * 6)`) to the Execute alert glow texture when target HP is <= 20%.
+
 ## v0.2.3 - 2026-09-14
 
 ### Fixed

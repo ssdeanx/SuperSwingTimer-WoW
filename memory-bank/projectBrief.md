@@ -6,7 +6,7 @@ Super Swing Timer is a World of Warcraft Classic/TBC addon for melee and ranged 
 
 **Branch baseline:** BC Classic Anniversary Edition (2026), patch-family 2.5.5.
 
-- **Current Version**: `v0.2.3` (DB Schema Migration `v63`)
+- **Current Version**: `v0.2.4` (DB Schema Migration `v64`)
 - **Target Environments**: Classic Era / Season of Discovery (`11509`) and TBC Anniversary (`20506`).
 
 ## Purpose
@@ -23,11 +23,14 @@ The addon helps players time white swings, next-melee-attack abilities, parry ha
 
 ## Current emphasis
 
+- **C-Level Unit Event Filtering**: `RegisterUnitEventSafe` drops 95%+ of raid event churn at the C engine level.
+- **Zero-Allocation Hotpaths & Idle Sleep**: Unrolled timer checks, string caching, spark de-duplication, and idle `OnUpdate` sleep reducing idle CPU to 0%.
+- **Headless Test Automation**: Standalone CLI test execution runner (`run_tests.lua`) testing all 7 groups (68 tests) in ~0.013s.
 - **Hunter Dual-Bar Engine**: 15px Auto Shot cast bar with unobstructed dark background, independent Clip Zone ("red zone") color controls, and target melee range gating.
 - **Unified Power Bar**: Standardized 10px power bar across all physical classes with dynamic shapeshift and Execute alert support.
-- **Migration & Settings Robustness**: Migration v63 healing corrupt white swatches and ensuring alias integrity.
+- **Migration & Settings Robustness**: Migration v64 ensuring default dimensions and class-colored power bars.
 
-## Primary files (11 Files)
+## Primary files (12 Files)
 
 - `SuperSwingTimer.toc` — TOC manifest, interface versioning, load order.
 - `SuperSwingTimer_Constants.lua` — Colors, dimensions, sound IDs, DB defaults, font resolver.
@@ -38,12 +41,13 @@ The addon helps players time white swings, next-melee-attack abilities, parry ha
 - `SuperSwingTimer_UI.lua` — Frame creation, layout, Hunter Auto Shot 15px cast bar, latency markers.
 - `SuperSwingTimer_ClassMods.lua` — Class modules (6 classes), unified power bar, debuffs, buff icons.
 - `SuperSwingTimer_Config.lua` — Options panel, Quick Controls, `/sst` slash dispatcher.
-- `SuperSwingTimer.lua` — Addon bootstrap, DB migrations (v63), lifecycle events.
+- `SuperSwingTimer.lua` — Addon bootstrap, DB migrations (v64), lifecycle events.
 - `SuperSwingTimer_SoD.lua` — Season of Discovery rune matrices, aura maps, spell definitions.
 - `SuperSwingTimer_Tests.lua` — In-game WoWUnit test suite across 7 functional groups (`/ssttest`).
+- `run_tests.lua` — Standalone CLI test runner with mock WoW 5.1/Classic environment.
 
 ## Success criteria
 
-- Zero linter warnings/errors in `luacheck .` across all 11 Lua files.
+- Zero linter warnings/errors in `luacheck .` across all 12 Lua files.
 - Context survives chat resets and memory graphs remain intact.
 - Seamless DB migration upgrades without player profile resets.

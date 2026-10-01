@@ -5,27 +5,28 @@
 ## Overview & Addon Identity
 
 - **Name**: SuperSwingTimer
-- **Current Version**: `v0.2.3` (DB schema migration `v63`)
+- **Current Version**: `v0.2.4` (DB schema migration `v64`)
 - **Author**: AcidBomb
 - **Target Clients**: Classic Era (`11509`) and TBC Anniversary (`20506`), including Season of Discovery (SoD).
 - **Core Purpose**: Ultra-accurate melee, ranged, and target swing timers with class-specific power/debuff bars, spell-weaving assistance, and buff tracking.
 
-## Core File Index (11 Files)
+## Core File Index (12 Files)
 
 | File | Role |
 | :--- | :--- |
 | [SuperSwingTimer.toc](file:///home/sam/SuperSwingTimer-WoW/SuperSwingTimer.toc) | TOC metadata, dual-interface support, file load order. |
 | [SuperSwingTimer_Constants.lua](file:///home/sam/SuperSwingTimer-WoW/SuperSwingTimer_Constants.lua) | Colors, dimensions, sound IDs, DB defaults, `ns.GetDefaultFont()`. |
 | [Media/SuperSwingTimer_Media.lua](file:///home/sam/SuperSwingTimer-WoW/Media/SuperSwingTimer_Media.lua) | Status bar, spark, and border texture registrations. |
-| [SuperSwingTimer_State.lua](file:///home/sam/SuperSwingTimer-WoW/SuperSwingTimer_State.lua) | Swing timer state machine (MH, OH, Ranged), pause/resume, speed changes. |
-| [SuperSwingTimer_Weaving.lua](file:///home/sam/SuperSwingTimer-WoW/SuperSwingTimer_Weaving.lua) | Shaman spell-weaving calculations, live cast/haste scaling, clip detection. |
+| [SuperSwingTimer_State.lua](file:///home/sam/SuperSwingTimer-WoW/SuperSwingTimer_State.lua) | Swing timer state machine (MH, OH, Ranged), pause/resume, speed changes, unrolled `HasActiveTimers`. |
+| [SuperSwingTimer_Weaving.lua](file:///home/sam/SuperSwingTimer-WoW/SuperSwingTimer_Weaving.lua) | Shaman spell-weaving calculations, single-pass haste scan, live cast/haste scaling, clip detection. |
 | [SuperSwingTimer_Hooks.lua](file:///home/sam/SuperSwingTimer-WoW/SuperSwingTimer_Hooks.lua) | Combat log and spellcast event routing, swing resets, auto-shot gating. |
-| [SuperSwingTimer_UI.lua](file:///home/sam/SuperSwingTimer-WoW/SuperSwingTimer_UI.lua) | Primary swing bars, Hunter 15px Auto Shot cast bar, latency markers. |
-| [SuperSwingTimer_ClassMods.lua](file:///home/sam/SuperSwingTimer-WoW/SuperSwingTimer_ClassMods.lua) | Class modules (6 physical classes), unified power bar, debuff bars, buff icons. |
+| [SuperSwingTimer_UI.lua](file:///home/sam/SuperSwingTimer-WoW/SuperSwingTimer_UI.lua) | Primary swing bars, Hunter 15px Auto Shot cast bar, spark position & label de-duplication. |
+| [SuperSwingTimer_ClassMods.lua](file:///home/sam/SuperSwingTimer-WoW/SuperSwingTimer_ClassMods.lua) | Class modules (6 physical classes), unified power bar with cached strings, debuff bars, buff icons, `activeBuffIconCount` tracking. |
 | [SuperSwingTimer_Config.lua](file:///home/sam/SuperSwingTimer-WoW/SuperSwingTimer_Config.lua) | Settings UI panel, Quick Controls, `/sst` slash commands. |
-| [SuperSwingTimer.lua](file:///home/sam/SuperSwingTimer-WoW/SuperSwingTimer.lua) | Addon lifecycle, DB migrations (v63), event dispatching. |
-| [SuperSwingTimer_SoD.lua](file:///home/sam/SuperSwingTimer-WoW/SuperSwingTimer_SoD.lua) | Season of Discovery rune matrices, aura maps, spell definitions. |
+| [SuperSwingTimer.lua](file:///home/sam/SuperSwingTimer-WoW/SuperSwingTimer.lua) | Addon lifecycle, DB migrations (v64), RegisterUnitEvent C-level unit filtering. |
+| [SuperSwingTimer_SoD.lua](file:///home/sam/SuperSwingTimer-WoW/SuperSwingTimer_SoD.lua) | Season of Discovery rune matrices across all 9 classes, aura maps, spell definitions. |
 | [SuperSwingTimer_Tests.lua](file:///home/sam/SuperSwingTimer-WoW/SuperSwingTimer_Tests.lua) | In-game WoWUnit test suite across 7 functional groups (`/ssttest`). |
+| [run_tests.lua](file:///home/sam/SuperSwingTimer-WoW/run_tests.lua) | Standalone CLI test execution runner with mock WoW 5.1/Classic environment. |
 
 ## Key Architectural Decisions
 

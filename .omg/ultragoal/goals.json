@@ -1,38 +1,38 @@
 [
   {
-    "id": "G1-AUDIT-TOC-VERSION",
-    "description": "Bump version to v0.2.2 in SuperSwingTimer.toc, increment DB version to 62 with migration in SuperSwingTimer.lua, and update CHANGELOG.md and README.md.",
+    "id": "G1-AUDIT-ENGINE-EVENTS",
+    "description": "Modernize event dispatching in SuperSwingTimer.lua using RegisterUnitEvent for UNIT_AURA ('player', 'target'), UNIT_POWER_*, and UNIT_SPELLCAST_*, falling back gracefully to RegisterEvent, and cache powerClasses table in State.lua.",
     "status": "completed",
-    "verification": "SuperSwingTimer.toc contains Version: v0.2.2, MigrateDB handles version 61 -> 62 cleanly, and docs are synchronized."
+    "verification": "Frame events use RegisterUnitEvent where supported; non-player aura/spell spam is dropped at C level in raids; luacheck passes."
   },
   {
-    "id": "G2-POWERBAR-CORE",
-    "description": "Implement unified per-class power/resource bar in SuperSwingTimer_ClassMods.lua & SuperSwingTimer_UI.lua with Blizzard PowerBarColor table integration, fixing rogue recursion and wiring warrior, rogue, druid (bear/cat/caster forms), paladin, shaman, hunter.",
+    "id": "G2-HOTPATH-ALLOCATION-OPT",
+    "description": "Eliminate GC pressure and redundant C++ layout calls in hot paths (cache string formatting in UpdatePlayerPowerBar, spark position deduplication in UpdateSparkPosition, label text deduplication in SyncBarLabelText, unrolled HasActiveTimers checks, idle OnUpdate sleep when no buff icons active).",
     "status": "completed",
-    "verification": "All 6 classes have working power display logic; UnitPowerType and PowerBarColor table lookups succeed; luacheck passes with zero errors."
+    "verification": "No table allocations in HasActiveTimers; string formatting cached in power bar and labels; spark re-anchoring skipped when pixel pos unchanged; OnUpdate sleeps when out-of-combat with no active buffs."
   },
   {
-    "id": "G3-POWERBAR-EVENTS-STATE",
-    "description": "Wire event-driven reactive power bar updates on UNIT_POWER_UPDATE, UNIT_POWER_FREQUENT, UNIT_DISPLAYPOWER, UNIT_MAXPOWER, and update HasActiveTimers() in SuperSwingTimer_State.lua.",
+    "id": "G3-WEAVING-LATENCY-CLEANUP",
+    "description": "Optimize SuperSwingTimer_Weaving.lua to reuse ns.cachedLatency and combine dual buff scans in GetLiveSpellHasteMultiplier into a single-pass loop.",
     "status": "completed",
-    "verification": "Power bar updates immediately on player power events; combat update loop remains active during combat when power bar is shown."
+    "verification": "GetLatencySeconds delegates to ns.cachedLatency; GetLiveSpellHasteMultiplier checks Bloodlust/Heroism and Berserking in one 40-slot scan."
   },
   {
-    "id": "G4-HUNTER-AUTOSHOT-SIZE",
-    "description": "Increase default Hunter cast bar height from 10/13px to 15px (matching standard bar height), update constants/defaults, and verify font and marker alignment.",
+    "id": "G4-CLASS-MODS-POWERBAR-POLISH",
+    "description": "Audit and harden class visual modules across Warrior, Rogue, Paladin, Shaman, Druid, and Hunter: verify Execute icon pulse, debuff bar outside-left icon alignment, Hunter 15px Auto Shot layout, and Druid form-shifting transitions.",
     "status": "completed",
-    "verification": "HUNTER_CAST_BAR_HEIGHT defaults to 15px in constants, DB defaults, and runtime initialization; text remains vertically centered."
+    "verification": "All 6 classes have verified resource display and debuff stacking; Execute indicator correctly pulses below 20% HP; Hunter Auto Shot maintains 15px height."
   },
   {
-    "id": "G5-CONFIG-PREVIEW-ENHANCEMENT",
-    "description": "Add per-class Resource/Power bar toggles and color swatches in SuperSwingTimer_Config.lua, and wire the power bar into ShowBarPreview and AnimateTestBars.",
+    "id": "G5-HEADLESS-TEST-HARNESS",
+    "description": "Build a standalone CLI test execution runner for SuperSwingTimer_Tests.lua with a minimal mock WoW environment, expanding test coverage for new zero-allocation optimizations and DB v64 migration.",
     "status": "completed",
-    "verification": "Config panel displays appropriate resource bar toggle for active class; /ssttest animates the power bar."
+    "verification": "CLI test runner executes all 7 test groups successfully from the terminal with 0 failures; WoWUnit in-game runner remains 100% compatible."
   },
   {
-    "id": "G6-TESTS-LINT-VERIFICATION",
-    "description": "Update SuperSwingTimer_Tests.lua with test coverage for v62 migration and power bar APIs; run luacheck across all files verifying 0 warnings and 0 errors.",
+    "id": "G6-VERSION-DOCS-LINT",
+    "description": "Bump TOC version to v0.2.4, DB schema migration to v64 in SuperSwingTimer.lua, update CHANGELOG.md, README.md, MEMORY.md, and API_AUDIT_REPORT.md, and verify 0 luacheck warnings and errors.",
     "status": "completed",
-    "verification": "luacheck . reports 0 warnings and 0 errors across all 11 files; test suite validates cleanly; CurseForge bugs resolved; debuff icons cleanly aligned outside left."
+    "verification": "SuperSwingTimer.toc contains Version: v0.2.4; DB migration handles version 63 -> 64; all documentation is synchronized; luacheck . reports 0 warnings and 0 errors."
   }
 ]

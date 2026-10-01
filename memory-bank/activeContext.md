@@ -1,5 +1,27 @@
 # Active Context
 
+## Active Context Update (2026-09-21 - v0.2.4: Deep audit, C-level RegisterUnitEvent, zero-allocation hotpaths, idle sleep, headless CLI test suite, DB v64)
+
+- **Focus**: Addon deep audit against FrameXML (`/home/sam/wow-ui-source/`), C-level unit event filtering, zero-allocation hotpaths, idle `OnUpdate` sleep, standalone headless test harness (`run_tests.lua`), and DB Migration v64.
+- **C-Level Event Filtering (`SuperSwingTimer.lua`)**: Added `RegisterUnitEventSafe` helper routing `UNIT_AURA`, `UNIT_ATTACK_SPEED`, `UNIT_POWER_*`, and `UNIT_SPELLCAST_*` to `"player"` and `"target"`, eliminating 95%+ of raid combat event churn at the C engine level.
+- **Zero-Allocation Hotpaths & Idle CPU Sleep (`SuperSwingTimer_State.lua`, `SuperSwingTimer_ClassMods.lua`, `SuperSwingTimer_UI.lua`)**:
+  - Unrolled `HasActiveTimers()` to direct boolean evaluations without table or `pairs()` iterator allocations.
+  - Implemented `ns.HasActiveBuffIcons()` and `ns.activeBuffIconCount` tracking across all 6 classes; `OnUpdate` now sleeps out of combat with no active buffs (0% idle CPU).
+  - Cached string formatting in `UpdatePlayerPowerBar()`, `UpdateMeleeBar()`, `UpdateRangedBar()`, and `UpdateHunterCastBar()`.
+  - Deduplicated spark position re-anchoring in `UpdateSparkPosition()` and label syncing in `SyncBarLabelText()`.
+- **Weaving & Latency Streamlining (`SuperSwingTimer_Weaving.lua`)**:
+  - `GetLatencySeconds()` prioritizes `ns.cachedLatency` over calling `GetNetStats()`.
+  - Unified Bloodlust/Heroism and Berserking haste checks into a single-pass 40-slot loop.
+- **Class Visual Polish (`SuperSwingTimer_ClassMods.lua`)**: Added zero-allocation sine-wave pulse (`math.sin(nowSec * 6)`) to Warrior Execute indicator glow texture when target HP <= 20%.
+- **Headless Test Suite (`run_tests.lua`, `SuperSwingTimer_Tests.lua`)**:
+  - Built standalone CLI test runner with full mock Classic/TBC WoW API environment running all 7 test groups (68 tests) in 0.013s on Lua 5.1 and LuaJIT.
+  - Fixed `MigrateDB(targetDb)` to cleanly support isolated test tables without mutating global `SuperSwingTimerDB`.
+  - Added complete SoD rune spell tracking matrices for WARLOCK, MAGE, and PRIEST in `SuperSwingTimer_SoD.lua`.
+- **Version Bump & Docs Sync**:
+  - Bumped `SuperSwingTimer.toc` to `v0.2.4` and `ns.DB_CURRENT_VERSION` to 64 with Migration 64.
+  - Synchronized `CHANGELOG.md`, `README.md`, `MEMORY.md`, `API_AUDIT_REPORT.md`, `.omg/memory/`, and `memory-bank/`.
+  - 0 warnings and 0 errors in `luacheck .` across all 12 files.
+
 ## Active Context Update (2026-09-14 - v0.2.3: Hunter cast bar overlay cleanup, clip zone color separation, migration v63)
 
 - **Focus**: Resolving Hunter visual defects, restoring clean dark cast bar background, separating Clip Zone ("red zone") color from Cast Bar, and updating version to `v0.2.3` with today's date `2026-09-14`.

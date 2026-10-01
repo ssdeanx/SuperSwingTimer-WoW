@@ -191,8 +191,12 @@ local function UpdateSparkPosition(bar, explicitFraction)
         sparkPos = barWidth
     end
 
-    bar.sparkTexture:ClearAllPoints()
-    bar.sparkTexture:SetPoint("CENTER", sparkAnchor, "LEFT", sparkPos, 0)
+    if bar._lastSparkPos ~= sparkPos or bar._lastSparkAnchor ~= sparkAnchor then
+        bar._lastSparkPos = sparkPos
+        bar._lastSparkAnchor = sparkAnchor
+        bar.sparkTexture:ClearAllPoints()
+        bar.sparkTexture:SetPoint("CENTER", sparkAnchor, "LEFT", sparkPos, 0)
+    end
 end
 
 ns.RefreshBarSparkPosition = UpdateSparkPosition
@@ -251,6 +255,11 @@ local function SyncBarLabelText(bar, text)
     end
 
     text = text or ""
+    if bar._renderedLabelText == text then
+        return
+    end
+    bar._renderedLabelText = text
+
     bar.labelText:SetText(text)
     if bar.labelOutlineText then
         bar.labelOutlineText:SetText(text)
@@ -1049,13 +1058,24 @@ local function UpdateHunterCastBar()
         and not (ns.IsAutoShotSpell and ns.IsAutoShotSpell(spellId))
     local showAutoShotLabel = spellId and isAutoShotHiddenWindow
     local remainingTime = math.max(duration - elapsedTime, 0)
+    local remTenth = math.floor(remainingTime * 10 + 0.5)
     if showActualCastLabel or showMultiShotLabel then
-        local spellName = (type(spellId) == "string" and spellId) or (ns.GetSpellInfo and ns.GetSpellInfo(spellId))
-            or "Cast"
-        SetBarLabelText(f, string.format("%s %.1f", spellName or "Cast", remainingTime), true)
+        if f._lastRemTenth ~= remTenth or f._lastCastSpellId ~= spellId then
+            f._lastRemTenth = remTenth
+            f._lastCastSpellId = spellId
+            local spellName = (type(spellId) == "string" and spellId) or (ns.GetSpellInfo and ns.GetSpellInfo(spellId))
+                or "Cast"
+            SetBarLabelText(f, string.format("%s %.1f", spellName or "Cast", remainingTime), true)
+        end
     elseif showAutoShotLabel then
-        SetBarLabelText(f, string.format("Auto Shot %.1f", remainingTime), true)
+        if f._lastRemTenth ~= remTenth or f._lastCastSpellId ~= "AUTOSHOT" then
+            f._lastRemTenth = remTenth
+            f._lastCastSpellId = "AUTOSHOT"
+            SetBarLabelText(f, string.format("Auto Shot %.1f", remainingTime), true)
+        end
     else
+        f._lastRemTenth = nil
+        f._lastCastSpellId = nil
         RestoreBarDefaultLabel(f)
     end
 
@@ -1299,6 +1319,12 @@ local function ResetBarDisplay(bar)
 
     bar:SetMinMaxValues(0, 1)
     bar:SetValue(0)
+    bar._renderedLabelText = nil
+    bar._lastRemTenth = nil
+    bar._lastRangedLabel = nil
+    bar._lastCastSpellId = nil
+    bar._lastSparkPos = nil
+    bar._lastSparkAnchor = nil
     RestoreBarDefaultLabel(bar)
     if bar.castOverlay then
         bar.castOverlay:SetWidth(0)
@@ -1431,12 +1457,17 @@ local function UpdateRangedBar(elapsed)
     local remaining = t.duration - elapsed_time
     if remaining < 0 then remaining = 0 end
     local rangedLabel = GetHunterRangedBarLabel()
-    local countdownLabel = rangedLabel ~= "" and string.format("%s %.1f", rangedLabel, remaining)
-        or string.format("%.1f", remaining)
+    local remTenth = math.floor(remaining * 10 + 0.5)
+    if f._lastRemTenth ~= remTenth or f._lastRangedLabel ~= rangedLabel then
+        f._lastRemTenth = remTenth
+        f._lastRangedLabel = rangedLabel
+        local countdownLabel = rangedLabel ~= "" and string.format("%s %.1f", rangedLabel, remaining)
+            or string.format("%.1f", remaining)
+        SetBarLabelText(f, countdownLabel, true)
+    end
 
     f:SetMinMaxValues(0, t.duration)
     f:SetValue(elapsed_time)
-    SetBarLabelText(f, countdownLabel, true)
     UpdateSparkPosition(f, t.duration > 0 and (elapsed_time / t.duration) or 0)
 end
 
@@ -1469,9 +1500,14 @@ local function UpdateMeleeBar(slot, frame)
     local remaining = t.duration - elapsed_time
     if remaining < 0 then remaining = 0 end
 
+    local remTenth = math.floor(remaining * 10 + 0.5)
+    if frame._lastRemTenth ~= remTenth then
+        frame._lastRemTenth = remTenth
+        SetBarLabelText(frame, string.format("%.1f", remaining), true)
+    end
+
     frame:SetMinMaxValues(0, t.duration)
     frame:SetValue(elapsed_time)
-    SetBarLabelText(frame, string.format("%.1f", remaining), true)
     UpdateSparkPosition(frame, t.duration > 0 and (elapsed_time / t.duration) or 0)
 end
 

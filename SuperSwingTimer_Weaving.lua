@@ -26,9 +26,15 @@ end
 GetClock()
 
 local function GetLatencySeconds()
-	local _, _, homeLatency, worldLatency = GetNetStats()
-	local latencyMs = (worldLatency and worldLatency > 0) and worldLatency or homeLatency or 0
-	return math_max(latencyMs / 1000, 0)
+	if ns.cachedLatency and ns.cachedLatency > 0 then
+		return ns.cachedLatency
+	end
+	if type(GetNetStats) == "function" then
+		local _, _, homeLatency, worldLatency = GetNetStats()
+		local latencyMs = (worldLatency and worldLatency > 0) and worldLatency or homeLatency or 0
+		return math_max(latencyMs / 1000, 0)
+	end
+	return 0
 end
 
 local function GetSpellHastePercent()
@@ -56,21 +62,6 @@ local function GetLiveSpellHasteMultiplier()
 		if ns.GetSoDAuraData then
 			bl = (ns.GetSoDAuraData("player", 2825, "HELPFUL") ~= nil) or (ns.GetSoDAuraData("player", 32182, "HELPFUL") ~= nil)
 		end
-		if not bl and type(ns.UnitBuff) == "function" then
-			local idx = 1
-			while idx <= 40 do
-				local name, _, _, _, _, _, _, _, _, _, sId = ns.UnitBuff("player", idx)
-				if not name then break end
-				if sId == 2825 or sId == 32182 or name == "Bloodlust" or name == "Heroism" then
-					bl = true
-					break
-				end
-				idx = idx + 1
-			end
-		end
-		if bl then
-			buffHasteMult = buffHasteMult * 1.30
-		end
 
 		local berserk = false
 		if type(ns.UnitBuff) == "function" then
@@ -78,12 +69,20 @@ local function GetLiveSpellHasteMultiplier()
 			while idx <= 40 do
 				local name, _, _, _, _, _, _, _, _, _, sId = ns.UnitBuff("player", idx)
 				if not name then break end
-				if sId == 20554 or sId == 26285 or sId == 26284 or name == "Berserking" then
+				if not bl and (sId == 2825 or sId == 32182 or name == "Bloodlust" or name == "Heroism") then
+					bl = true
+				end
+				if not berserk and (sId == 20554 or sId == 26285 or sId == 26284 or name == "Berserking") then
 					berserk = true
+				end
+				if bl and berserk then
 					break
 				end
 				idx = idx + 1
 			end
+		end
+		if bl then
+			buffHasteMult = buffHasteMult * 1.30
 		end
 		if berserk then
 			buffHasteMult = buffHasteMult * 1.10
@@ -235,6 +234,8 @@ local function GetEffectiveSpellCastTime(spellInfo)
 	return math_max(0, (liveCastTime / hasteMult) * maelstromMult)
 end
 ns.GetEffectiveSpellCastTime = GetEffectiveSpellCastTime
+ns.GetLiveSpellHasteMultiplier = GetLiveSpellHasteMultiplier
+ns.GetLatencySeconds = GetLatencySeconds
 
 local function ResolveSpellInfo(group)
 	local hasKnownCheck =

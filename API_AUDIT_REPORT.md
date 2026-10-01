@@ -72,6 +72,7 @@
 | 60 | **UIDropDownMenu_SetText** | Config.lua:11 | YES | YES | Dropdown API — available on both. |
 | 61 | **UIDropDownMenu_SetWidth** | Config.lua:12 | YES | YES | Dropdown API — available on both. |
 | 62 | **LibStub** | Constants.lua:1082 | **NO** | **NO** | External Ace library. Addon uses rawget — returns nil if not present. Safe. |
+| 63 | **RegisterUnitEvent** | SST.lua:32 | YES (Widget) | YES (Widget) | C++ frame widget method on 1.15.9 & 2.5.6. Unit-filters UNIT_AURA, UNIT_POWER_*, and UNIT_SPELLCAST_* at the C engine level. |
 
 ---
 

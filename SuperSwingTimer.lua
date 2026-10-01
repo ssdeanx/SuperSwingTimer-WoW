@@ -9,6 +9,8 @@ local InCombatLockdown = rawget(_G, "InCombatLockdown")
 
 local LATENCY_REFRESH_INTERVAL = 0.05
 local nextLatencyRefreshAt = 0
+local POWER_CLASSES = { WARRIOR = true, PALADIN = true, SHAMAN = true, ROGUE = true, DRUID = true, HUNTER = true }
+ns.POWER_CLASSES = POWER_CLASSES
 
 -- ============================================================
 -- Bootstrap: event frame, SavedVariables init, dispatch
@@ -40,9 +42,21 @@ local function MigrateDB(targetDb)
     local legacyAddonDB = rawget(_G, "SwangThangDB")
     local legacyHunterDB = rawget(_G, "HunterTimerDB")
 
+    local function DeepCopyDefaults(t)
+        local copy = {}
+        for k, v in pairs(t) do
+            if type(v) == "table" then
+                copy[k] = DeepCopyDefaults(v)
+            else
+                copy[k] = v
+            end
+        end
+        return copy
+    end
+
     -- v2: SuperSwingTimerDB with nested positions
     -- Migrate from v1: HunterTimerDB = {point, relativePoint, x, y}
-    if not SuperSwingTimerDB then
+    if not targetDb and not SuperSwingTimerDB then
         if legacyAddonDB then
             _G.SuperSwingTimerDB = legacyAddonDB
             _G.SwangThangDB = nil
@@ -66,101 +80,96 @@ local function MigrateDB(targetDb)
         end
     end
 
-    local function DeepCopyDefaults(t)
-        local copy = {}
-        for k, v in pairs(t) do
-            if type(v) == "table" then
-                copy[k] = DeepCopyDefaults(v)
-            else
-                copy[k] = v
-            end
-        end
-        return copy
-    end
-
     -- Fresh install
-    if not SuperSwingTimerDB then
+    if not targetDb and not SuperSwingTimerDB then
         _G.SuperSwingTimerDB = DeepCopyDefaults(ns.DB_DEFAULTS)
     end
 
+    local activeDb = targetDb or _G.SuperSwingTimerDB
+    if targetDb and next(targetDb) == nil then
+        for k, v in pairs(DeepCopyDefaults(ns.DB_DEFAULTS)) do
+            targetDb[k] = v
+        end
+    end
+
     -- Fill any missing fields for upgrades
-    SuperSwingTimerDB.version = SuperSwingTimerDB.version or 10
+    activeDb.version = activeDb.version or 10
 
     local function IsVisibleDefaultColor(color)
         return color and math.abs((color.r or 0) - 0.25) < 0.001
             and math.abs((color.g or 0) - 0.72) < 0.001 and math.abs((color.b or 0) - 1.00) < 0.001
     end
-    SuperSwingTimerDB.showMH = (SuperSwingTimerDB.showMH ~= false)
-    SuperSwingTimerDB.showOH = (SuperSwingTimerDB.showOH ~= false)
-    SuperSwingTimerDB.showRanged = (SuperSwingTimerDB.showRanged ~= false)
-    SuperSwingTimerDB.showHunterRangeHelper = (SuperSwingTimerDB.showHunterRangeHelper ~= false)
-    SuperSwingTimerDB.showEnemy = (SuperSwingTimerDB.showEnemy ~= false)
-    SuperSwingTimerDB.showRogueSinisterAssist = (SuperSwingTimerDB.showRogueSinisterAssist ~= false)
-    SuperSwingTimerDB.showRogueEnergyTick = (SuperSwingTimerDB.showRogueEnergyTick ~= false)
-    SuperSwingTimerDB.showRogueComboPoints = (SuperSwingTimerDB.showRogueComboPoints ~= false)
-    SuperSwingTimerDB.showRogueSliceAndDice = (SuperSwingTimerDB.showRogueSliceAndDice ~= false)
-    SuperSwingTimerDB.showWeaveAssist = (SuperSwingTimerDB.showWeaveAssist ~= false)
-    SuperSwingTimerDB.showPaladinSealColor = (SuperSwingTimerDB.showPaladinSealColor ~= false)
-    SuperSwingTimerDB.showPaladinSealLabel = (SuperSwingTimerDB.showPaladinSealLabel ~= false)
-    SuperSwingTimerDB.showPaladinJudgementMarker = (SuperSwingTimerDB.showPaladinJudgementMarker ~= false)
-    SuperSwingTimerDB.showPaladinTwistFlash = (SuperSwingTimerDB.showPaladinTwistFlash ~= false)
-    if SuperSwingTimerDB.showPowerBar == nil then
-        SuperSwingTimerDB.showPowerBar = (SuperSwingTimerDB.showWarriorRageBar ~= false)
+    activeDb.showMH = (activeDb.showMH ~= false)
+    activeDb.showOH = (activeDb.showOH ~= false)
+    activeDb.showRanged = (activeDb.showRanged ~= false)
+    activeDb.showHunterRangeHelper = (activeDb.showHunterRangeHelper ~= false)
+    activeDb.showEnemy = (activeDb.showEnemy ~= false)
+    activeDb.showRogueSinisterAssist = (activeDb.showRogueSinisterAssist ~= false)
+    activeDb.showRogueEnergyTick = (activeDb.showRogueEnergyTick ~= false)
+    activeDb.showRogueComboPoints = (activeDb.showRogueComboPoints ~= false)
+    activeDb.showRogueSliceAndDice = (activeDb.showRogueSliceAndDice ~= false)
+    activeDb.showWeaveAssist = (activeDb.showWeaveAssist ~= false)
+    activeDb.showPaladinSealColor = (activeDb.showPaladinSealColor ~= false)
+    activeDb.showPaladinSealLabel = (activeDb.showPaladinSealLabel ~= false)
+    activeDb.showPaladinJudgementMarker = (activeDb.showPaladinJudgementMarker ~= false)
+    activeDb.showPaladinTwistFlash = (activeDb.showPaladinTwistFlash ~= false)
+    if activeDb.showPowerBar == nil then
+        activeDb.showPowerBar = (activeDb.showWarriorRageBar ~= false)
     else
-        SuperSwingTimerDB.showPowerBar = (SuperSwingTimerDB.showPowerBar ~= false)
+        activeDb.showPowerBar = (activeDb.showPowerBar ~= false)
     end
-    SuperSwingTimerDB.showWarriorShieldBlockBar = (SuperSwingTimerDB.showWarriorShieldBlockBar ~= false)
+    activeDb.showWarriorShieldBlockBar = (activeDb.showWarriorShieldBlockBar ~= false)
     -- Phase 1 toggle defaults
-    SuperSwingTimerDB.showSwingFlash = (SuperSwingTimerDB.showSwingFlash ~= false)
-    SuperSwingTimerDB.showGcdTicker = (SuperSwingTimerDB.showGcdTicker ~= false)
-    SuperSwingTimerDB.showDruidEnergyTickBar = (SuperSwingTimerDB.showDruidEnergyTickBar ~= false)
-    SuperSwingTimerDB.showRogueEnergyCountdown = (SuperSwingTimerDB.showRogueEnergyCountdown ~= false)
+    activeDb.showSwingFlash = (activeDb.showSwingFlash ~= false)
+    activeDb.showGcdTicker = (activeDb.showGcdTicker ~= false)
+    activeDb.showDruidEnergyTickBar = (activeDb.showDruidEnergyTickBar ~= false)
+    activeDb.showRogueEnergyCountdown = (activeDb.showRogueEnergyCountdown ~= false)
     -- Phase 2 toggle defaults
-    SuperSwingTimerDB.showHunterRapidFireBar = (SuperSwingTimerDB.showHunterRapidFireBar ~= false)
-    SuperSwingTimerDB.showWarriorFlurryCounter = (SuperSwingTimerDB.showWarriorFlurryCounter ~= false)
-    SuperSwingTimerDB.showRogueAdrenalineRushBar = (SuperSwingTimerDB.showRogueAdrenalineRushBar ~= false)
-    SuperSwingTimerDB.showShamanWindfuryIcd = (SuperSwingTimerDB.showShamanWindfuryIcd ~= false)
-    SuperSwingTimerDB.showShamanLightningTracker = (SuperSwingTimerDB.showShamanLightningTracker ~= false)
-    SuperSwingTimerDB.showShamanFlameShockBar = (SuperSwingTimerDB.showShamanFlameShockBar ~= false)
-    SuperSwingTimerDB.showShamanBuffIcons = (SuperSwingTimerDB.showShamanBuffIcons ~= false)
-    if SuperSwingTimerDB.shamanBuffIconSize == nil then
-        SuperSwingTimerDB.shamanBuffIconSize = ns.DB_DEFAULTS.shamanBuffIconSize or 25
+    activeDb.showHunterRapidFireBar = (activeDb.showHunterRapidFireBar ~= false)
+    activeDb.showWarriorFlurryCounter = (activeDb.showWarriorFlurryCounter ~= false)
+    activeDb.showRogueAdrenalineRushBar = (activeDb.showRogueAdrenalineRushBar ~= false)
+    activeDb.showShamanWindfuryIcd = (activeDb.showShamanWindfuryIcd ~= false)
+    activeDb.showShamanLightningTracker = (activeDb.showShamanLightningTracker ~= false)
+    activeDb.showShamanFlameShockBar = (activeDb.showShamanFlameShockBar ~= false)
+    activeDb.showShamanBuffIcons = (activeDb.showShamanBuffIcons ~= false)
+    if activeDb.shamanBuffIconSize == nil then
+        activeDb.shamanBuffIconSize = ns.DB_DEFAULTS.shamanBuffIconSize or 25
     end
-    SuperSwingTimerDB.showWarriorBuffIcons = (SuperSwingTimerDB.showWarriorBuffIcons ~= false)
-    if SuperSwingTimerDB.warriorBuffIconSize == nil then
-        SuperSwingTimerDB.warriorBuffIconSize = ns.DB_DEFAULTS.warriorBuffIconSize or 25
+    activeDb.showWarriorBuffIcons = (activeDb.showWarriorBuffIcons ~= false)
+    if activeDb.warriorBuffIconSize == nil then
+        activeDb.warriorBuffIconSize = ns.DB_DEFAULTS.warriorBuffIconSize or 25
     end
-    SuperSwingTimerDB.showRogueBuffIcons = (SuperSwingTimerDB.showRogueBuffIcons ~= false)
-    if SuperSwingTimerDB.rogueBuffIconSize == nil then
-        SuperSwingTimerDB.rogueBuffIconSize = ns.DB_DEFAULTS.rogueBuffIconSize or 25
+    activeDb.showRogueBuffIcons = (activeDb.showRogueBuffIcons ~= false)
+    if activeDb.rogueBuffIconSize == nil then
+        activeDb.rogueBuffIconSize = ns.DB_DEFAULTS.rogueBuffIconSize or 25
     end
-    SuperSwingTimerDB.showPaladinBuffIcons = (SuperSwingTimerDB.showPaladinBuffIcons ~= false)
-    if SuperSwingTimerDB.paladinBuffIconSize == nil then
-        SuperSwingTimerDB.paladinBuffIconSize = ns.DB_DEFAULTS.paladinBuffIconSize or 25
+    activeDb.showPaladinBuffIcons = (activeDb.showPaladinBuffIcons ~= false)
+    if activeDb.paladinBuffIconSize == nil then
+        activeDb.paladinBuffIconSize = ns.DB_DEFAULTS.paladinBuffIconSize or 25
     end
-    if SuperSwingTimerDB.shamanLightningTrackerGap == nil then
-        SuperSwingTimerDB.shamanLightningTrackerGap = ns.DB_DEFAULTS.shamanLightningTrackerGap or 6
+    if activeDb.shamanLightningTrackerGap == nil then
+        activeDb.shamanLightningTrackerGap = ns.DB_DEFAULTS.shamanLightningTrackerGap or 6
     end
     -- useClassColors strictly defaults to false unless explicitly true in the DB
-    if SuperSwingTimerDB.useClassColors == nil then
-        SuperSwingTimerDB.useClassColors = false
+    if activeDb.useClassColors == nil then
+        activeDb.useClassColors = false
     end
-    SuperSwingTimerDB.showAdvanced = (SuperSwingTimerDB.showAdvanced == true)
-    SuperSwingTimerDB.indicatorBlendMode = SuperSwingTimerDB.indicatorBlendMode or ns.DB_DEFAULTS.indicatorBlendMode
-    if SuperSwingTimerDB.globalScale == nil then
-        SuperSwingTimerDB.globalScale = ns.DB_DEFAULTS.globalScale
+    activeDb.showAdvanced = (activeDb.showAdvanced == true)
+    activeDb.indicatorBlendMode = activeDb.indicatorBlendMode or ns.DB_DEFAULTS.indicatorBlendMode
+    if activeDb.globalScale == nil then
+        activeDb.globalScale = ns.DB_DEFAULTS.globalScale
     end
-    SuperSwingTimerDB.weaveSpellFamilies = SuperSwingTimerDB.weaveSpellFamilies or {}
+    activeDb.weaveSpellFamilies = activeDb.weaveSpellFamilies or {}
     for key, def in pairs(ns.DB_DEFAULTS.weaveSpellFamilies) do
-        if SuperSwingTimerDB.weaveSpellFamilies[key] == nil then
-            SuperSwingTimerDB.weaveSpellFamilies[key] = def
+        if activeDb.weaveSpellFamilies[key] == nil then
+            activeDb.weaveSpellFamilies[key] = def
         end
     end
-    SuperSwingTimerDB.weaveMarkerLayer = SuperSwingTimerDB.weaveMarkerLayer or ns.DB_DEFAULTS.weaveMarkerLayer
-    SuperSwingTimerDB.positions = SuperSwingTimerDB.positions or {}
+    activeDb.weaveMarkerLayer = activeDb.weaveMarkerLayer or ns.DB_DEFAULTS.weaveMarkerLayer
+    activeDb.positions = activeDb.positions or {}
     for slot, def in pairs(ns.DB_DEFAULTS.positions) do
-        if not SuperSwingTimerDB.positions[slot] then
-            SuperSwingTimerDB.positions[slot] = {
+        if not activeDb.positions[slot] then
+            activeDb.positions[slot] = {
                 point = def.point,
                 relativePoint = def.relativePoint,
                 x = def.x,
@@ -168,23 +177,23 @@ local function MigrateDB(targetDb)
             }
         end
     end
-    SuperSwingTimerDB.colors = SuperSwingTimerDB.colors or {}
+    activeDb.colors = activeDb.colors or {}
     for key, def in pairs(ns.DB_DEFAULTS.colors) do
-        if not SuperSwingTimerDB.colors[key] then
-            SuperSwingTimerDB.colors[key] = { r = def.r, g = def.g, b = def.b, a = def.a }
+        if not activeDb.colors[key] then
+            activeDb.colors[key] = { r = def.r, g = def.g, b = def.b, a = def.a }
         end
     end
-    SuperSwingTimerDB.sparkColor = SuperSwingTimerDB.sparkColor
+    activeDb.sparkColor = activeDb.sparkColor
         or {
             r = ns.DB_DEFAULTS.sparkColor.r,
             g = ns.DB_DEFAULTS.sparkColor.g,
             b = ns.DB_DEFAULTS.sparkColor.b,
-            a = SuperSwingTimerDB.sparkAlpha ~= nil and SuperSwingTimerDB.sparkAlpha or ns.DB_DEFAULTS.sparkColor.a
+            a = activeDb.sparkAlpha ~= nil and activeDb.sparkAlpha or ns.DB_DEFAULTS.sparkColor.a
         }
-    if SuperSwingTimerDB.sparkColor.a == nil then
-        SuperSwingTimerDB.sparkColor.a = SuperSwingTimerDB.sparkAlpha or ns.DB_DEFAULTS.sparkColor.a
+    if activeDb.sparkColor.a == nil then
+        activeDb.sparkColor.a = activeDb.sparkAlpha or ns.DB_DEFAULTS.sparkColor.a
     end
-    SuperSwingTimerDB.sparkAlpha = SuperSwingTimerDB.sparkColor.a or SuperSwingTimerDB.sparkAlpha
+    activeDb.sparkAlpha = activeDb.sparkColor.a or activeDb.sparkAlpha
         or ns.DB_DEFAULTS.sparkAlpha
 
     local migrations = {
@@ -1113,18 +1122,45 @@ local function MigrateDB(targetDb)
                     db.colors.hunterCastBar = { r = 0.35, g = 0.65, b = 0.95, a = 1 }
                 end
             end
+        },
+        {
+            version = 64,
+            apply = function (db)
+                if db.hunterCastBarHeight == nil or db.hunterCastBarHeight <= 0 then
+                    db.hunterCastBarHeight = 15
+                end
+                if db.powerBarHeight == nil or db.powerBarHeight <= 0 then
+                    db.powerBarHeight = 10
+                end
+                db.colors = db.colors or {}
+                if not db.colors.warriorRageBarColor then
+                    db.colors.warriorRageBarColor = { r = 0.78, g = 0.25, b = 0.25, a = 1.0 }
+                end
+                if not db.colors.paladinManaBarColor then
+                    db.colors.paladinManaBarColor = { r = 0.25, g = 0.55, b = 0.90, a = 1.0 }
+                end
+                if not db.colors.shamanManaBarColor then
+                    db.colors.shamanManaBarColor = { r = 0.00, g = 0.44, b = 0.87, a = 1.0 }
+                end
+                if not db.colors.rogueEnergyBarColor then
+                    db.colors.rogueEnergyBarColor = { r = 0.95, g = 0.85, b = 0.20, a = 1.0 }
+                end
+                if not db.colors.hunterManaBarColor then
+                    db.colors.hunterManaBarColor = { r = 0.25, g = 0.55, b = 0.90, a = 1.0 }
+                end
+                if not db.colors.druidManaBarColor then
+                    db.colors.druidManaBarColor = { r = 0.25, g = 0.55, b = 0.90, a = 1.0 }
+                end
+            end
         }
     }
 
-    -- Optional db param lets the test harness migrate an isolated table.
-    -- Falls back to the real global when called during addon load.
-    local db = targetDB or SuperSwingTimerDB
-    local currentVersion = tonumber(db.version) or 0
+    local currentVersion = tonumber(activeDb.version) or 0
     for _, migration in ipairs(migrations) do
         if currentVersion < migration.version then
-            migration.apply(db)
+            migration.apply(activeDb)
             currentVersion = migration.version
-            db.version = migration.version
+            activeDb.version = migration.version
         end
     end
 end
@@ -1132,7 +1168,7 @@ end
 -- Highest migration version currently defined. Tests assert against this
 -- instead of a hard-coded number so they don't go stale when the
 -- migration ladder grows.
-ns.DB_CURRENT_VERSION = 63
+ns.DB_CURRENT_VERSION = 64
 
 -- ============================================================
 -- Initialization
@@ -1225,6 +1261,20 @@ RegisterSlashCommands()
 -- ============================================================
 local frame = CreateFrame("Frame", "SuperSwingTimerFrame", UIParent)
 
+local function RegisterUnitEventSafe(targetFrame, event, unit1, unit2)
+    if not targetFrame then return end
+    if targetFrame.RegisterUnitEvent and unit1 then
+        if unit2 then
+            targetFrame:RegisterUnitEvent(event, unit1, unit2)
+        else
+            targetFrame:RegisterUnitEvent(event, unit1)
+        end
+    else
+        targetFrame:RegisterEvent(event)
+    end
+end
+ns.RegisterUnitEventSafe = RegisterUnitEventSafe
+
 -- Register events conditionally in ADDON_LOADED once class is known
 local function RegisterEvents()
     local cfg = ns.classConfig or {}
@@ -1232,35 +1282,34 @@ local function RegisterEvents()
     -- Core events for all classes
     frame:RegisterEvent("COMBAT_LOG_EVENT_UNFILTERED")
     frame:RegisterEvent("ADDON_LOADED")
-    frame:RegisterEvent("UNIT_ATTACK_SPEED")
+    RegisterUnitEventSafe(frame, "UNIT_ATTACK_SPEED", "player", "target")
     frame:RegisterEvent("PLAYER_TARGET_CHANGED")
     frame:RegisterEvent("PLAYER_REGEN_DISABLED")
     frame:RegisterEvent("PLAYER_REGEN_ENABLED")
 
     if cfg.melee then
-        frame:RegisterEvent("UNIT_AURA")
+        RegisterUnitEventSafe(frame, "UNIT_AURA", "player", "target")
         frame:RegisterEvent("PLAYER_EQUIPMENT_CHANGED")
-        frame:RegisterEvent("UNIT_INVENTORY_CHANGED")
-        frame:RegisterEvent("UNIT_SPELLCAST_SUCCEEDED")
-        frame:RegisterEvent("UNIT_SPELLCAST_START")
-        frame:RegisterEvent("UNIT_SPELLCAST_STOP")
-        frame:RegisterEvent("UNIT_SPELLCAST_INTERRUPTED")
-        frame:RegisterEvent("UNIT_SPELLCAST_FAILED")
-        frame:RegisterEvent("UNIT_SPELLCAST_DELAYED")
-        frame:RegisterEvent("UNIT_SPELLCAST_CHANNEL_START")
-        frame:RegisterEvent("UNIT_SPELLCAST_CHANNEL_STOP")
+        RegisterUnitEventSafe(frame, "UNIT_INVENTORY_CHANGED", "player")
+        RegisterUnitEventSafe(frame, "UNIT_SPELLCAST_SUCCEEDED", "player")
+        RegisterUnitEventSafe(frame, "UNIT_SPELLCAST_START", "player")
+        RegisterUnitEventSafe(frame, "UNIT_SPELLCAST_STOP", "player")
+        RegisterUnitEventSafe(frame, "UNIT_SPELLCAST_INTERRUPTED", "player")
+        RegisterUnitEventSafe(frame, "UNIT_SPELLCAST_FAILED", "player")
+        RegisterUnitEventSafe(frame, "UNIT_SPELLCAST_DELAYED", "player")
+        RegisterUnitEventSafe(frame, "UNIT_SPELLCAST_CHANNEL_START", "player")
+        RegisterUnitEventSafe(frame, "UNIT_SPELLCAST_CHANNEL_STOP", "player")
     end
 
     if cfg.melee and ns.playerClass == "SHAMAN" then
         frame:RegisterEvent("SPELLS_CHANGED")
     end
 
-    local powerClasses = { WARRIOR = true, PALADIN = true, SHAMAN = true, ROGUE = true, DRUID = true, HUNTER = true }
-    if powerClasses[ns.playerClass] then
-        frame:RegisterEvent("UNIT_POWER_UPDATE")
-        frame:RegisterEvent("UNIT_POWER_FREQUENT")
-        frame:RegisterEvent("UNIT_DISPLAYPOWER")
-        frame:RegisterEvent("UNIT_MAXPOWER")
+    if POWER_CLASSES[ns.playerClass] then
+        RegisterUnitEventSafe(frame, "UNIT_POWER_UPDATE", "player")
+        RegisterUnitEventSafe(frame, "UNIT_POWER_FREQUENT", "player")
+        RegisterUnitEventSafe(frame, "UNIT_DISPLAYPOWER", "player")
+        RegisterUnitEventSafe(frame, "UNIT_MAXPOWER", "player")
     end
 
     if ns.playerClass == "DRUID" then
@@ -1268,7 +1317,7 @@ local function RegisterEvents()
     end
 
     if cfg.ranged then
-        frame:RegisterEvent("UNIT_RANGEDDAMAGE")
+        RegisterUnitEventSafe(frame, "UNIT_RANGEDDAMAGE", "player")
         frame:RegisterEvent("SPELL_UPDATE_COOLDOWN")
         frame:RegisterEvent("START_AUTOREPEAT_SPELL")
         frame:RegisterEvent("STOP_AUTOREPEAT_SPELL")
@@ -1460,6 +1509,22 @@ frame:SetScript("OnEvent", function (self, event, ...)
             if ns.playerClass == "ROGUE" and ns.HandleRogueSliceAndDiceAura then
                 ns.HandleRogueSliceAndDiceAura(unit)
             end
+            if ns.playerClass == "WARRIOR" and ns.UpdateWarriorBuffIcons then
+                ns.UpdateWarriorBuffIcons(0)
+            elseif ns.playerClass == "PALADIN" and ns.UpdatePaladinBuffIcons then
+                ns.UpdatePaladinBuffIcons(0)
+            elseif ns.playerClass == "SHAMAN" and ns.UpdateShamanBuffIcons then
+                ns.UpdateShamanBuffIcons(0)
+            elseif ns.playerClass == "DRUID" and ns.UpdateDruidBuffIcons then
+                ns.UpdateDruidBuffIcons(0)
+            elseif ns.playerClass == "HUNTER" and ns.UpdateHunterBuffIcons then
+                ns.UpdateHunterBuffIcons(0)
+            elseif ns.playerClass == "ROGUE" and ns.UpdateRogueBuffIcons then
+                ns.UpdateRogueBuffIcons(0)
+            end
+            if ns.SetUpdateEnabled and ns.HasActiveTimers then
+                ns.SetUpdateEnabled(ns.HasActiveTimers())
+            end
         elseif unit == "target" and ns.playerClass == "SHAMAN" and ns.UpdateShamanFlameShockBar then
             ns.UpdateShamanFlameShockBar(true)
         elseif unit == "target" and ns.playerClass == "WARRIOR" and ns.UpdateWarriorDeepWoundsBar then
@@ -1567,6 +1632,9 @@ frame:SetScript("OnEvent", function (self, event, ...)
         if ns.ClearWeavePreview then
             ns.ClearWeavePreview()
         end
+        if ns.SetUpdateEnabled and ns.HasActiveTimers then
+            ns.SetUpdateEnabled(ns.HasActiveTimers())
+        end
     elseif event == "SPELLS_CHANGED" then
         if ns.playerClass == "SHAMAN" and ns.RebuildWeaveSpellCatalog then
             ns.RebuildWeaveSpellCatalog()
@@ -1606,6 +1674,9 @@ frame:SetScript("OnEvent", function (self, event, ...)
             ns.UpdateWarriorShieldBlockBar(0, true)
         end
         ns.StartSanityTicker()
+        if ns.RefreshUpdateLoop then
+            ns.RefreshUpdateLoop()
+        end
     elseif event == "PLAYER_REGEN_ENABLED" then
         ns.playerInCombat = false
         if ns.UpdatePlayerPowerBar then
@@ -1639,6 +1710,9 @@ frame:SetScript("OnEvent", function (self, event, ...)
         ns.extraAttackPending = 0
         if ns.ClearWeavePreview then
             ns.ClearWeavePreview()
+        end
+        if ns.RefreshUpdateLoop then
+            ns.RefreshUpdateLoop()
         end
     elseif event == "UPDATE_SHAPESHIFT_FORM" then
         -- Druid form label update: fire for ALL forms, not just Caster.
