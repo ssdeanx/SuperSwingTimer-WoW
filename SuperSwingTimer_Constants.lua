@@ -126,11 +126,13 @@ function ns.UnitAura(unit, index, filter)
         -- r10=spellID(B) or shouldConsolidate(D), r11=nil(B) or spellID(D)
         return r1, r2, r3, tonumber(r4) or 0, r5, r6, r7, r8, r9, r10,
                type(r11) == "number" and r11 or type(r10) == "number" and r10 or nil
-    elseif type(r3) == "number" and type(r10) == "number" then
+    elseif type(r3) == "number" and (type(r10) == "number" or type(r9) == "boolean") then
         -- Shape C (TBC Anniv via UnpackAuraData):
         -- r2=icon(FileID#), r3=applications, r4=dispelName,
         -- r5=duration, r6=expTime, r7=sourceUnit, r8=stealable,
         -- r9=nameplateShowPersonal(bool), r10=spellID, r11=canApplyAura(bool)
+        -- Detection: r3 is number AND (r10 is number spellID OR r9 is boolean
+        -- nameplateShowPersonal). The boolean check covers auras with nil spellID.
         return r1, nil, r2, tonumber(r3) or 0, r4, r5, r6, r7, r8, nil,
                type(r10) == "number" and r10 or nil
     else

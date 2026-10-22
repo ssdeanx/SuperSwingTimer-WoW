@@ -1611,6 +1611,15 @@ frame:SetScript("OnEvent", function (self, event, ...)
         local slot = ...
         ns.UpdateOHBar()
         ns.SanityCheckTimers(true)
+        -- Invalidate cached ranged speed on weapon swap so the hunter bar
+        -- re-resolves from GetSpellCooldown(75) / UnitRangedDamage instead
+        -- of using a stale value from the previous weapon.
+        if ns.playerClass == "HUNTER" and ns.timers and ns.timers.ranged then
+            if slot == 18 or slot == 16 or slot == 17 then
+                ns.timers.ranged.speed = nil
+                ns.timers.ranged.hastePercent = nil
+            end
+        end
         if ns.playerClass == "PALADIN" and slot == 18 and ns.HandlePaladinLibramEquipmentChanged then
             ns.HandlePaladinLibramEquipmentChanged(slot)
         end

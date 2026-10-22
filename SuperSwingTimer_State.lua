@@ -709,6 +709,9 @@ function ns.SyncRangedTimerSpeed(now, force)
                 t.lastSwing = autoShotStart
             end
         else
+            -- Invalidate hidden cast window cache on speed change.
+            t.hiddenCastWindowStart = nil
+            t.hiddenCastWindowDuration = nil
             ns.RescaleTimer("ranged", autoShotDuration)
         end
         t.hastePercent = currentRangedHaste
@@ -721,6 +724,9 @@ function ns.SyncRangedTimerSpeed(now, force)
     -- when no cached speed exists.
     local rangedSpeedValue = (t.speed and t.speed > 0) and t.speed or UnitRangedDamage("player")
     if rangedSpeedValue and rangedSpeedValue > 0 then
+        -- Invalidate hidden cast window cache on speed change (see above).
+        t.hiddenCastWindowStart = nil
+        t.hiddenCastWindowDuration = nil
         ns.RescaleTimer("ranged", rangedSpeedValue)
         t.hastePercent = currentRangedHaste
         return
@@ -728,6 +734,9 @@ function ns.SyncRangedTimerSpeed(now, force)
 
     local estimatedSpeed = EstimateSpeedFromHaste(t.speed, t.hastePercent, currentRangedHaste)
     if estimatedSpeed and estimatedSpeed > 0 then
+        -- Invalidate hidden cast window cache on speed change (see above).
+        t.hiddenCastWindowStart = nil
+        t.hiddenCastWindowDuration = nil
         ns.RescaleTimer("ranged", estimatedSpeed)
         t.hastePercent = currentRangedHaste
     end

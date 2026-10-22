@@ -204,6 +204,77 @@ local function RegisterSSTTests()
     end
 
     -- ============================================================
+    -- SST-UnitAuraNorm: ns.UnitAura normalizer across API shapes
+    -- ============================================================
+    local UANorm = WoWUnit('SST-UnitAuraNorm', 'PLAYER_ENTERING_WORLD')
+
+    function UANorm:ShapeA_Classic113()
+        -- r3=count(num), r4=debuffType, r9=spellID
+        Replace('UnitAura', function(u, i, f)
+            return 'Deep Wounds', nil, 3, 'Bleed', 12, 12360.0, 'player', false, 12721
+        end)
+        local name, _, icon, count, debuffType, dur, _, caster, _, _, sid = ns.UnitAura('target', 1, 'HARMFUL')
+        AreEqual(name, 'Deep Wounds')
+        AreEqual(icon, nil)
+        AreEqual(count, 3)
+        AreEqual(debuffType, 'Bleed')
+        AreEqual(dur, 12)
+        AreEqual(caster, 'player')
+        AreEqual(sid, 12721)
+        ClearReplaces()
+    end
+
+    function UANorm:ShapeB_Classic115()
+        -- r3=icon(str), r4=count, r10=spellID
+        Replace('UnitAura', function(u, i, f)
+            return 'Slice and Dice', 'Rank 1', 'Interface\\Icons\\x', 5, nil, 15, 12345.0, 'player', false, 5171
+        end)
+        local name, _, icon, count, _, dur, _, _, _, _, sid = ns.UnitAura("player", 1, "HELPFUL")
+        AreEqual(name, 'Slice and Dice')
+        AreEqual(icon, 'Interface\\Icons\\x')
+        AreEqual(count, 5)
+        AreEqual(dur, 15)
+        AreEqual(sid, 5171)
+        ClearReplaces()
+    end
+
+    function UANorm:ShapeC_TBCAnniv_WithSpellID()
+        -- r2=icon(FileID), r3=applications, r4=dispelName, r9=bool, r10=spellID
+        Replace('UnitAura', function(u, i, f)
+            return 'Flame Shock', 132181, 1, 'Fire', 12, 12350.0, 'player', false, true, 8050, false
+        end)
+        local name, _, icon, count, debuffType, dur, _, caster, _, _, sid = ns.UnitAura('target', 1, 'HARMFUL')
+        AreEqual(name, 'Flame Shock')
+        AreEqual(icon, 132181)
+        AreEqual(count, 1)
+        AreEqual(debuffType, 'Fire')
+        AreEqual(dur, 12)
+        AreEqual(caster, 'player')
+        AreEqual(sid, 8050)
+        ClearReplaces()
+    end
+
+    function UANorm:ShapeC_TBCAnniv_NilSpellID()
+        -- r10=nil but r9 is boolean -> should still detect Shape C
+        Replace('UnitAura', function(u, i, f)
+            return 'Some Aura', 132181, 2, 'Magic', 30, 12350.0, 'player', false, true, nil, false
+        end)
+        local name, _, icon, count, debuffType, dur, _, _, _, _, _ = ns.UnitAura('player', 1, 'HELPFUL')
+        AreEqual(name, 'Some Aura')
+        AreEqual(icon, 132181)
+        AreEqual(count, 2)
+        AreEqual(debuffType, 'Magic')
+        AreEqual(dur, 30)
+        ClearReplaces()
+    end
+
+    function UANorm:NilName_ReturnsNil()
+        Replace('UnitAura', function(u, i, f) return nil end)
+        IsFalse(ns.UnitAura('target', 1, 'HARMFUL'))
+        ClearReplaces()
+    end
+
+    -- ============================================================
     -- SST-Combat: timers, CLEU, debuff stacking, state machine
     -- ============================================================
     local Combat = WoWUnit('SST-Combat', 'PLAYER_ENTERING_WORLD')
@@ -476,9 +547,10 @@ local function RegisterSSTTests()
         f:SetHeight(height or 6)
         f.anchors = {}
         local realSetPoint = f.SetPoint
-        f.SetPoint = function(self, point, rel, relPoint, x, y)
+        f.SetPoint = function(self, ...)
+            local point, rel, relPoint, x, y = ...
             self.anchors[#self.anchors + 1] = { point = point, rel = rel, relPoint = relPoint, x = x, y = y }
-            return realSetPoint(self, point, rel, relPoint, x, y)
+            return realSetPoint(self, ...)
         end
         return f
     end
@@ -680,13 +752,13 @@ local function RegisterSSTTests()
 
         local a3 = HasAnchor(bar3, "BOTTOMLEFT")
         Exists(a3, 'bar3 has a BOTTOMLEFT anchor')
-        AreEqual(a3.y, 10, 'bar3 stacks above bar1, skipping the nil slot')
-        AreEqual(a3.rel, reference, 'bar3 anchors to the reference bar')
+        AreEqual(a3 and a3.y, 10, 'bar3 stacks above bar1, skipping the nil slot')
+        AreEqual(a3 and a3.rel, reference, 'bar3 anchors to the reference bar')
         IsTrue((HasAnchor(bar3, "BOTTOMRIGHT") or {}).y == 10, 'bar3 BOTTOMRIGHT mirrors BOTTOMLEFT')
 
         local a4 = HasAnchor(bar4, "BOTTOMLEFT")
         Exists(a4, 'bar4 has a BOTTOMLEFT anchor')
-        AreEqual(a4.y, 18, 'bar4 stacks above bar3')
+        AreEqual(a4 and a4.y, 18, 'bar4 stacks above bar3')
     end
 
     -- The class call sites must rewrite every slot of the hoisted list on EVERY
