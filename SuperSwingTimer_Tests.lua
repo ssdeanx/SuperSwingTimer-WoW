@@ -1371,6 +1371,20 @@ local function RegisterSSTTests()
         end
     end
 
+    function Config:QuickTabStylingAndColorsGutter()
+        if not ns.panel and ns.InitConfig then ns.InitConfig() end
+        local p = ns.panel
+        IsTrue(p ~= nil, "Config panel must exist")
+        local tabBtn = p.quickTabButtons and p.quickTabButtons[1]
+        IsTrue(tabBtn ~= nil, "Quick tab button 1 should exist")
+        if tabBtn and tabBtn.refresh then
+            tabBtn.refresh()
+            local _, _, b = tabBtn.label:GetTextColor()
+            IsTrue(b > 0.8, "Active tab text should have cyan accent blue component > 0.8")
+            Exists(tabBtn.activeBorder, "Active tab should have active bottom border texture")
+        end
+    end
+
     local nGroups = 0
     for _ in ipairs(WoWUnit.children) do nGroups = nGroups + 1 end
     print("|cff44ff44[SST] " .. nGroups .. " groups registered. Click WoWUnit toggle or type /ssttest.|r")

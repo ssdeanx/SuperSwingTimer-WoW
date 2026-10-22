@@ -137,7 +137,11 @@ local function createMockObject()
     function obj:GetRight() return 300 end
     function obj:SetText(t) self._text = t end
     function obj:GetText() return self._text end
-    function obj:SetTextColor(...) end
+    function obj:SetTextColor(r, g, b, a) self._textColor = { r or 1, g or 1, b or 1, a or 1 } end
+    function obj:GetTextColor()
+        local c = self._textColor or { 1, 1, 1, 1 }
+        return c[1], c[2], c[3], c[4]
+    end
     function obj:SetFont(...) end
     function obj:GetFont() return "Fonts\\FRIZQT__.TTF", 10, "" end
     function obj:SetJustifyH(j) self._justifyH = j end

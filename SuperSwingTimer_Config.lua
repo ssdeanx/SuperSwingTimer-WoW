@@ -2838,14 +2838,24 @@ local function CreatePanel()
             end
         end)
 
+        local activeBorder = btn:CreateTexture(nil, "OVERLAY")
+        activeBorder:SetPoint("BOTTOMLEFT", btn, "BOTTOMLEFT", 0, -1)
+        activeBorder:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT", 0, -1)
+        activeBorder:SetHeight(2)
+        activeBorder:SetColorTexture(0.15, 0.78, 0.92, 1.0)
+        activeBorder:Hide()
+        btn.activeBorder = activeBorder
+
         -- Store refresh function to update active state
         btn.refresh = function ()
             local isActive = sectionCollapsed.quickTab == tabKey
             activeBg:SetShown(isActive)
+            activeBorder:SetShown(isActive)
             if isActive then
-                txt:SetTextColor(1, 0.90, 0.30, 1)
+                activeBg:SetColorTexture(0.16, 0.18, 0.24, 0.95)
+                txt:SetTextColor(0.20, 0.85, 1.0, 1)
             else
-                txt:SetTextColor(0.7, 0.7, 0.7, 1)
+                txt:SetTextColor(0.65, 0.68, 0.75, 1)
             end
         end
 
@@ -2863,6 +2873,7 @@ local function CreatePanel()
         quickTabButtons[#quickTabButtons + 1] = btn
         barVisibilityRows[#barVisibilityRows + 1] = btn
     end
+    f.quickTabButtons = quickTabButtons
     -- Start on visibility tab
     sectionCollapsed.quickTab = "visibility"
 
@@ -4852,23 +4863,23 @@ local function CreatePanel()
             quickSectionBottomY = endY
 
         elseif activeTab == "colors" then
-            -- 2-column grid for color swatches
-            local gutter = 16
+            -- 2-column grid for color swatches with comfortable gutter and spacing
+            local gutter = 24
             local columnWidth = math.floor((usableWidth - gutter) / 2)
             local leftStart = outerInset
             local rightStart = outerInset + columnWidth + gutter
-            local leftY = tabBottomY - 4
-            local rightY = tabBottomY - 4
+            local leftY = tabBottomY - 6
+            local rightY = tabBottomY - 6
             local colIdx = 0
             for _, row in ipairs(quickColorRows) do
                 if row and row:IsShown() and (row.quickTab or "colors") == "colors" then
                     colIdx = colIdx + 1
                     if colIdx % 2 == 1 then
                         PositionRowBetween(content, row, leftStart, leftStart + columnWidth, leftY)
-                        leftY = leftY - GetRowLayoutHeight(row) - 4
+                        leftY = leftY - GetRowLayoutHeight(row) - 8
                     else
                         PositionRowBetween(content, row, rightStart, rightStart + columnWidth, rightY)
-                        rightY = rightY - GetRowLayoutHeight(row) - 4
+                        rightY = rightY - GetRowLayoutHeight(row) - 8
                     end
                 elseif row and row.SetShown then
                     row:SetShown(false)
