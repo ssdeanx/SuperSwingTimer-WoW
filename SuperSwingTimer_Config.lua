@@ -1913,7 +1913,6 @@ local function CreateActionRow(parent, label, buttonText, yOffset, onClick, tool
 
     local text = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     text:SetPoint("TOPLEFT", row, "TOPLEFT", 0, 0)
-    text:SetPoint("TOPRIGHT", row, "TOPRIGHT", -130, 0)
     text:SetJustifyH("LEFT")
     text:SetJustifyV("TOP")
     text:SetText(label)
@@ -1947,6 +1946,7 @@ local function CreateActionRow(parent, label, buttonText, yOffset, onClick, tool
     row.refresh = function () end
     return row
 end
+ns._CreateActionRow = CreateActionRow
 
 -- ------------------------------------------------------------
 -- [?] help button — small clickable font string that shows a
@@ -1955,8 +1955,8 @@ local function CreateSectionHeader(parent, label, yOffset, options)
     local row = CreateOptionalBackdropFrame("Button", nil, parent)
     row:SetPoint("TOPLEFT", parent, "TOPLEFT", 20, yOffset)
     row:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -20, yOffset)
-    row:SetHeight(24)
-    row.layoutHeight = 30
+    row:SetHeight(26)
+    row.layoutHeight = 36
     row:EnableMouse(true)
     row:EnableKeyboard(true)
     row:RegisterForClicks("LeftButtonUp")
@@ -1972,9 +1972,39 @@ local function CreateSectionHeader(parent, label, yOffset, options)
     end)
 
     local bg = row:CreateTexture(nil, "BACKGROUND")
-    bg:SetColorTexture(0.07, 0.07, 0.07, 0.82)
+    bg:SetColorTexture(0.08, 0.08, 0.12, 0.95)
     bg:SetPoint("TOPLEFT", row, "TOPLEFT", -6, 3)
     bg:SetPoint("BOTTOMRIGHT", row, "BOTTOMRIGHT", 6, -3)
+
+    -- Left 3px accent badge
+    local accentBadge = row:CreateTexture(nil, "ARTWORK")
+    accentBadge:SetPoint("TOPLEFT", row, "TOPLEFT", -6, 3)
+    accentBadge:SetPoint("BOTTOMLEFT", row, "BOTTOMLEFT", -6, -3)
+    accentBadge:SetWidth(3)
+    local accentColor = options and options.accentColor
+    if not accentColor then
+        if label:find("Appearance") then
+            accentColor = { 0.0, 0.80, 1.0, 1.0 }
+        elseif label:find("Combat") then
+            accentColor = { 1.0, 0.80, 0.0, 1.0 }
+        elseif label:find("Shaman") then
+            accentColor = { 0.31, 0.98, 0.48, 1.0 }
+        elseif label:find("Quick") then
+            accentColor = { 0.20, 0.60, 1.0, 1.0 }
+        else
+            accentColor = { 0.20, 0.80, 1.0, 1.0 }
+        end
+    end
+    accentBadge:SetColorTexture(accentColor[1] or 0.2, accentColor[2] or 0.8, accentColor[3] or 1.0, accentColor[4] or 1.0)
+    row.accentBadge = accentBadge
+
+    -- Subtle 1px bottom divider line
+    local divider = row:CreateTexture(nil, "ARTWORK")
+    divider:SetPoint("BOTTOMLEFT", row, "BOTTOMLEFT", -6, -3)
+    divider:SetPoint("BOTTOMRIGHT", row, "BOTTOMRIGHT", 6, -3)
+    divider:SetHeight(1)
+    divider:SetColorTexture(0.20, 0.20, 0.28, 0.60)
+    row.divider = divider
 
     local hover = AddRowHoverHighlight(row, 0.05)
     row.hover = hover
@@ -2075,6 +2105,7 @@ local function CreateSectionHeader(parent, label, yOffset, options)
 
     return row
 end
+ns._CreateSectionHeader = CreateSectionHeader
 
 local function CreateDescriptionText(parent, text, yOffset)
     local row = CreateFrame("Frame", nil, parent)
@@ -4751,8 +4782,8 @@ local function CreatePanel()
         end
 
         options = options or {}
-        local gapAfterHeader = options.gapAfterHeader or 16
-        local rowSpacing = options.rowSpacing or 10
+        local gapAfterHeader = options.gapAfterHeader or 20
+        local rowSpacing = options.rowSpacing or 18
 
         PositionRowAtY(content, header, topY)
         local nextY = topY - GetRowLayoutHeight(header) - gapAfterHeader
@@ -4870,16 +4901,16 @@ local function CreatePanel()
     end
 
     ReflowConfigSections = function ()
-        local sectionY = ReflowQuickControls() - 26
+        local sectionY = ReflowQuickControls() - 32
         sectionY = LayoutSectionRows(mhOhHeader, mhOhRows, sectionY, {
-            gapAfterHeader = 22,
-            rowSpacing = 14
+            gapAfterHeader = 20,
+            rowSpacing = 18
         })
 
         if ns.playerClass == "SHAMAN" and shamanHeader and shamanHeader:IsShown() then
-            sectionY = LayoutSectionRows(shamanHeader, shamanRows, sectionY - 8, {
-                gapAfterHeader = 22,
-                rowSpacing = 14
+            sectionY = LayoutSectionRows(shamanHeader, shamanRows, sectionY - 32, {
+                gapAfterHeader = 20,
+                rowSpacing = 18
             })
         else
             if shamanHeader then shamanHeader:Hide() end
@@ -4887,15 +4918,15 @@ local function CreatePanel()
             for _, r in ipairs(shamanRows or {}) do if r and r.Hide then r:Hide() end end
         end
 
-        sectionY = LayoutSectionRows(generalHeader, generalRows, sectionY - 8, {
+        sectionY = LayoutSectionRows(generalHeader, generalRows, sectionY - 32, {
             gapAfterHeader = 20,
-            rowSpacing = 14
+            rowSpacing = 18
         })
 
         if ns.playerClass == "SHAMAN" and weaveFamiliesHeader and weaveFamiliesHeader:IsShown() then
-            sectionY = LayoutSectionRows(weaveFamiliesHeader, weaveFamiliesRows, sectionY - 8, {
+            sectionY = LayoutSectionRows(weaveFamiliesHeader, weaveFamiliesRows, sectionY - 32, {
                 gapAfterHeader = 20,
-                rowSpacing = 12
+                rowSpacing = 16
             })
         else
             if weaveFamiliesHeader then weaveFamiliesHeader:Hide() end

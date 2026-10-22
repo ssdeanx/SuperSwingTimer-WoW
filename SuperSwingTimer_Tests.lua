@@ -1353,6 +1353,24 @@ local function RegisterSSTTests()
         end
     end
 
+    function Config:SectionSpacingAndHeaders()
+        local parent = CreateFrame("Frame", nil, UIParent)
+        local header = ns._CreateSectionHeader and ns._CreateSectionHeader(parent, "Appearance", -20, { accentColor = { 0, 0.8, 1 } })
+        IsTrue(header ~= nil, "Section header should be created")
+        AreEqual(header and header.layoutHeight, 36, "Header layoutHeight must be 36px")
+        Exists(header and header.accentBadge, "Header must have accent badge texture")
+    end
+
+    function Config:ActionRow_SingleRightAnchor()
+        local parent = CreateFrame("Frame", nil, UIParent)
+        local row = ns._CreateActionRow and ns._CreateActionRow(parent, "Test Action", "Click Me", 0, function() end)
+        IsTrue(row ~= nil, "Action row should be created")
+        if row and row.text then
+            local p3 = row.text:GetPoint(3)
+            AreEqual(p3, nil, "Action row text must only have two anchor points (TOPLEFT and RIGHT), not three")
+        end
+    end
+
     local nGroups = 0
     for _ in ipairs(WoWUnit.children) do nGroups = nGroups + 1 end
     print("|cff44ff44[SST] " .. nGroups .. " groups registered. Click WoWUnit toggle or type /ssttest.|r")
