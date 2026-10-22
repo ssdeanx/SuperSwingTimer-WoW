@@ -308,11 +308,11 @@ function ns.HasActiveTimers()
     if db and ns.playerClass then
         local class = ns.playerClass
         if (class == "WARRIOR" and db.showWarriorBuffIcons ~= false)
-        or (class == "PALADIN" and db.showPaladinBuffIcons ~= false)
-        or (class == "SHAMAN" and db.showShamanBuffIcons ~= false)
-        or (class == "DRUID" and db.showDruidBuffIcons ~= false)
-        or (class == "HUNTER" and db.showHunterBuffIcons ~= false)
-        or (class == "ROGUE" and db.showRogueBuffIcons ~= false) then
+            or (class == "PALADIN" and db.showPaladinBuffIcons ~= false)
+            or (class == "SHAMAN" and db.showShamanBuffIcons ~= false)
+            or (class == "DRUID" and db.showDruidBuffIcons ~= false)
+            or (class == "HUNTER" and db.showHunterBuffIcons ~= false)
+            or (class == "ROGUE" and db.showRogueBuffIcons ~= false) then
             if ns.HasActiveBuffIcons and ns.HasActiveBuffIcons() then
                 return true
             end
@@ -333,7 +333,7 @@ function ns.HasActiveTimers()
     return false
 end
 
-ClearHunterCastState = function (clearResolvedSpell)
+ClearHunterCastState = function(clearResolvedSpell)
     ns.hunterCastActive = false
     ns.hunterCastSpellId = nil
     ns.hunterCastStartTime = nil
@@ -586,7 +586,7 @@ end
 function ns.StartSanityTicker()
     if ns.sanityTicker then return end
     if not C_Timer or not C_Timer.NewTicker then return end
-    ns.sanityTicker = C_Timer.NewTicker(1.0, function ()
+    ns.sanityTicker = C_Timer.NewTicker(1.0, function()
         ns.RefreshLatencyCache()
         if ns.HasActiveTimers() then
             ns.SanityCheckTimers(true)
@@ -777,7 +777,7 @@ function ns.StartSwing(slot, _, startTime)
             t.lastSwing = (autoShotStart and autoShotStart > 0) and autoShotStart or now
             t.hastePercent = rangedHastePercent
         else
-            -- Prefer cached speed; UnitRangedDamage may return min damage on TBC Classic 2.5.5
+            -- Prefer cached speed; UnitRangedDamage may return min damage on TBC Classic 2.5.6
             local s = (t.speed and t.speed > 0) and t.speed or UnitRangedDamage("player")
             speed = (s and s > 0) and s or 2.0
             t.lastSwing = now
@@ -1080,7 +1080,7 @@ function ns.HandleSpellcastStop(unit)
     ns.currentCastSpellId = nil
     ns.currentCastStartTime = nil
     if not (ns.playerClass == "HUNTER" and ns.hunterCastActive and ns.hunterCastSpellId and ns.IsHunterCastSpell
-        and ns.IsHunterCastSpell(ns.hunterCastSpellId) and ns.hunterCastDuration and ns.hunterCastDuration > 0) then
+            and ns.IsHunterCastSpell(ns.hunterCastSpellId) and ns.hunterCastDuration and ns.hunterCastDuration > 0) then
         ClearHunterCastState()
     end
     ns.preventSwingReset = false
@@ -1095,7 +1095,7 @@ function ns.HandleSpellcastChannelStop(unit)
     ns.currentCastSpellId = nil
     ns.currentCastStartTime = nil
     if not (ns.playerClass == "HUNTER" and ns.hunterCastActive and ns.hunterCastSpellId and ns.IsHunterCastSpell
-        and ns.IsHunterCastSpell(ns.hunterCastSpellId) and ns.hunterCastDuration and ns.hunterCastDuration > 0) then
+            and ns.IsHunterCastSpell(ns.hunterCastSpellId) and ns.hunterCastDuration and ns.hunterCastDuration > 0) then
         ClearHunterCastState()
     end
     ns.preventSwingReset = false
@@ -1279,7 +1279,8 @@ function ns.HandleCLEU()
     -- LATENCY_REFRESH_INTERVAL (0.05s).  Calling GetNetStats() on every
     -- CLEU event (hundreds/sec in raids) would be wasteful.
 
-    local _, subEvent, _, sourceGUID, _, _, _, targetGUID, _, _, _, cleuArg12, cleuArg13, _, cleuArg15, _, _, _, _, _, cleuArg21 = cleuFn()
+    local _, subEvent, _, sourceGUID, _, _, _, targetGUID, _, _, _, cleuArg12, cleuArg13, _, cleuArg15, _, _, _, _, _, cleuArg21 =
+    cleuFn()
     if not subEvent then
         return
     end
