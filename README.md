@@ -6,18 +6,17 @@ Super Swing Timer tracks white-hit swing timers across main hand, off hand, rang
 
 **Dual-client CLEU architecture:** Classic Era `COMBAT_LOG_EVENT` payloads use numeric spell IDs; TBC Anniversary sends localized spell names (strings) instead. All swing-affecting spell lookup tables (`RESET_SWING_SPELLS`, `NO_RESET_SWING_SPELLS`, `PAUSE_SWING_SPELLS`, `RESET_RANGED_SWING_SPELLS`) populate both key types at init time via `ns.GetSpellInfo(id)` so swing resets, pauses, ranged resets, and NMA queue detection work identically on both clients.
 
-Current version: **v0.2.4**. Status: release-ready. Includes zero-allocation engine optimizations, C++ engine-level `RegisterUnitEvent` raid event filtering, idle out-of-combat `OnUpdate` sleeping, standalone headless CLI test runner (`run_tests.lua`), multi-class power/resource bars for all 6 physical classes (Warrior rage with Execute alert, Rogue energy, Druid dynamic shapeshifting rage/energy/mana, Paladin mana, Shaman mana, Hunter mana) using native Blizzard `PowerBarColor` integration, enlarged 15px Hunter Auto Shot cast bar with crisp typography, clean dark cast bar background, independent Clip Zone color settings, event-driven reactive power updates (`UNIT_POWER_*`, `UNIT_DISPLAYPOWER`, `UNIT_MAXPOWER`), SavedVariables Migration v64, complete Season of Discovery (1.15.9) Tank & DPS rune support across all 9 classes, and dual-interface TOC (`## Interface: 11509, 20506`) for Classic Era and TBC Anniversary.
+Current version: **v0.2.6**. Status: release-ready. Includes interactive Move Mode (`/sst move`, `/sst unlock`, `/sst lock`) with drag overlays, floating `SuperSwingTimerMoveHUD` reposition toolbar, decoupled Blizzard Settings canvas eliminating window destruction and 1080p screen clipping, responsive resolution-clamped sizing with bottom-right resize grip, native `C_UnitAuras` support with legacy fallback, cross-client TOC support (`Interface: 11509, 20506, 38002` for Classic Era, TBC Anniversary, and Titanforge), dynamic 20-second test preview animation on `/sst test`, combat auto-lock safety, rapid drag off-frame release protection, 98-test headless test runner (`run_tests.lua`), zero-allocation engine optimizations, and multi-class power/resource bars for all 6 physical classes.
 
-**Recent changes (2026-09-21):**
+**Recent changes (v0.2.6 - 2026-10-22):**
 
 | Area | Change |
 | --- | --- |
-| Event Engine | `RegisterUnitEventSafe` delegates to C++ engine unit filtering for `UNIT_AURA`, `UNIT_ATTACK_SPEED`, `UNIT_POWER_*`, and `UNIT_SPELLCAST_*`, eliminating 95%+ of raid event spam |
-| Idle CPU & Hotpath | Zero-allocation `HasActiveTimers()` unrolling, `ns.HasActiveBuffIcons()` tracking for idle out-of-combat `OnUpdate` sleep, string formatting caching, and spark position deduplication |
-| Headless CLI Testing | Standalone `run_tests.lua` test harness executing all 7 test groups (68 tests) in ~0.013s with pure Lua 5.1/LuaJIT |
-| SoD Matrices | Added missing rune spell definitions for WARLOCK, MAGE, and PRIEST in `SuperSwingTimer_SoD.lua` |
-| DB Migration v64 | SavedVariables migration ladder v64 enforcing 15px Hunter cast bar, 10px power bar, and class color defaults |
-| Class Polish | Warrior Execute glow indicator with zero-allocation sine-wave pulse below 20% target HP |
+| Move Mode & HUD | Interactive `/sst move` and `/sst unlock` commands with drag guide overlays, floating `SuperSwingTimerMoveHUD` toolbar with `[ Lock Bars & Save ]`, `Esc` auto-lock hook, combat auto-lock safety, rapid drag off-frame release safety, and dynamic Hunter stack tracking (`Main Hand (Follows Ranged)`) |
+| Settings & 1080p Fix | Decoupled Blizzard Settings Canvas (`SuperSwingTimerBlizzardOptionsPanel`) from standalone window (`SuperSwingTimerConfigPanel`), fixing window destruction / detachment; auto-clamps height to screen resolution (`math.min(580, math.max(420, screenH - 70))`), adds corner resize grip, and cleans up bottom search/reset layout |
+| Cross-Client & Auras | Full multi-client TOC tags (`11509, 20506, 38002`) for Classic Era, TBC Anniversary, and Titanforge; native `C_UnitAuras.GetAuraDataByIndex` support in `ns.UnitAura` with normalized multi-return mapping and backward-compatible legacy fallback |
+| Dynamic Test Preview | `/sst test` triggers a 20-second animated swing preview across all bars with start/stop chat notifications and timer cancellation |
+| Headless Test Suite | Expanded test runner to 98 total tests across 11 test groups (added `[SST-MoveMode]`, `[SST-Config]`, `[SST-UnitAuraNorm]`), passing 100% headlessly with 0 luacheck warnings |
 
 ## At a glance
 
@@ -29,7 +28,7 @@ Current version: **v0.2.4**. Status: release-ready. Includes zero-allocation eng
 | Paladin | Aura-aware seal breakpoint logic with a proportional-width red twist zone (right-anchored, matching Rogue Sinister Strike pattern) for Seal of Command, Blood, and Martyr timing, plus a GCD-aware reseal marker. Buff/CD icon group above the MH bar tracks Avenging Wrath, Divine Shield, Hammer of Justice, Blessing of Protection, Holy Wrath, Lay on Hands, and racials with gold glow in the last 4 seconds, plus **SoD Aegis, Hand of Reckoning, Guarded by the Light, Sacred Shield, Fanaticism, Art of War, Divine Storm, and Crusader Strike rune tracking** |
 | Shaman | Lightning Bolt / Chain Lightning / Healing Wave / Lesser Healing Wave / Chain Heal weave markers with per-family toggles (auto-resolving to the highest rank you currently know per family), plus a red moving cast spark and cast-following breakpoint indicators that travel toward bar end while you cast, a 6px Flame Shock target-duration bar above MH (checkbox-toggleable), a Lightning Shield / Water Shield 3-charge tracker with improved aura-refresh wiring plus configurable left-side gap spacing (checkbox-toggleable), **Rockbiter Weapon tracking**, and **event-driven SoD Maelstrom Weapon 5-stack cast-time reduction weaving math with Way of Earth, Shield Mastery, Molten Blast, and Lava Lash rune support** |
 | Rogue | Slim Slice and Dice duration bar above MH, 4px vertical energy-tick helper to the left of MH, latency-adjusted main-hand end window for Sinister Strike landing guidance, and **SoD Saber Slash, Main Gauche, Envenom, Blade Dance, Mutilate, Shadowstrike, and Secret Technique rune tracking** |
-| UI | Collapsible config sections, top Quick Controls columns for Visibility + Key Colors with extra breathing room under titles, compact non-overlapping quick rows that push later sections down automatically, slimmer 15px main bars with an 8px OH default, a scrolling full-preview bar-texture picker, mouse-wheel scrolling in `/sst`, class-color palettes, border/background controls, lock/unlock drag support, a red default enemy bar toggle, dedicated per-class power bars for all 6 physical classes (always the bottom-most bar of the swing stack — same width as the swing bars, fixed 10px height), SavedVariables Migration v63, and the Test Bars preview |
+| UI | Collapsible config sections, top Quick Controls columns for Visibility + Key Colors with extra breathing room under titles, compact non-overlapping quick rows that push later sections down automatically, slimmer 15px main bars with an 8px OH default, a scrolling full-preview bar-texture picker, mouse-wheel scrolling in `/sst`, class-color palettes, border/background controls, **interactive Move Mode (`/sst move`, `/sst unlock`, `/sst lock`) with floating reposition HUD and anchor overlays**, **decoupled Blizzard Settings canvas**, **responsive 1080p window sizing with bottom-right corner resize grip**, a red default enemy bar toggle, dedicated per-class power bars for all 6 physical classes (always the bottom-most bar of the swing stack — same width as the swing bars, fixed 10px height), SavedVariables Migration v64, and the **20s dynamic Test Bars preview** |
 
 ## Key features
 
@@ -93,6 +92,7 @@ Current version: **v0.2.4**. Status: release-ready. Includes zero-allocation eng
 
    - **Classic Era**: `World of Warcraft\_classic_era_\Interface\AddOns\SuperSwingTimer\`
    - **TBC Anniversary**: `World of Warcraft\_anniversary_\Interface\AddOns\SuperSwingTimer\`
+   - **Titanforge**: `World of Warcraft\_classic_titan_\Interface\AddOns\SuperSwingTimer\`
 
 3. Log in and play
 
@@ -133,11 +133,14 @@ Type `/sst`, `/super`, or `/superswingtimer` to open the config panel.
 
 | Command | Action |
 | --- | --- |
-| `/sst` | Open or close the config panel |
-| `/super` | Open or close the config panel |
-| `/superswingtimer` | Open or close the config panel |
-| `/sst reset` | Restore default settings |
-| `/sst help` | Show command help |
+| `/sst` | Open or close the full settings panel |
+| `/super` | Open or close the full settings panel (alias) |
+| `/superswingtimer` | Open or close the full settings panel (alias) |
+| `/sst move` or `/sst unlock` | Unlock bars and show reposition drag guide overlays |
+| `/sst lock` | Lock bars in current position and save |
+| `/sst test` | Toggle 20-second dynamic animated test preview |
+| `/sst reset` | Restore all default settings and positions |
+| `/sst help` | Show command help in chat |
 
 ## Config Panel Walkthrough
 

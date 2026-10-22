@@ -10,28 +10,42 @@
 
 - **Interactive Move Mode & Floating Reposition HUD (`SuperSwingTimer_UI.lua`, `SuperSwingTimer.lua`)**:
   - Implemented `/sst move` and `/sst unlock` slash commands allowing direct, intuitive repositioning of all swing bars.
-  - Added high-visibility semi-transparent drag guide overlays with clear labels ("Main Hand (Drag)", "Off Hand (Follows MH)", "Ranged (Drag)", "Enemy (Drag)") rendered at dialog frame level.
+  - Added high-visibility semi-transparent drag guide overlays with clear labels ("Main Hand (Drag)", "Off Hand (Follows MH)", "Ranged (Drag)", "Enemy (Drag)") rendered at dialog frame level (`+25` above bars).
+  - Explicitly disabled mouse events on drag overlays (`overlay:EnableMouse(false)`), guaranteeing that guide textures never steal mouse events away from the draggable bar frames.
+  - Added dynamic Hunter anchor label: when playing a Hunter, `mhBar` dynamically displays `"Main Hand (Follows Ranged)"` instead of `"Main Hand (Drag)"`, clearly reflecting that dragging the Ranged bar moves the entire stack and preventing player confusion.
   - Added floating `SuperSwingTimerMoveHUD` toolbar with title, reposition instructions, and a `[ Lock Bars & Save ]` button (`/sst lock`).
   - Added `/sst unlock` button directly into the header of `SuperSwingTimerConfigPanel` and onto the Blizzard Options canvas.
-- **Cross-Client Interface Numbers & Deprecated UnitAura Normalization (`SuperSwingTimer.toc`, `SuperSwingTimer_Constants.lua`)**:
-  - Updated `SuperSwingTimer.toc` with explicit interface directives: `Interface: 11509, 20506, 38002`, `Interface-Classic: 11509`, `Interface-BCC: 20506`, `Interface-Titan: 38002` for seamless cross-client support across Classic Era, TBC Anniversary, and Titanforge.
-  - Updated `ns.UnitAura` to natively query modern `C_UnitAuras.GetAuraDataByIndex` first, ensuring uninterrupted buff/debuff tracking even on modern engines or when legacy `UnitAura` deprecation fallbacks are disabled.
-- **Headless Test Suite Additions (`SuperSwingTimer_Tests.lua`, `run_tests.lua`)**:
-  - Added `[SST-MoveMode]` test suite testing interactive move transitions, overlay states, and slash command integration.
-  - Added `[SST-Config]` test suite testing Blizzard settings decoupling and responsive resolution clamping across virtual screen heights.
-  - Added `[SST-UnitAuraNorm]` test cases for `C_UnitAuras` data shape and legacy fallback.
+  - Wired `OnHide` script on `SuperSwingTimerMoveHUD` so pressing `Esc` (via `UISpecialFrames`) cleanly exits Move Mode, locks all bars, and saves positions.
+  - Added combat auto-lock safety on `PLAYER_REGEN_DISABLED`: entering combat while in Move Mode immediately locks bars and dismisses drag overlays so the UI is uncluttered for combat.
+  - Added rapid drag off-frame release safety in `AttachDrag`'s `OnUpdate`: queries `IsMouseButtonDown("LeftButton")` on each frame, ensuring that releasing the mouse outside the frame boundaries cleanly saves position even if the client skips `OnMouseUp`.
+  - Added power bar dynamic re-anchoring on drag release: `SavePosition` now automatically calls `ns.UpdatePowerBarAnchor()`, snapping player power bars (Rage/Energy/Mana) to their proper relative position below the newly positioned bar.
+- **Dynamic 20-Second Animated Test Preview (`SuperSwingTimer.lua`, `SuperSwingTimer_Config.lua`)**:
+  - Exported `ns.StartBarTestPreview` and upgraded `/sst test` to trigger a realistic 20-second animated swing cycle across all active bars.
+  - Added start/stop chat notifications (`/sst test` to start, second `/sst test` or timer expiry to stop early).
+- **Cross-Client Interface Numbers & Native `C_UnitAuras` Normalization (`SuperSwingTimer.toc`, `SuperSwingTimer_Constants.lua`)**:
+  - Updated `SuperSwingTimer.toc` with explicit interface directives: `Interface: 11509, 20506, 38002`, `Interface-Classic: 11509`, `Interface-BCC: 20506`, `Interface-Titan: 38002` for seamless cross-client support across Classic Era (1.15.9), TBC Anniversary (2.5.6), and Titanforge (`classic_titan` 3.80.2).
+  - Updated `ns.UnitAura` to natively query modern `C_UnitAuras.GetAuraDataByIndex` first, ensuring uninterrupted buff/debuff tracking on modern clients while maintaining flawless fallback to legacy multi-return signatures (Shapes A, B, C, D).
+- **Headless Test Suite Expansion (`SuperSwingTimer_Tests.lua`, `run_tests.lua`)**:
+  - Added `[SST-MoveMode]` test group covering state transitions, slash commands, MoveHUD `Esc` OnHide auto-lock, dynamic Hunter anchor labeling, combat enter auto-lock, and `/sst test` dynamic preview lifecycle.
+  - Added `[SST-Config]` test group covering Blizzard settings canvas decoupling and responsive resolution clamping across virtual screen heights.
+  - Added `[SST-UnitAuraNorm]` test cases for modern `C_UnitAuras` structure extraction and legacy fallback.
+  - Expanded test runner to 98 total tests across 11 test groups, executing in ~0.038s with 100% pass rate.
 
 ### Fixed
 
 - **Blizzard Settings Detachment & Frame Destruction (`SuperSwingTimer_Config.lua`)**:
   - Decoupled Blizzard's Settings Canvas (`SuperSwingTimerBlizzardOptionsPanel`) from the addon's standalone window (`SuperSwingTimerConfigPanel`).
-  - Blizzard's Settings Panel no longer adopts `SuperSwingTimerConfigPanel` into `Settings.RegisterCanvasLayoutCategory`, eliminating the critical bug where closing Blizzard Settings called `frame:SetParent(nil)` and `frame:ClearAllPoints()`, destroying the addon's configuration window.
+  - Blizzard's Settings Panel no longer adopts `SuperSwingTimerConfigPanel` into `Settings.RegisterCanvasLayoutCategory`, eliminating the critical bug where closing Blizzard Settings called `frame:SetParent(settingsCanvas)` and `frame:ClearAllPoints()`, destroying and hiding the addon's configuration window.
   - Added safety recovery in `ns.ToggleConfig()`: if parent or anchor points ever become invalid, parentage to `UIParent` and screen centering are automatically restored.
+  - Added safe `CloseBlizzardSettings()` helper utilizing `HideUIPanel` and `panel:Hide()` when launching the full studio or move mode from Blizzard Settings.
 - **1080p Screen Resolution Clamping & Resizability (`SuperSwingTimer_Config.lua`)**:
   - Eliminated the fixed `780x760` window size that clipped off-screen on standard 1920x1080 displays (WoW default 768 virtual height).
   - Implemented `ns.ApplyConfigPanelResponsiveSize(frame)`: window dimensions now automatically clamp height to `math.min(580, math.max(420, (UIParent:GetHeight() or 768) - 70))` and width to `740px`.
   - Added interactive corner resize grip at the bottom-right corner, letting users customize window dimensions freely (`f:SetResizable(true)`).
+  - Decoupled programmatic responsive sizing from user manual resizing latch so screen resolution changes adapt cleanly, and restored responsive sizing when clicking "Reset Defaults".
   - Cleaned up bottom bar layout: positioned search bar on the left/center and "Reset Defaults" on the bottom-right without overlap.
+- **Defensive API Checks (`SuperSwingTimer_UI.lua`)**:
+  - Added defensive `bar.IsMouseEnabled and bar:IsMouseEnabled()` checking in `ApplyLockBars`, protecting against custom frame wrappers or mock environments missing `IsMouseEnabled`.
 
 ## v0.2.4 - 2026-09-21
 
