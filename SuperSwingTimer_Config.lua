@@ -2295,11 +2295,25 @@ local function CreateBlizzardOptionsCanvas()
     local lockCb = CreateQuickCheck(f, "Lock Bars",
         function() return SuperSwingTimerDB and SuperSwingTimerDB.lockBars end,
         function(val)
-            if not SuperSwingTimerDB then SuperSwingTimerDB = {} end
-            SuperSwingTimerDB.lockBars = val
-            if ns.ApplyLockBars then ns.ApplyLockBars() end
-            if ns.RefreshConfigLockControls then ns.RefreshConfigLockControls() end
+            if val then
+                if ns.StopMoveMode then
+                    ns.StopMoveMode()
+                else
+                    if not SuperSwingTimerDB then SuperSwingTimerDB = {} end
+                    SuperSwingTimerDB.lockBars = true
+                    if ns.ApplyLockBars then ns.ApplyLockBars() end
+                end
+            else
+                if ns.StartMoveMode then
+                    ns.StartMoveMode()
+                else
+                    if not SuperSwingTimerDB then SuperSwingTimerDB = {} end
+                    SuperSwingTimerDB.lockBars = false
+                    if ns.ApplyLockBars then ns.ApplyLockBars() end
+                end
+            end
         end, nil)
+    ns.blizzardLockCheck = lockCb
     table.insert(checks, lockCb)
 
     local minCb = CreateQuickCheck(f, "Minimal Mode (sparks only, transparent bar backgrounds)",
@@ -2386,7 +2400,15 @@ local function CreatePanel()
         tileSize = 32,
         edgeSize = 32,
         insets = { left = 8, right = 8, top = 8, bottom = 8 }
-    })
+    }, { 0.05, 0.05, 0.07, 0.98 }, { 0.8, 0.8, 0.8, 1 })
+
+    -- Dedicated opaque solid background texture so the 3D game world never bleeds through
+    local bgSolid = f:CreateTexture(nil, "BACKGROUND", nil, -8)
+    bgSolid:SetPoint("TOPLEFT", f, "TOPLEFT", 6, -6)
+    bgSolid:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -6, 6)
+    bgSolid:SetColorTexture(0.05, 0.05, 0.07, 0.98)
+    f.bgSolid = bgSolid
+
     f:SetMovable(true)
     f:EnableMouse(true)
     f:RegisterForDrag("LeftButton")
@@ -2420,6 +2442,9 @@ local function CreatePanel()
         if ns.ApplyConfigPanelResponsiveSize and not self._userResized then
             ns.ApplyConfigPanelResponsiveSize(self)
         end
+        if ns.RefreshConfigLockControls then
+            ns.RefreshConfigLockControls()
+        end
     end)
     f:Hide()
     f.name = "Super Swing Timer"
@@ -2430,7 +2455,7 @@ local function CreatePanel()
     title:SetPoint("TOPLEFT", f, "TOPLEFT", 18, -14)
     title:SetText("Super Swing Timer |cff00ccffv0.2.5|r")
 
-    -- Move/Unlock button in header
+    -- Move/Unlock button in header — toggles move mode and saves positions
     local moveHeaderBtn = CreateFrame("Button", nil, f)
     moveHeaderBtn:SetSize(130, 20)
     moveHeaderBtn:SetPoint("TOPRIGHT", f, "TOPRIGHT", -36, -14)
@@ -2447,11 +2472,20 @@ local function CreatePanel()
     moveHeaderText:SetText("Unlock & Move Bars")
     if moveHeaderText.SetTextColor then moveHeaderText:SetTextColor(1, 1, 1, 1) end
     moveHeaderBtn:SetScript("OnClick", function ()
-        if ns.StartMoveMode then
-            ns.StartMoveMode()
+        if ns.isMoveModeActive then
+            if ns.StopMoveMode then
+                ns.StopMoveMode()
+            end
+        else
+            if ns.StartMoveMode then
+                ns.StartMoveMode()
+            end
         end
     end)
     f.moveHeaderBtn = moveHeaderBtn
+    f.moveHeaderText = moveHeaderText
+    f.moveHeaderBg = moveHeaderBg
+    f.moveHeaderBorder = moveHeaderBorder
 
     -- Subtitle
     local subtitle = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
@@ -2497,6 +2531,23 @@ local function CreatePanel()
     f.searchRows = searchRows
     f.searchBox = searchBox
 
+    -- Forward declarations for section lists and visibility functions
+    local mhOhRows = {}
+    local shamanRows = {}
+    local generalRows = {}
+    local weaveFamiliesRows = {}
+    local weaveFamilyRows = {}
+    local sectionCollapsed = {
+        general = false,
+        colors = false,
+        weaveFamilies = false,
+        quickTab = "visibility"
+    }
+    local shamanHeader = nil
+    local weaveFamiliesHeader = nil
+    local weaveFamiliesDescription = nil
+    local ApplyMHOhClassVisibility = nil
+
     -- Expose AddSearchRow globally so factory functions can register rows
     ns._panelSearchAdder = function (row, text)
         if row and text and text ~= "" then
@@ -2505,18 +2556,56 @@ local function CreatePanel()
     end
 
     local function FilterSearchRows()
-        local searchText = string.lower(searchBox:GetText() or "")
+        local searchText = strtrim(string.lower(searchBox:GetText() or ""))
         local hasSearch = searchText ~= ""
 
-        for _, entry in ipairs(searchRows) do
-            local frame = entry.frame
-            if frame then
-                local match = not hasSearch or entry.text:find(searchText, 1, true) ~= nil
-                if match then
+        if not hasSearch then
+            for _, entry in ipairs(searchRows) do
+                local frame = entry.frame
+                if frame then
                     frame:SetAlpha(1)
-                    frame:Show()
-                else
-                    frame:SetAlpha(0.25)
+                end
+            end
+            if SetRowsShown and mhOhRows then
+                SetRowsShown(mhOhRows, not sectionCollapsed.mhOh)
+            end
+            if ApplyMHOhClassVisibility then
+                ApplyMHOhClassVisibility()
+            end
+            if ns.playerClass == "SHAMAN" then
+                if shamanHeader and shamanHeader:IsShown() and SetRowsShown then
+                    SetRowsShown(shamanRows, not sectionCollapsed.shaman)
+                end
+                if weaveFamiliesHeader and weaveFamiliesHeader:IsShown() and SetRowsShown then
+                    SetRowsShown(weaveFamiliesRows, not sectionCollapsed.weaveFamilies)
+                end
+            else
+                if shamanHeader then shamanHeader:Hide() end
+                if SetRowsShown then SetRowsShown(shamanRows, false) end
+                for _, r in ipairs(shamanRows) do r:Hide() end
+                if weaveFamiliesHeader then weaveFamiliesHeader:Hide() end
+                if weaveFamiliesDescription then weaveFamiliesDescription:Hide() end
+                for _, r in ipairs(weaveFamilyRows) do r:Hide() end
+            end
+            if SetRowsShown and generalRows then
+                SetRowsShown(generalRows, not sectionCollapsed.general)
+            end
+        else
+            for _, entry in ipairs(searchRows) do
+                local frame = entry.frame
+                if frame then
+                    local isForbiddenClass = frame.requiredClass and frame.requiredClass ~= ns.playerClass
+                    if isForbiddenClass then
+                        frame:Hide()
+                    else
+                        local match = entry.text:find(searchText, 1, true) ~= nil
+                        if match then
+                            frame:SetAlpha(1)
+                            frame:Show()
+                        else
+                            frame:SetAlpha(0.2)
+                        end
+                    end
                 end
             end
         end
@@ -2536,7 +2625,7 @@ local function CreatePanel()
     f.scrollFrame = scrollFrame
     f.content = content
 
-    local sectionCollapsed = {
+    sectionCollapsed = {
         general = false,
         colors = false,
         weaveFamilies = false,
@@ -2545,11 +2634,11 @@ local function CreatePanel()
     local barVisibilityRows = {}
     local quickToggleRows = {}
     local quickColorRows = {}
-    local mhOhRows = {}
-    local shamanRows = {}
-    local generalRows = {}
+    mhOhRows = {}
+    shamanRows = {}
+    generalRows = {}
     local colorRowsSection = {}
-    local weaveFamiliesRows = {}
+    weaveFamiliesRows = {}
     local cfg = ns.classConfig or {}
     local quickToggleOptions = { leftInset = 20, rightInset = 360, rowHeight = 32, compact = true }
     local quickColorOptions = { leftInset = 360, rightInset = 20, rowHeight = 32, buttonWidth = 160, compact = true }
@@ -2817,9 +2906,20 @@ local function CreatePanel()
     local lockBarsQuickRow = AddQuickToggle(
         "Lock Bars", function () return SuperSwingTimerDB.lockBars == true end,
         function (enabled)
-            SuperSwingTimerDB.lockBars = enabled
-            if ns.ApplyLockBars then
-                ns.ApplyLockBars()
+            if enabled then
+                if ns.StopMoveMode then
+                    ns.StopMoveMode()
+                else
+                    SuperSwingTimerDB.lockBars = true
+                    if ns.ApplyLockBars then ns.ApplyLockBars() end
+                end
+            else
+                if ns.StartMoveMode then
+                    ns.StartMoveMode()
+                else
+                    SuperSwingTimerDB.lockBars = false
+                    if ns.ApplyLockBars then ns.ApplyLockBars() end
+                end
             end
         end,
         {
@@ -4109,7 +4209,7 @@ local function CreatePanel()
     AppendRow(mhOhRows, barBorderSlider)
     SetRowsShown(mhOhRows, not sectionCollapsed.mhOh)
     -- Class-specific visibility (overrides SetRowsShown for per-class sliders)
-    local function ApplyMHOhClassVisibility()
+    ApplyMHOhClassVisibility = function ()
         local collapsed = sectionCollapsed.mhOh or false
         local show = not collapsed
         for _, row in ipairs(mhOhRows) do
@@ -4145,13 +4245,14 @@ local function CreatePanel()
         end
     end
 
-    local shamanHeader = CreateSectionHeader(content, "Shaman Weave Assist", PostQuickY(-750), {
+    shamanHeader = CreateSectionHeader(content, "Shaman Weave Assist", PostQuickY(-750), {
         rows = shamanRows,
         getCollapsed = function () return sectionCollapsed.shaman end,
         setCollapsed = function (collapsed)
             sectionCollapsed.shaman = collapsed
         end
     })
+    SetRowClassRequirement(shamanHeader, "SHAMAN")
 
     -- Section help text
     local shamanHelp = CreateDescriptionText(content,
@@ -4160,7 +4261,7 @@ local function CreatePanel()
         "Breakpoints account for latency and spell haste.",
         PostQuickY(-775)
     )
-    AppendRow(shamanRows, shamanHelp)
+    SetRowClassRequirement(shamanHelp, "SHAMAN")
 
     local weaveSparkTextureRow = CreateTexturePathRow(content, "Cast Breakpoint Spark Texture", PostQuickY(ShiftY(-725)), {
         mode = "browser",
@@ -4267,16 +4368,29 @@ local function CreatePanel()
             or ns.DB_DEFAULTS.weaveTriangleAlpha
     )
     SyncSliderDisplay(weaveTriangleAlphaSlider, weaveTriangleAlphaSlider:GetValue())
-    shamanRows[1] = weaveSparkTextureRow
-    shamanRows[2] = weaveSparkLayerRow
-    shamanRows[3] = weaveSparkWidthSlider
-    shamanRows[4] = weaveSparkHeightSlider
-    shamanRows[5] = weaveSparkAlphaSlider
-    shamanRows[6] = weaveMarkerNoteRow
-    shamanRows[7] = weaveTriangleLayerRow
-    shamanRows[8] = weaveTriangleSizeSlider
-    shamanRows[9] = weaveTriangleGapSlider
-    shamanRows[10] = weaveTriangleAlphaSlider
+    SetRowClassRequirement(weaveSparkTextureRow, "SHAMAN")
+    SetRowClassRequirement(weaveSparkLayerRow, "SHAMAN")
+    SetRowClassRequirement(weaveSparkWidthSlider, "SHAMAN")
+    SetRowClassRequirement(weaveSparkHeightSlider, "SHAMAN")
+    SetRowClassRequirement(weaveSparkAlphaSlider, "SHAMAN")
+    SetRowClassRequirement(weaveMarkerNoteRow, "SHAMAN")
+    SetRowClassRequirement(weaveTriangleLayerRow, "SHAMAN")
+    SetRowClassRequirement(weaveTriangleSizeSlider, "SHAMAN")
+    SetRowClassRequirement(weaveTriangleGapSlider, "SHAMAN")
+    SetRowClassRequirement(weaveTriangleAlphaSlider, "SHAMAN")
+
+    shamanRows[1] = shamanHelp
+    shamanRows[2] = weaveSparkTextureRow
+    shamanRows[3] = weaveSparkLayerRow
+    shamanRows[4] = weaveSparkWidthSlider
+    shamanRows[5] = weaveSparkHeightSlider
+    shamanRows[6] = weaveSparkAlphaSlider
+    shamanRows[7] = weaveMarkerNoteRow
+    shamanRows[8] = weaveTriangleLayerRow
+    shamanRows[9] = weaveTriangleSizeSlider
+    shamanRows[10] = weaveTriangleGapSlider
+    shamanRows[11] = weaveTriangleAlphaSlider
+
     if ns.playerClass == "SHAMAN" then
         SetRowsShown(shamanRows, not sectionCollapsed.shaman)
         if shamanHeader.refresh then
@@ -4284,7 +4398,11 @@ local function CreatePanel()
         end
     else
         shamanHeader:Hide()
+        shamanHelp:Hide()
         SetRowsShown(shamanRows, false)
+        for _, r in ipairs(shamanRows) do
+            if r and r.Hide then r:Hide() end
+        end
     end
 
     local generalHeader = CreateSectionHeader(content, "Combat & Timer Behavior", PostQuickY(-1340), {
@@ -4306,23 +4424,38 @@ local function CreatePanel()
 
     local lockBarsRow = CreateToggleRow(
         content,
-        "Lock / Unlock Bars",
+        "Lock Bars",
         PostQuickY(ShiftY(-1355)),
         function () return SuperSwingTimerDB.lockBars == true end,
         function (enabled)
-            SuperSwingTimerDB.lockBars = enabled
-            if ns.ApplyLockBars then
-                ns.ApplyLockBars()
+            if enabled then
+                if ns.StopMoveMode then
+                    ns.StopMoveMode()
+                else
+                    if not SuperSwingTimerDB then SuperSwingTimerDB = {} end
+                    SuperSwingTimerDB.lockBars = true
+                    if ns.ApplyLockBars then ns.ApplyLockBars() end
+                end
+            else
+                if ns.StartMoveMode then
+                    ns.StartMoveMode()
+                else
+                    if not SuperSwingTimerDB then SuperSwingTimerDB = {} end
+                    SuperSwingTimerDB.lockBars = false
+                    if ns.ApplyLockBars then ns.ApplyLockBars() end
+                end
             end
-        end
+        end,
+        "Lock all swing timer bars in place so they cannot be accidentally dragged."
     )
     local testBarsRow = CreateActionRow(content, "Test Bars", "Preview 16s", PostQuickY(ShiftY(-1385)), function ()
         StartBarTestPreview(16)
     end,
         "Temporarily show the bars for sixteen seconds with animated swing cycles so you can reposition them when unlocked."
     )
-    generalRows[1] = lockBarsRow
-    generalRows[2] = testBarsRow
+    generalRows[1] = generalHelp
+    generalRows[2] = lockBarsRow
+    generalRows[3] = testBarsRow
     SetRowsShown(generalRows, not sectionCollapsed.general)
     if generalHeader.refresh then
         generalHeader.refresh()
@@ -4567,33 +4700,39 @@ local function CreatePanel()
         )
     end)
 
-    local weaveFamiliesHeader = CreateSectionHeader(content, "Shaman Weave Spells", PostQuickY(-1708), {
+    weaveFamiliesHeader = CreateSectionHeader(content, "Shaman Weave Spells", PostQuickY(-1708), {
         rows = weaveFamiliesRows,
         getCollapsed = function () return sectionCollapsed.weaveFamilies end,
         setCollapsed = function (collapsed)
             sectionCollapsed.weaveFamilies = collapsed
         end
     })
-    local weaveFamiliesDescription = CreateDescriptionText(
+    SetRowClassRequirement(weaveFamiliesHeader, "SHAMAN")
+
+    weaveFamiliesDescription = CreateDescriptionText(
         content,
         "Each family below is color-coded to match its spell breakpoint family. " .. "Toggle a family off to remove every rank in that family from the weave helper. "
             .. "The small breakpoint icons use the tracked spell's real icon, stay attached to the MH swing bar, and move with spell haste.",
         PostQuickY(-1736)
     )
+    SetRowClassRequirement(weaveFamiliesDescription, "SHAMAN")
 
-    local weaveFamilyRows = {
+    weaveFamilyRows = {
         CreateWeaveFamilyRow(content, "LB", "Lightning Bolt", PostQuickY(-1750)),
         CreateWeaveFamilyRow(content, "CL", "Chain Lightning", PostQuickY(-1778)),
         CreateWeaveFamilyRow(content, "HW", "Healing Wave", PostQuickY(-1806)),
         CreateWeaveFamilyRow(content, "LHW", "Lesser Healing Wave", PostQuickY(-1834)),
         CreateWeaveFamilyRow(content, "CH", "Chain Heal", PostQuickY(-1862))
     }
+    for _, row in ipairs(weaveFamilyRows) do
+        SetRowClassRequirement(row, "SHAMAN")
+    end
 
     if ns.playerClass ~= "SHAMAN" then
         weaveFamiliesHeader:Hide()
         weaveFamiliesDescription:Hide()
         for _, row in ipairs(weaveFamilyRows) do
-            row:Hide()
+            if row and row.Hide then row:Hide() end
         end
     else
         weaveFamiliesRows[1] = weaveFamiliesDescription
@@ -4737,11 +4876,15 @@ local function CreatePanel()
             rowSpacing = 14
         })
 
-        if shamanHeader:IsShown() then
+        if ns.playerClass == "SHAMAN" and shamanHeader and shamanHeader:IsShown() then
             sectionY = LayoutSectionRows(shamanHeader, shamanRows, sectionY - 8, {
                 gapAfterHeader = 22,
                 rowSpacing = 14
             })
+        else
+            if shamanHeader then shamanHeader:Hide() end
+            if SetRowsShown then SetRowsShown(shamanRows, false) end
+            for _, r in ipairs(shamanRows or {}) do if r and r.Hide then r:Hide() end end
         end
 
         sectionY = LayoutSectionRows(generalHeader, generalRows, sectionY - 8, {
@@ -4749,11 +4892,15 @@ local function CreatePanel()
             rowSpacing = 14
         })
 
-        if weaveFamiliesHeader:IsShown() then
+        if ns.playerClass == "SHAMAN" and weaveFamiliesHeader and weaveFamiliesHeader:IsShown() then
             sectionY = LayoutSectionRows(weaveFamiliesHeader, weaveFamiliesRows, sectionY - 8, {
                 gapAfterHeader = 20,
                 rowSpacing = 12
             })
+        else
+            if weaveFamiliesHeader then weaveFamiliesHeader:Hide() end
+            if weaveFamiliesDescription then weaveFamiliesDescription:Hide() end
+            for _, r in ipairs(weaveFamilyRows or {}) do if r and r.Hide then r:Hide() end end
         end
 
         local contentHeight = math.max(math.ceil(-sectionY) + 120, 2200)
@@ -4787,6 +4934,7 @@ local function CreatePanel()
     end
 
     AttachHeaderReflow(barVisibilityHeader)
+    AttachHeaderReflow(mhOhHeader)
     AttachHeaderReflow(shamanHeader)
     AttachHeaderReflow(generalHeader)
     AttachHeaderReflow(weaveFamiliesHeader)
@@ -5170,6 +5318,54 @@ function ns.InitConfig()
     end
     panel = CreatePanel()
     ns.panel = panel
+end
+
+--- Synchronize all UI lock controls (Header button, Quick controls toggle,
+--  General behavior toggle, and Blizzard interface canvas checkbox)
+--  with the current move mode and lockBars state.
+--  @return (nil)
+function ns.RefreshConfigLockControls()
+    local p = panel or ns.panel
+    local isMoving = ns.isMoveModeActive == true
+    local isLocked = (SuperSwingTimerDB and SuperSwingTimerDB.lockBars == true) and not isMoving
+
+    if p then
+        if p.moveHeaderText then
+            if isMoving then
+                p.moveHeaderText:SetText("Lock Bars & Save")
+            else
+                p.moveHeaderText:SetText("Unlock & Move Bars")
+            end
+        end
+        if p.moveHeaderBg then
+            if isMoving then
+                p.moveHeaderBg:SetColorTexture(0.65, 0.15, 0.15, 0.9)
+            else
+                p.moveHeaderBg:SetColorTexture(0.12, 0.45, 0.2, 0.85)
+            end
+        end
+        if p.moveHeaderBorder then
+            if isMoving then
+                p.moveHeaderBorder:SetColorTexture(0.95, 0.35, 0.35, 0.95)
+            else
+                p.moveHeaderBorder:SetColorTexture(0.3, 0.85, 0.4, 0.9)
+            end
+        end
+        if p.lockBarsRow and p.lockBarsRow.refresh then
+            p.lockBarsRow.refresh()
+        end
+        if p.lockBarsQuickRow and p.lockBarsQuickRow.refresh then
+            p.lockBarsQuickRow.refresh()
+        end
+    end
+
+    if ns.blizzardLockCheck then
+        if ns.blizzardLockCheck.refresh then
+            ns.blizzardLockCheck.refresh()
+        elseif ns.blizzardLockCheck.SetChecked then
+            ns.blizzardLockCheck:SetChecked(isLocked)
+        end
+    end
 end
 
 --- Open or close the /sst config panel. Initializes the panel

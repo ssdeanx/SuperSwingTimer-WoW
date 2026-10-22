@@ -1230,6 +1230,76 @@ local function RegisterSSTTests()
         ns.ApplyConfigPanelResponsiveSize(p)
     end
 
+    function Config:LockControlsSync()
+        if not ns.panel and ns.InitConfig then ns.InitConfig() end
+        local p = ns.panel
+        IsTrue(p ~= nil, "Config panel must exist")
+        IsTrue(type(ns.RefreshConfigLockControls) == "function", "RefreshConfigLockControls must exist")
+
+        -- Move mode active
+        ns.isMoveModeActive = true
+        SuperSwingTimerDB.lockBars = false
+        ns.RefreshConfigLockControls()
+        IsTrue(p.moveHeaderText:GetText() == "Lock Bars & Save", "Header button must read Lock Bars & Save in move mode")
+
+        -- Move mode inactive / locked
+        ns.isMoveModeActive = false
+        SuperSwingTimerDB.lockBars = true
+        ns.RefreshConfigLockControls()
+        IsTrue(p.moveHeaderText:GetText() == "Unlock & Move Bars", "Header button must read Unlock & Move Bars when locked")
+    end
+
+    function Config:HeaderButtonToggle()
+        if not ns.panel and ns.InitConfig then ns.InitConfig() end
+        local p = ns.panel
+        local btn = p.moveHeaderBtn
+        IsTrue(btn ~= nil, "Move header button must exist")
+        local onClick = btn:GetScript("OnClick")
+        IsTrue(type(onClick) == "function", "Move header button must have OnClick")
+
+        -- Ensure locked first
+        ns.StopMoveMode()
+        IsTrue(SuperSwingTimerDB.lockBars == true, "Must start locked")
+        IsFalse(ns.isMoveModeActive, "Move mode must start false")
+
+        -- Click to unlock
+        onClick(btn)
+        IsTrue(ns.isMoveModeActive == true, "Clicking header button must activate move mode")
+        IsFalse(SuperSwingTimerDB.lockBars, "Clicking header button must unlock bars in DB")
+
+        -- Click to lock & save
+        onClick(btn)
+        IsFalse(ns.isMoveModeActive, "Clicking header button again must deactivate move mode")
+        IsTrue(SuperSwingTimerDB.lockBars == true, "Clicking header button again must lock bars in DB")
+        for _, bar in ipairs({ ns.mhBar, ns.ohBar, ns.rangedBar, ns.enemyBar }) do
+            if bar and bar._dragOverlay then
+                IsFalse(bar._dragOverlay:IsShown(), "Drag overlay must be hidden after locking")
+            end
+        end
+    end
+
+    function Config:ApplyLockBars_HidesOverlays()
+        ns.StartMoveMode()
+        IsTrue(ns.isMoveModeActive == true, "Must be in move mode")
+        for _, bar in ipairs({ ns.mhBar, ns.ohBar, ns.rangedBar, ns.enemyBar }) do
+            if bar and bar._dragOverlay then
+                IsTrue(bar._dragOverlay:IsShown(), "Overlay must be shown in move mode")
+            end
+        end
+
+        SuperSwingTimerDB.lockBars = true
+        ns.ApplyLockBars()
+        IsFalse(ns.isMoveModeActive, "ApplyLockBars when locked must clear isMoveModeActive")
+        for _, bar in ipairs({ ns.mhBar, ns.ohBar, ns.rangedBar, ns.enemyBar }) do
+            if bar and bar._dragOverlay then
+                IsFalse(bar._dragOverlay:IsShown(), "ApplyLockBars must hide all drag overlays")
+            end
+        end
+        if ns.moveHUD then
+            IsFalse(ns.moveHUD:IsShown(), "ApplyLockBars must hide move HUD")
+        end
+    end
+
     local nGroups = 0
     for _ in ipairs(WoWUnit.children) do nGroups = nGroups + 1 end
     print("|cff44ff44[SST] " .. nGroups .. " groups registered. Click WoWUnit toggle or type /ssttest.|r")

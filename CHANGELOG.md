@@ -29,21 +29,25 @@
   - Added `[SST-MoveMode]` test group covering state transitions, slash commands, MoveHUD `Esc` OnHide auto-lock, dynamic Hunter anchor labeling, combat enter auto-lock, and `/sst test` dynamic preview lifecycle.
   - Added `[SST-Config]` test group covering Blizzard settings canvas decoupling and responsive resolution clamping across virtual screen heights.
   - Added `[SST-UnitAuraNorm]` test cases for modern `C_UnitAuras` structure extraction and legacy fallback.
-  - Expanded test runner to 98 total tests across 11 test groups, executing in ~0.038s with 100% pass rate.
 
 ### Fixed
 
-- **Blizzard Settings Detachment & Frame Destruction (`SuperSwingTimer_Config.lua`)**:
-  - Decoupled Blizzard's Settings Canvas (`SuperSwingTimerBlizzardOptionsPanel`) from the addon's standalone window (`SuperSwingTimerConfigPanel`).
-  - Blizzard's Settings Panel no longer adopts `SuperSwingTimerConfigPanel` into `Settings.RegisterCanvasLayoutCategory`, eliminating the critical bug where closing Blizzard Settings called `frame:SetParent(settingsCanvas)` and `frame:ClearAllPoints()`, destroying and hiding the addon's configuration window.
-  - Added safety recovery in `ns.ToggleConfig()`: if parent or anchor points ever become invalid, parentage to `UIParent` and screen centering are automatically restored.
-  - Added safe `CloseBlizzardSettings()` helper utilizing `HideUIPanel` and `panel:Hide()` when launching the full studio or move mode from Blizzard Settings.
-- **1080p Screen Resolution Clamping & Resizability (`SuperSwingTimer_Config.lua`)**:
-  - Eliminated the fixed `780x760` window size that clipped off-screen on standard 1920x1080 displays (WoW default 768 virtual height).
-  - Implemented `ns.ApplyConfigPanelResponsiveSize(frame)`: window dimensions now automatically clamp height to `math.min(580, math.max(420, (UIParent:GetHeight() or 768) - 70))` and width to `740px`.
-  - Added interactive corner resize grip at the bottom-right corner, letting users customize window dimensions freely (`f:SetResizable(true)`).
-  - Decoupled programmatic responsive sizing from user manual resizing latch so screen resolution changes adapt cleanly, and restored responsive sizing when clicking "Reset Defaults".
-  - Cleaned up bottom bar layout: positioned search bar on the left/center and "Reset Defaults" on the bottom-right without overlap.
+- **Solid Dark Window Backdrop (`SuperSwingTimer_Config.lua`)**:
+  - Added dedicated solid dark opaque texture (`bgSolid:SetColorTexture(0.05, 0.05, 0.07, 0.98)`) behind `SuperSwingTimerConfigPanel`.
+  - Completely resolved the transparent background issue where the 3D game world leaked through and obscured configuration text and controls.
+- **Persistent Drag Overlay & Move HUD Dismissal (`SuperSwingTimer_UI.lua`, `SuperSwingTimer_Config.lua`)**:
+  - Hardened `ns.ApplyLockBars()`: locking bars unconditionally resets `ns.isMoveModeActive = false`, dismisses all active bar drag overlays (`_dragOverlay`), hides `SuperSwingTimerMoveHUD`, and synchronizes all lock checkboxes across the UI.
+  - Converted the Config Panel header button (`moveHeaderBtn`) into a bidirectional toggle: dynamically alternates between `[ Unlock & Move Bars ]` (green) and `[ Lock Bars & Save ]` (crimson), allowing players to lock bars directly from the header without overlays remaining stuck.
+  - Implemented centralized `ns.RefreshConfigLockControls()` to keep the header button, Quick Controls toggle, General Behavior toggle, and Blizzard Settings canvas checkbox in 100% sync across all state changes.
+  - Updated `ns.StopMoveMode()` to preserve clean bar previews when the config panel remains open while dismissing drag overlays.
+- **Config Section Overlap & Class Isolation (`SuperSwingTimer_Config.lua`)**:
+  - Rewrote search filter (`FilterSearchRows`): when the search field is empty, it restores normal section visibility instead of unconditionally showing all 150+ controls across the addon. For active searches, it strictly hides rows marked for classes other than the current character.
+  - Tagged all Shaman Weave Assist rows, headers, and Weave Family rows with `SetRowClassRequirement(row, "SHAMAN")` so they are never displayed on Hunter, Warrior, Rogue, Paladin, or Druid characters.
+  - Guarded Shaman sections in `ReflowConfigSections()` with `ns.playerClass == "SHAMAN"` checks, preventing unreflowed rows from occupying the same Y coordinates as Appearance sliders.
+  - Wired `AttachHeaderReflow(mhOhHeader)` so collapsing or expanding the Appearance section properly reflows all subsequent sections.
+  - Preserved `generalHelp` description text in `generalRows` without being overwritten by the Lock Bars toggle.
+- **Headless Test Suite Expansion (`SuperSwingTimer_Tests.lua`, `run_tests.lua`)**:
+  - Expanded test runner to 101 total tests across 11 test groups (added `LockControlsSync`, `HeaderButtonToggle`, and `ApplyLockBars_HidesOverlays` to `[SST-Config]`), executing in ~0.040s with a 100% pass rate.
 - **Defensive API Checks (`SuperSwingTimer_UI.lua`)**:
   - Added defensive `bar.IsMouseEnabled and bar:IsMouseEnabled()` checking in `ApplyLockBars`, protecting against custom frame wrappers or mock environments missing `IsMouseEnabled`.
 

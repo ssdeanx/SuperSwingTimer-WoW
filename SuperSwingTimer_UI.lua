@@ -1192,6 +1192,20 @@ end
 --  @return (nil)
 function ns.ApplyLockBars()
     local locked = ns.AreBarsLocked()
+    if locked then
+        if ns.isMoveModeActive then
+            ns.isMoveModeActive = false
+            ns.barTestActive = false
+        end
+        if ns.moveHUD and ns.moveHUD.Hide then
+            ns.moveHUD:Hide()
+        end
+        for _, bar in ipairs({ ns.mhBar, ns.ohBar, ns.rangedBar, ns.enemyBar }) do
+            if bar and bar._dragOverlay then
+                bar._dragOverlay:Hide()
+            end
+        end
+    end
     for _, bar in ipairs({ ns.mhBar, ns.ohBar, ns.rangedBar, ns.enemyBar }) do
         if bar then
             local isHunterMH = (ns.playerClass == "HUNTER" and bar == ns.mhBar)
@@ -1209,6 +1223,9 @@ function ns.ApplyLockBars()
                 pcall(bar.SetMouseClickEnabled, bar, "RightButton", false)
             end
         end
+    end
+    if ns.RefreshConfigLockControls then
+        ns.RefreshConfigLockControls()
     end
 end
 
@@ -1469,8 +1486,15 @@ function ns.StopMoveMode()
     if ns.moveHUD and ns.moveHUD.Hide then
         ns.moveHUD:Hide()
     end
-    if ns.HideBarPreview then
-        ns.HideBarPreview()
+    local panelFrame = ns.panel or rawget(_G, "SuperSwingTimerConfigPanel")
+    if panelFrame and panelFrame.IsShown and panelFrame:IsShown() then
+        if ns.ShowBarPreview then
+            ns.ShowBarPreview()
+        end
+    else
+        if ns.HideBarPreview then
+            ns.HideBarPreview()
+        end
     end
     ns.ApplyLockBars()
 
