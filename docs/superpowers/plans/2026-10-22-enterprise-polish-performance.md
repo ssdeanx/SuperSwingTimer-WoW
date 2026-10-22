@@ -32,7 +32,7 @@
 - Consumes: `CombatLogGetCurrentEventInfo()`, `GetPlayerGUID()`, `ns.enemyTargetGUID`
 - Produces: `ns.HandleCLEU()` with early exit when neither `sourceGUID` nor `targetGUID` matches `playerGUID` or `enemyGUID`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Add `Combat:CLEU_FastPath_IgnoresThirdParty` to `SuperSwingTimer_Tests.lua` in the `SST-Combat` group:
 
@@ -56,12 +56,12 @@ Add `Combat:CLEU_FastPath_IgnoresThirdParty` to `SuperSwingTimer_Tests.lua` in t
     end
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `lua run_tests.lua`
 Expected: FAIL in `SST-Combat` with `"HandleCLEU must early-exit before GetAlignedTime for third-party events"`.
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 In `SuperSwingTimer_State.lua`, modify `ns.HandleCLEU()` to check GUIDs before calling `ns.GetAlignedTime()`:
 
@@ -83,18 +83,18 @@ In `SuperSwingTimer_State.lua`, modify `ns.HandleCLEU()` to check GUIDs before c
     local eventTime = ns.GetAlignedTime()
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `lua run_tests.lua`
 Expected: PASS (102 tests passed, 0 failed).
 
-- [ ] **Step 5: Run linter and bytecode check**
+- [x] **Step 5: Run linter and bytecode check**
 
 Run: `luacheck SuperSwingTimer_State.lua SuperSwingTimer_Tests.lua`
 Run: `luac -p SuperSwingTimer_State.lua SuperSwingTimer_Tests.lua`
 Expected: 0 warnings, 0 errors.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add SuperSwingTimer_State.lua SuperSwingTimer_Tests.lua
@@ -113,7 +113,7 @@ git commit -m "perf(engine): add fast-path CLEU filter to discard third-party ev
 - Consumes: `ns.playerClass`, `ns.UpdateWarriorQueueTint`, `ns.UpdateDruidQueueTint`, `ns.UpdateHunterQueueTint`, `ns.UpdateHunterRangeHelperVisual`, `ns.UpdateHunterRapidFire`, `ns.UpdateRogueAdrenalineRush`, `ns.UpdateShamanWindfuryIcd`
 - Produces: `CoreRenderHook(elapsed)` that executes only the current `ns.playerClass` visual helper routines
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Add `Reg:OnUpdate_ClassIsolation` to `SuperSwingTimer_Tests.lua` in the `SST-Regressions` group:
 
@@ -155,12 +155,12 @@ Add `Reg:OnUpdate_ClassIsolation` to `SuperSwingTimer_Tests.lua` in the `SST-Reg
     end
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `lua run_tests.lua`
 Expected: FAIL in `SST-Regressions` with `"Hunter hook should NOT be called for WARRIOR"`.
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 In `SuperSwingTimer_UI.lua`, update `CoreRenderHook(elapsed)` around line 2922:
 
@@ -193,18 +193,18 @@ local function CoreRenderHook(elapsed)
 end
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `lua run_tests.lua`
 Expected: PASS (103 tests passed, 0 failed).
 
-- [ ] **Step 5: Run linter and bytecode check**
+- [x] **Step 5: Run linter and bytecode check**
 
 Run: `luacheck SuperSwingTimer_UI.lua SuperSwingTimer_Tests.lua`
 Run: `luac -p SuperSwingTimer_UI.lua SuperSwingTimer_Tests.lua`
 Expected: 0 warnings, 0 errors.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add SuperSwingTimer_UI.lua SuperSwingTimer_Tests.lua
@@ -223,7 +223,7 @@ git commit -m "perf(render): gate per-frame OnUpdate hook execution strictly to 
 - Consumes: `CreateSectionHeader(parent, label, yOffset, options)`, `LayoutSectionRows`, `ReflowConfigSections`, `CreateActionRow`
 - Produces: Enhanced section headers with dark panel backgrounds (`0.08, 0.08, 0.12, 0.95`), 3px color accent badges, 36px layout height, 18px row spacing, 32px inter-section gap, and clean single-anchor action row text
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Add `Config:SectionSpacingAndHeaders` to `SuperSwingTimer_Tests.lua` in `SST-Config`:
 
@@ -255,12 +255,12 @@ Also verify action row text anchors:
     end
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `lua run_tests.lua`
 Expected: FAIL in `SST-Config`.
 
-- [ ] **Step 3: Implement minimal code changes**
+- [x] **Step 3: Implement minimal code changes**
 
 1. In `SuperSwingTimer_Config.lua`, update `CreateActionRow`:
 Remove redundant line 1916 `text:SetPoint("TOPRIGHT", row, "TOPRIGHT", -130, 0)` so `text` is anchored exclusively by `TOPLEFT (row, 0, 0)` and `RIGHT (btn, LEFT, -8, 0)`. Expose `ns._CreateActionRow = CreateActionRow` for testing if appropriate or attach to testable scope.
@@ -297,18 +297,18 @@ Default `options.rowSpacing` to 18 (was 10/14) and `options.gapAfterHeader` to 2
 4. In `ReflowConfigSections`:
 Update all `sectionY - 8` offsets to `sectionY - 32`, giving 46-50px total clearance between sections.
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `lua run_tests.lua`
 Expected: PASS (105 tests passed, 0 failed).
 
-- [ ] **Step 5: Run linter and bytecode check**
+- [x] **Step 5: Run linter and bytecode check**
 
 Run: `luacheck SuperSwingTimer_Config.lua SuperSwingTimer_Tests.lua`
 Run: `luac -p SuperSwingTimer_Config.lua SuperSwingTimer_Tests.lua`
 Expected: 0 warnings, 0 errors.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add SuperSwingTimer_Config.lua SuperSwingTimer_Tests.lua
@@ -327,7 +327,7 @@ git commit -m "style(config): overhaul section spacing, add header accent badges
 - Consumes: `CreateQuickTab`, `ReflowQuickControls`, `quickColorRows`
 - Produces: 24px gutter and 8px vertical spacing between 2-column color swatches; bright cyan border/text on active Quick Tab button
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Add `Config:QuickTabStylingAndColorsGutter` to `SuperSwingTimer_Tests.lua` in `SST-Config`:
 
@@ -346,12 +346,12 @@ Add `Config:QuickTabStylingAndColorsGutter` to `SuperSwingTimer_Tests.lua` in `S
     end
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `lua run_tests.lua`
 Expected: FAIL in `SST-Config` (b was 0.3 for yellow/gold).
 
-- [ ] **Step 3: Implement minimal code changes**
+- [x] **Step 3: Implement minimal code changes**
 
 1. In `SuperSwingTimer_Config.lua`, inside `CreateQuickTab`:
 Update `btn.refresh`:
@@ -408,18 +408,18 @@ Change:
             quickSectionBottomY = math.min(leftY, rightY)
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `lua run_tests.lua`
 Expected: PASS (106 tests passed, 0 failed).
 
-- [ ] **Step 5: Run linter and bytecode check**
+- [x] **Step 5: Run linter and bytecode check**
 
 Run: `luacheck SuperSwingTimer_Config.lua SuperSwingTimer_Tests.lua`
 Run: `luac -p SuperSwingTimer_Config.lua SuperSwingTimer_Tests.lua`
 Expected: 0 warnings, 0 errors.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add SuperSwingTimer_Config.lua SuperSwingTimer_Tests.lua
@@ -438,7 +438,7 @@ git commit -m "style(config): expand color swatch gutter to 24px and add active 
 - Consumes: Test results and benchmark notes
 - Produces: Updated user-facing release notes for v0.2.5
 
-- [ ] **Step 1: Update CHANGELOG.md**
+- [x] **Step 1: Update CHANGELOG.md**
 
 Add the v0.2.5 enterprise performance & polish details under `## [0.2.5]`:
 - CLEU fast-path GUID filter (drops ~98% of unrelated raid combat log events before time alignment).
@@ -447,11 +447,11 @@ Add the v0.2.5 enterprise performance & polish details under `## [0.2.5]`:
 - Quick Controls color palette expansion (24px gutter, 8px vertical row spacing, cyan active tab highlight).
 - Action row fontstring anchor cleanup eliminating font stretching.
 
-- [ ] **Step 2: Update README.md**
+- [x] **Step 2: Update README.md**
 
 Update the test count badge / section to reflect 106 passing tests and note the raid combat log performance optimizations.
 
-- [ ] **Step 3: Run full verification suite**
+- [x] **Step 3: Run full verification suite**
 
 Run:
 ```bash
@@ -465,7 +465,7 @@ Expected:
 - 0 warnings, 0 errors in luacheck.
 - Clean compilation across all files.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add CHANGELOG.md README.md
