@@ -4,7 +4,7 @@
 > Sections: **Added** / **Changed** / **Fixed** / **Removed** / **Performance** / **Security** / **Docs** / **Internal** / **Notes**
 > DB schema migrations are listed under **Notes** per version.
 
-## v0.2.6 - 2026-10-22
+## v0.2.5 - 2026-10-22
 
 ### Added
 

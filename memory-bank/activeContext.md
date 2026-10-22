@@ -1,8 +1,8 @@
 # Active Context
 
-## Active Context Update (2026-10-22 - v0.2.6: Interactive Move Mode, 1080p Settings Fix, Blizzard Settings Decoupling, Cross-Client C_UnitAuras Normalization)
+## Active Context Update (2026-10-22 - v0.2.5: Interactive Move Mode, 1080p Settings Fix, Blizzard Settings Decoupling, Cross-Client C_UnitAuras Normalization)
 
-- **Focus**: Community feedback fixes on CurseForge ("How do I MOVE the thing?", settings broken on 1080p / ElvUI), cross-client compatibility across `classic_era` (1.15.9), `classic_anniversary` (2.5.6), and `titanforge` (3.80.2), decoupling Blizzard settings canvas from standalone config window, and version bump to `v0.2.6`.
+- **Focus**: Community feedback fixes on CurseForge ("How do I MOVE the thing?", settings broken on 1080p / ElvUI), cross-client compatibility across `classic_era` (1.15.9), `classic_anniversary` (2.5.6), and `titanforge` (3.80.2), decoupling Blizzard settings canvas from standalone config window, and version bump to `v0.2.5`.
 - **Interactive Move Mode (`SuperSwingTimer_UI.lua`, `SuperSwingTimer.lua`)**:
   - Implemented `/sst move` and `/sst unlock` slash commands allowing direct, intuitive repositioning of all swing bars.
   - Added high-visibility semi-transparent drag guide overlays with clear labels ("Main Hand (Drag)", "Off Hand (Follows MH)", "Ranged (Drag)", "Enemy (Drag)") rendered at dialog frame level.
@@ -24,7 +24,7 @@
   - Added `[SST-MoveMode]` test suite testing interactive move transitions, overlay states, and slash command integration.
   - Added `[SST-Config]` test suite testing Blizzard settings decoupling and responsive resolution clamping across virtual screen heights.
   - Added `[SST-UnitAuraNorm]` test cases for `C_UnitAuras` data shape and legacy fallback.
-  - 94/94 tests passing headlessly; 0 warnings and 0 errors across all modified files.
+  - 98/98 tests passing headlessly; 0 warnings and 0 errors across all modified files.
 
 ## Active Context Update (2026-09-21 - v0.2.4: Deep audit, C-level RegisterUnitEvent, zero-allocation hotpaths, idle sleep, headless CLI test suite, DB v64)
 
@@ -881,7 +881,7 @@
 ## Current focus
 
 1. **v0.1.3 is in development** (2026-06-19) — Combat bar drag + camera interaction fix.
-2. **Completed**: 
+2. **Completed**:
    - Hunter cast bar color separation, height increase, bar-jumping critical fix, stance icon, CD/buff icon group.
    - **Combat bar drag fix**: Bars can now be left-click dragged even during combat when unlocked.
      - Removed `inCombat` blanket mouse-disable in `ns.ApplyLockBars()` — mouse stays enabled on unlocked bars during combat.

@@ -5,7 +5,7 @@
 ## Title: Super Swing Timer
 ## Notes: Melee, ranged, and current-target enemy swing timer for Classic Era, TBC Anniversary, and Titanforge. Includes interactive Move Mode with floating lock toolbar, decoupled responsive settings panel for 1080p, class-colored swing bars, Rogue Slice & Dice and energy-tick assists, Hunter Auto Shot / Multi-Shot cast bar with Steady Shot no-clip feedback, Warrior Shield Block duration bar, Paladin seal twist marker, Shaman weave assists, and customizable textures and colors.
 ## Author: AcidBomb
-## Version: v0.2.6
+## Version: v0.2.5
 ## IconTexture: Interface\Icons\INV_Sword_27
 ## X-Curse-Project-ID: 1521271
 ## OptionalDeps: WoWUnit

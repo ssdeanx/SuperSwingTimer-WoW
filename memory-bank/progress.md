@@ -1,6 +1,6 @@
 # Progress
 
-## Progress Update (2026-10-22 - v0.2.6: Interactive Move Mode, 1080p Settings Fix, Blizzard Settings Decoupling, Cross-Client C_UnitAuras Normalization)
+## Progress Update (2026-10-22 - v0.2.5: Interactive Move Mode, 1080p Settings Fix, Blizzard Settings Decoupling, Cross-Client C_UnitAuras Normalization)
 
 - **Interactive Move Mode & Floating Reposition HUD (`SuperSwingTimer_UI.lua`, `SuperSwingTimer.lua`)**:
   - Implemented `/sst move` and `/sst unlock` slash commands allowing direct, intuitive repositioning of all swing bars.
@@ -23,7 +23,7 @@
   - Added `[SST-MoveMode]` test suite testing interactive move transitions, overlay states, and slash command integration.
   - Added `[SST-Config]` test suite testing Blizzard settings decoupling and responsive resolution clamping across virtual screen heights.
   - Added `[SST-UnitAuraNorm]` test cases for `C_UnitAuras` data shape and legacy fallback.
-  - 94/94 tests passing headlessly; 0 warnings and 0 errors across all modified files.
+  - 98/98 tests passing headlessly; 0 warnings and 0 errors across all modified files.
 
 ## Progress Update (2026-09-21 - v0.2.4: Deep audit, C-level RegisterUnitEvent, zero-allocation hotpaths, idle sleep, headless CLI test suite, DB v64)
 

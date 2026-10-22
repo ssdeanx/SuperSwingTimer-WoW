@@ -6,9 +6,9 @@ Super Swing Timer tracks white-hit swing timers across main hand, off hand, rang
 
 **Dual-client CLEU architecture:** Classic Era `COMBAT_LOG_EVENT` payloads use numeric spell IDs; TBC Anniversary sends localized spell names (strings) instead. All swing-affecting spell lookup tables (`RESET_SWING_SPELLS`, `NO_RESET_SWING_SPELLS`, `PAUSE_SWING_SPELLS`, `RESET_RANGED_SWING_SPELLS`) populate both key types at init time via `ns.GetSpellInfo(id)` so swing resets, pauses, ranged resets, and NMA queue detection work identically on both clients.
 
-Current version: **v0.2.6**. Status: release-ready. Includes interactive Move Mode (`/sst move`, `/sst unlock`, `/sst lock`) with drag overlays, floating `SuperSwingTimerMoveHUD` reposition toolbar, decoupled Blizzard Settings canvas eliminating window destruction and 1080p screen clipping, responsive resolution-clamped sizing with bottom-right resize grip, native `C_UnitAuras` support with legacy fallback, cross-client TOC support (`Interface: 11509, 20506, 38002` for Classic Era, TBC Anniversary, and Titanforge), dynamic 20-second test preview animation on `/sst test`, combat auto-lock safety, rapid drag off-frame release protection, 98-test headless test runner (`run_tests.lua`), zero-allocation engine optimizations, and multi-class power/resource bars for all 6 physical classes.
+Current version: **v0.2.5**. Status: release-ready. Includes interactive Move Mode (`/sst move`, `/sst unlock`, `/sst lock`) with drag overlays, floating `SuperSwingTimerMoveHUD` reposition toolbar, decoupled Blizzard Settings canvas eliminating window destruction and 1080p screen clipping, responsive resolution-clamped sizing with bottom-right resize grip, native `C_UnitAuras` support with legacy fallback, cross-client TOC support (`Interface: 11509, 20506, 38002` for Classic Era, TBC Anniversary, and Titanforge), dynamic 20-second test preview animation on `/sst test`, combat auto-lock safety, rapid drag off-frame release protection, 98-test headless test runner (`run_tests.lua`), zero-allocation engine optimizations, and multi-class power/resource bars for all 6 physical classes.
 
-**Recent changes (v0.2.6 - 2026-10-22):**
+**Recent changes (v0.2.5 - 2026-10-22):**
 
 | Area | Change |
 | --- | --- |
