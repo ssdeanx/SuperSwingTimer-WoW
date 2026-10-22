@@ -991,6 +991,42 @@ local function RegisterSSTTests()
         AreEqual(spy.lists[1], spy.hoisted, 'the list passed is the pre-allocated hoisted table')
     end
 
+    function Reg:OnUpdate_ClassIsolation()
+        local coreHook = ns.OnUpdateHooks[1]
+        Exists(coreHook, "core render hook registered")
+
+        local savedClass = ns.playerClass
+        ns.playerClass = "WARRIOR"
+
+        local warriorCalled, hunterCalled, druidCalled, rogueCalled, shamanCalled = false, false, false, false, false
+        local origWarrior = ns.UpdateWarriorQueueTint
+        local origHunter = ns.UpdateHunterQueueTint
+        local origDruid = ns.UpdateDruidQueueTint
+        local origRogue = ns.UpdateRogueAdrenalineRush
+        local origShaman = ns.UpdateShamanWindfuryIcd
+
+        ns.UpdateWarriorQueueTint = function() warriorCalled = true end
+        ns.UpdateHunterQueueTint = function() hunterCalled = true end
+        ns.UpdateDruidQueueTint = function() druidCalled = true end
+        ns.UpdateRogueAdrenalineRush = function() rogueCalled = true end
+        ns.UpdateShamanWindfuryIcd = function() shamanCalled = true end
+
+        coreHook(0.016)
+
+        ns.UpdateWarriorQueueTint = origWarrior
+        ns.UpdateHunterQueueTint = origHunter
+        ns.UpdateDruidQueueTint = origDruid
+        ns.UpdateRogueAdrenalineRush = origRogue
+        ns.UpdateShamanWindfuryIcd = origShaman
+        ns.playerClass = savedClass
+
+        IsTrue(warriorCalled, "Warrior hook should be called for WARRIOR")
+        IsFalse(hunterCalled, "Hunter hook should NOT be called for WARRIOR")
+        IsFalse(druidCalled, "Druid hook should NOT be called for WARRIOR")
+        IsFalse(rogueCalled, "Rogue hook should NOT be called for WARRIOR")
+        IsFalse(shamanCalled, "Shaman hook should NOT be called for WARRIOR")
+    end
+
     -- ============================================================
     -- SST-Weaving: Real-time spell cast time, Maelstrom, spark colors
     -- ============================================================

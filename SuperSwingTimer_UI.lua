@@ -2920,8 +2920,8 @@ end
 --  @param elapsed (number) Time since last frame in seconds
 --  @local
 local function CoreRenderHook(elapsed)
-    UpdateRangedBar(elapsed)
-    UpdateHunterCastBar()
+    if ns.rangedBar then UpdateRangedBar(elapsed) end
+    if ns.hunterCastBar then UpdateHunterCastBar() end
     if ns.enemyBar then UpdateMeleeBar("enemy", ns.enemyBar) end
     if ns.mhBar then UpdateMeleeBar("mh", ns.mhBar) end
     if ns.ohBar then UpdateMeleeBar("oh", ns.ohBar) end
@@ -2929,16 +2929,21 @@ local function CoreRenderHook(elapsed)
     UpdateGcdTicker(elapsed)
     UpdateSwingFlash(elapsed)
     RenderSwingFlash()
-    if ns.UpdateWarriorQueueTint then ns.UpdateWarriorQueueTint() end
-    if ns.UpdateDruidQueueTint then ns.UpdateDruidQueueTint() end
-    if ns.UpdateHunterQueueTint then ns.UpdateHunterQueueTint() end
-    if ns.UpdateHunterRangeHelperVisual then ns.UpdateHunterRangeHelperVisual() end
-    -- Phase 2: Hunter Rapid Fire bar
-    if ns.UpdateHunterRapidFire then ns.UpdateHunterRapidFire(elapsed) end
-    -- Phase 2: Rogue Adrenaline Rush bar
-    if ns.UpdateRogueAdrenalineRush then ns.UpdateRogueAdrenalineRush(elapsed) end
-    -- Phase 2: Shaman Windfury ICD tracker
-    if ns.UpdateShamanWindfuryIcd then ns.UpdateShamanWindfuryIcd() end
+
+    local playerClass = ns.playerClass
+    if playerClass == "WARRIOR" then
+        if ns.UpdateWarriorQueueTint then ns.UpdateWarriorQueueTint() end
+    elseif playerClass == "DRUID" then
+        if ns.UpdateDruidQueueTint then ns.UpdateDruidQueueTint() end
+    elseif playerClass == "HUNTER" then
+        if ns.UpdateHunterQueueTint then ns.UpdateHunterQueueTint() end
+        if ns.UpdateHunterRangeHelperVisual then ns.UpdateHunterRangeHelperVisual() end
+        if ns.UpdateHunterRapidFire then ns.UpdateHunterRapidFire(elapsed) end
+    elseif playerClass == "ROGUE" then
+        if ns.UpdateRogueAdrenalineRush then ns.UpdateRogueAdrenalineRush(elapsed) end
+    elseif playerClass == "SHAMAN" then
+        if ns.UpdateShamanWindfuryIcd then ns.UpdateShamanWindfuryIcd() end
+    end
 end
 
 -- Register the core render hook as the first hook (priority 1)
