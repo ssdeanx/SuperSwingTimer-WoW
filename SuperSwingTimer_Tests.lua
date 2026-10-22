@@ -284,6 +284,54 @@ local function RegisterSSTTests()
         ClearReplaces()
     end
 
+    function UANorm:C_UnitAuras_Extraction()
+        local prevC = rawget(_G, "C_UnitAuras")
+        _G.C_UnitAuras = {
+            GetAuraDataByIndex = function(unit, index, filter)
+                if unit == "player" and index == 1 and filter == "HELPFUL" then
+                    return {
+                        name = "Slice and Dice",
+                        icon = 132306,
+                        applications = 0,
+                        dispelName = nil,
+                        duration = 21,
+                        expirationTime = 12345.67,
+                        sourceUnit = "player",
+                        isStealable = false,
+                        spellId = 6774
+                    }
+                end
+                return nil
+            end
+        }
+
+        local name, rank, icon, count, debuffType, dur, expT, caster, steal, cons, sId = ns.UnitAura("player", 1, "HELPFUL")
+        _G.C_UnitAuras = prevC
+
+        AreEqual(name, "Slice and Dice")
+        AreEqual(icon, 132306)
+        AreEqual(dur, 21)
+        AreEqual(expT, 12345.67)
+        AreEqual(caster, "player")
+        AreEqual(sId, 6774)
+    end
+
+    function UANorm:C_UnitAuras_FallbackToLegacyWhenNil()
+        local prevC = rawget(_G, "C_UnitAuras")
+        _G.C_UnitAuras = nil
+        Replace('UnitAura', function(u, i, f)
+            return "Battle Shout", "Rank 1", "Interface\\Icons\\Ability_Warrior_WarCry", 0, nil, 120, 500, "player", false, nil, 6673
+        end)
+
+        local name, _, icon, count, _, dur, expT, caster, _, _, sId = ns.UnitAura("player", 1, "HELPFUL")
+        _G.C_UnitAuras = prevC
+        ClearReplaces()
+
+        AreEqual(name, "Battle Shout")
+        AreEqual(icon, "Interface\\Icons\\Ability_Warrior_WarCry")
+        AreEqual(sId, 6673)
+    end
+
     -- ============================================================
     -- SST-Combat: timers, CLEU, debuff stacking, state machine
     -- ============================================================

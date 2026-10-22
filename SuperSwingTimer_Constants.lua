@@ -107,7 +107,22 @@ end
 --          (number|nil) spellID
 --  @usage local name, _, _, _, _, dur, expT, caster, _, _, sId = ns.UnitAura("target", 1, "HARMFUL")
 function ns.UnitAura(unit, index, filter)
-    if not unit or not index or not UnitAura then return nil end
+    if not unit or not index then return nil end
+
+    -- Primary: Check modern / Titanforge C_UnitAuras API
+    local cUnitAuras = rawget(_G, "C_UnitAuras")
+    if cUnitAuras and cUnitAuras.GetAuraDataByIndex then
+        local aura = cUnitAuras.GetAuraDataByIndex(unit, index, filter)
+        if aura then
+            return aura.name, nil, aura.icon, tonumber(aura.applications) or 0, aura.dispelName,
+                   aura.duration, aura.expirationTime, aura.sourceUnit,
+                   aura.isStealable, nil, aura.spellId
+        end
+        return nil
+    end
+
+    -- Fallback: Legacy UnitAura global
+    if not UnitAura then return nil end
     local r1, r2, r3, r4, r5, r6, r7, r8, r9, r10, r11 = UnitAura(unit, index, filter)
     if not r1 then return nil end
 
