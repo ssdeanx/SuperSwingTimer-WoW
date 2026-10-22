@@ -6,6 +6,9 @@ local InCombatLockdown = rawget(_G, "InCombatLockdown")
 local UnitAttackSpeed = rawget(_G, "UnitAttackSpeed")
 local UnitChannelInfo = rawget(_G, "UnitChannelInfo")
 local strtrim = rawget(_G, "strtrim")
+local print = rawget(_G, "print") or function (...) end
+local BackdropTemplateMixin = rawget(_G, "BackdropTemplateMixin")
+local UISpecialFrames = rawget(_G, "UISpecialFrames")
 
 local function GetSparkBlendMode()
     -- Keep the main swing spark color-preserving so a white/manual spark does
@@ -1271,6 +1274,203 @@ frame:SetScript("OnHide", function (self)
         self.dragData = nil
     end
 end)
+end
+
+-- ============================================================
+-- Interactive Move Mode & Floating Reposition HUD
+-- ============================================================
+ns.isMoveModeActive = false
+
+local function CreateBackdropFrame(frameType, name, parent, template)
+    if BackdropTemplateMixin then
+        if template and template ~= "" then
+            return CreateFrame(frameType, name, parent, template .. ",BackdropTemplate")
+        else
+            return CreateFrame(frameType, name, parent, "BackdropTemplate")
+        end
+    end
+    return CreateFrame(frameType, name, parent, template)
+end
+
+local function SetFrameBackdropSafe(frame, backdropInfo, backgroundColor, borderColor)
+    if not frame or not frame.SetBackdrop then
+        return
+    end
+    frame:SetBackdrop(backdropInfo)
+    if backgroundColor and frame.SetBackdropColor then
+        frame:SetBackdropColor(backgroundColor[1], backgroundColor[2], backgroundColor[3], backgroundColor[4])
+    end
+    if borderColor and frame.SetBackdropBorderColor then
+        frame:SetBackdropBorderColor(borderColor[1], borderColor[2], borderColor[3], borderColor[4])
+    end
+end
+
+local function EnsureDragOverlay(bar, labelText)
+    if not bar then return nil end
+    if bar._dragOverlay then
+        if bar._dragOverlay.text then
+            bar._dragOverlay.text:SetText(labelText)
+        end
+        return bar._dragOverlay
+    end
+    local overlay = CreateFrame("Frame", nil, bar)
+    overlay:SetAllPoints(bar)
+    if overlay.SetFrameLevel and bar.GetFrameLevel then
+        overlay:SetFrameLevel(bar:GetFrameLevel() + 25)
+    end
+    local bg = overlay:CreateTexture(nil, "OVERLAY")
+    bg:SetAllPoints()
+    bg:SetColorTexture(0, 0.45, 0.85, 0.38)
+
+    local border = overlay:CreateTexture(nil, "OVERLAY")
+    border:SetColorTexture(0.25, 0.85, 1.0, 0.85)
+    border:SetPoint("TOPLEFT", -1, 1)
+    border:SetPoint("BOTTOMRIGHT", 1, -1)
+    border:SetDrawLayer("OVERLAY", 1)
+
+    local text = overlay:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    text:SetPoint("CENTER", overlay, "CENTER", 0, 0)
+    text:SetText(labelText)
+    if text.SetTextColor then
+        text:SetTextColor(1, 1, 1, 1)
+    end
+    overlay.text = text
+    bar._dragOverlay = overlay
+    return overlay
+end
+
+local moveHUD = nil
+local function EnsureMoveHUD()
+    if moveHUD then return moveHUD end
+    local f = CreateBackdropFrame("Frame", "SuperSwingTimerMoveHUD", UIParent)
+    f:SetSize(340, 68)
+    f:SetPoint("TOP", UIParent, "TOP", 0, -60)
+    f:SetFrameStrata("DIALOG")
+    if f.SetClampedToScreen then
+        f:SetClampedToScreen(true)
+    end
+    f:SetMovable(true)
+    f:EnableMouse(true)
+    f:RegisterForDrag("LeftButton")
+    f:SetScript("OnDragStart", f.StartMoving)
+    f:SetScript("OnDragStop", f.StopMovingOrSizing)
+    SetFrameBackdropSafe(f, {
+        bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
+        edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
+        tile = true, tileSize = 16, edgeSize = 16,
+        insets = { left = 4, right = 4, top = 4, bottom = 4 }
+    }, { 0.08, 0.08, 0.1, 0.95 }, { 0.3, 0.6, 1.0, 0.9 })
+
+    local title = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    title:SetPoint("TOP", f, "TOP", 0, -8)
+    title:SetText("Super Swing Timer: Move Mode")
+    if title.SetTextColor then
+        title:SetTextColor(0.2, 0.8, 1, 1)
+    end
+
+    local sub = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    sub:SetPoint("TOP", title, "BOTTOM", 0, -2)
+    sub:SetText("Left-click and drag bars to reposition.")
+    if sub.SetTextColor then
+        sub:SetTextColor(0.8, 0.8, 0.8, 0.9)
+    end
+
+    local lockBtn = CreateFrame("Button", nil, f)
+    lockBtn:SetSize(140, 22)
+    lockBtn:SetPoint("BOTTOM", f, "BOTTOM", 0, 8)
+    local btnBg = lockBtn:CreateTexture(nil, "BACKGROUND")
+    btnBg:SetAllPoints()
+    btnBg:SetColorTexture(0.15, 0.45, 0.15, 0.9)
+    local btnBorder = lockBtn:CreateTexture(nil, "OVERLAY")
+    btnBorder:SetPoint("TOPLEFT", -1, 1)
+    btnBorder:SetPoint("BOTTOMRIGHT", 1, -1)
+    btnBorder:SetColorTexture(0.3, 0.85, 0.3, 0.9)
+    btnBorder:SetDrawLayer("OVERLAY", -1)
+    local btnText = lockBtn:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    btnText:SetPoint("CENTER")
+    btnText:SetText("Lock Bars & Save")
+    if btnText.SetTextColor then
+        btnText:SetTextColor(1, 1, 1, 1)
+    end
+    lockBtn:SetScript("OnClick", function ()
+        ns.StopMoveMode()
+    end)
+
+    if UISpecialFrames then
+        table.insert(UISpecialFrames, "SuperSwingTimerMoveHUD")
+    end
+
+    moveHUD = f
+    ns.moveHUD = f
+    return f
+end
+
+function ns.StartMoveMode()
+    if not SuperSwingTimerDB then
+        SuperSwingTimerDB = {}
+    end
+    SuperSwingTimerDB.lockBars = false
+    ns.isMoveModeActive = true
+    ns.barTestActive = true
+    if ns.ShowBarPreview then
+        ns.ShowBarPreview()
+    end
+    ns.ApplyLockBars()
+
+    local mh = EnsureDragOverlay(ns.mhBar, "Main Hand (Drag)")
+    if mh then mh:Show() end
+    local oh = EnsureDragOverlay(ns.ohBar, "Off Hand (Follows MH)")
+    if oh then oh:Show() end
+    local ranged = EnsureDragOverlay(ns.rangedBar, "Ranged (Drag)")
+    if ranged then ranged:Show() end
+    local enemy = EnsureDragOverlay(ns.enemyBar, "Enemy (Drag)")
+    if enemy then enemy:Show() end
+
+    local hud = EnsureMoveHUD()
+    if hud then hud:Show() end
+
+    if ns.RefreshConfigLockControls then
+        ns.RefreshConfigLockControls()
+    end
+
+    print("|cff00ccffSuper Swing Timer:|r Bars unlocked. Left-click and drag bars to reposition. Type |cff00ff00/sst lock|r or click [Lock Bars & Save] when finished.")
+end
+
+function ns.StopMoveMode()
+    if not SuperSwingTimerDB then
+        SuperSwingTimerDB = {}
+    end
+    SuperSwingTimerDB.lockBars = true
+    ns.isMoveModeActive = false
+    ns.barTestActive = false
+
+    for _, bar in ipairs({ ns.mhBar, ns.ohBar, ns.rangedBar, ns.enemyBar }) do
+        if bar and bar._dragOverlay then
+            bar._dragOverlay:Hide()
+        end
+    end
+
+    if ns.moveHUD and ns.moveHUD.Hide then
+        ns.moveHUD:Hide()
+    end
+    if ns.HideBarPreview then
+        ns.HideBarPreview()
+    end
+    ns.ApplyLockBars()
+
+    if ns.RefreshConfigLockControls then
+        ns.RefreshConfigLockControls()
+    end
+
+    print("|cff00ccffSuper Swing Timer:|r Bars locked in position.")
+end
+
+function ns.ToggleMoveMode()
+    if ns.isMoveModeActive then
+        ns.StopMoveMode()
+    else
+        ns.StartMoveMode()
+    end
 end
 
 -- ============================================================

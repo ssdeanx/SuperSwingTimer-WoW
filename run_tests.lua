@@ -164,6 +164,13 @@ local function createMockObject()
     function obj:EnableMouse(...) end
     function obj:SetMovable(...) end
     function obj:RegisterForDrag(...) end
+    function obj:SetClampedToScreen(...) end
+    function obj:IsClampedToScreen() return true end
+    function obj:SetResizable(...) end
+    function obj:IsResizable() return true end
+    function obj:StartMoving() end
+    function obj:StopMovingOrSizing() end
+    function obj:StartSizing(...) end
     function obj:CreateTexture(...) return createMockObject() end
     function obj:CreateFontString(...) return createMockObject() end
     return obj

@@ -305,7 +305,7 @@ local function RegisterSSTTests()
             end
         }
 
-        local name, rank, icon, count, debuffType, dur, expT, caster, steal, cons, sId = ns.UnitAura("player", 1, "HELPFUL")
+        local name, _, icon, _, _, dur, expT, caster, _, _, sId = ns.UnitAura("player", 1, "HELPFUL")
         _G.C_UnitAuras = prevC
 
         AreEqual(name, "Slice and Dice")
@@ -323,7 +323,7 @@ local function RegisterSSTTests()
             return "Battle Shout", "Rank 1", "Interface\\Icons\\Ability_Warrior_WarCry", 0, nil, 120, 500, "player", false, nil, 6673
         end)
 
-        local name, _, icon, count, _, dur, expT, caster, _, _, sId = ns.UnitAura("player", 1, "HELPFUL")
+        local name, _, icon, _, _, _, _, _, _, _, sId = ns.UnitAura("player", 1, "HELPFUL")
         _G.C_UnitAuras = prevC
         ClearReplaces()
 
@@ -1091,6 +1091,48 @@ local function RegisterSSTTests()
         AreEqual(countPoint.x, -1)
         AreEqual(countPoint.y, 1)
         AreEqual(icon.countText.justifyH, "RIGHT")
+    end
+
+    -- ============================================================
+    -- SST-MoveMode: Interactive Move Mode, slash commands, HUD
+    -- ============================================================
+    local MoveMode = WoWUnit('SST-MoveMode', 'PLAYER_ENTERING_WORLD')
+
+    function MoveMode:MoveMode_StateTransitions()
+        IsTrue(type(ns.StartMoveMode) == "function", "ns.StartMoveMode must be a function")
+        IsTrue(type(ns.StopMoveMode) == "function", "ns.StopMoveMode must be a function")
+        IsTrue(type(ns.ToggleMoveMode) == "function", "ns.ToggleMoveMode must be a function")
+
+        ns.StopMoveMode()
+        IsTrue(SuperSwingTimerDB.lockBars == true, "StopMoveMode must lock bars")
+        IsFalse(ns.isMoveModeActive, "MoveMode must be inactive")
+
+        ns.StartMoveMode()
+        IsFalse(SuperSwingTimerDB.lockBars, "StartMoveMode must unlock bars")
+        IsTrue(ns.isMoveModeActive, "MoveMode must be active")
+
+        ns.ToggleMoveMode()
+        IsFalse(ns.isMoveModeActive, "ToggleMoveMode must toggle active state")
+        IsTrue(SuperSwingTimerDB.lockBars == true, "Bars must be locked after toggle")
+    end
+
+    function MoveMode:SlashCommands_RecognizeMoveAndLock()
+        local cmdHandler = SlashCmdList["SUPERSWINGTIMER"]
+        IsTrue(type(cmdHandler) == "function", "SUPERSWINGTIMER slash handler must exist")
+
+        -- Call /sst move
+        cmdHandler("move")
+        IsTrue(ns.isMoveModeActive, "/sst move must activate move mode")
+
+        -- Call /sst lock
+        cmdHandler("lock")
+        IsFalse(ns.isMoveModeActive, "/sst lock must deactivate move mode")
+        IsTrue(SuperSwingTimerDB.lockBars == true, "bars must be locked")
+
+        -- Call /sst unlock
+        cmdHandler("unlock")
+        IsTrue(ns.isMoveModeActive, "/sst unlock must activate move mode")
+        ns.StopMoveMode()
     end
 
     local nGroups = 0

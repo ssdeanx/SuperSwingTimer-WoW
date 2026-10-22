@@ -3,7 +3,7 @@ local CreateFrame = rawget(_G, "CreateFrame")
 local UIParent = rawget(_G, "UIParent")
 local SlashCmdList = rawget(_G, "SlashCmdList")
 local UnitClass = rawget(_G, "UnitClass")
-local strtrim = rawget(_G, "strtrim")
+local strtrim = rawget(_G, "strtrim") or function (s) return s and s:match("^%s*(.-)%s*$") or "" end
 local GetShapeshiftForm = rawget(_G, "GetShapeshiftForm")
 local InCombatLockdown = rawget(_G, "InCombatLockdown")
 
@@ -1242,9 +1242,27 @@ RegisterSlashCommands = function ()
             else
                 print("|cff00ccffSuper Swing Timer:|r Could not reset settings: " .. tostring(err))
             end
+        elseif msg == "move" or msg == "unlock" then
+            if ns.StartMoveMode then
+                ns.StartMoveMode()
+            end
+        elseif msg == "lock" then
+            if ns.StopMoveMode then
+                ns.StopMoveMode()
+            end
+        elseif msg == "test" then
+            if ns.barTestActive then
+                if ns.HideBarPreview then ns.HideBarPreview() end
+            else
+                if ns.ShowBarPreview then ns.ShowBarPreview() end
+            end
         elseif msg == "help" then
-            print("|cff00ccffSuper Swing Timer:|r /sst, /super, or /superswingtimer - open config panel")
-            print("|cff00ccffSuper Swing Timer:|r /sst reset - restore default settings")
+            print("|cff00ccffSuper Swing Timer (/sst):|r")
+            print("  |cff00ff00/sst|r - Open/close settings panel")
+            print("  |cff00ff00/sst move|r or |cff00ff00/sst unlock|r - Unlock bars and show reposition anchors")
+            print("  |cff00ff00/sst lock|r - Lock bars in current position")
+            print("  |cff00ff00/sst test|r - Toggle test bars preview")
+            print("  |cff00ff00/sst reset|r - Restore all default settings")
         else
             local ok, err = pcall(ns.ToggleConfig)
             if not ok then

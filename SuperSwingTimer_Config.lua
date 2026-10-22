@@ -393,6 +393,7 @@ local function ShowBarPreview()
         ns.UpdateRogueSliceAndDiceVisual()
     end
 end
+ns.ShowBarPreview = ShowBarPreview
 
 local function HideBarPreview()
     if ns.barTestActive then
@@ -418,6 +419,7 @@ local function HideBarPreview()
         ns.UpdateRogueSliceAndDiceVisual()
     end
 end
+ns.HideBarPreview = HideBarPreview
 
 -- ------------------------------------------------------------
 -- Animate test bars during barTestActive — drives each bar
