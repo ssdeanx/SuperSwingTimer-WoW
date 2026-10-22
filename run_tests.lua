@@ -171,7 +171,8 @@ local function createMockObject()
     function obj:GetFrameStrata() return "MEDIUM" end
     function obj:SetFrameLevel(...) end
     function obj:GetFrameLevel() return 1 end
-    function obj:EnableMouse(...) end
+    function obj:EnableMouse(b) self._mouseEnabled = (b ~= false) end
+    function obj:IsMouseEnabled() return self._mouseEnabled == true end
     function obj:EnableKeyboard(...) end
     function obj:EnableMouseWheel(...) end
     function obj:GetVerticalScroll() return 0 end
@@ -228,6 +229,9 @@ _G.CreateFrame = function(frameType, name, parent, template)
     f._type = frameType
     f._name = name
     f._parent = parent
+    if name then
+        _G[name] = f
+    end
     table.insert(allCreatedFrames, f)
     return f
 end

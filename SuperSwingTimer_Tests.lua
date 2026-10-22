@@ -1135,6 +1135,61 @@ local function RegisterSSTTests()
         ns.StopMoveMode()
     end
 
+    function MoveMode:MoveHUD_OnHide_CancelsMoveMode()
+        ns.StartMoveMode()
+        IsTrue(ns.isMoveModeActive, "Move mode must be active")
+        local hud = ns.moveHUD
+        IsTrue(hud ~= nil, "Move HUD frame must exist")
+        local onHide = hud:GetScript("OnHide")
+        IsTrue(type(onHide) == "function", "Move HUD must have an OnHide handler")
+        hud:Hide()
+        if onHide then onHide(hud) end
+        IsFalse(ns.isMoveModeActive, "Hiding Move HUD must cancel move mode")
+        IsTrue(SuperSwingTimerDB.lockBars == true, "Bars must be locked")
+    end
+
+    function MoveMode:Hunter_MoveMode_OverlayLabel()
+        local origClass = ns.playerClass
+        ns.playerClass = "HUNTER"
+        ns.StartMoveMode()
+        IsTrue(ns.mhBar._dragOverlay ~= nil, "MH bar must have drag overlay")
+        IsTrue(ns.mhBar._dragOverlay.text:GetText() == "Main Hand (Follows Ranged)", "Hunter MH label must indicate it follows Ranged")
+        ns.StopMoveMode()
+
+        ns.playerClass = "WARRIOR"
+        ns.StartMoveMode()
+        IsTrue(ns.mhBar._dragOverlay.text:GetText() == "Main Hand (Drag)", "Warrior MH label must indicate Main Hand (Drag)")
+        ns.StopMoveMode()
+        ns.playerClass = origClass
+    end
+
+    function MoveMode:Combat_Enter_CancelsMoveMode()
+        ns.StartMoveMode()
+        IsTrue(ns.isMoveModeActive, "Move mode must be active before combat")
+        local sstFrame = rawget(_G, "SuperSwingTimerFrame")
+        IsTrue(sstFrame ~= nil, "SuperSwingTimerFrame must exist")
+        local onEvent = sstFrame:GetScript("OnEvent")
+        IsTrue(type(onEvent) == "function", "SuperSwingTimerFrame must have OnEvent handler")
+        onEvent(sstFrame, "PLAYER_REGEN_DISABLED")
+        IsFalse(ns.isMoveModeActive, "Entering combat must cancel move mode")
+        IsTrue(SuperSwingTimerDB.lockBars == true, "Bars must be locked on entering combat")
+        onEvent(sstFrame, "PLAYER_REGEN_ENABLED")
+    end
+
+    function MoveMode:TestPreview_SlashCommand()
+        local cmdHandler = SlashCmdList["SUPERSWINGTIMER"]
+        IsTrue(type(cmdHandler) == "function", "SUPERSWINGTIMER slash handler must exist")
+        IsTrue(type(ns.StartBarTestPreview) == "function", "StartBarTestPreview must be exported")
+
+        cmdHandler("test")
+        IsTrue(ns.barTestActive == true, "/sst test must activate barTestActive")
+        IsTrue(ns.barTestStartTime ~= nil, "/sst test must set barTestStartTime for animations")
+
+        cmdHandler("test")
+        IsFalse(ns.barTestActive, "/sst test second call must stop test preview")
+        IsTrue(ns.barTestStartTime == nil, "Stopping test preview must clear barTestStartTime")
+    end
+
     -- ============================================================
     -- Config: Decoupled Blizzard Settings & Responsive Layout
     -- ============================================================

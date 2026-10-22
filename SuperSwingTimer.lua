@@ -1252,9 +1252,21 @@ RegisterSlashCommands = function ()
             end
         elseif msg == "test" then
             if ns.barTestActive then
+                if ns.barTestTimer and ns.barTestTimer.Cancel then
+                    ns.barTestTimer:Cancel()
+                    ns.barTestTimer = nil
+                end
+                ns.barTestActive = false
+                ns.barTestStartTime = nil
                 if ns.HideBarPreview then ns.HideBarPreview() end
+                print("|cff00ccffSuper Swing Timer:|r Test preview stopped.")
             else
-                if ns.ShowBarPreview then ns.ShowBarPreview() end
+                if ns.StartBarTestPreview then
+                    ns.StartBarTestPreview(20)
+                elseif ns.ShowBarPreview then
+                    ns.ShowBarPreview()
+                end
+                print("|cff00ccffSuper Swing Timer:|r Test preview running (20s). Type |cff00ff00/sst test|r to stop early.")
             end
         elseif msg == "help" then
             print("|cff00ccffSuper Swing Timer (/sst):|r")
@@ -1692,6 +1704,9 @@ frame:SetScript("OnEvent", function (self, event, ...)
             ns.rangedBar:SetAlpha(0)
         end
     elseif event == "PLAYER_REGEN_DISABLED" then
+        if ns.isMoveModeActive and ns.StopMoveMode then
+            ns.StopMoveMode()
+        end
         ns.playerInCombat = true
         ns.ShowBars()
         if ns.UpdatePlayerPowerBar then

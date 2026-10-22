@@ -15,8 +15,8 @@ globals = {
     "CloseDropDownMenus",
     "geterrorhandler", "WoWUnit", "targetDB",
 
-    -- Cursor position for manual drag during combat
-    "GetCursorPosition",
+    -- Cursor position and mouse button state for manual drag
+    "GetCursorPosition", "IsMouseButtonDown",
 
     -- Closure-captured locals in SetupHunter passed as arguments to
     -- top-level helpers (luacheck false positive: accessible at runtime).

@@ -1104,6 +1104,9 @@ local function SavePosition(slot, frame)
     if not frame then return end
     local point, _, relativePoint, x, y = frame:GetPoint()
     SuperSwingTimerDB.positions[slot] = { point = point, relativePoint = relativePoint, x = x, y = y }
+    if ns.UpdatePowerBarAnchor then
+        ns.UpdatePowerBarAnchor()
+    end
     if ns.UpdateRogueEnergyTickVisual then
         ns.UpdateRogueEnergyTickVisual()
     end
@@ -1198,7 +1201,7 @@ function ns.ApplyLockBars()
             local isVisible = ((bar:IsShown() and bar:GetAlpha() > 0) or ns.barTestActive)
             if locked or isHunterMH or not isVisible then
                 bar:EnableMouse(false)
-            elseif not bar:IsMouseEnabled() then
+            elseif not (bar.IsMouseEnabled and bar:IsMouseEnabled()) then
                 bar:EnableMouse(true)
                 -- EnableMouse(true) resets per-button click state; re-apply
                 -- right-click passthrough so right-click always passes through
@@ -1236,6 +1239,11 @@ local function AttachDrag(frame, slot)
     -- OnUpdate: tracks cursor deltas and repositions frame during drag
     frame:HookScript("OnUpdate", function (self, elapsed)
         if self.isMoving and self.dragData then
+            local isMouseDown = rawget(_G, "IsMouseButtonDown")
+            if isMouseDown and not isMouseDown("LeftButton") then
+                StopDrag(self)
+                return
+            end
             local cursorX, cursorY = GetCursorPosition()
             if not cursorX then return end
             local scale = UIParent:GetEffectiveScale()
@@ -1315,6 +1323,7 @@ local function EnsureDragOverlay(bar, labelText)
     end
     local overlay = CreateFrame("Frame", nil, bar)
     overlay:SetAllPoints(bar)
+    overlay:EnableMouse(false)
     if overlay.SetFrameLevel and bar.GetFrameLevel then
         overlay:SetFrameLevel(bar:GetFrameLevel() + 25)
     end
@@ -1396,6 +1405,12 @@ local function EnsureMoveHUD()
         ns.StopMoveMode()
     end)
 
+    f:SetScript("OnHide", function ()
+        if ns.isMoveModeActive and ns.StopMoveMode then
+            ns.StopMoveMode()
+        end
+    end)
+
     if UISpecialFrames then
         table.insert(UISpecialFrames, "SuperSwingTimerMoveHUD")
     end
@@ -1417,7 +1432,8 @@ function ns.StartMoveMode()
     end
     ns.ApplyLockBars()
 
-    local mh = EnsureDragOverlay(ns.mhBar, "Main Hand (Drag)")
+    local mhLabel = (ns.playerClass == "HUNTER" and "Main Hand (Follows Ranged)" or "Main Hand (Drag)")
+    local mh = EnsureDragOverlay(ns.mhBar, mhLabel)
     if mh then mh:Show() end
     local oh = EnsureDragOverlay(ns.ohBar, "Off Hand (Follows MH)")
     if oh then oh:Show() end

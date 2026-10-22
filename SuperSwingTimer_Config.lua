@@ -481,6 +481,7 @@ local function StartBarTestPreview(duration)
         end)
     end
 end
+ns.StartBarTestPreview = StartBarTestPreview
 
 -- ============================================================
 -- Color picker helper
@@ -2202,15 +2203,22 @@ local function CreateBlizzardOptionsCanvas()
     openText:SetPoint("CENTER")
     openText:SetText("Open Full Settings Studio (/sst)")
     if openText.SetTextColor then openText:SetTextColor(1, 1, 1, 1) end
-    openBtn:SetScript("OnClick", function ()
+    local function CloseBlizzardSettings()
+        local hideUI = rawget(_G, "HideUIPanel")
         local settingsPanel = rawget(_G, "SettingsPanel")
-        if settingsPanel and settingsPanel.Hide then
-            settingsPanel:Hide()
+        if settingsPanel then
+            if hideUI then pcall(hideUI, settingsPanel) end
+            if settingsPanel.Hide then pcall(settingsPanel.Hide, settingsPanel) end
         end
         local interfaceOptionsFrame = rawget(_G, "InterfaceOptionsFrame")
-        if interfaceOptionsFrame and interfaceOptionsFrame.Hide then
-            interfaceOptionsFrame:Hide()
+        if interfaceOptionsFrame then
+            if hideUI then pcall(hideUI, interfaceOptionsFrame) end
+            if interfaceOptionsFrame.Hide then pcall(interfaceOptionsFrame.Hide, interfaceOptionsFrame) end
         end
+    end
+
+    openBtn:SetScript("OnClick", function ()
+        CloseBlizzardSettings()
         ns.ToggleConfig()
     end)
 
@@ -2231,14 +2239,7 @@ local function CreateBlizzardOptionsCanvas()
     moveText:SetText("Unlock & Move Bars (/sst unlock)")
     if moveText.SetTextColor then moveText:SetTextColor(1, 1, 1, 1) end
     moveBtn:SetScript("OnClick", function ()
-        local settingsPanel = rawget(_G, "SettingsPanel")
-        if settingsPanel and settingsPanel.Hide then
-            settingsPanel:Hide()
-        end
-        local interfaceOptionsFrame = rawget(_G, "InterfaceOptionsFrame")
-        if interfaceOptionsFrame and interfaceOptionsFrame.Hide then
-            interfaceOptionsFrame:Hide()
-        end
+        CloseBlizzardSettings()
         if ns.StartMoveMode then
             ns.StartMoveMode()
         end
@@ -2419,9 +2420,6 @@ local function CreatePanel()
         if ns.ApplyConfigPanelResponsiveSize and not self._userResized then
             ns.ApplyConfigPanelResponsiveSize(self)
         end
-    end)
-    f:HookScript("OnSizeChanged", function (self)
-        self._userResized = true
     end)
     f:Hide()
     f.name = "Super Swing Timer"
@@ -5068,6 +5066,10 @@ local function CreatePanel()
                     row.swatch:SetColorTexture(c.r, c.g, c.b, c.a)
                 end
             end
+        end
+        f._userResized = nil
+        if ns.ApplyConfigPanelResponsiveSize then
+            ns.ApplyConfigPanelResponsiveSize(f)
         end
     end)
 
