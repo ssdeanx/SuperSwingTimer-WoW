@@ -2155,12 +2155,228 @@ local function CreateWeaveFamilyRow(parent, abbrev, label, yOffset)
 end
 
 -- ============================================================
+-- Responsive Sizing for 1080p and Arbitrary Screen Resolutions
+-- ============================================================
+function ns.ApplyConfigPanelResponsiveSize(frame)
+    if not frame then return end
+    local screenH = UIParent and UIParent.GetHeight and UIParent:GetHeight() or 768
+    local targetH = math.min(580, math.max(420, screenH - 70))
+    local targetW = 740
+    frame:SetSize(targetW, targetH)
+end
+
+-- ============================================================
+-- Decoupled Blizzard Settings Options Canvas
+-- ============================================================
+local function CreateBlizzardOptionsCanvas()
+    local f = CreateOptionalBackdropFrame("Frame", "SuperSwingTimerBlizzardOptionsPanel", UIParent)
+    f.name = "Super Swing Timer"
+    f.icon = "Interface\\Icons\\INV_Sword_27"
+
+    local title = f:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    title:SetPoint("TOPLEFT", f, "TOPLEFT", 16, -16)
+    title:SetText("Super Swing Timer |cff00ccffv0.2.6|r")
+
+    local desc = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    desc:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -8)
+    desc:SetPoint("RIGHT", f, "RIGHT", -24, 0)
+    desc:SetJustifyH("LEFT")
+    desc:SetText(
+        "Accurate melee, ranged, and enemy swing timers with class weapon-sync modules, " ..
+        "haste clipping markers, GCD tickers, and deep visual customization."
+    )
+
+    -- Action Button 1: Open Full Settings Panel (/sst)
+    local openBtn = CreateFrame("Button", nil, f)
+    openBtn:SetSize(220, 26)
+    openBtn:SetPoint("TOPLEFT", desc, "BOTTOMLEFT", 0, -18)
+    local openBg = openBtn:CreateTexture(nil, "BACKGROUND")
+    openBg:SetAllPoints()
+    openBg:SetColorTexture(0.15, 0.45, 0.85, 0.85)
+    local openBorder = openBtn:CreateTexture(nil, "OVERLAY")
+    openBorder:SetPoint("TOPLEFT", -1, 1)
+    openBorder:SetPoint("BOTTOMRIGHT", 1, -1)
+    openBorder:SetColorTexture(0.3, 0.7, 1.0, 0.9)
+    openBorder:SetDrawLayer("OVERLAY", -1)
+    local openText = openBtn:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    openText:SetPoint("CENTER")
+    openText:SetText("Open Full Settings Studio (/sst)")
+    if openText.SetTextColor then openText:SetTextColor(1, 1, 1, 1) end
+    openBtn:SetScript("OnClick", function ()
+        local settingsPanel = rawget(_G, "SettingsPanel")
+        if settingsPanel and settingsPanel.Hide then
+            settingsPanel:Hide()
+        end
+        local interfaceOptionsFrame = rawget(_G, "InterfaceOptionsFrame")
+        if interfaceOptionsFrame and interfaceOptionsFrame.Hide then
+            interfaceOptionsFrame:Hide()
+        end
+        ns.ToggleConfig()
+    end)
+
+    -- Action Button 2: Unlock & Move Bars (/sst unlock)
+    local moveBtn = CreateFrame("Button", nil, f)
+    moveBtn:SetSize(220, 26)
+    moveBtn:SetPoint("TOPLEFT", openBtn, "BOTTOMLEFT", 0, -8)
+    local moveBg = moveBtn:CreateTexture(nil, "BACKGROUND")
+    moveBg:SetAllPoints()
+    moveBg:SetColorTexture(0.15, 0.55, 0.25, 0.85)
+    local moveBorder = moveBtn:CreateTexture(nil, "OVERLAY")
+    moveBorder:SetPoint("TOPLEFT", -1, 1)
+    moveBorder:SetPoint("BOTTOMRIGHT", 1, -1)
+    moveBorder:SetColorTexture(0.35, 0.9, 0.45, 0.9)
+    moveBorder:SetDrawLayer("OVERLAY", -1)
+    local moveText = moveBtn:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    moveText:SetPoint("CENTER")
+    moveText:SetText("Unlock & Move Bars (/sst unlock)")
+    if moveText.SetTextColor then moveText:SetTextColor(1, 1, 1, 1) end
+    moveBtn:SetScript("OnClick", function ()
+        local settingsPanel = rawget(_G, "SettingsPanel")
+        if settingsPanel and settingsPanel.Hide then
+            settingsPanel:Hide()
+        end
+        local interfaceOptionsFrame = rawget(_G, "InterfaceOptionsFrame")
+        if interfaceOptionsFrame and interfaceOptionsFrame.Hide then
+            interfaceOptionsFrame:Hide()
+        end
+        if ns.StartMoveMode then
+            ns.StartMoveMode()
+        end
+    end)
+
+    -- Action Button 3: Reset All Defaults (/sst reset)
+    local resetDefaultsBtn = CreateFrame("Button", nil, f)
+    resetDefaultsBtn:SetSize(220, 26)
+    resetDefaultsBtn:SetPoint("TOPLEFT", moveBtn, "BOTTOMLEFT", 0, -8)
+    local resetBg = resetDefaultsBtn:CreateTexture(nil, "BACKGROUND")
+    resetBg:SetAllPoints()
+    resetBg:SetColorTexture(0.35, 0.2, 0.2, 0.85)
+    local resetBorder = resetDefaultsBtn:CreateTexture(nil, "OVERLAY")
+    resetBorder:SetPoint("TOPLEFT", -1, 1)
+    resetBorder:SetPoint("BOTTOMRIGHT", 1, -1)
+    resetBorder:SetColorTexture(0.8, 0.4, 0.4, 0.9)
+    resetBorder:SetDrawLayer("OVERLAY", -1)
+    local resetText = resetDefaultsBtn:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    resetText:SetPoint("CENTER")
+    resetText:SetText("Reset All Defaults (/sst reset)")
+    if resetText.SetTextColor then resetText:SetTextColor(1, 1, 1, 1) end
+    resetDefaultsBtn:SetScript("OnClick", function ()
+        ns.ResetConfigDefaults()
+    end)
+
+    -- Quick Settings Section
+    local quickHeader = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    quickHeader:SetPoint("TOPLEFT", resetDefaultsBtn, "BOTTOMLEFT", 0, -18)
+    quickHeader:SetText("Quick Toggles")
+
+    local function CreateQuickCheck(parent, label, getFn, setFn, anchorTo)
+        local cb = CreateFrame("CheckButton", nil, parent, "UICheckButtonTemplate")
+        cb:SetSize(24, 24)
+        if anchorTo then
+            cb:SetPoint("TOPLEFT", anchorTo, "BOTTOMLEFT", 0, -4)
+        else
+            cb:SetPoint("TOPLEFT", quickHeader, "BOTTOMLEFT", 0, -8)
+        end
+        local lbl = cb:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        lbl:SetPoint("LEFT", cb, "RIGHT", 4, 0)
+        lbl:SetText(label)
+        cb:SetScript("OnClick", function(self)
+            local checked = self:GetChecked()
+            setFn(checked)
+        end)
+        cb.refresh = function()
+            cb:SetChecked(not not getFn())
+        end
+        return cb
+    end
+
+    local checks = {}
+    local lockCb = CreateQuickCheck(f, "Lock Bars",
+        function() return SuperSwingTimerDB and SuperSwingTimerDB.lockBars end,
+        function(val)
+            if not SuperSwingTimerDB then SuperSwingTimerDB = {} end
+            SuperSwingTimerDB.lockBars = val
+            if ns.ApplyLockBars then ns.ApplyLockBars() end
+            if ns.RefreshConfigLockControls then ns.RefreshConfigLockControls() end
+        end, nil)
+    table.insert(checks, lockCb)
+
+    local minCb = CreateQuickCheck(f, "Minimal Mode (sparks only, transparent bar backgrounds)",
+        function() return SuperSwingTimerDB and SuperSwingTimerDB.minimalMode end,
+        function(val)
+            if not SuperSwingTimerDB then SuperSwingTimerDB = {} end
+            SuperSwingTimerDB.minimalMode = val
+            if ns.ApplyMinimalMode then ns.ApplyMinimalMode() end
+        end, lockCb)
+    table.insert(checks, minCb)
+
+    local mhCb = CreateQuickCheck(f, "Show Main Hand Bar",
+        function() return SuperSwingTimerDB and SuperSwingTimerDB.showMH end,
+        function(val)
+            if not SuperSwingTimerDB then SuperSwingTimerDB = {} end
+            SuperSwingTimerDB.showMH = val
+            if ns.ApplyVisibility then ns.ApplyVisibility() end
+        end, minCb)
+    table.insert(checks, mhCb)
+
+    local ohCb = CreateQuickCheck(f, "Show Off Hand Bar",
+        function() return SuperSwingTimerDB and SuperSwingTimerDB.showOH end,
+        function(val)
+            if not SuperSwingTimerDB then SuperSwingTimerDB = {} end
+            SuperSwingTimerDB.showOH = val
+            if ns.ApplyVisibility then ns.ApplyVisibility() end
+        end, mhCb)
+    table.insert(checks, ohCb)
+
+    local rangedCb = CreateQuickCheck(f, "Show Ranged Bar",
+        function() return SuperSwingTimerDB and SuperSwingTimerDB.showRanged end,
+        function(val)
+            if not SuperSwingTimerDB then SuperSwingTimerDB = {} end
+            SuperSwingTimerDB.showRanged = val
+            if ns.ApplyVisibility then ns.ApplyVisibility() end
+        end, ohCb)
+    table.insert(checks, rangedCb)
+
+    local enemyCb = CreateQuickCheck(f, "Show Enemy Bar",
+        function() return SuperSwingTimerDB and SuperSwingTimerDB.showEnemy end,
+        function(val)
+            if not SuperSwingTimerDB then SuperSwingTimerDB = {} end
+            SuperSwingTimerDB.showEnemy = val
+            if ns.ApplyVisibility then ns.ApplyVisibility() end
+        end, rangedCb)
+    table.insert(checks, enemyCb)
+
+    f:HookScript("OnShow", function()
+        for _, cb in ipairs(checks) do
+            if cb.refresh then cb.refresh() end
+        end
+    end)
+
+    -- Register Blizzard Settings Category
+    local interfaceOptionsAddCategory = rawget(_G, "InterfaceOptions_AddCategory")
+    if interfaceOptionsAddCategory then
+        interfaceOptionsAddCategory(f)
+    else
+        local settings = rawget(_G, "Settings")
+        if settings and settings.RegisterCanvasLayoutCategory and settings.RegisterAddOnCategory then
+            local category = settings.RegisterCanvasLayoutCategory(f, f.name)
+            settings.RegisterAddOnCategory(category)
+            f.settingsCategory = category
+        end
+    end
+
+    ns.blizzardCanvasFrame = f
+    return f
+end
+
+-- ============================================================
 -- Panel creation
 -- ============================================================
 local function CreatePanel()
     local f = CreateOptionalBackdropFrame("Frame", "SuperSwingTimerConfigPanel", UIParent)
     panel = f
-    f:SetSize(780, 760)
+    ns.panel = f
+    ns.ApplyConfigPanelResponsiveSize(f)
     f:SetPoint("CENTER")
     SetFrameBackdrop(f, {
         bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
@@ -2178,56 +2394,89 @@ local function CreatePanel()
     f:SetScript("OnMouseDown", function (self, button)
         if button == "RightButton" then return end -- suppress right-click menu
     end)
-    f:SetClampedToScreen(true)
+    f:SetResizable(true)
+    if f.SetMinResize then
+        f:SetMinResize(620, 380)
+    end
+    if f.SetMaxResize then
+        local maxW = UIParent and UIParent.GetWidth and UIParent:GetWidth() or 1920
+        local maxH = UIParent and UIParent.GetHeight and UIParent:GetHeight() or 1080
+        f:SetMaxResize(maxW, maxH)
+    end
+    if f.SetResizeBounds then
+        local maxW = UIParent and UIParent.GetWidth and UIParent:GetWidth() or 1920
+        local maxH = UIParent and UIParent.GetHeight and UIParent:GetHeight() or 1080
+        f:SetResizeBounds(620, 380, maxW, maxH)
+    end
+    if f.SetClampedToScreen then
+        f:SetClampedToScreen(true)
+    end
     f:SetFrameStrata("DIALOG")
     f:SetScript("OnHide", function ()
         HideBarPreview()
+    end)
+    f:HookScript("OnShow", function (self)
+        if ns.ApplyConfigPanelResponsiveSize and not self._userResized then
+            ns.ApplyConfigPanelResponsiveSize(self)
+        end
+    end)
+    f:HookScript("OnSizeChanged", function (self)
+        self._userResized = true
     end)
     f:Hide()
     f.name = "Super Swing Timer"
     f.icon = "Interface\\Icons\\INV_Sword_27"
 
-    local interfaceOptionsAddCategory = rawget(_G, "InterfaceOptions_AddCategory")
-    if interfaceOptionsAddCategory then
-        interfaceOptionsAddCategory(f)
-    else
-        local settings = rawget(_G, "Settings")
-        if settings and settings.RegisterCanvasLayoutCategory and settings.RegisterAddOnCategory then
-            local category = settings.RegisterCanvasLayoutCategory(f, f.name)
-            settings.RegisterAddOnCategory(category)
-            f.settingsCategory = category
-        end
-    end
-
     -- Title
     local title = f:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-    title:SetPoint("TOP", f, "TOP", 0, -16)
-    title:SetText("Super Swing Timer")
+    title:SetPoint("TOPLEFT", f, "TOPLEFT", 18, -14)
+    title:SetText("Super Swing Timer |cff00ccffv0.2.6|r")
 
+    -- Move/Unlock button in header
+    local moveHeaderBtn = CreateFrame("Button", nil, f)
+    moveHeaderBtn:SetSize(130, 20)
+    moveHeaderBtn:SetPoint("TOPRIGHT", f, "TOPRIGHT", -36, -14)
+    local moveHeaderBg = moveHeaderBtn:CreateTexture(nil, "BACKGROUND")
+    moveHeaderBg:SetAllPoints()
+    moveHeaderBg:SetColorTexture(0.12, 0.45, 0.2, 0.85)
+    local moveHeaderBorder = moveHeaderBtn:CreateTexture(nil, "OVERLAY")
+    moveHeaderBorder:SetPoint("TOPLEFT", -1, 1)
+    moveHeaderBorder:SetPoint("BOTTOMRIGHT", 1, -1)
+    moveHeaderBorder:SetColorTexture(0.3, 0.85, 0.4, 0.9)
+    moveHeaderBorder:SetDrawLayer("OVERLAY", -1)
+    local moveHeaderText = moveHeaderBtn:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    moveHeaderText:SetPoint("CENTER")
+    moveHeaderText:SetText("Unlock & Move Bars")
+    if moveHeaderText.SetTextColor then moveHeaderText:SetTextColor(1, 1, 1, 1) end
+    moveHeaderBtn:SetScript("OnClick", function ()
+        if ns.StartMoveMode then
+            ns.StartMoveMode()
+        end
+    end)
+    f.moveHeaderBtn = moveHeaderBtn
+
+    -- Subtitle
     local subtitle = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    subtitle:SetPoint("TOP", title, "BOTTOM", 0, -2)
+    subtitle:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -4)
+    subtitle:SetPoint("RIGHT", moveHeaderBtn, "LEFT", -10, 0)
     subtitle:SetJustifyH("LEFT")
-    subtitle:SetText(
-        "SuperSwingTimer tracks melee, ranged, and enemy swing timers with per-class overlay support. " ..
-        "Left column = visibility toggles. Right column = color swatches. " ..
-        "Class-specific controls are in sections at the bottom (/sst help for slash commands)."
-    )
+    subtitle:SetText("Melee, ranged & enemy swing timers with per-class overlays (/sst help for commands).")
 
     -- Close button
     local close = CreateFrame("Button", nil, f, "UIPanelCloseButton")
     close:SetPoint("TOPRIGHT", f, "TOPRIGHT", -4, -4)
 
     local scrollFrame = CreateFrame("ScrollFrame", nil, f, "UIPanelScrollFrameTemplate")
-    scrollFrame:SetPoint("TOPLEFT", f, "TOPLEFT", 12, -46)
-    scrollFrame:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -20, 54)
+    scrollFrame:SetPoint("TOPLEFT", f, "TOPLEFT", 14, -56)
+    scrollFrame:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -26, 46)
     EnableScrollFrameMouseWheel(scrollFrame, 36)
 
     -- ============================================================
-    -- Search bar — fixed above scroll frame, filters rows in real-time
+    -- Search bar — fixed at bottom left, filters rows in real-time
     -- ============================================================
     local searchBox = CreateFrame("EditBox", nil, f, "InputBoxTemplate")
-    searchBox:SetPoint("TOPLEFT", scrollFrame, "BOTTOMLEFT", 6, -2)
-    searchBox:SetPoint("TOPRIGHT", scrollFrame, "BOTTOMRIGHT", -6, -2)
+    searchBox:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 18, 14)
+    searchBox:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -150, 14)
     searchBox:SetHeight(22)
     searchBox:SetAutoFocus(false)
     searchBox:SetTextInsets(6, 6, 1, 1)
@@ -4677,8 +4926,8 @@ local function CreatePanel()
 
     -- Reset button
     local resetBtn = CreateFrame("Button", nil, f)
-    resetBtn:SetSize(120, 24)
-    resetBtn:SetPoint("BOTTOM", f, "BOTTOM", 0, 16)
+    resetBtn:SetSize(120, 22)
+    resetBtn:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -22, 14)
 
     local resetBg = resetBtn:CreateTexture(nil, "BACKGROUND")
     resetBg:SetAllPoints(true)
@@ -4694,12 +4943,35 @@ local function CreatePanel()
     resetText:SetPoint("CENTER")
     resetText:SetText("Reset Defaults")
 
-    resetBtn:SetScript("OnEnter", function (self)
+    resetBtn:SetScript("OnEnter", function ()
         resetBg:SetColorTexture(0.3, 0.3, 0.3, 0.9)
     end)
-    resetBtn:SetScript("OnLeave", function (self)
+    resetBtn:SetScript("OnLeave", function ()
         resetBg:SetColorTexture(0.2, 0.2, 0.2, 0.8)
     end)
+
+    -- Bottom-Right Corner Resize Grip
+    local grip = CreateFrame("Button", nil, f)
+    grip:SetSize(16, 16)
+    grip:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -2, 2)
+    grip:EnableMouse(true)
+    grip:SetScript("OnMouseDown", function (_, btn)
+        if btn == "LeftButton" and f.StartSizing then
+            f._userResized = true
+            f:StartSizing("BOTTOMRIGHT")
+        end
+    end)
+    grip:SetScript("OnMouseUp", function ()
+        if f.StopMovingOrSizing then
+            f:StopMovingOrSizing()
+        end
+    end)
+    local gripTex = grip:CreateTexture(nil, "OVERLAY")
+    gripTex:SetSize(10, 10)
+    gripTex:SetPoint("BOTTOMRIGHT", grip, "BOTTOMRIGHT", -2, 2)
+    gripTex:SetColorTexture(0.6, 0.6, 0.6, 0.5)
+    f.resizeGrip = grip
+
     resetBtn:SetScript("OnClick", function ()
         ns.ResetConfigDefaults()
         -- Update slider positions
@@ -4888,10 +5160,14 @@ end
 -- Public API
 -- ============================================================
 function ns.InitConfig()
+    if not ns.blizzardCanvasFrame then
+        CreateBlizzardOptionsCanvas()
+    end
     if panel then
         return
     end
     panel = CreatePanel()
+    ns.panel = panel
 end
 
 --- Open or close the /sst config panel. Initializes the panel
@@ -4906,6 +5182,15 @@ function ns.ToggleConfig()
     if panel:IsShown() then
         panel:Hide()
     else
+        -- Recovery guard: if Blizzard Settings detached panel from UIParent or cleared points
+        if panel:GetParent() ~= UIParent or (panel.GetNumPoints and panel:GetNumPoints() == 0) then
+            panel:SetParent(UIParent)
+            panel:ClearAllPoints()
+            panel:SetPoint("CENTER")
+        end
+        if ns.ApplyConfigPanelResponsiveSize and not panel._userResized then
+            ns.ApplyConfigPanelResponsiveSize(panel)
+        end
         -- Refresh slider values from DB before showing
         if panel.globalScaleSlider then
             panel.globalScaleSlider:SetValue(SuperSwingTimerDB.globalScale or ns.DB_DEFAULTS.globalScale or 1.0)

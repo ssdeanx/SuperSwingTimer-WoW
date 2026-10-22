@@ -142,6 +142,12 @@ local function createMockObject()
     function obj:GetFont() return "Fonts\\FRIZQT__.TTF", 10, "" end
     function obj:SetJustifyH(j) self._justifyH = j end
     function obj:SetJustifyV(j) self._justifyV = j end
+    function obj:GetStringHeight() return 12 end
+    function obj:GetStringWidth() return 50 end
+    function obj:SetWordWrap(...) end
+    function obj:CanWordWrap() return true end
+    function obj:SetShadowColor(...) end
+    function obj:SetShadowOffset(...) end
     function obj:SetTexture(...) end
     function obj:SetColorTexture(...) end
     function obj:SetVertexColor(...) end
@@ -149,8 +155,12 @@ local function createMockObject()
     function obj:SetBlendMode(...) end
     function obj:SetDrawLayer(...) end
     function obj:SetMinMaxValues(...) end
+    function obj:GetMinMaxValues() return 0, 100 end
     function obj:SetValue(...) end
     function obj:GetValue() return 0 end
+    function obj:SetValueStep(...) end
+    function obj:GetValueStep() return 1 end
+    function obj:SetObeyStepOnDrag(...) end
     function obj:SetStatusBarTexture(...) end
     function obj:SetStatusBarColor(...) end
     function obj:GetStatusBarTexture() return createMockObject() end
@@ -162,8 +172,31 @@ local function createMockObject()
     function obj:SetFrameLevel(...) end
     function obj:GetFrameLevel() return 1 end
     function obj:EnableMouse(...) end
+    function obj:EnableKeyboard(...) end
+    function obj:EnableMouseWheel(...) end
+    function obj:GetVerticalScroll() return 0 end
+    function obj:SetVerticalScroll(...) end
+    function obj:GetScrollChild() return createMockObject() end
+    function obj:SetScrollChild(...) end
+    function obj:SetAutoFocus(...) end
+    function obj:SetTextInsets(...) end
+    function obj:SetMaxLetters(...) end
+    function obj:GetMaxLetters() return 0 end
+    function obj:SetNumeric(...) end
+    function obj:IsNumeric() return false end
+    function obj:SetNumber(...) end
+    function obj:GetNumber() return 0 end
+    function obj:ClearFocus(...) end
+    function obj:SetFocus(...) end
+    function obj:HighlightText(...) end
+    function obj:SetChecked(...) end
+    function obj:GetChecked() return false end
+    function obj:SetHitRectInsets(...) end
+    function obj:GetHitRectInsets() return 0, 0, 0, 0 end
     function obj:SetMovable(...) end
     function obj:RegisterForDrag(...) end
+    function obj:RegisterForClicks(...) end
+    function obj:Click(...) if self._scripts and self._scripts["OnClick"] then self._scripts["OnClick"](self, ...) end end
     function obj:SetClampedToScreen(...) end
     function obj:IsClampedToScreen() return true end
     function obj:SetResizable(...) end
@@ -171,6 +204,20 @@ local function createMockObject()
     function obj:StartMoving() end
     function obj:StopMovingOrSizing() end
     function obj:StartSizing(...) end
+    function obj:GetParent() return self._parent end
+    function obj:SetParent(p) self._parent = p end
+    function obj:GetName() return self._name end
+    function obj:GetNumPoints() return #self._points end
+    function obj:HasFocus() return false end
+    function obj:IsEnabled() return true end
+    function obj:Enable() end
+    function obj:Disable() end
+    function obj:SetEnabled(...) end
+    function obj:SetFormattedText(fmt, ...) self._text = string.format(fmt, ...) end
+    function obj:GetChildren() return end
+    function obj:GetNumChildren() return 0 end
+    function obj:GetRegions() return end
+    function obj:GetNumRegions() return 0 end
     function obj:CreateTexture(...) return createMockObject() end
     function obj:CreateFontString(...) return createMockObject() end
     return obj

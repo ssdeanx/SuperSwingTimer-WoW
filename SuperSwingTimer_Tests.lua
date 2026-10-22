@@ -1135,6 +1135,46 @@ local function RegisterSSTTests()
         ns.StopMoveMode()
     end
 
+    -- ============================================================
+    -- Config: Decoupled Blizzard Settings & Responsive Layout
+    -- ============================================================
+    local Config = WoWUnit("SST-Config")
+
+    function Config:DecoupledBlizzardCanvas()
+        if not ns.panel and ns.InitConfig then ns.InitConfig() end
+        local p = ns.panel
+        IsTrue(p ~= nil, "Config panel must exist")
+        IsTrue(p:GetParent() == UIParent, "Standalone panel must be parented to UIParent")
+
+        -- Blizzard canvas must be a separate frame
+        IsTrue(ns.blizzardCanvasFrame ~= nil, "Blizzard canvas frame must be registered separately")
+        IsTrue(ns.blizzardCanvasFrame ~= p, "Blizzard canvas must not be the standalone panel")
+        IsTrue(ns.blizzardCanvasFrame:GetName() == "SuperSwingTimerBlizzardOptionsPanel", "Blizzard canvas frame must have expected name")
+    end
+
+    function Config:ResponsiveClamping()
+        if not ns.panel and ns.InitConfig then ns.InitConfig() end
+        local p = ns.panel
+        IsTrue(type(ns.ApplyConfigPanelResponsiveSize) == "function", "ApplyConfigPanelResponsiveSize must be a function")
+
+        -- Simulate 1080p screen (virtual height 768)
+        local origGetHeight = UIParent.GetHeight
+        UIParent.GetHeight = function() return 768 end
+        ns.ApplyConfigPanelResponsiveSize(p)
+        IsTrue(p:GetHeight() <= 580, "Panel height must be <= 580 on 768 height screen")
+        IsTrue(p:GetHeight() >= 420, "Panel height must be >= 420")
+
+        -- Simulate low-res screen (virtual height 600)
+        UIParent.GetHeight = function() return 600 end
+        ns.ApplyConfigPanelResponsiveSize(p)
+        IsTrue(p:GetHeight() <= 530, "Panel height must adapt to 600 height screen")
+        IsTrue(p:GetHeight() >= 420, "Panel height must respect minimum")
+
+        -- Restore original GetHeight
+        UIParent.GetHeight = origGetHeight
+        ns.ApplyConfigPanelResponsiveSize(p)
+    end
+
     local nGroups = 0
     for _ in ipairs(WoWUnit.children) do nGroups = nGroups + 1 end
     print("|cff44ff44[SST] " .. nGroups .. " groups registered. Click WoWUnit toggle or type /ssttest.|r")
