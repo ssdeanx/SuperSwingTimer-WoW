@@ -377,6 +377,23 @@ local function RegisterSSTTests()
         pc(ns.HandleCLEU); IsTrue(true,'no error')
         ClearReplaces()
     end
+    function Combat:CLEU_FastPath_IgnoresThirdParty()
+        Replace('CombatLogGetCurrentEventInfo', function()
+            -- Event between Player-2 and Creature-999 (neither matches player "Player-1" or enemyTargetGUID nil)
+            return nil, "SWING_DAMAGE", nil, "Player-2", nil, nil, nil, "Creature-999", nil, nil, nil, nil, nil, nil, 100
+        end)
+        Replace('GetPlayerGUID', function() return "Player-1" end)
+        local alignedTimeCalled = false
+        local origGetAlignedTime = ns.GetAlignedTime
+        ns.GetAlignedTime = function()
+            alignedTimeCalled = true
+            return origGetAlignedTime()
+        end
+        ns.HandleCLEU()
+        ns.GetAlignedTime = origGetAlignedTime
+        ClearReplaces()
+        IsFalse(alignedTimeCalled, "HandleCLEU must early-exit before GetAlignedTime for third-party events")
+    end
 
     -- ============================================================
     -- SST-Hunter: Hunter-specific features

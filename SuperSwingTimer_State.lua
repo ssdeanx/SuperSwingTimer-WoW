@@ -1270,7 +1270,8 @@ end
 --  @usage Called automatically by the addon event frame; no manual calls needed
 --  @see ns.StartSwing, ns.ApplyParryHaste
 function ns.HandleCLEU()
-    if type(CombatLogGetCurrentEventInfo) ~= "function" then
+    local cleuFn = CombatLogGetCurrentEventInfo or _G.CombatLogGetCurrentEventInfo
+    if type(cleuFn) ~= "function" then
         return
     end
 
@@ -1278,14 +1279,21 @@ function ns.HandleCLEU()
     -- LATENCY_REFRESH_INTERVAL (0.05s).  Calling GetNetStats() on every
     -- CLEU event (hundreds/sec in raids) would be wasteful.
 
-    local _, subEvent, _, sourceGUID, _, _, _, targetGUID, _, _, _, cleuArg12, cleuArg13, _, cleuArg15, _, _, _, _, _, cleuArg21 = CombatLogGetCurrentEventInfo()
+    local _, subEvent, _, sourceGUID, _, _, _, targetGUID, _, _, _, cleuArg12, cleuArg13, _, cleuArg15, _, _, _, _, _, cleuArg21 = cleuFn()
     if not subEvent then
         return
     end
 
-    local eventTime = ns.GetAlignedTime()
     local currentPlayerGUID = GetPlayerGUID()
     local currentEnemyGUID = ns.enemyTargetGUID
+
+    -- Fast-path early filter: discard events that do not involve player or target enemy
+    if sourceGUID ~= currentPlayerGUID and sourceGUID ~= currentEnemyGUID
+        and targetGUID ~= currentPlayerGUID and targetGUID ~= currentEnemyGUID then
+        return
+    end
+
+    local eventTime = ns.GetAlignedTime()
 
     if currentEnemyGUID and sourceGUID == currentEnemyGUID then
         if subEvent == "SWING_DAMAGE" then
