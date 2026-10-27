@@ -9,6 +9,8 @@ local strtrim = rawget(_G, "strtrim")
 local print = rawget(_G, "print") or function (...) end
 local BackdropTemplateMixin = rawget(_G, "BackdropTemplateMixin")
 local UISpecialFrames = rawget(_G, "UISpecialFrames")
+local debugprofilestart = rawget(_G, "debugprofilestart")
+local debugprofilestop = rawget(_G, "debugprofilestop")
 
 local function GetSparkBlendMode()
     -- Keep the main swing spark color-preserving so a white/manual spark does
@@ -60,6 +62,14 @@ local function ShouldKeepHunterRangedTimerActive(now)
         return false
     end
 
+    now = now or ns.GetAlignedTime()
+
+    -- If Steady Shot landed in or near the red zone recently, keep the ranged timer active
+    -- so the upcoming Auto Shot is cleanly rendered and not clipped by early reset.
+    if ns.hunterSteadyShotEndedInRedZone and (now - ns.hunterSteadyShotEndedInRedZone) <= 1.0 then
+        return true
+    end
+
     -- Only treat melee as authoritative while the target is ACTUALLY in melee
     -- range. The MH timer state stays "swinging" for the rest of combat after
     -- any melee swing, so keying off it alone reset the ranged timer at every
@@ -70,6 +80,23 @@ local function ShouldKeepHunterRangedTimerActive(now)
         return false
     end
 
+    -- Auto Shot is due at the END of the ranged cycle, not when the hunter's cast
+    -- finished. Anchoring this hold to the cast (a fixed 1.0s window) tore the
+    -- timer down before the shot fired whenever Steady/Arcane/Multi-Shot ended
+    -- more than a second ahead of the cycle end. For the ranged slot lastSwing
+    -- tracks the client's Auto Shot cooldown start, so cycleEnd is the true due
+    -- time: hold through it plus latency/grace so the CLEU or SPELL_UPDATE_COOLDOWN
+    -- event that restarts the cycle always lands first.
+    local tRanged = ns.timers and ns.timers.ranged
+    if tRanged and tRanged.state == "swinging" and tRanged.duration and tRanged.duration > 0
+        and tRanged.lastSwing and tRanged.lastSwing > 0 then
+        local cycleEnd = tRanged.lastSwing + tRanged.duration
+        local cycleGrace = math.max(ns.cachedLatency or 0, 0.05) + (ns.STEADY_SHOT_GRACE or 0.5)
+        if now <= (cycleEnd + cycleGrace) then
+            return true
+        end
+    end
+
     if ns.IsHunterAutoRepeatActive and ns.IsHunterAutoRepeatActive() then
         return true
     end
@@ -77,8 +104,8 @@ local function ShouldKeepHunterRangedTimerActive(now)
     if ns.GetAutoShotCooldown then
         local cooldownStart, cooldownDuration = ns.GetAutoShotCooldown()
         if cooldownStart and cooldownDuration and cooldownDuration > 0 then
-            local graceWindow = math.max(ns.cachedLatency or 0, 0.05)
-            if (now or ns.GetAlignedTime()) <= (cooldownStart + cooldownDuration + graceWindow) then
+            local graceWindow = math.max(ns.cachedLatency or 0, 0.05) + (ns.STEADY_SHOT_GRACE or 0.5)
+            if now <= (cooldownStart + cooldownDuration + graceWindow) then
                 return true
             end
         end
@@ -91,6 +118,7 @@ local function ShouldKeepHunterRangedTimerActive(now)
 
     return false
 end
+ns.ShouldKeepHunterRangedTimerActive = ShouldKeepHunterRangedTimerActive
 
 local function GetAutoShotWindowColor(colorKey, fallback)
     local color = ns.GetBarColor and ns.GetBarColor(colorKey) or nil
@@ -344,23 +372,27 @@ function ns.RestoreBarDefaultLabel(bar)
     RestoreBarDefaultLabel(bar)
 end
 
+local function ForEachAllBar(fn)
+    if ns.enemyBar then fn(ns.enemyBar) end
+    if ns.mhBar then fn(ns.mhBar) end
+    if ns.ohBar then fn(ns.ohBar) end
+    if ns.rangedBar then fn(ns.rangedBar) end
+    if ns.hunterCastBar then fn(ns.hunterCastBar) end
+    if ns.hunterRangeHelperBar then fn(ns.hunterRangeHelperBar) end
+    if ns.rogueEnergyTickBar then fn(ns.rogueEnergyTickBar) end
+    if ns.rogueEnergyTotalBar then fn(ns.rogueEnergyTotalBar) end
+    if ns.rogueSliceAndDiceBar then fn(ns.rogueSliceAndDiceBar) end
+    if ns.playerPowerBar then fn(ns.playerPowerBar) end
+end
+ns.ForEachAllBar = ForEachAllBar
+
 function ns.RefreshBarLabelStyles()
-    for _, bar in ipairs({
-        ns.enemyBar,
-        ns.mhBar,
-        ns.ohBar,
-        ns.rangedBar,
-        ns.hunterCastBar,
-        ns.rogueSliceAndDiceBar,
-        ns.rogueEnergyTickBar,
-        ns.rogueEnergyTotalBar,
-        ns.playerPowerBar
-    }) do
-        if bar and bar.labelText then
+    ForEachAllBar(function(bar)
+        if bar.labelText then
             ApplyBarLabelStyle(bar)
             SetBarLabelShown(bar, bar.labelText:IsShown())
         end
-    end
+    end)
     if ns.enemyBar and ns.enemyBar.labelText then
         SyncBarLabelText(ns.enemyBar, ns.enemyBar.labelText:GetText())
     end
@@ -421,7 +453,11 @@ local function GetHunterHiddenCastWindowFromRangedTimer(now)
     local castWindow = math.max(GetRangedCastWindow() or 0.5, 0.01)
     local windowEnd = t.lastSwing + t.duration
     local windowStart = windowEnd - castWindow
-    if now < windowStart or now > windowEnd then
+    local latencyBuffer = math.max(ns.cachedLatency or 0, 0.05) + 0.15
+    local graceAllowance = (ns.hunterSteadyShotEndedInRedZone and (now - ns.hunterSteadyShotEndedInRedZone) <= 1.0) and (ns.STEADY_SHOT_GRACE or 0.5) or 0
+    local maxWindowEnd = windowEnd + latencyBuffer + graceAllowance
+
+    if now < windowStart or now > maxWindowEnd then
         return nil, nil
     end
 
@@ -430,6 +466,7 @@ local function GetHunterHiddenCastWindowFromRangedTimer(now)
 
     return windowStart, castWindow
 end
+ns.GetHunterHiddenCastWindowFromRangedTimer = GetHunterHiddenCastWindowFromRangedTimer
 
 local function IsStoredHunterCastDisplayStateActive(now)
     if ns.hunterCastActive ~= true or not IsHunterCastSpell(ns.hunterCastSpellId) then
@@ -492,6 +529,7 @@ ShouldShowHunterCastBar = function ()
 
     return false
 end
+ns.ShouldShowHunterCastBar = ShouldShowHunterCastBar
 
 -- ============================================================
 -- Bar factory
@@ -1186,44 +1224,55 @@ end
 -- (available since WotLK 3.1) rather than SetPropagateMouseClicks (11.0.0+)
 -- which does not exist on TBC Anniversary 2.5.5 or Classic Era.
 -- ============================================================
+local function HideAllDragOverlays()
+    if ns.mhBar and ns.mhBar._dragOverlay then ns.mhBar._dragOverlay:Hide() end
+    if ns.ohBar and ns.ohBar._dragOverlay then ns.ohBar._dragOverlay:Hide() end
+    if ns.rangedBar and ns.rangedBar._dragOverlay then ns.rangedBar._dragOverlay:Hide() end
+    if ns.enemyBar and ns.enemyBar._dragOverlay then ns.enemyBar._dragOverlay:Hide() end
+end
+ns.HideAllDragOverlays = HideAllDragOverlays
+
+local function ForEachSwingBar(fn)
+    if ns.mhBar then fn(ns.mhBar) end
+    if ns.ohBar then fn(ns.ohBar) end
+    if ns.rangedBar then fn(ns.rangedBar) end
+    if ns.enemyBar then fn(ns.enemyBar) end
+end
+ns.ForEachSwingBar = ForEachSwingBar
+
+-- ============================================================
 --- Lock or unlock all draggable bars. When locked, bars are
 --  mouse-disabled to prevent accidental drag or camera interference.
 --  During combat, bars are force-disabled regardless of lock state.
 --  @return (nil)
 function ns.ApplyLockBars()
     local locked = ns.AreBarsLocked()
-    if locked then
-        if ns.isMoveModeActive then
+    if locked or not ns.isMoveModeActive then
+        if locked and ns.isMoveModeActive then
             ns.isMoveModeActive = false
             ns.barTestActive = false
         end
         if ns.moveHUD and ns.moveHUD.Hide then
             ns.moveHUD:Hide()
         end
-        for _, bar in ipairs({ ns.mhBar, ns.ohBar, ns.rangedBar, ns.enemyBar }) do
-            if bar and bar._dragOverlay then
-                bar._dragOverlay:Hide()
-            end
-        end
+        HideAllDragOverlays()
     end
-    for _, bar in ipairs({ ns.mhBar, ns.ohBar, ns.rangedBar, ns.enemyBar }) do
-        if bar then
-            local isHunterMH = (ns.playerClass == "HUNTER" and bar == ns.mhBar)
-            -- Only enable mouse when unlocked AND the bar is actually visible.
-            -- During combat, left-click drag uses manual mouse tracking since
-            -- StartMoving() is a protected function blocked by combat lockdown.
-            local isVisible = ((bar:IsShown() and bar:GetAlpha() > 0) or ns.barTestActive)
-            if locked or isHunterMH or not isVisible then
-                bar:EnableMouse(false)
-            elseif not (bar.IsMouseEnabled and bar:IsMouseEnabled()) then
-                bar:EnableMouse(true)
-                -- EnableMouse(true) resets per-button click state; re-apply
-                -- right-click passthrough so right-click always passes through
-                -- to the game world for normal camera rotation.
-                pcall(bar.SetMouseClickEnabled, bar, "RightButton", false)
-            end
+    ForEachSwingBar(function(bar)
+        local isHunterMH = (ns.playerClass == "HUNTER" and bar == ns.mhBar)
+        -- Only enable mouse when unlocked AND the bar is actually visible.
+        -- During combat, left-click drag uses manual mouse tracking since
+        -- StartMoving() is a protected function blocked by combat lockdown.
+        local isVisible = ((bar:IsShown() and bar:GetAlpha() > 0) or ns.barTestActive)
+        if locked or isHunterMH or not isVisible then
+            bar:EnableMouse(false)
+        elseif not (bar.IsMouseEnabled and bar:IsMouseEnabled()) then
+            bar:EnableMouse(true)
+            -- EnableMouse(true) resets per-button click state; re-apply
+            -- right-click passthrough so right-click always passes through
+            -- to the game world for normal camera rotation.
+            pcall(bar.SetMouseClickEnabled, bar, "RightButton", false)
         end
-    end
+    end)
     if ns.RefreshConfigLockControls then
         ns.RefreshConfigLockControls()
     end
@@ -1361,6 +1410,7 @@ local function EnsureDragOverlay(bar, labelText)
         text:SetTextColor(1, 1, 1, 1)
     end
     overlay.text = text
+    overlay:Hide()
     bar._dragOverlay = overlay
     return overlay
 end
@@ -1477,11 +1527,7 @@ function ns.StopMoveMode()
     ns.isMoveModeActive = false
     ns.barTestActive = false
 
-    for _, bar in ipairs({ ns.mhBar, ns.ohBar, ns.rangedBar, ns.enemyBar }) do
-        if bar and bar._dragOverlay then
-            bar._dragOverlay:Hide()
-        end
-    end
+    HideAllDragOverlays()
 
     if ns.moveHUD and ns.moveHUD.Hide then
         ns.moveHUD:Hide()
@@ -1573,7 +1619,11 @@ local function ResetBarDisplay(bar)
         bar.castThresholdMarker:Hide()
     end
     UpdateSparkPosition(bar, 0)
+    -- Idempotence guard: the idle render path calls this every frame.
+    -- UpdateMeleeBar/UpdateRangedBar skip the call while this is true.
+    bar._sstResetDone = true
 end
+ns.ResetBarDisplay = ResetBarDisplay
 
 local function HideBars()
     if ns.enemyBar then
@@ -1623,6 +1673,7 @@ local function UpdateRangedBar(elapsed)
         end
         channelName = channelName or "Channel"
         if channelName and startTimeMs and endTimeMs and endTimeMs > startTimeMs then
+            f._sstResetDone = false
             local channelNow = ns.GetAlignedTime()
             local channelDuration = (endTimeMs - startTimeMs) / 1000
             local elapsedChannel = channelNow - (startTimeMs / 1000)
@@ -1644,9 +1695,10 @@ local function UpdateRangedBar(elapsed)
     end
 
     if not t or t.state ~= "swinging" then
-        ResetBarDisplay(f)
+        if not f._sstResetDone then ResetBarDisplay(f) end
         return
     end
+    f._sstResetDone = false
 
     local now = ns.GetAlignedTime()
     if not t.duration or t.duration <= 0 then return end
@@ -1660,10 +1712,9 @@ local function UpdateRangedBar(elapsed)
     -- Movement clipping in cast window
     local cooldownEnd = t.lastSwing + t.duration - rangedWindowLead
     local elapsed_time = now - t.lastSwing
-    -- Small grace buffer (~2 frames) prevents the timer from resetting one frame
-    -- before the hunter cast window has a chance to display, which would clear
-    -- hiddenCastWindowStart/Duration before ShouldShowHunterCastBar can use them.
-    local resetGraceBuffer = 0.03
+    -- Grace buffer prevents the timer from resetting before the hunter cast window
+    -- has a chance to display, or before CLEU auto shot damage arrives over the network.
+    local resetGraceBuffer = math.max(ns.cachedLatency or 0, 0.1) + 0.25
     if elapsed_time >= t.duration + resetGraceBuffer and not ShouldKeepHunterRangedTimerActive(now) then
         ns.ResetTimer("ranged")
         ResetBarDisplay(f)
@@ -1718,9 +1769,10 @@ local function UpdateMeleeBar(slot, frame)
     local t = ns.timers[slot]
     if not frame then return end
     if t.state ~= "swinging" then
-        ResetBarDisplay(frame)
+        if not frame._sstResetDone then ResetBarDisplay(frame) end
         return
     end
+    frame._sstResetDone = false
 
     local now = ns.GetAlignedTime()
     if ns.pauseSwingTime and (slot == "mh" or slot == "oh") then
@@ -1781,6 +1833,12 @@ end
 --         during OnAddonLoaded after InitBars() creates the initial frames.
 --  @see ns.GetGlobalScale, ns.Scale, ns.ApplyBarSize
 function ns.ApplyGlobalScale()
+    local db = rawget(_G, "SuperSwingTimerDB")
+    local baseWidth = (db and db.barWidth) or (ns.DB_DEFAULTS and ns.DB_DEFAULTS.barWidth) or 240
+    local baseHeight = (db and db.barHeight) or (ns.DB_DEFAULTS and ns.DB_DEFAULTS.barHeight) or 15
+    if ns.ApplyBarSize then
+        ns.ApplyBarSize(baseWidth, baseHeight)
+    end
 
     -- Refresh class-specific helpers and their sizes
     if ns.UpdateHunterRapidFire then ns.UpdateHunterRapidFire(0, true) end
@@ -1846,30 +1904,33 @@ function ns.ApplyBarSize(width, height)
     SuperSwingTimerDB.barWidth = width
     SuperSwingTimerDB.barHeight = height
 
-    local bars = {
-        ns.enemyBar, ns.mhBar, ns.ohBar, ns.rangedBar, ns.hunterCastBar, ns.rogueSliceAndDiceBar, ns.playerPowerBar
-    }
-    for _, bar in ipairs(bars) do
-        if bar then
-            local barHeight = scaledHeight
-            if bar == ns.hunterCastBar then
-                barHeight = ns.Scale(ns.HUNTER_CAST_BAR_HEIGHT or 15)
-            elseif bar == ns.ohBar then
-                barHeight = GetOffHandBarHeight(scaledHeight)
-            elseif bar == ns.rogueSliceAndDiceBar then
-                barHeight = GetRogueSliceAndDiceBarHeight(scaledHeight)
-            elseif bar == ns.playerPowerBar then
-                barHeight = ns.Scale(ns.POWER_BAR_HEIGHT or 10)
-            end
-            bar:SetSize(scaledWidth, barHeight)
-            bar.barWidth = scaledWidth
-            if bar.sparkTexture then
-                bar.sparkTexture:SetWidth(ns.Scale(ns.GetSparkWidth()))
-                bar.sparkTexture:SetHeight(ClampSparkHeightForBar(bar, ns.Scale(ns.GetSparkHeight())))
-                UpdateSparkPosition(bar)
-            end
+    local function resizeBar(bar)
+        if not bar then return end
+        local barHeight = scaledHeight
+        if bar == ns.hunterCastBar then
+            barHeight = ns.Scale(ns.HUNTER_CAST_BAR_HEIGHT or 15)
+        elseif bar == ns.ohBar then
+            barHeight = GetOffHandBarHeight(scaledHeight)
+        elseif bar == ns.rogueSliceAndDiceBar then
+            barHeight = GetRogueSliceAndDiceBarHeight(scaledHeight)
+        elseif bar == ns.playerPowerBar then
+            barHeight = ns.Scale(ns.POWER_BAR_HEIGHT or 14)
+        end
+        bar:SetSize(scaledWidth, barHeight)
+        bar.barWidth = scaledWidth
+        if bar.sparkTexture then
+            bar.sparkTexture:SetWidth(ns.Scale(ns.GetSparkWidth()))
+            bar.sparkTexture:SetHeight(ClampSparkHeightForBar(bar, ns.Scale(ns.GetSparkHeight())))
+            UpdateSparkPosition(bar)
         end
     end
+    resizeBar(ns.enemyBar)
+    resizeBar(ns.mhBar)
+    resizeBar(ns.ohBar)
+    resizeBar(ns.rangedBar)
+    resizeBar(ns.hunterCastBar)
+    resizeBar(ns.rogueSliceAndDiceBar)
+    resizeBar(ns.playerPowerBar)
     -- OH anchors to MH via two-point, so width follows automatically.
     -- Re-anchor to ensure the gap is correct after height change.
     if ns.ohBar and ns.mhBar then
@@ -1921,18 +1982,7 @@ function ns.ApplyBarBorderSize(borderSize)
     SuperSwingTimerDB.barBorderSize = borderSize
     local scaledBorder = ns.Scale(borderSize)
 
-    for _, bar in ipairs({
-        ns.enemyBar,
-        ns.mhBar,
-        ns.ohBar,
-        ns.rangedBar,
-        ns.hunterCastBar,
-        ns.hunterRangeHelperBar,
-        ns.rogueEnergyTickBar,
-        ns.rogueEnergyTotalBar,
-        ns.rogueSliceAndDiceBar,
-        ns.playerPowerBar
-    }) do
+    ForEachAllBar(function(bar)
         local borderTextures = bar and bar.borderTextures or nil
         if borderTextures then
             local showBorder = borderSize > 0
@@ -1952,7 +2002,7 @@ function ns.ApplyBarBorderSize(borderSize)
                 borderTextures.right:SetWidth(scaledBorder)
             end
         end
-    end
+    end)
     if ns.UpdateRogueComboPointVisual then
         ns.UpdateRogueComboPointVisual()
     end
@@ -1971,25 +2021,22 @@ function ns.ApplyBarTexture(texturePath, layer)
 
     SuperSwingTimerDB.barTexture = texturePath
     SuperSwingTimerDB.barTextureLayer = layer
-    for _, bar in ipairs({
-        ns.enemyBar,
-        ns.mhBar,
-        ns.ohBar,
-        ns.rogueEnergyTickBar,
-        ns.rogueEnergyTotalBar,
-        ns.rogueSliceAndDiceBar,
-        ns.playerPowerBar
-    }) do
+    local function applyTextureToBar(bar)
         if bar then
             bar:SetStatusBarTexture(texturePath)
             bar.statusBarTexture = bar.statusBarTexture or bar:GetStatusBarTexture()
             if bar.statusBarTexture then
-                -- Keep the fill on its requested layer; the above-bar helper is
-                -- reserved for spark / breakpoint overlays so they stay visible.
                 bar.statusBarTexture:SetDrawLayer(layer)
             end
         end
     end
+    applyTextureToBar(ns.enemyBar)
+    applyTextureToBar(ns.mhBar)
+    applyTextureToBar(ns.ohBar)
+    applyTextureToBar(ns.rogueEnergyTickBar)
+    applyTextureToBar(ns.rogueEnergyTotalBar)
+    applyTextureToBar(ns.rogueSliceAndDiceBar)
+    applyTextureToBar(ns.playerPowerBar)
     if ns.UpdateRogueComboPointVisual then
         ns.UpdateRogueComboPointVisual()
     end
@@ -2010,7 +2057,7 @@ function ns.ApplyRangedBarTexture(texturePath, layer)
     end
 
     SuperSwingTimerDB.rangedBarTexture = texturePath
-    for _, bar in ipairs({ ns.rangedBar, ns.hunterCastBar, ns.hunterRangeHelperBar }) do
+    local function applyRangedTextureToBar(bar)
         if bar then
             bar:SetStatusBarTexture(texturePath)
             bar.statusBarTexture = bar.statusBarTexture or bar:GetStatusBarTexture()
@@ -2019,6 +2066,9 @@ function ns.ApplyRangedBarTexture(texturePath, layer)
             end
         end
     end
+    applyRangedTextureToBar(ns.rangedBar)
+    applyRangedTextureToBar(ns.hunterCastBar)
+    applyRangedTextureToBar(ns.hunterRangeHelperBar)
     ns.UpdateCastZoneVisual()
     if ns.UpdateHunterRapidFire then
         ns.UpdateHunterRapidFire(0, true)
@@ -2030,22 +2080,11 @@ function ns.ApplyBarTextureLayer(layer)
         layer = ns.DB_DEFAULTS.barTextureLayer
     end
     SuperSwingTimerDB.barTextureLayer = layer
-    for _, bar in ipairs({
-        ns.enemyBar,
-        ns.mhBar,
-        ns.ohBar,
-        ns.rangedBar,
-        ns.hunterCastBar,
-        ns.hunterRangeHelperBar,
-        ns.rogueEnergyTickBar,
-        ns.rogueEnergyTotalBar,
-        ns.rogueSliceAndDiceBar,
-        ns.playerPowerBar
-    }) do
-        if bar and bar.statusBarTexture then
+    ForEachAllBar(function(bar)
+        if bar.statusBarTexture then
             bar.statusBarTexture:SetDrawLayer(layer)
         end
-    end
+    end)
     if ns.ApplySparkTextureLayer then
         ns.ApplySparkTextureLayer(SuperSwingTimerDB.sparkTextureLayer or ns.DB_DEFAULTS.sparkTextureLayer)
     end
@@ -2088,23 +2127,12 @@ function ns.ApplyBarBackgroundColor(color)
 
     SuperSwingTimerDB.barBackgroundColor = { r = r, g = g, b = b, a = alpha }
     SuperSwingTimerDB.barBackgroundAlpha = alpha
-    for _, bar in ipairs({
-        ns.enemyBar,
-        ns.mhBar,
-        ns.ohBar,
-        ns.rangedBar,
-        ns.hunterCastBar,
-        ns.hunterRangeHelperBar,
-        ns.rogueEnergyTickBar,
-        ns.rogueEnergyTotalBar,
-        ns.rogueSliceAndDiceBar,
-        ns.playerPowerBar
-    }) do
-        if bar and bar.backgroundTexture then
+    ForEachAllBar(function(bar)
+        if bar.backgroundTexture then
             bar.backgroundTexture:SetColorTexture(r, g, b, 1)
             bar.backgroundTexture:SetAlpha(alpha)
         end
-    end
+    end)
     if ns.UpdateRogueComboPointVisual then
         ns.UpdateRogueComboPointVisual()
     end
@@ -2141,18 +2169,7 @@ function ns.ApplyBarBorderColor(color)
     end
 
     SuperSwingTimerDB.barBorderColor = { r = r, g = g, b = b, a = alpha }
-    for _, bar in ipairs({
-        ns.enemyBar,
-        ns.mhBar,
-        ns.ohBar,
-        ns.rangedBar,
-        ns.hunterCastBar,
-        ns.hunterRangeHelperBar,
-        ns.rogueEnergyTickBar,
-        ns.rogueEnergyTotalBar,
-        ns.rogueSliceAndDiceBar,
-        ns.playerPowerBar
-    }) do
+    ForEachAllBar(function(bar)
         local borderTextures = bar and bar.borderTextures or nil
         if borderTextures then
             for _, texture in pairs(borderTextures) do
@@ -2161,7 +2178,7 @@ function ns.ApplyBarBorderColor(color)
                 end
             end
         end
-    end
+    end)
     if ns.UpdateRogueComboPointVisual then
         ns.UpdateRogueComboPointVisual()
     end
@@ -2202,7 +2219,7 @@ function ns.ApplySparkSettings(texturePath, width, height, layer, alpha, color)
     -- Spark tint stays independent from MH/OH/ranged class colors and queued-attack fill tints.
     SuperSwingTimerDB.sparkColor = { r = r, g = g, b = b, a = alpha }
 
-    for _, bar in ipairs({ ns.enemyBar, ns.mhBar, ns.ohBar, ns.rangedBar, ns.hunterCastBar }) do
+    local function applySparkToBar(bar)
         if bar and bar.sparkTexture then
             bar.sparkTexture:SetTexture(texturePath)
             if ns.SetTextureLayerAboveBar then
@@ -2217,6 +2234,11 @@ function ns.ApplySparkSettings(texturePath, width, height, layer, alpha, color)
             bar.sparkTexture:SetVertexColor(r, g, b, alpha)
         end
     end
+    applySparkToBar(ns.enemyBar)
+    applySparkToBar(ns.mhBar)
+    applySparkToBar(ns.ohBar)
+    applySparkToBar(ns.rangedBar)
+    applySparkToBar(ns.hunterCastBar)
 end
 
 -- ============================================================
@@ -2350,11 +2372,16 @@ function ns.ApplyIndicatorBlendMode(blendMode)
 
     SuperSwingTimerDB.indicatorBlendMode = blendMode
 
-    for _, bar in ipairs({ ns.enemyBar, ns.mhBar, ns.ohBar, ns.rangedBar, ns.hunterCastBar }) do
+    local function applySparkBlend(bar)
         if bar and bar.sparkTexture then
             bar.sparkTexture:SetBlendMode(GetSparkBlendMode())
         end
     end
+    applySparkBlend(ns.enemyBar)
+    applySparkBlend(ns.mhBar)
+    applySparkBlend(ns.ohBar)
+    applySparkBlend(ns.rangedBar)
+    applySparkBlend(ns.hunterCastBar)
 
     for _, texture in ipairs({ ns.weaveSpark, ns.weaveTriangleTop, ns.weaveTriangleBottom }) do
         if texture then
@@ -2368,7 +2395,7 @@ function ns.ApplySparkTextureLayer(layer)
         layer = ns.DB_DEFAULTS.sparkTextureLayer
     end
     SuperSwingTimerDB.sparkTextureLayer = layer
-    for _, bar in ipairs({ ns.enemyBar, ns.mhBar, ns.ohBar, ns.rangedBar, ns.hunterCastBar }) do
+    local function applySparkLayer(bar)
         if bar and bar.sparkTexture then
             if ns.SetTextureLayerAboveBar then
                 ns.SetTextureLayerAboveBar(bar.sparkTexture, layer, ns.GetBarTextureLayer())
@@ -2377,6 +2404,11 @@ function ns.ApplySparkTextureLayer(layer)
             end
         end
     end
+    applySparkLayer(ns.enemyBar)
+    applySparkLayer(ns.mhBar)
+    applySparkLayer(ns.ohBar)
+    applySparkLayer(ns.rangedBar)
+    applySparkLayer(ns.hunterCastBar)
     if ns.ApplyRogueCueLayer then
         ns.ApplyRogueCueLayer()
     end
@@ -2594,6 +2626,13 @@ end
 --  @return (nil) Side-effect: calls Show()/Hide() on bar frames
 --  @see ns.OnUpdate
 function ns.ApplyVisibility()
+    if not ns.isMoveModeActive or (SuperSwingTimerDB and SuperSwingTimerDB.lockBars == true) then
+        if ns.isMoveModeActive and (SuperSwingTimerDB and SuperSwingTimerDB.lockBars == true) then
+            ns.isMoveModeActive = false
+        end
+        HideAllDragOverlays()
+    end
+
     local cfg = ns.classConfig or {}
     local db = SuperSwingTimerDB or ns.DB_DEFAULTS
     local _, ohSpeed = UnitAttackSpeed("player")
@@ -2908,6 +2947,20 @@ end
 function ns.OnUpdate(elapsed)
     local hooks = ns.OnUpdateHooks
     local n = #hooks
+    local diag = ns.Diag
+    if diag and diag.profile and diag.profile.active and debugprofilestart and debugprofilestop then
+        local names = ns.OnUpdateHookNames
+        for i = 1, n do
+            local hook = hooks[i]
+            if hook then
+                debugprofilestart()
+                hook(elapsed)
+                diag.RecordHookTime(i, debugprofilestop(), names and names[hook] or nil)
+            end
+        end
+        diag.TickProfile()
+        return
+    end
     for i = 1, n do
         local hook = hooks[i]
         if hook then hook(elapsed) end
@@ -2920,9 +2973,19 @@ end
 --  @param elapsed (number) Time since last frame in seconds
 --  @local
 local function CoreRenderHook(elapsed)
+    if ns.isMoveModeActive and (SuperSwingTimerDB and SuperSwingTimerDB.lockBars == true) then
+        if ns.StopMoveMode then
+            ns.StopMoveMode()
+        else
+            ns.isMoveModeActive = false
+            HideAllDragOverlays()
+        end
+    end
+
     if ns.rangedBar then UpdateRangedBar(elapsed) end
     if ns.hunterCastBar then UpdateHunterCastBar() end
     if ns.enemyBar then UpdateMeleeBar("enemy", ns.enemyBar) end
+
     if ns.mhBar then UpdateMeleeBar("mh", ns.mhBar) end
     if ns.ohBar then UpdateMeleeBar("oh", ns.ohBar) end
     -- Phase 1: GCD ticker + swing flash + spark flash render
@@ -2947,7 +3010,11 @@ local function CoreRenderHook(elapsed)
 end
 
 -- Register the core render hook as the first hook (priority 1)
-ns.RegisterOnUpdateHook(CoreRenderHook, 1)
+if ns.RegisterNamedOnUpdateHook then
+    ns.RegisterNamedOnUpdateHook("core", CoreRenderHook, 1)
+else
+    ns.RegisterOnUpdateHook(CoreRenderHook, 1)
+end
 
 --- Create all swing bar frames and helper overlays. Called once after
 --  SavedVariables are loaded and the class config is resolved. Creates

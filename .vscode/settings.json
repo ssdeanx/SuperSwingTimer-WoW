@@ -12,8 +12,7 @@
         "utf8": "disable"
     },
     "Lua.workspace.library": [
-        "/home/sam/.antigravity-ide/extensions/ketho.wow-api-0.22.3/Annotations/Core",
-        "/home/sam/.antigravity-ide/extensions/ketho.wow-api-0.22.3/Annotations/FrameXML"
+        "~/.vscode/extensions/ketho.wow-api-0.22.3/Annotations/Core"
     ],
     "Lua.diagnostics.globals": [
         "LibStub",
@@ -134,6 +133,34 @@
         "CombatText_AddMessage",
         "CombatText_StandardScroll",
         "YES",
-        "NO"
+        "NO",
+        "WOW_PROJECT_MISTS_CLASSIC",
+        "INVSLOT_RANGED",
+        "AddonCompartmentFrame",
+        "CR_HASTE_SPELL",
+        "SELECTED_CHAT_FRAME",
+        "DEFAULT_CHAT_FRAME",
+        "hash_SlashCmdList",
+        "FONT_COLOR_CODE_CLOSE",
+        "SetDesaturation",
+        "CreateTexturePool",
+        "CreateFramePool",
+        "AnimateTexCoords",
+        "ChatFrame1",
+        "PanelTemplates_TabResize",
+        "PanelTemplates_SetDisabledTabState",
+        "PanelTemplates_SelectTab",
+        "PanelTemplates_DeselectTab",
+        "COMBATLOG_OBJECT_CONTROL_PLAYER",
+        "COMBATLOG_OBJECT_TYPE_PLAYER",
+        "COMBATLOG_OBJECT_REACTION_FRIENDLY",
+        "MAX_RAID_MEMBERS",
+        "MAX_PARTY_MEMBERS",
+        "COMBATLOG_OBJECT_AFFILIATION_MINE",
+        "STANDARD_TEXT_FONT",
+        "UISpecialFrames"
+    ],
+    "Lua.diagnostics.disable": [
+        "assign-type-mismatch"
     ]
 }

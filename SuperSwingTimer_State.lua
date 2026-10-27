@@ -152,6 +152,12 @@ function ns.IsHunterAutoRepeatActive(fallbackState)
         return false
     end
 
+    -- If the hunter is actively casting another spell (e.g. Steady Shot), the WoW client
+    -- API C_Spell.IsAutoRepeatSpell returns false temporarily during the cast.
+    -- Preserve true if auto-repeat was active before/during the cast.
+    local isCastingHunterSpell = (ns.casting == true or ns.hunterCastActive == true)
+        and (ns.currentCastSpellId and ns.IsHunterCastSpell and ns.IsHunterCastSpell(ns.currentCastSpellId))
+
     local autoRepeatActive = nil
     if C_Spell and type(C_Spell.IsAutoRepeatSpell) == "function" then
         local ok, isRepeating = pcall(C_Spell.IsAutoRepeatSpell, ns.AUTO_SHOT_ID)
@@ -166,6 +172,15 @@ function ns.IsHunterAutoRepeatActive(fallbackState)
                 end
             end
         end
+    elseif type(rawget(_G, "IsAutoRepeatSpell")) == "function" then
+        local ok, isRepeating = pcall(rawget(_G, "IsAutoRepeatSpell"), ns.AUTO_SHOT_ID)
+        if ok and isRepeating ~= nil then
+            autoRepeatActive = isRepeating == true
+        end
+    end
+
+    if isCastingHunterSpell and ns.hunterAutoRepeatActive == true then
+        autoRepeatActive = true
     end
 
     if autoRepeatActive == nil then
@@ -846,6 +861,7 @@ function ns.StartRangedSwing(startTime)
 
     ns.StartSwing("ranged", nil, now)
     t.lastRangedStartTime = now
+    ns.hunterSteadyShotEndedInRedZone = nil
     if ns.UpdateCastZoneVisual then
         ns.UpdateCastZoneVisual()
     end
@@ -1081,7 +1097,8 @@ function ns.HandleSpellcastStop(unit)
     ns.currentCastStartTime = nil
     if not (ns.playerClass == "HUNTER" and ns.hunterCastActive and ns.hunterCastSpellId and ns.IsHunterCastSpell
             and ns.IsHunterCastSpell(ns.hunterCastSpellId) and ns.hunterCastDuration and ns.hunterCastDuration > 0) then
-        ClearHunterCastState()
+        local now = ns.GetAlignedTime()
+        ClearHunterCastState(false)
     end
     ns.preventSwingReset = false
     ns.RefreshUpdateLoop()
@@ -1096,7 +1113,8 @@ function ns.HandleSpellcastChannelStop(unit)
     ns.currentCastStartTime = nil
     if not (ns.playerClass == "HUNTER" and ns.hunterCastActive and ns.hunterCastSpellId and ns.IsHunterCastSpell
             and ns.IsHunterCastSpell(ns.hunterCastSpellId) and ns.hunterCastDuration and ns.hunterCastDuration > 0) then
-        ClearHunterCastState()
+        local now = ns.GetAlignedTime()
+        ClearHunterCastState(false)
     end
     ns.preventSwingReset = false
     ns.RefreshUpdateLoop()
@@ -1152,13 +1170,34 @@ function ns.HandleSpellcastInterruptedOrFailed(unit, castGUIDOrSpellName, spellI
     ns.casting = false
     ns.channeling = false
     ns.channelingSpellId = nil
+    if ns.playerClass == "HUNTER" then
+        local isSteady = (spellId == ns.STEADY_SHOT_ID)
+            or (ns.currentCastSpellId == ns.STEADY_SHOT_ID)
+            or (ns.hunterCastSpellId == ns.STEADY_SHOT_ID)
+            or (spellToken and (spellToken == "Steady Shot" or spellToken == ns.STEADY_SHOT_ID))
+        if isSteady then
+            local tRanged = ns.timers and ns.timers.ranged
+            if tRanged and tRanged.duration and tRanged.duration > 0 then
+                local windowEnd = tRanged.lastSwing + tRanged.duration
+                local latencyBuffer = math.max(ns.cachedLatency or 0, 0.05) + 0.15
+                local graceAllowance = ns.STEADY_SHOT_GRACE or 0.5
+                if now <= (windowEnd + latencyBuffer + graceAllowance) then
+                    ns.hunterSteadyShotEndedInRedZone = now
+                end
+            end
+        end
+        if ns.hunterCastActive then
+            ClearHunterCastState(true)
+        end
+    end
+    -- A failed or interrupted cast must not leave cast identity behind. A stale
+    -- token otherwise survives into HandleSpellcastSucceeded, which re-attributes
+    -- it to the next successful cast and fabricates a red-zone Steady Shot that
+    -- never landed. This also restores the pre-existing cleanup for all classes.
     ns.currentCastSpellId = nil
     ns.currentCastStartTime = nil
     ns.lastResolvedHunterCastToken = nil
     ns.lastResolvedHunterCastAt = nil
-    if ns.playerClass == "HUNTER" and ns.hunterCastActive then
-        ClearHunterCastState()
-    end
     ns.preventSwingReset = false
     RefreshGcdWindow(now, false)
     ns.RefreshUpdateLoop()
@@ -1432,13 +1471,21 @@ function ns.HandleSpellcastSucceeded(unit, castGUIDOrSpellName, spellId)
         local isAutoShotSpell = ns.IsAutoShotSpell and ns.IsAutoShotSpell(spellToken)
         if not isAutoShotSpell then
             if ns.IsHunterActualCastSpell and ns.IsHunterActualCastSpell(spellToken) then
-                -- Real cast (Steady Shot / Aimed Shot / Volley) landed: end the
-                -- stored display immediately. Re-seeding here kept the base cast
-                -- window (GetSpellInfo cast time, e.g. 1.5s for Steady Shot)
-                -- alive past the actual hasted cast end, so the bar kept showing
-                -- "Steady Shot" and shadowed the Auto Shot hidden window at the
-                -- end of the ranged cycle.
-                ClearHunterCastState()
+                -- Real cast (Steady Shot / Aimed Shot / Volley) landed
+                local isSteady = (spellToken == "Steady Shot" or spellToken == ns.STEADY_SHOT_ID or spellIdNumber == ns.STEADY_SHOT_ID)
+                if isSteady then
+                    local tRanged = ns.timers and ns.timers.ranged
+                    if tRanged and tRanged.duration and tRanged.duration > 0 then
+                        local windowEnd = tRanged.lastSwing + tRanged.duration
+                        local latencyBuffer = math.max(ns.cachedLatency or 0, 0.05) + 0.15
+                        local graceAllowance = ns.STEADY_SHOT_GRACE or 0.5
+                        -- Allow Steady Shot to land anywhere through the end of the clip zone
+                        if now <= (windowEnd + latencyBuffer + graceAllowance) then
+                            ns.hunterSteadyShotEndedInRedZone = now
+                        end
+                    end
+                end
+                ClearHunterCastState(false)
             else
                 -- Instant Multi-Shot: seed the short stored helper window (the
                 -- client does not expose live cast info for it).

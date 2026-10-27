@@ -1,37 +1,27 @@
-# Ultragoal Brief: Comprehensive Addon Deep Audit, Zero-Allocation Engine & Performance Modernization
+# Ultragoal Brief: v0.2.6 Compatibility Audit, Visual Scaling & Bar Sizing Modernization
 
 ## Objective
 
-Conduct a deep audit of SuperSwingTimer against Blizzard's FrameXML source (`/home/sam/wow-ui-source/`, Classic Era 1.15.9 / TBC Anniversary 2.5.6) and implement enterprise-grade architectural optimizations, hot-path zero-allocation performance enhancements, event-filtering modernizations, and test automation:
+Conduct a comprehensive deep audit of SuperSwingTimer for version `v0.2.6` focusing on:
 
-1. **Unit-Filtered Event Registration**:
-   - Modernize `SuperSwingTimer.lua` event registrations from global `RegisterEvent` to `RegisterUnitEvent("UNIT_AURA", "player", "target")` and unit-scoped power/spellcast events.
-   - Eliminate massive raid-wide event churn in 25-man / 40-man environments.
-
-2. **Hot-Path Zero Allocation & C++ Layout De-duplication**:
-   - Optimize `SuperSwingTimer_State.lua` `HasActiveTimers()`: eliminate `pairs()` iterator allocations and dynamic table allocations; smart-sleep `OnUpdate` when completely idle with no active buffs.
-   - Optimize `SuperSwingTimer_ClassMods.lua` `UpdatePlayerPowerBar()`: cache rendered power strings to eliminate string allocations every frame.
-   - Optimize `SuperSwingTimer_UI.lua` `UpdateSparkPosition()` and `SyncBarLabelText()`: avoid `ClearAllPoints()` / `SetPoint()` and `SetText()` calls when pixel positions and label values are unchanged.
-
-3. **Shaman Weaving & Latency Streamlining**:
-   - Streamline `SuperSwingTimer_Weaving.lua`: reuse `ns.cachedLatency` instead of querying `GetNetStats()` repeatedly; unify buff scans in `GetLiveSpellHasteMultiplier` into a single-pass loop.
-
-4. **Class Modules & UI Visual Polish**:
-   - Validate and harden class modules across Warrior, Rogue, Paladin, Shaman, Druid, and Hunter.
-   - Ensure pixel-perfect debuff bar stacking, Execute indicator glow, Hunter Auto Shot 15px alignment, and smooth Druid shapeshifting transitions.
-
-5. **Headless Test Suite & Automated Verification**:
-   - Provide a standalone CLI test execution runner for `SuperSwingTimer_Tests.lua` with mock WoW environment.
-   - Add test coverage for new zero-allocation optimizations and DB v64 migration.
-
-6. **Version Bump, Documentation & Zero-Lint Quality**:
-   - TOC version bump to `v0.2.4`, DB schema migration to `v64`.
-   - Update `CHANGELOG.md`, `README.md`, `MEMORY.md`, and `API_AUDIT_REPORT.md`.
-   - Guarantee 0 luacheck warnings / errors across all files.
+1. **Dual-Client Compatibility**: Complete verification and hardening between `classic_era` (1.15.9 / 70003) and `classic_anniversary` (2.5.6 / 70006).
+   - Centralize spell texture resolution with `ns.GetSpellTexture(spellIdentifier)` (`C_Spell.GetSpellTexture` -> `GetSpellTexture` -> `GetSpellInfo` icon -> live aura fallback).
+   - Guarantee buff icon and debuff bar icon textures resolve identically across both client versions.
+2. **Global Scaling Fix in Options**:
+   - Ensure `ns.ApplyGlobalScale()` triggers `ns.ApplyBarSize(width, height)` so that moving the Global Scale slider in options immediately and dynamically updates all swing bars, sparks, power bar, hunter cast bar, debuff bars, and GCD ticker without requiring a `/reload`.
+3. **Bar Sizing & Stacking Geometry**:
+   - Answer user queries and document defaults: MH (240x15), OH (240x15), Ranged (240x15), Hunter Cast (240x15), Power Bar (240x10 -> 240x14), Debuff bars (240x6 -> 240x8).
+   - Enlarge Player Power Bar default height from 10px to 14px for improved vertical padding and typography legibility.
+   - Enlarge Debuff Bars from 6px (and 5px) to 8px and scale their associated spell icons from 6x6 to 8x8 (matching bar height) or larger.
+   - Validate stacking geometry in `RestackDebuffBars` (2px spacing between bars, 8px clearance for buff icons).
+4. **Automated Verification & Zero-Warning Lint**:
+   - Expand `SuperSwingTimer_Tests.lua` and `run_tests.lua` with test coverage for v0.2.6 features.
+   - DB schema migration to `v65`.
+   - Maintain 0 luacheck warnings/errors under `luacheck .`.
+   - Bump version to `v0.2.6` across TOC, changelog, and documentation.
 
 ## Constraints & Architecture Boundaries
 
-- Zero external library dependencies (pure native WoW Classic / TBC API).
-- Full backward compatibility with existing SavedVariables (`SuperSwingTimerDB`) via migration function.
-- Fail-open and safe nil guards across all class initializers.
-- Zero luacheck warnings or errors across the entire codebase.
+- Pure native WoW Classic / TBC Anniversary API (zero external runtime dependencies).
+- Backward-compatible SavedVariables migration (`SuperSwingTimerDB`).
+- Zero luacheck warnings or errors (`luacheck .`).

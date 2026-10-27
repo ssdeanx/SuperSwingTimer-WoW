@@ -88,7 +88,9 @@
       "SlashCmdList",
       "SLASH_SSTTEST1",
       "WoWUnit",
-            "targetDB"
+      "targetDB",
+      "quickToggleLabel",
+      "WOW_PROJECT_MISTS_CLASSIC"
     ]
   }
 }

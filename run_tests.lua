@@ -54,6 +54,7 @@ _G.UnitPowerMax = function(u) return 100 end
 _G.UnitAttackSpeed = function(u) return 2.6, 2.6 end
 _G.UnitRangedDamage = function(u) return 2.8 end
 _G.InCombatLockdown = function() return false end
+_G.UnitAffectingCombat = function(u) return false end
 _G.GetNetStats = function() return 0, 0, 45, 45 end
 _G.GetSpellInfo = function(id)
     local castTimeMs = 1500
@@ -83,9 +84,36 @@ _G.hooksecurefunc = function(tbl, name, fn)
         return fn(...)
     end
 end
-_G.geterrorhandler = function()
-    return function(err) return err end
+local currentErrorHandler = function(err) return err end
+_G.geterrorhandler = function() return currentErrorHandler end
+_G.seterrorhandler = function(fn) currentErrorHandler = fn end
+_G.debugstack = function(level)
+    return "\nSuperSwingTimer.lua:1 in function 'mockStack'"
 end
+local profileStartedAt = 0
+_G.debugprofilestart = function() profileStartedAt = os.clock() * 1000 end
+_G.debugprofilestop = function() return math.max(0, os.clock() * 1000 - profileStartedAt) end
+_G.GetBuildInfo = function() return "2.5.6", "70006", "Oct 25 2026", 20506 end
+_G.GetFramerate = function() return 60 end
+_G.UpdateAddOnMemoryUsage = function() end
+_G.GetAddOnMemoryUsage = function(name) return 512 end
+_G.UpdateAddOnCPUUsage = function() end
+_G.GetAddOnCPUUsage = function(name) return 0.5 end
+_G.WOW_PROJECT_MAINLINE = 1
+_G.WOW_PROJECT_CLASSIC = 2
+_G.WOW_PROJECT_BURNING_CRUSADE_CLASSIC = 5
+_G.WOW_PROJECT_WRATH_CLASSIC = 11
+_G.WOW_PROJECT_CATACLYSM_CLASSIC = 14
+_G.WOW_PROJECT_MISTS_CLASSIC = 19
+_G.WOW_PROJECT_ID = _G.WOW_PROJECT_BURNING_CRUSADE_CLASSIC
+_G.C_AddOns = {
+    GetAddOnMetadata = function(name, field)
+        if field == "Version" then return "v0.2.7" end
+        if field == "Title" then return "Super Swing Timer" end
+        return nil
+    end,
+}
+_G.UnitAura = function(unit, index, filter) return nil end
 _G.C_Timer = {
     After = function(sec, cb) end,
     NewTicker = function(sec, cb, count) return { Cancel = function() end } end,
@@ -152,8 +180,18 @@ local function createMockObject()
     function obj:CanWordWrap() return true end
     function obj:SetShadowColor(...) end
     function obj:SetShadowOffset(...) end
-    function obj:SetTexture(...) end
-    function obj:SetColorTexture(...) end
+    function obj:SetNormalTexture(...) end
+    function obj:SetPushedTexture(...) end
+    function obj:SetHighlightTexture(...) end
+    function obj:SetDisabledTexture(...) end
+    function obj:SetTexture(t) self._texture = t end
+    function obj:GetTexture() return self._texture end
+    function obj:SetColorTexture(r, g, b, a) self._colorTexture = { r or 0, g or 0, b or 0, a or 1 } end
+    function obj:GetColorTexture()
+        if self._colorTexture then
+            return self._colorTexture[1], self._colorTexture[2], self._colorTexture[3], self._colorTexture[4]
+        end
+    end
     function obj:SetVertexColor(...) end
     function obj:SetTexCoord(...) end
     function obj:SetBlendMode(...) end
@@ -168,9 +206,10 @@ local function createMockObject()
     function obj:SetStatusBarTexture(...) end
     function obj:SetStatusBarColor(...) end
     function obj:GetStatusBarTexture() return createMockObject() end
-    function obj:RegisterEvent(e) end
-    function obj:UnregisterEvent(e) end
-    function obj:RegisterUnitEvent(e, ...) end
+    function obj:RegisterEvent(e) self._events = self._events or {}; self._events[e] = true end
+    function obj:UnregisterEvent(e) if self._events then self._events[e] = nil end end
+    function obj:IsEventRegistered(e) return self._events and self._events[e] or false end
+    function obj:RegisterUnitEvent(e, ...) self:RegisterEvent(e) end
     function obj:SetFrameStrata(...) end
     function obj:GetFrameStrata() return "MEDIUM" end
     function obj:SetFrameLevel(...) end
@@ -184,6 +223,9 @@ local function createMockObject()
     function obj:GetScrollChild() return createMockObject() end
     function obj:SetScrollChild(...) end
     function obj:SetAutoFocus(...) end
+    function obj:SetMultiLine(...) end
+    function obj:SetToplevel(...) end
+    function obj:Raise() end
     function obj:SetTextInsets(...) end
     function obj:SetMaxLetters(...) end
     function obj:GetMaxLetters() return 0 end
@@ -470,8 +512,10 @@ _G.WoWUnit = WoWUnitMock
 -- ============================================================
 ns = {}
 local files = {
+    "SuperSwingTimer_Diag.lua",
     "SuperSwingTimer_Constants.lua",
     "Media/SuperSwingTimer_Media.lua",
+    "SuperSwingTimer_Glow.lua",
     "SuperSwingTimer_State.lua",
     "SuperSwingTimer_Weaving.lua",
     "SuperSwingTimer_Hooks.lua",
@@ -513,7 +557,6 @@ for _, f in ipairs(allCreatedFrames) do
     end
 end
 
--- ============================================================
 -- 5. Execute Test Suite
 -- ============================================================
 print(string.format("\nDiscovered %d test groups. Executing...\n", #WoWUnitMock.children))

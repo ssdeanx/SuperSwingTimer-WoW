@@ -1,30 +1,43 @@
 # Active Context
 
-## Active Context Update (2026-10-22 - v0.2.5: Interactive Move Mode, 1080p Settings Fix, Blizzard Settings Decoupling, Cross-Client C_UnitAuras Normalization)
+## Active Context Update (2026-10-24 - v0.2.6: Dual-Client Spell Texture Engine, Power Bar Height Slider, Hunter Aspect FileID & Combat Alert, PixelSnap, Real-Time Global Scaling, 14px Power Bar Default, 8px Debuff Bars, Migration v66, 123-Test Suite)
 
-- **Focus**: Community feedback fixes on CurseForge ("How do I MOVE the thing?", settings broken on 1080p / ElvUI), cross-client compatibility across `classic_era` (1.15.9), `classic_anniversary` (2.5.6), and `titanforge` (3.80.2), decoupling Blizzard settings canvas from standalone config window, and version bump to `v0.2.5`.
-- **Interactive Move Mode (`SuperSwingTimer_UI.lua`, `SuperSwingTimer.lua`)**:
-  - Implemented `/sst move` and `/sst unlock` slash commands allowing direct, intuitive repositioning of all swing bars.
-  - Added high-visibility semi-transparent drag guide overlays with clear labels ("Main Hand (Drag)", "Off Hand (Follows MH)", "Ranged (Drag)", "Enemy (Drag)") rendered at dialog frame level.
-  - Added floating `SuperSwingTimerMoveHUD` toolbar with title, reposition instructions, and a `[ Lock Bars & Save ]` button (`/sst lock`).
-  - Added `/sst unlock` button directly into the header of `SuperSwingTimerConfigPanel` and onto the Blizzard Options canvas.
+- **Focus**: Delivery of dual-client spell texture normalization (`ns.GetSpellTexture`), dedicated Power Bar Height slider in Options, Hunter Aspect numeric FileID texture support and in-combat missing aspect warning alert, physical pixel grid snapping (`ns.PixelSnap`), real-time global scaling, 14px power bar default with DB migration v66, 8px debuff bars, and 123-test test suite.
+- **Spell Texture Normalization (`SuperSwingTimer_Constants.lua`, `SuperSwingTimer_ClassMods.lua`)**: Centralized `ns.GetSpellTexture(spellIdentifier)` with 4-tier fallback (`C_Spell.GetSpellTexture` -> `GetSpellTexture` -> `ns.GetSpellInfo` icon -> live aura binding), wrapped in `pcall` with `rawget` for crash immunity across Classic Era (1.15.9) and TBC Anniversary (2.5.6).
+- **Power Bar Height Slider (`SuperSwingTimer_Config.lua`)**: Added dedicated slider (6px–30px, default 14px) in Appearance section to adjust Player Power Bar height dynamically in real-time.
+- **Hunter Aspect Numeric FileID & Alert (`SuperSwingTimer_ClassMods.lua`)**: Handled numeric FileID icons (e.g. 136006) directly from client aura structures. Added in-combat alert displaying a question mark icon with a red border (`0.9, 0.1, 0.1, 0.9`) when fighting without an active aspect.
+- **Subpixel Snapping (`SuperSwingTimer_Constants.lua`)**: Implemented `ns.PixelSnap(value, customScale)` to round bar coordinates, sparks, and borders to physical device pixels based on `UIParent:GetEffectiveScale()`.
+- **Database Migration 66 (`SuperSwingTimer.lua`)**: Upgrades legacy 10px power bar configurations to 14px default while preserving custom configurations.
+- **Headless Test Suite (`SuperSwingTimer_Tests.lua`, `run_tests.lua`)**: Expanded to 123 tests across 11 test groups with dynamic hook locators (`GetCoreRenderHook`, `GetHunterHook`). 100% pass rate, 0 luacheck warnings across all 12 files.
+
+## Active Context Update (2026-10-23 - v0.2.5: Wglass Default Texture, Drag Overlay Fix, Move Mode, Quick Controls Grid & Tabs, Hunter Red Zone Clip Fix, Enterprise Fast-Path, 113-Test Suite)
+
+- **Focus**: Final release polish for `v0.2.5`: default texture set to `Wglass.tga` (Migration 65), fix for stuck drag overlay ("Ranged (Drag)") on Hunters and non-dual-wielding classes, interactive Move Mode (`/sst move`, `/sst unlock`, `/sst lock`), Quick Controls tabbed 2-column overhaul, Hunter Steady Shot red zone clip window fix with Auto Shot cast bar preservation, enterprise fast-path CLEU filter, 1080p settings decoupling, and expanded 113-test headless test runner.
+- **Default Bar Texture Updated to Wglass & Migration 65 (`SuperSwingTimer_Constants.lua`, `SuperSwingTimer.lua`)**:
+  - Set default `barTexture` and `rangedBarTexture` in `ns.DB_DEFAULTS` to `"Interface\\AddOns\\SuperSwingTimer\\Media\\statusbar\\Wglass.tga"`.
+  - Added Database Migration 65 (`ns.DB_CURRENT_VERSION = 65`) to automatically migrate existing default textures (`MerfinMain.tga`, nil, or `UI-CastingBar-Fill`) to `Wglass.tga`.
+- **Drag Overlay Stuck After Unlock and Lock Fix (`SuperSwingTimer_UI.lua`, `SuperSwingTimer.lua`)**:
+  - Fixed root cause: in Lua, `ipairs` terminates iteration at the first `nil` entry. When `ns.ohBar` is `nil` (Hunters and any character without an off-hand equipped), tables like `{ ns.mhBar, ns.ohBar, ns.rangedBar, ns.enemyBar }` stopped at index 2, preventing `ns.rangedBar._dragOverlay:Hide()` and `ns.enemyBar._dragOverlay:Hide()` from ever running!
+  - Created unrolled, zero-allocation `HideAllDragOverlays()`, `ForEachAllBar`, and unrolled bar loops across `SuperSwingTimer_UI.lua` (`ApplyLockBars`, `StopMoveMode`, `ApplyVisibility`, `ApplyBarSize`, `ApplyBarTexture`, `ApplyRangedBarTexture`, `ApplyBarTextureLayer`, `ApplyBarBackgroundColor`, `ApplyBarBorderColor`, `ApplySparkSettings`, `ApplyIndicatorBlendMode`, `ApplySparkTextureLayer`, and `CoreRenderHook`), completely eliminating `ipairs` nil-hole bugs.
+- **Hunter Steady Shot & Auto Shot Red Zone Clip Window (`SuperSwingTimer_State.lua`, `SuperSwingTimer_UI.lua`)**:
+  - Fixed Steady Shot landing in the red clip zone (`now <= windowEnd + latencyBuffer + graceAllowance`) prematurely resetting the upcoming Auto Shot window.
+  - Recorded `ns.hunterSteadyShotEndedInRedZone = now` and passed `preserveCastBar = true` to `ClearHunterCastState()`.
+  - Preserved cast bar display across `UNIT_SPELLCAST_STOP` and `UNIT_SPELLCAST_SUCCEEDED` so Auto Shot renders and fires smoothly without visual flicker or cycle wipe.
+  - Reset `ns.hunterSteadyShotEndedInRedZone` on `StartRangedSwing()` when the next Auto Shot cycle begins.
+- **Persistent Drag Overlay & Move HUD Suppression (`SuperSwingTimer_UI.lua`, `SuperSwingTimer.lua`)**:
+  - Converted the Config Panel header button into a bidirectional toggle alternating between `[ Unlock & Move Bars ]` (green) and `[ Lock Bars & Save ]` (crimson).
+  - Centralized lock control synchronization (`ns.RefreshConfigLockControls()`) across header, quick controls, general behavior, and Blizzard settings canvas.
+- **Config UI Quick Controls 2-Column Grid & Tabs (`SuperSwingTimer_Config.lua`)**:
+  - Refactored Quick Controls into a responsive 2-column layout with categorical tab filtering (`Visibility`, `Colors`, `Class`).
+  - Anchored Quick Controls header at Y = -118 safely below the Global Scale slider, eliminating control overlapping.
+  - Left-aligned text labels across compact toggle rows and color swatch rows, with whole-row clickability.
 - **Blizzard Settings Detachment & Frame Destruction Fix (`SuperSwingTimer_Config.lua`)**:
-  - Decoupled Blizzard's Settings Canvas (`SuperSwingTimerBlizzardOptionsPanel`) from the addon's standalone window (`SuperSwingTimerConfigPanel`).
-  - Blizzard's Settings Panel no longer adopts `SuperSwingTimerConfigPanel` into `Settings.RegisterCanvasLayoutCategory`, eliminating the critical bug where closing Blizzard Settings called `frame:SetParent(nil)` and `frame:ClearAllPoints()`, destroying the addon's configuration window.
-  - Added safety recovery in `ns.ToggleConfig()`: if parent or anchor points ever become invalid, parentage to `UIParent` and screen centering are automatically restored.
-- **1080p Screen Resolution Clamping & Resizability (`SuperSwingTimer_Config.lua`)**:
-  - Eliminated the fixed `780x760` window size that clipped off-screen on standard 1920x1080 displays (WoW default 768 virtual height).
-  - Implemented `ns.ApplyConfigPanelResponsiveSize(frame)`: window dimensions now automatically clamp height to `math.min(580, math.max(420, (UIParent:GetHeight() or 768) - 70))` and width to `740px`.
-  - Added interactive corner resize grip at the bottom-right corner, letting users customize window dimensions freely (`f:SetResizable(true)`).
-  - Cleaned up bottom bar layout: positioned search bar on the left/center and "Reset Defaults" on the bottom-right without overlap.
-- **Cross-Client Interface Numbers & Deprecated UnitAura Normalization (`SuperSwingTimer.toc`, `SuperSwingTimer_Constants.lua`)**:
-  - Updated `SuperSwingTimer.toc` with explicit interface directives: `Interface: 11509, 20506, 38002`, `Interface-Classic: 11509`, `Interface-BCC: 20506`, `Interface-Titan: 38002` for seamless cross-client support across Classic Era, TBC Anniversary, and Titanforge.
-  - Updated `ns.UnitAura` to natively query modern `C_UnitAuras.GetAuraDataByIndex` first, ensuring uninterrupted buff/debuff tracking even on modern engines or when legacy `UnitAura` deprecation fallbacks are disabled.
-- **Headless Test Suite Additions (`SuperSwingTimer_Tests.lua`, `run_tests.lua`)**:
-  - Added `[SST-MoveMode]` test suite testing interactive move transitions, overlay states, and slash command integration.
-  - Added `[SST-Config]` test suite testing Blizzard settings decoupling and responsive resolution clamping across virtual screen heights.
-  - Added `[SST-UnitAuraNorm]` test cases for `C_UnitAuras` data shape and legacy fallback.
-  - 98/98 tests passing headlessly; 0 warnings and 0 errors across all modified files.
+  - Decoupled Blizzard's Settings Canvas (`SuperSwingTimerBlizzardOptionsPanel`) from the addon's standalone window (`SuperSwingTimerConfigPanel`), preventing window destruction on settings closure.
+  - Added responsive resolution clamping (`ApplyConfigPanelResponsiveSize`) and corner resize grip.
+  - Applied solid dark opaque window backdrop (`0.05, 0.05, 0.07, 0.98`) preventing 3D game world bleed-through.
+- **Headless Test Suite (`SuperSwingTimer_Tests.lua`, `run_tests.lua`)**:
+  - Expanded headless test suite to 113 total tests across 11 test groups (added `Hunter_WithoutOH_OverlayHidesOnLock`, `MigrateDB_V65`, `SteadyShot_LateLanding_InRedZone_EndToEnd`, combat drag overlay suppression checks, CLEU fast path, and config layout verifications).
+  - 113/113 tests passing headlessly in ~0.043s; 0 luacheck warnings/errors across all 10 addon files.
 
 ## Active Context Update (2026-09-21 - v0.2.4: Deep audit, C-level RegisterUnitEvent, zero-allocation hotpaths, idle sleep, headless CLI test suite, DB v64)
 

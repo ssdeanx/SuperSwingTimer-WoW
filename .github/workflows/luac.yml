@@ -1,4 +1,4 @@
-name: luac syntax check
+name: Lua syntax and headless tests
 
 on:
   push:
@@ -15,7 +15,11 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y lua5.1
       - name: Check syntax
         run: |
-          luac -p \
+          LUAC=luac5.1
+          command -v "$LUAC" >/dev/null 2>&1 || LUAC=luac
+          "$LUAC" -p \
+            SuperSwingTimer_Diag.lua \
+            SuperSwingTimer_Glow.lua \
             SuperSwingTimer_Constants.lua \
             SuperSwingTimer_State.lua \
             SuperSwingTimer_Weaving.lua \
@@ -23,4 +27,15 @@ jobs:
             SuperSwingTimer_UI.lua \
             SuperSwingTimer_ClassMods.lua \
             SuperSwingTimer_Config.lua \
-            SuperSwingTimer.lua
+            SuperSwingTimer.lua \
+            SuperSwingTimer_SoD.lua \
+            SuperSwingTimer_Tests.lua \
+            Media/SuperSwingTimer_Media.lua \
+            run_tests.lua
+      - name: Run headless tests
+        run: |
+          if command -v lua5.1 >/dev/null 2>&1; then
+            lua5.1 run_tests.lua
+          else
+            lua run_tests.lua
+          fi

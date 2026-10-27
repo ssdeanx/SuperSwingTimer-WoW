@@ -43,18 +43,62 @@ end
 --  @usage local name = ns.GetSpellInfo(75)  -- "Auto Shot"
 function ns.GetSpellInfo(spellIdentifier)
     if not spellIdentifier then return nil end
-    local g = _G.GetSpellInfo
-    if g then
-        return g(spellIdentifier)
+    local g = rawget(_G, "GetSpellInfo")
+    if type(g) == "function" then
+        local ok, r1, r2, r3, r4, r5, r6, r7 = pcall(g, spellIdentifier)
+        if ok and r1 then
+            return r1, r2, r3, r4, r5, r6, r7
+        end
     end
-    local C_Spell = _G.C_Spell
-    if C_Spell and C_Spell.GetSpellInfo then
-        local info = C_Spell.GetSpellInfo(spellIdentifier)
-        if info then
+    local cSpell = rawget(_G, "C_Spell")
+    if cSpell and type(cSpell.GetSpellInfo) == "function" then
+        local ok, info = pcall(cSpell.GetSpellInfo, spellIdentifier)
+        if ok and info then
             return info.name, nil, info.iconID, info.castTime, info.minRange, info.maxRange, info.spellID
         end
     end
     return nil
+end
+
+--- Authoritative GetSpellTexture wrapper for Classic Era / TBC Anniversary.
+--  Queries C_Spell.GetSpellTexture() first on modern clients, then legacy
+--  GetSpellTexture(), then extracts icon from ns.GetSpellInfo().
+--  @param spellIdentifier (number|string) Spell ID or localized spell name
+--  @return (number|string|nil) FileID or texture path
+--  @usage local tex = ns.GetSpellTexture(21183)
+function ns.GetSpellTexture(spellIdentifier)
+    if not spellIdentifier then return nil end
+    local C_Spell = rawget(_G, "C_Spell")
+    if C_Spell and C_Spell.GetSpellTexture then
+        local ok, tex = pcall(C_Spell.GetSpellTexture, spellIdentifier)
+        if ok and tex then return tex end
+    end
+    local g = rawget(_G, "GetSpellTexture")
+    if g then
+        local ok, tex = pcall(g, spellIdentifier)
+        if ok and tex then return tex end
+    end
+    local _, _, icon = ns.GetSpellInfo(spellIdentifier)
+    if icon then return icon end
+    return nil
+end
+
+--- Pixel-grid rounding helper.
+--  Prevents 1px border shimmer and blurry subpixel anti-aliasing on high-DPI
+--  or scaled UI displays by snapping coordinates to the nearest physical device pixel.
+--  @param value (number) Point offset, width, or height in virtual UI coordinates
+--  @param customScale (number|nil) Optional custom effective scale override (defaults to UIParent:GetEffectiveScale())
+--  @return (number) Coordinate snapped to physical pixel boundary
+--  @usage local snappedY = ns.PixelSnap(yOffset)
+function ns.PixelSnap(value, customScale)
+    if type(value) ~= "number" then return value end
+    local effScale = customScale
+    if type(effScale) ~= "number" or effScale <= 0 then
+        local uip = rawget(_G, "UIParent")
+        effScale = (uip and uip.GetEffectiveScale and uip:GetEffectiveScale()) or 1.0
+        if type(effScale) ~= "number" or effScale <= 0 then effScale = 1.0 end
+    end
+    return math.floor(value * effScale + 0.5) / effScale
 end
 
 --- Classic/TBC-safe UnitCastingInfo wrapper.
@@ -173,7 +217,8 @@ end
 ns.BAR_WIDTH = 240
 ns.BAR_HEIGHT = 15
 ns.HUNTER_CAST_BAR_HEIGHT = 15
-ns.POWER_BAR_HEIGHT = 10
+ns.POWER_BAR_HEIGHT = 14
+ns.DEBUFF_BAR_HEIGHT = 8
 ns.HUNTER_CAST_BAR_GAP = 2
 ns.HUNTER_RANGE_HELPER_WIDTH = 7
 ns.ROGUE_SLICE_AND_DICE_BAR_HEIGHT = 4
@@ -186,7 +231,23 @@ ns.CAST_WINDOW = 0.5 -- shared hidden hunter / ranged cast window in TBC
 -- Spell IDs
 -- ============================================================
 ns.AUTO_SHOT_ID = 75
-ns.AUTO_SHOT_NAME = ns.GetSpellInfo(ns.AUTO_SHOT_ID) or "Auto Shot" or "Shoot"
+ns.AUTO_SHOT_NAME = ns.GetSpellInfo(ns.AUTO_SHOT_ID) or "Auto Shot"
+
+-- Auto Shot is reported inconsistently across the supported clients. Classic Era
+-- and TBC Anniversary disagree on whether CLEU / UNIT_SPELLCAST_* payloads carry
+-- the numeric ID or the localized spell name, and spell 75 resolves as "Shoot" on
+-- some builds and "Auto Shot" on others. ("Auto Shot" or "Shoot" always evaluated
+-- to "Auto Shot", so the "Shoot" alias was unreachable.) Collect every observed
+-- shape here so IsAutoShotSpell() cannot miss the shot. A miss is not cosmetic:
+-- melee swings are only skipped for a recognised Auto Shot, so an unrecognised
+-- token restarts MH/OH and flashes the MH bar right after a ranged swing.
+ns.AUTO_SHOT_NAMES = {
+    ["Auto Shot"] = true,
+    ["Shoot"] = true,
+}
+if type(ns.AUTO_SHOT_NAME) == "string" then
+    ns.AUTO_SHOT_NAMES[ns.AUTO_SHOT_NAME] = true
+end
 ns.WING_CLIP_ID = 2974
 ns.WING_CLIP_NAME = ns.GetSpellInfo(ns.WING_CLIP_ID) or "Wing Clip"
 ns.STEADY_SHOT_ID = 34120
@@ -424,7 +485,10 @@ function ns.IsAutoShotSpell(spellValue)
     end
 
     local spellId = tonumber(spellValue)
-    return spellValue == ns.AUTO_SHOT_ID or spellValue == ns.AUTO_SHOT_NAME or (spellId and spellId == ns.AUTO_SHOT_ID)
+    if spellId and spellId == ns.AUTO_SHOT_ID then
+        return true
+    end
+    return type(spellValue) == "string" and ns.AUTO_SHOT_NAMES[spellValue] == true
 end
 
 --- Check if a spell value is a hunter casting spell (Auto Shot, Multi-Shot,
@@ -871,6 +935,7 @@ ns.DB_DEFAULTS = {
     version = 56,
     showMH = true,
     showOH = true,
+    showGlowEffects = true,
     showRanged = true,
     showHunterRangeHelper = true,
     showEnemy = true,
@@ -884,7 +949,7 @@ ns.DB_DEFAULTS = {
     showPaladinJudgementMarker = true,
     showPaladinTwistFlash = true,
     showPowerBar = true,
-    powerBarHeight = 10,
+    powerBarHeight = 14,
     showWarriorRageBar = true,
     showDruidEnergyTickBar = true,
     showWarriorRageProtection = true,
@@ -950,8 +1015,8 @@ ns.DB_DEFAULTS = {
     shamanLightningTrackerGap = 6,
     -- Global scale multiplier (0.5x–3.0x): proportionally scales all bars, icons, and fonts
     globalScale = 1.0,
-    barTexture = "Interface\\AddOns\\SuperSwingTimer\\Media\\statusbar\\MerfinMain.tga",
-    rangedBarTexture = "Interface\\AddOns\\SuperSwingTimer\\Media\\statusbar\\MerfinMain.tga",
+    barTexture = "Interface\\AddOns\\SuperSwingTimer\\Media\\statusbar\\Wglass.tga",
+    rangedBarTexture = "Interface\\AddOns\\SuperSwingTimer\\Media\\statusbar\\Wglass.tga",
     barTextureLayer = "ARTWORK",
     sparkTexture = "Interface\\AddOns\\WeakAuras\\Media\\Textures\\Square_FullWhite",
     sparkTextureLayer = "OVERLAY",
@@ -977,7 +1042,7 @@ ns.DB_DEFAULTS = {
     sparkAlpha = 1,
     showAdvanced = false,
     minimalMode = false,
-    lockBars = false,
+    lockBars = true,
     colors = {
         mh = { r = 0.25, g = 0.72, b = 1.00, a = 1 },
         oh = { r = 0.25, g = 0.72, b = 1.00, a = 1 },

@@ -3,6 +3,7 @@
 -- File role: WoWUnit in-game test suite for SuperSwingTimer
 -- Depends on: WoWUnit addon (optional, skipped cleanly)
 -- Target: TBC Anniversary 2.5.5
+-- We dont use this anymore.
 -- ============================================================
 local _, ns = ...
 
@@ -16,7 +17,9 @@ local function RegisterSSTTests()
     -- not as a global. Capture it so the Aura/CLEU tests can reset mocks.
     local ClearReplaces = WoWUnit.ClearReplaces
     local T = ns._Test
-    local function pc(p, ...) local ok, r = pcall(p, ...); return ok, r end
+    local function pc(p, ...)
+        local ok, r = pcall(p, ...); return ok, r
+    end
 
     -- ============================================================
     -- SST-Core: addon loaded, constants sane, DB migrates, nil-safe
@@ -25,41 +28,54 @@ local function RegisterSSTTests()
 
     function Core:DBDefaults_HasKeys()
         local db = ns.DB_DEFAULTS
-        for _, k in ipairs{'version','barHeight','barWidth','barTexture',
-            'barBackgroundColor','barBorderColor','useClassColors','showMH',
-            'showOH','showRanged','showEnemy','colors'} do
-            IsTrue(db[k] ~= nil, 'DB.'..k..'='..tostring(db[k]))
+        for _, k in ipairs { 'version', 'barHeight', 'barWidth', 'barTexture',
+            'barBackgroundColor', 'barBorderColor', 'useClassColors', 'showMH',
+            'showOH', 'showRanged', 'showEnemy', 'colors' } do
+            IsTrue(db[k] ~= nil, 'DB.' .. k .. '=' .. tostring(db[k]))
         end
     end
+
     function Core:Clock_IsNumber() IsTrue(type(ns.GetAlignedTime()) == "number") end
+
     function Core:TimersTable_Exists()
-        for _, k in ipairs{'mh','oh','ranged','enemy'} do Exists(ns.timers[k]) end
+        for _, k in ipairs { 'mh', 'oh', 'ranged', 'enemy' } do Exists(ns.timers[k]) end
     end
+
     function Core:AutoShotID_75() AreEqual(ns.AUTO_SHOT_ID, 75) end
+
     function Core:SteadyShotCastTime() AreEqual(ns.STEADY_SHOT_CAST_TIME, 1.5) end
-    function Core:MigrateDB_Fresh() local db={}; local ok,_=pc(ns.MigrateDB,db); IsTrue(ok); AreEqual(db.version, ns.DB_CURRENT_VERSION) end
+
+    function Core:MigrateDB_Fresh()
+        local db = {}; local ok, _ = pc(ns.MigrateDB, db); IsTrue(ok); AreEqual(db.version, ns.DB_CURRENT_VERSION)
+    end
+
     function Core:MigrateDB_V1()
-        local db={version=1}; local ok,_=pc(ns.MigrateDB,db)
+        local db = { version = 1 }; local ok, _ = pc(ns.MigrateDB, db)
         IsTrue(ok); AreEqual(db.version, ns.DB_CURRENT_VERSION)
     end
+
     function Core:MigrateDB_V53()
-        local db={version=53}; local ok,_=pc(ns.MigrateDB,db)
+        local db = { version = 53 }; local ok, _ = pc(ns.MigrateDB, db)
         IsTrue(ok); AreEqual(db.version, ns.DB_CURRENT_VERSION)
     end
+
     function Core:MigrateDB_V54()
-        local db={version=54}; local ok,_=pc(ns.MigrateDB,db)
+        local db = { version = 54 }; local ok, _ = pc(ns.MigrateDB, db)
         IsTrue(ok); AreEqual(db.version, ns.DB_CURRENT_VERSION)
     end
+
     function Core:MigrateDB_V55()
-        local db={version=55}; local ok,_=pc(ns.MigrateDB,db)
+        local db = { version = 55 }; local ok, _ = pc(ns.MigrateDB, db)
         IsTrue(ok); AreEqual(db.version, ns.DB_CURRENT_VERSION)
     end
+
     function Core:MigrateDB_V56()
-        local db={version=56}; local ok,_=pc(ns.MigrateDB,db)
+        local db = { version = 56 }; local ok, _ = pc(ns.MigrateDB, db)
         IsTrue(ok); AreEqual(db.version, ns.DB_CURRENT_VERSION)
     end
+
     function Core:MigrateDB_V61()
-        local db={version=61, colors={}}; local ok,_=pc(ns.MigrateDB,db)
+        local db = { version = 61, colors = {} }; local ok, _ = pc(ns.MigrateDB, db)
         IsTrue(ok); AreEqual(db.version, ns.DB_CURRENT_VERSION)
         AreEqual(db.hunterCastBarHeight, 15)
         IsTrue(db.showPowerBar ~= nil)
@@ -70,6 +86,7 @@ local function RegisterSSTTests()
         IsTrue(db.colors.hunterManaBarColor ~= nil)
         IsTrue(db.colors.druidManaBarColor ~= nil)
     end
+
     function Core:MigrateDB_V62()
         local db = { version = 62, colors = { autoShotUnsafe = { r = 1, g = 1, b = 1, a = 0.4 } } }
         local ok, _ = pc(ns.MigrateDB, db)
@@ -82,36 +99,93 @@ local function RegisterSSTTests()
         AreEqual(db.colors.clipZone.g, 0)
         AreEqual(db.colors.clipZone.b, 0)
     end
+
     function Core:MigrateDB_V63()
         local db = { version = 63, colors = {} }
         local ok, _ = pc(ns.MigrateDB, db)
         IsTrue(ok)
         AreEqual(db.version, ns.DB_CURRENT_VERSION)
         AreEqual(db.hunterCastBarHeight, 15)
-        AreEqual(db.powerBarHeight, 10)
+        AreEqual(db.powerBarHeight, 14)
         IsTrue(db.colors.warriorRageBarColor ~= nil)
     end
+
     function Core:MigrateDB_V64()
-        local db = { version = 64, hunterCastBarHeight = 15, powerBarHeight = 10, colors = {} }
+        local db = { version = 63, hunterCastBarHeight = 15, powerBarHeight = 10, colors = {} }
         local ok, _ = pc(ns.MigrateDB, db)
         IsTrue(ok)
-        AreEqual(db.version, 64)
+        AreEqual(db.version, 66)
+        AreEqual(db.hunterCastBarHeight, 15)
+        AreEqual(db.powerBarHeight, 14)
     end
+
+    function Core:MigrateDB_V65()
+        local db = { version = 64, barTexture = "Interface\\AddOns\\SuperSwingTimer\\Media\\statusbar\\MerfinMain.tga" }
+        local ok, _ = pc(ns.MigrateDB, db)
+        IsTrue(ok)
+        AreEqual(db.version, 66)
+        AreEqual(db.barTexture, "Interface\\AddOns\\SuperSwingTimer\\Media\\statusbar\\Wglass.tga")
+        AreEqual(db.rangedBarTexture, "Interface\\AddOns\\SuperSwingTimer\\Media\\statusbar\\Wglass.tga")
+    end
+
+    function Core:MigrateDB_V66()
+        local db = { version = 65, powerBarHeight = 10 }
+        local ok, _ = pc(ns.MigrateDB, db)
+        IsTrue(ok)
+        AreEqual(db.version, 66)
+        AreEqual(db.powerBarHeight, 14)
+    end
+
+    function Core:MigrateDB_V66_PreservesCustom()
+        local db = { version = 65, powerBarHeight = 22 }
+        local ok, _ = pc(ns.MigrateDB, db)
+        IsTrue(ok)
+        AreEqual(db.version, 66)
+        AreEqual(db.powerBarHeight, 22)
+    end
+
     function Core:TOC_Version_And_Interfaces()
         local f = io.open("SuperSwingTimer.toc", "r")
         IsTrue(f ~= nil, "SuperSwingTimer.toc must exist")
         local content = f:read("*all")
         f:close()
-        IsTrue(content:find("## Version: v0.2.5", 1, true) ~= nil, "TOC Version must be v0.2.5")
+        IsTrue(content:find("## Version: v0.2.7", 1, true) ~= nil, "TOC Version must be v0.2.7")
         IsTrue(content:find("38002", 1, true) ~= nil, "TOC must contain Titanforge interface 38002")
         IsTrue(content:find("11509", 1, true) ~= nil, "TOC must contain Classic Era interface 11509")
         IsTrue(content:find("20506", 1, true) ~= nil, "TOC must contain TBC Anniversary interface 20506")
+
+        local diagPos = content:find("SuperSwingTimer_Diag.lua", 1, true)
+        local constPos = content:find("SuperSwingTimer_Constants.lua", 1, true)
+        IsTrue(diagPos ~= nil, "TOC must load SuperSwingTimer_Diag.lua")
+        IsTrue(constPos ~= nil, "TOC must load SuperSwingTimer_Constants.lua")
+        IsTrue(diagPos and constPos and diagPos < constPos, "Diag must load before Constants")
+
+        local libStubPos = content:find("Lib\\LibStub\\LibStub.lua", 1, true)
+        local libGlowPos = content:find("Lib\\LibCustomGlow-1.0\\LibCustomGlow-1.0.xml", 1, true)
+        IsTrue(libStubPos ~= nil, "TOC must load LibStub")
+        IsTrue(libGlowPos ~= nil, "TOC must load LibCustomGlow")
+        IsTrue(libStubPos and libGlowPos and libStubPos < libGlowPos, "LibStub must load before LibCustomGlow")
+
+        local glowAdapterPos = content:find("SuperSwingTimer_Glow.lua", 1, true)
+        local classModsPos = content:find("SuperSwingTimer_ClassMods.lua", 1, true)
+        IsTrue(glowAdapterPos ~= nil, "TOC must load SuperSwingTimer_Glow.lua")
+        IsTrue(glowAdapterPos and classModsPos and glowAdapterPos < classModsPos,
+            "Glow adapter must load before ClassMods")
     end
+
+    function Core:ResetBarDisplay_SetsIdempotentFlag()
+        local bar = CreateFrame('StatusBar')
+        IsTrue(type(ns.ResetBarDisplay) == 'function', 'ResetBarDisplay exposed')
+        ns.ResetBarDisplay(bar)
+        IsTrue(bar._sstResetDone == true, 'reset flag set for idle-path guard')
+    end
+
     function Core:HasActiveTimers_Function()
         IsTrue(type(ns.HasActiveTimers) == "function")
         local active = ns.HasActiveTimers()
         IsTrue(type(active) == "boolean")
     end
+
     function Core:HasActiveBuffIcons_Tracking()
         IsTrue(type(ns.HasActiveBuffIcons) == "function")
         local savedCount = ns.activeBuffIconCount
@@ -121,29 +195,107 @@ local function RegisterSSTTests()
         IsTrue(ns.HasActiveBuffIcons())
         ns.activeBuffIconCount = savedCount
     end
+
     function Core:HunterCastBarHeight_Default15()
         AreEqual(ns.HUNTER_CAST_BAR_HEIGHT, 15)
         AreEqual(ns.DB_DEFAULTS.hunterCastBarHeight, 15)
     end
-    function Core:PowerBarHeight_Default10()
-        AreEqual(ns.POWER_BAR_HEIGHT, 10)
-        AreEqual(ns.DB_DEFAULTS.powerBarHeight, 10)
+
+    function Core:PowerBarHeight_Default14()
+        AreEqual(ns.POWER_BAR_HEIGHT, 14)
+        AreEqual(ns.DB_DEFAULTS.powerBarHeight, 14)
     end
+
+    function Core:DebuffBarHeight_Default8()
+        AreEqual(ns.DEBUFF_BAR_HEIGHT, 8)
+    end
+
     function Core:DefaultFont_Resolves()
         IsTrue(type(ns.GetDefaultFont) == "function")
         local font = ns.GetDefaultFont()
         IsTrue(type(font) == "string" and #font > 0)
     end
+
     function Core:FactoryReset() IsTrue(pc(ns.ResetConfigDefaults)) end
+
     function Core:GetSpellInfo_Wraps() Exists(ns.GetSpellInfo(ns.AUTO_SHOT_ID)) end
-    function Core:GetSpellInfo_Nil() local ok,_=pc(ns.GetSpellInfo,nil); IsTrue(ok) end
-    function Core:GetUnitCasting_Nil() local ok,_=pc(ns.GetUnitCastingSpellInfo,nil); IsTrue(ok) end
-    function Core:SetBarLabelText_Nil() IsTrue(pc(ns.SetBarLabelText,nil,'test',true)) end
-    function Core:RefreshBarSpark_Nil() IsTrue(pc(ns.RefreshBarSparkPosition,nil)) end
-    function Core:RestoreBarLabel_Nil() IsTrue(pc(ns.RestoreBarDefaultLabel,nil)) end
+
+    function Core:GetSpellInfo_Nil()
+        local ok, _ = pc(ns.GetSpellInfo, nil); IsTrue(ok)
+    end
+
+    function Core:GetUnitCasting_Nil()
+        local ok, _ = pc(ns.GetUnitCastingSpellInfo, nil); IsTrue(ok)
+    end
+
+    function Core:SetBarLabelText_Nil() IsTrue(pc(ns.SetBarLabelText, nil, 'test', true)) end
+
+    function Core:RefreshBarSpark_Nil() IsTrue(pc(ns.RefreshBarSparkPosition, nil)) end
+
+    function Core:RestoreBarLabel_Nil() IsTrue(pc(ns.RestoreBarDefaultLabel, nil)) end
+
     function Core:RefreshBarLabels() IsTrue(pc(ns.RefreshBarLabelStyles)) end
+
     function Core:HasteAPI_Exists()
         IsTrue(type(GetMeleeHaste) == "function" or type(GetMeleeHaste) == "nil", 'GetMeleeHaste')
+    end
+
+    function Core:GetSpellTexture_PcallSafety()
+        IsTrue(type(ns.GetSpellTexture) == "function")
+        local ok1, res1 = pc(ns.GetSpellTexture, nil)
+        IsTrue(ok1)
+        AreEqual(res1, nil)
+        local ok2, _ = pc(ns.GetSpellTexture, -99999)
+        IsTrue(ok2)
+        local ok3, _ = pc(ns.GetSpellTexture, "NonExistentSpell123")
+        IsTrue(ok3)
+    end
+
+    function Core:Paladin_DebuffBars_IconCreated()
+        local savedHooks = {}
+        for i, h in ipairs(ns.OnUpdateHooks or {}) do savedHooks[i] = h end
+        if ns._Test and ns._Test.SetupRetPaladin then
+            ns._Test.SetupRetPaladin()
+        end
+        if ns.UpdatePaladinJudgementBar then
+            ns.UpdatePaladinJudgementBar(true)
+        end
+        if ns.UpdatePaladinSealVengeanceBar then
+            ns.UpdatePaladinSealVengeanceBar(true)
+        end
+        local jBar = ns.paladinJudgementBar
+        Exists(jBar, "Judgement bar must exist after SetupRetPaladin")
+        if jBar then
+            Exists(jBar.icon, "Judgement bar icon frame must exist")
+        end
+        local sBar = ns.paladinSealVengeanceBar
+        Exists(sBar, "Seal of Vengeance bar must exist after SetupRetPaladin")
+        if sBar then
+            Exists(sBar.icon, "Seal of Vengeance bar icon frame must exist")
+        end
+        ns.OnUpdateHooks = savedHooks
+    end
+
+    function Core:PixelSnap()
+        IsTrue(type(ns.PixelSnap) == "function", "ns.PixelSnap must be a function")
+        -- Non-number inputs should return unchanged
+        AreEqual(ns.PixelSnap(nil), nil)
+        AreEqual(ns.PixelSnap("text"), "text")
+        -- Scale 1.0 snapping
+        AreEqual(ns.PixelSnap(10.2, 1.0), 10)
+        AreEqual(ns.PixelSnap(10.7, 1.0), 11)
+        AreEqual(ns.PixelSnap(10.5, 1.0), 11)
+        -- Scale 2.0 snapping (0.5 device pixel steps)
+        AreEqual(ns.PixelSnap(10.2, 2.0), 10)
+        AreEqual(ns.PixelSnap(10.3, 2.0), 10.5)
+        AreEqual(ns.PixelSnap(10.74, 2.0), 10.5)
+        AreEqual(ns.PixelSnap(10.8, 2.0), 11)
+        -- Negative coordinates
+        AreEqual(ns.PixelSnap(-5.4, 1.0), -5)
+        AreEqual(ns.PixelSnap(-5.7, 1.0), -6)
+        -- Default scale fallback (UIParent or 1.0)
+        local snapped = ns.PixelSnap(14.0)
+        IsTrue(type(snapped) == "number")
     end
 
     -- ============================================================
@@ -156,17 +308,18 @@ local function RegisterSSTTests()
         -- GetHelpfulAuraData -> ns.UnitBuff -> ns.UnitAura -> global UnitAura.
         -- The wrapper only calls the global UnitAura, so we must mock UnitAura
         -- (not the deprecated UnitBuff global) for the mock to engage.
-        Replace('UnitAura', function(u,i)
-            if i==1 then return 'Slice and Dice', 132181, 5, nil, 15, 12345.0, 'player', false, false, 5171, false end
+        Replace('UnitAura', function(u, i)
+            if i == 1 then return 'Slice and Dice', 132181, 5, nil, 15, 12345.0, 'player', false, false, 5171, false end
         end)
-        local _,dur,_,sid=T.GetHelpfulAuraData('player',1)
-        AreEqual(dur,15); AreEqual(sid,5171)
+        local _, dur, _, sid = T.GetHelpfulAuraData('player', 1)
+        AreEqual(dur, 15); AreEqual(sid, 5171)
         ClearReplaces()
     end
+
     function Auras:HelpfulStacks_Returned()
         if not T or not T.GetHelpfulAuraData then return end
-        Replace('UnitAura', function(_,i)
-            if i==1 then return 'Maelstrom Weapon', 132181, 4, nil, 30, 12345.0, 'player', false, false, 408505, false end
+        Replace('UnitAura', function(_, i)
+            if i == 1 then return 'Maelstrom Weapon', 132181, 4, nil, 30, 12345.0, 'player', false, false, 408505, false end
         end)
         local _, dur, _, sid, count = T.GetHelpfulAuraData('player', 1)
         AreEqual(dur, 30)
@@ -174,42 +327,47 @@ local function RegisterSSTTests()
         AreEqual(count, 4)
         ClearReplaces()
     end
+
     function Auras:HarmfulSpellID_AtPos10()
         if not T or not T.GetHarmfulAuraData then return end
-        Replace('UnitAura', function(u,i,f)
-            if i==1 then return 'Flame Shock',132181,1,'Fire',12,12350.0,'player',false,false,8050,false end
+        Replace('UnitAura', function(u, i, f)
+            if i == 1 then return 'Flame Shock', 132181, 1, 'Fire', 12, 12350.0, 'player', false, false, 8050, false end
         end)
-        local _,_,dur,_,caster,sid=T.GetHarmfulAuraData('target',1,'HARMFUL')
-        AreEqual(dur,12); AreEqual(caster,'player'); AreEqual(sid,8050)
+        local _, _, dur, _, caster, sid = T.GetHarmfulAuraData('target', 1, 'HARMFUL')
+        AreEqual(dur, 12); AreEqual(caster, 'player'); AreEqual(sid, 8050)
         ClearReplaces()
     end
+
     function Auras:HarmfulPhysical_NilDispel()
         if not T or not T.GetHarmfulAuraData then return end
-        Replace('UnitAura', function(u,i,f)
-            if i==1 then return 'Deep Wounds',132316,1,nil,12,12360.0,'player',false,false,12721,false end
+        Replace('UnitAura', function(u, i, f)
+            if i == 1 then return 'Deep Wounds', 132316, 1, nil, 12, 12360.0, 'player', false, false, 12721, false end
         end)
-        local _,_,dur,_,caster,sid=T.GetHarmfulAuraData('target',1,'HARMFUL')
-        AreEqual(dur,12); AreEqual(caster,'player'); AreEqual(sid,12721)
+        local _, _, dur, _, caster, sid = T.GetHarmfulAuraData('target', 1, 'HARMFUL')
+        AreEqual(dur, 12); AreEqual(caster, 'player'); AreEqual(sid, 12721)
         ClearReplaces()
     end
+
     function Auras:HarmfulNil_ReturnsNil()
         if not T or not T.GetHarmfulAuraData then return end
-        Replace('UnitAura',function() end)
-        IsFalse(T.GetHarmfulAuraData('target',1,'HARMFUL'))
+        Replace('UnitAura', function() end)
+        IsFalse(T.GetHarmfulAuraData('target', 1, 'HARMFUL'))
         ClearReplaces()
     end
+
     function Auras:PaladinSeal_Command()
         if ns.GetPaladinSealFamilyByAuraName then
-            AreEqual(ns.GetPaladinSealFamilyByAuraName('Seal of Command'),'COMMAND')
+            AreEqual(ns.GetPaladinSealFamilyByAuraName('Seal of Command'), 'COMMAND')
         end
     end
+
     function Auras:CrossDebuff_FlameShock()
         if not T or not T.GetHarmfulAuraData then return end
-        Replace('UnitAura',function(u,i,f)
-            if i==1 then return 'Flame Shock',132181,1,'Fire',12,12350.0,'player',false,false,8050,false end
-            end)
-        local _,_,dur,_,c,s=T.GetHarmfulAuraData('target',1,'HARMFUL')
-        AreEqual(dur,12); AreEqual(c,'player'); IsTrue(type(s)=='number')
+        Replace('UnitAura', function(u, i, f)
+            if i == 1 then return 'Flame Shock', 132181, 1, 'Fire', 12, 12350.0, 'player', false, false, 8050, false end
+        end)
+        local _, _, dur, _, c, s = T.GetHarmfulAuraData('target', 1, 'HARMFUL')
+        AreEqual(dur, 12); AreEqual(c, 'player'); IsTrue(type(s) == 'number')
         ClearReplaces()
     end
 
@@ -320,7 +478,8 @@ local function RegisterSSTTests()
         local prevC = rawget(_G, "C_UnitAuras")
         _G.C_UnitAuras = nil
         Replace('UnitAura', function(u, i, f)
-            return "Battle Shout", "Rank 1", "Interface\\Icons\\Ability_Warrior_WarCry", 0, nil, 120, 500, "player", false, nil, 6673
+            return "Battle Shout", "Rank 1", "Interface\\Icons\\Ability_Warrior_WarCry", 0, nil, 120, 500, "player",
+                false, nil, 6673
         end)
 
         local name, _, icon, _, _, _, _, _, _, _, sId = ns.UnitAura("player", 1, "HELPFUL")
@@ -339,44 +498,53 @@ local function RegisterSSTTests()
 
     function Combat:StackOffset_SingleBar()
         if not T or not T.RestackDebuffBars or not T.GetDebuffStackOffset then return end
-        local ref = {GetTop = function() return 100 end, GetAlpha = function() return 1 end}
-        local b1 = {IsShown = function() return true end, GetHeight = function() return 6 end,
-            ClearAllPoints = function() end, SetPoint = function() end}
-        T.RestackDebuffBars({b1}, ref, 2)
+        local ref = { GetTop = function() return 100 end, GetAlpha = function() return 1 end }
+        local b1 = {
+            IsShown = function() return true end,
+            GetHeight = function() return 6 end,
+            ClearAllPoints = function() end,
+            SetPoint = function() end
+        }
+        T.RestackDebuffBars({ b1 }, ref, 2)
         IsTrue(T.GetDebuffStackOffset() > 0)
     end
+
     function Combat:StackOffset_HiddenBars()
         if not T or not T.RestackDebuffBars or not T.GetDebuffStackOffset then return end
-        local ref = {GetTop = function() return 100 end, GetAlpha = function() return 1 end}
-        local b1 = {IsShown = function() return false end, GetHeight = function() return 6 end}
-        T.RestackDebuffBars({b1}, ref, 2)
+        local ref = { GetTop = function() return 100 end, GetAlpha = function() return 1 end }
+        local b1 = { IsShown = function() return false end, GetHeight = function() return 6 end }
+        T.RestackDebuffBars({ b1 }, ref, 2)
         IsTrue(type(T.GetDebuffStackOffset()) == 'number')
     end
+
     function Combat:StartSwing_MH()
         if not ns.StartSwing then return end
-        local now=ns.GetAlignedTime()
-        pc(ns.StartSwing,"mh",nil,now)
-        local t=ns.timers.mh; Exists(t)
-        if t then IsTrue(t.state=="swinging") end
+        local now = ns.GetAlignedTime()
+        pc(ns.StartSwing, "mh", nil, now)
+        local t = ns.timers.mh; Exists(t)
+        if t then IsTrue(t.state == "swinging") end
     end
+
     function Combat:CLEU_SWING_DAMAGE()
-        Replace('CombatLogGetCurrentEventInfo',function()
-            return nil,"SWING_DAMAGE",nil,"Player-1",nil,nil,nil,nil,"Creature-1",nil,nil,nil,nil,nil,100
+        Replace('CombatLogGetCurrentEventInfo', function()
+            return nil, "SWING_DAMAGE", nil, "Player-1", nil, nil, nil, nil, "Creature-1", nil, nil, nil, nil, nil, 100
         end)
-        Replace('GetPlayerGUID',function() return "Player-1" end)
-        local old=ns.timers.mh and ns.timers.mh.endTime or 0
+        Replace('GetPlayerGUID', function() return "Player-1" end)
+        local old = ns.timers.mh and ns.timers.mh.endTime or 0
         pc(ns.HandleCLEU)
-        IsTrue(ns.timers.mh.endTime ~= old or ns.timers.mh.state=="swinging")
+        IsTrue(ns.timers.mh.endTime ~= old or ns.timers.mh.state == "swinging")
         ClearReplaces()
     end
+
     function Combat:CLEU_SWING_MISSED()
-        Replace('CombatLogGetCurrentEventInfo',function()
-            return nil,"SWING_MISSED",nil,"Player-1",nil,nil,nil,nil,"Creature-1",nil,nil,nil,"MISS"
+        Replace('CombatLogGetCurrentEventInfo', function()
+            return nil, "SWING_MISSED", nil, "Player-1", nil, nil, nil, nil, "Creature-1", nil, nil, nil, "MISS"
         end)
-        Replace('GetPlayerGUID',function() return "Player-1" end)
-        pc(ns.HandleCLEU); IsTrue(true,'no error')
+        Replace('GetPlayerGUID', function() return "Player-1" end)
+        pc(ns.HandleCLEU); IsTrue(true, 'no error')
         ClearReplaces()
     end
+
     function Combat:CLEU_FastPath_IgnoresThirdParty()
         Replace('CombatLogGetCurrentEventInfo', function()
             -- Event between Player-2 and Creature-999 (neither matches player "Player-1" or enemyTargetGUID nil)
@@ -401,38 +569,398 @@ local function RegisterSSTTests()
     local Hunter = WoWUnit('SST-Hunter', 'PLAYER_ENTERING_WORLD')
 
     function Hunter:CastDetection_Steady() IsTrue(ns.IsHunterCastSpell(ns.STEADY_SHOT_ID)) end
+
     function Hunter:CastDetection_Aimed() IsTrue(ns.IsHunterCastSpell(19434)) end
+
     function Hunter:CastDetection_Auto() IsTrue(ns.IsHunterCastSpell(75)) end
+
     function Hunter:CastDetection_AutoNotActual() IsFalse(ns.IsHunterActualCastSpell(75)) end
+
     function Hunter:CastDetection_SteadyIsActual() IsTrue(ns.IsHunterActualCastSpell(ns.STEADY_SHOT_ID)) end
+
     function Hunter:SerpentStingIDs_Populated()
-        local c=0; for _ in pairs(ns.HUNTER_SERPENT_STING_IDS or {}) do c=c+1 end
-        IsTrue(c>=3)
+        local c = 0; for _ in pairs(ns.HUNTER_SERPENT_STING_IDS or {}) do c = c + 1 end
+        IsTrue(c >= 3)
     end
+
     function Hunter:SerpentStingName_Resolved() Exists(ns.HUNTER_SERPENT_STING_NAME) end
+
     function Hunter:IsAutoShot_ByID() IsTrue(ns.IsAutoShotSpell(75)) end
-    function Hunter:IsAutoShot_Nil() local ok,r=pc(ns.IsAutoShotSpell,nil); IsTrue(ok); IsFalse(r) end
-    function Hunter:IsHunterCast_Nil() local ok,r=pc(ns.IsHunterCastSpell,nil); IsTrue(ok); IsFalse(r) end
+
+    function Hunter:IsAutoShot_Nil()
+        local ok, r = pc(ns.IsAutoShotSpell, nil); IsTrue(ok); IsFalse(r)
+    end
+
+    function Hunter:IsHunterCast_Nil()
+        local ok, r = pc(ns.IsHunterCastSpell, nil); IsTrue(ok); IsFalse(r)
+    end
+
     function Hunter:SerpentSting_MockDetect()
         if not T or not T.GetTargetSerpentStingData then return end
-        Replace('UnitAura',function(u,i,f)
-            if i==1 then return 'Serpent Sting',132181,1,'Nature',15,12345.0,'player',false,false,27019,false end
+        Replace('UnitAura', function(u, i, f)
+            if i == 1 then return 'Serpent Sting', 132181, 1, 'Nature', 15, 12345.0, 'player', false, false, 27019, false end
         end)
-        Replace('UnitExists',function() return true end)
-        Replace('UnitCanAttack',function() return true end)
-        local dur,_=T.GetTargetSerpentStingData()
-        Exists(dur,'SerpentSting found')
+        Replace('UnitExists', function() return true end)
+        Replace('UnitCanAttack', function() return true end)
+        local dur, _ = T.GetTargetSerpentStingData()
+        Exists(dur, 'SerpentSting found')
         ClearReplaces()
     end
+
     function Hunter:SerpentSting_FiltersOtherCaster()
         if not T or not T.GetTargetSerpentStingData then return end
-        Replace('UnitAura',function(u,i,f)
-            if i==1 then return 'Serpent Sting',132181,1,'Nature',15,12345.0,'OtherGuy',false,false,27019,false end
+        Replace('UnitAura', function(u, i, f)
+            if i == 1 then return 'Serpent Sting', 132181, 1, 'Nature', 15, 12345.0, 'OtherGuy', false, false, 27019,
+                    false end
         end)
-        Replace('UnitExists',function() return true end)
-        Replace('UnitCanAttack',function() return true end)
+        Replace('UnitExists', function() return true end)
+        Replace('UnitCanAttack', function() return true end)
         IsFalse(T.GetTargetSerpentStingData())
         ClearReplaces()
+    end
+
+    function Hunter:SteadyShot_InRedZone_KeepsAutoShotVisible()
+        local savedClass = ns.playerClass
+        local savedTimers = ns.timers
+        local savedCastBar = ns.hunterCastBar
+        ns.playerClass = "HUNTER"
+        ns.hunterCastBar = ns.hunterCastBar or CreateFrame("StatusBar", "SuperSwingTimerHunterCastBar", UIParent)
+        ns.classConfig = { ranged = true, melee = true }
+        ns.timers = {
+            ranged = { state = "swinging", lastSwing = 100.0, duration = 2.8, speed = 2.8 },
+            mh = { state = "idle", lastSwing = 0, duration = 0 },
+            oh = { state = "idle", lastSwing = 0, duration = 0 },
+            enemy = { state = "idle", lastSwing = 0, duration = 0 }
+        }
+        local savedGetAlignedTime = ns.GetAlignedTime
+        ns.GetAlignedTime = function() return 102.5 end
+        Replace('GetTimePreciseSec', function() return 102.5 end)
+        Replace('GetTime', function() return 102.5 end)
+        ns.HandleSpellcastSucceeded("player", nil, ns.STEADY_SHOT_ID)
+
+        local showCastBar = ns.ShouldShowHunterCastBar and ns.ShouldShowHunterCastBar()
+        IsTrue(showCastBar, "Cast bar must remain visible to show Auto Shot after Steady Shot ends in red zone")
+
+        if ns.GetHunterHiddenCastWindowFromRangedTimer then
+            local start, dur = ns.GetHunterHiddenCastWindowFromRangedTimer(102.5)
+            Exists(start, "Hidden cast window start must exist")
+            IsTrue(dur and dur > 0, "Hidden cast window duration must be > 0")
+        end
+
+        ClearReplaces()
+        ns.GetAlignedTime = savedGetAlignedTime
+        ns.playerClass = savedClass
+        ns.timers = savedTimers
+        ns.hunterCastBar = savedCastBar
+    end
+
+    function Hunter:SteadyShot_InRedZone_KeepsRangedTimerActive()
+        local savedClass = ns.playerClass
+        local savedTimers = ns.timers
+        ns.playerClass = "HUNTER"
+        ns.classConfig = { ranged = true, melee = true }
+        ns.timers = {
+            ranged = { state = "swinging", lastSwing = 100.0, duration = 2.8, speed = 2.8 },
+            mh = { state = "idle", lastSwing = 0, duration = 0 },
+            oh = { state = "idle", lastSwing = 0, duration = 0 },
+            enemy = { state = "idle", lastSwing = 0, duration = 0 }
+        }
+        -- Steady shot ended in red zone at 102.7
+        ns.lastHunterCastEndedAt = 102.7
+        ns.hunterSteadyShotEndedInRedZone = 102.7
+
+        -- Now is 102.82 (past 102.8 duration by 20ms, within latency/grace allowance)
+        Replace('GetTimePreciseSec', function() return 102.82 end)
+        Replace('GetTime', function() return 102.82 end)
+
+        Exists(ns.ShouldKeepHunterRangedTimerActive, "ShouldKeepHunterRangedTimerActive must be exported")
+        local keepActive = ns.ShouldKeepHunterRangedTimerActive(102.82)
+        IsTrue(keepActive, "Ranged timer must remain active past nominal duration when Steady Shot landed in red zone")
+
+        ClearReplaces()
+        ns.lastHunterCastEndedAt = nil
+        ns.hunterSteadyShotEndedInRedZone = nil
+        ns.playerClass = savedClass
+        ns.timers = savedTimers
+    end
+
+    function Hunter:SteadyShot_LateLanding_InRedZone_EndToEnd()
+        local savedClass = ns.playerClass
+        local savedTimers = ns.timers
+        local savedCastBar = ns.hunterCastBar
+        ns.playerClass = "HUNTER"
+        ns.hunterCastBar = ns.hunterCastBar or CreateFrame("StatusBar", "SuperSwingTimerHunterCastBar", UIParent)
+        ns.classConfig = { ranged = true, melee = true }
+        ns.timers = {
+            ranged = { state = "swinging", lastSwing = 100.0, duration = 2.8, speed = 2.8 },
+            mh = { state = "idle", lastSwing = 0, duration = 0 },
+            oh = { state = "idle", lastSwing = 0, duration = 0 },
+            enemy = { state = "idle", lastSwing = 0, duration = 0 }
+        }
+        -- Steady shot finishes at 102.75 (late into the red clip zone, where windowEnd is 102.8)
+        local savedGetAlignedTime = ns.GetAlignedTime
+        ns.GetAlignedTime = function() return 102.75 end
+        Replace('GetTimePreciseSec', function() return 102.75 end)
+        Replace('GetTime', function() return 102.75 end)
+
+        ns.HandleSpellcastSucceeded("player", nil, ns.STEADY_SHOT_ID)
+        ns.HandleSpellcastStop("player")
+
+        IsTrue(ns.hunterSteadyShotEndedInRedZone == 102.75, "hunterSteadyShotEndedInRedZone must be recorded")
+        IsTrue(ns.ShouldKeepHunterRangedTimerActive(102.75), "Ranged timer must remain active")
+        IsTrue(ns.ShouldShowHunterCastBar(), "Cast bar must remain shown for upcoming Auto Shot")
+
+        -- Auto Shot fires and begins new cycle
+        ns.StartRangedSwing(102.8)
+        IsFalse(ns.hunterSteadyShotEndedInRedZone ~= nil, "hunterSteadyShotEndedInRedZone must be cleared upon StartRangedSwing")
+
+        ClearReplaces()
+        ns.GetAlignedTime = savedGetAlignedTime
+        ns.playerClass = savedClass
+        ns.timers = savedTimers
+        ns.hunterCastBar = savedCastBar
+    end
+
+    function Hunter:IsAutoShotSpell_AcceptsIdAndAliases()
+        IsTrue(ns.IsAutoShotSpell(ns.AUTO_SHOT_ID), "Auto Shot must match by numeric ID")
+        IsTrue(ns.IsAutoShotSpell(tostring(ns.AUTO_SHOT_ID)), "Auto Shot must match a numeric string (name-shaped CLEU payloads)")
+        IsTrue(ns.IsAutoShotSpell("Auto Shot"), "Auto Shot must match the canonical English name")
+        IsTrue(ns.IsAutoShotSpell("Shoot"), "Auto Shot must match the Classic Era 'Shoot' alias")
+        IsTrue(ns.IsAutoShotSpell(ns.AUTO_SHOT_NAME), "Auto Shot must match the client-resolved localized name")
+        IsFalse(ns.IsAutoShotSpell(ns.STEADY_SHOT_ID), "Steady Shot ID must not be treated as Auto Shot")
+        IsFalse(ns.IsAutoShotSpell("Steady Shot"), "Steady Shot name must not be treated as Auto Shot")
+        IsFalse(ns.IsAutoShotSpell(nil), "nil must not be treated as Auto Shot")
+    end
+
+    function Hunter:Interrupt_ClearsCastIdentity()
+        local savedClass = ns.playerClass
+        local savedTimers = ns.timers
+        local savedGetAlignedTime = ns.GetAlignedTime
+        ns.playerClass = "HUNTER"
+        ns.classConfig = { ranged = true, melee = true }
+        ns.timers = {
+            ranged = { state = "swinging", lastSwing = 100.0, duration = 2.8, speed = 2.8 },
+            mh = { state = "idle", lastSwing = 0, duration = 0 },
+            oh = { state = "idle", lastSwing = 0, duration = 0 },
+            enemy = { state = "idle", lastSwing = 0, duration = 0 }
+        }
+        ns.hunterCastActive = true
+        ns.hunterCastSpellId = ns.STEADY_SHOT_ID
+        ns.hunterCastDuration = 1.5
+        ns.currentCastSpellId = ns.STEADY_SHOT_ID
+        ns.currentCastStartTime = 100.0
+        ns.lastResolvedHunterCastToken = ns.STEADY_SHOT_ID
+        ns.lastResolvedHunterCastAt = 100.0
+        ns.casting = true
+
+        ns.GetAlignedTime = function() return 101.2 end
+        Replace('GetTimePreciseSec', function() return 101.2 end)
+        Replace('GetTime', function() return 101.2 end)
+        ns.HandleSpellcastInterruptedOrFailed("player", nil, ns.STEADY_SHOT_ID)
+
+        -- A stale token lets HandleSpellcastSucceeded re-attribute a later,
+        -- unrelated success to this interrupted cast.
+        IsTrue(ns.currentCastSpellId == nil, "Interrupt must clear currentCastSpellId")
+        IsTrue(ns.currentCastStartTime == nil, "Interrupt must clear currentCastStartTime")
+        IsTrue(ns.lastResolvedHunterCastToken == nil, "Interrupt must clear lastResolvedHunterCastToken")
+        IsTrue(ns.lastResolvedHunterCastAt == nil, "Interrupt must clear lastResolvedHunterCastAt")
+        IsTrue(ns.hunterCastActive == false, "Interrupt must clear hunterCastActive")
+
+        ClearReplaces()
+        ns.GetAlignedTime = savedGetAlignedTime
+        ns.playerClass = savedClass
+        ns.timers = savedTimers
+        ns.hunterSteadyShotEndedInRedZone = nil
+        ns.currentCastSpellId = nil
+        ns.currentCastStartTime = nil
+    end
+
+    function Hunter:ShouldKeep_HoldsPastCycleEnd_WithoutRedZoneFlag()
+        local savedClass = ns.playerClass
+        local savedTimers = ns.timers
+        local savedCastBar = ns.hunterCastBar
+        local savedAutoRepeat = ns.IsHunterAutoRepeatActive
+        local savedCooldown = ns.GetAutoShotCooldown
+        local savedLatency = ns.cachedLatency
+
+        ns.playerClass = "HUNTER"
+        ns.classConfig = { ranged = true, melee = true }
+        ns.hunterCastBar = nil
+        ns.cachedLatency = 0
+        -- Cycle runs 100.0 -> 103.0. The cast ended early at 101.5, so the
+        -- cast-anchored 1.0s red-zone window has already expired by cycle end.
+        ns.timers = {
+            ranged = { state = "swinging", lastSwing = 100.0, duration = 3.0, speed = 3.0 },
+            mh = { state = "idle", lastSwing = 0, duration = 0 },
+            oh = { state = "idle", lastSwing = 0, duration = 0 },
+            enemy = { state = "idle", lastSwing = 0, duration = 0 }
+        }
+        ns.hunterSteadyShotEndedInRedZone = nil
+        ns.IsHunterAutoRepeatActive = function() return false end
+        ns.GetAutoShotCooldown = function() return nil, nil end
+
+        -- Within cycleEnd + latency/grace (103.0 + 0.55): must still hold.
+        IsTrue(ns.ShouldKeepHunterRangedTimerActive(103.2),
+            "Ranged timer must hold past cycle end so Auto Shot can fire and display")
+        -- Past the grace window the timer is genuinely over: must release.
+        IsFalse(ns.ShouldKeepHunterRangedTimerActive(103.9),
+            "Ranged timer must release once the cycle is overdue beyond latency/grace")
+
+        ns.playerClass = savedClass
+        ns.timers = savedTimers
+        ns.hunterCastBar = savedCastBar
+        ns.IsHunterAutoRepeatActive = savedAutoRepeat
+        ns.GetAutoShotCooldown = savedCooldown
+        ns.cachedLatency = savedLatency
+    end
+
+    function Hunter:ShouldKeep_ReleasesAfterReset()
+        local savedClass = ns.playerClass
+        local savedTimers = ns.timers
+        local savedCastBar = ns.hunterCastBar
+        local savedAutoRepeat = ns.IsHunterAutoRepeatActive
+        local savedCooldown = ns.GetAutoShotCooldown
+        local savedLatency = ns.cachedLatency
+
+        ns.playerClass = "HUNTER"
+        ns.classConfig = { ranged = true, melee = true }
+        ns.hunterCastBar = nil
+        ns.cachedLatency = 0
+        -- ResetTimer leaves state="idle" and lastSwing=0; a stale lastSwing must
+        -- never keep the bar alive forever.
+        ns.timers = {
+            ranged = { state = "idle", lastSwing = 0.0, duration = 0.0 },
+            mh = { state = "idle", lastSwing = 0, duration = 0 },
+            oh = { state = "idle", lastSwing = 0, duration = 0 },
+            enemy = { state = "idle", lastSwing = 0, duration = 0 }
+        }
+        ns.hunterSteadyShotEndedInRedZone = nil
+        ns.IsHunterAutoRepeatActive = function() return false end
+        ns.GetAutoShotCooldown = function() return nil, nil end
+
+        IsFalse(ns.ShouldKeepHunterRangedTimerActive(500.0),
+            "Idle ranged timer must not be held active by the cycle anchor")
+
+        ns.playerClass = savedClass
+        ns.timers = savedTimers
+        ns.hunterCastBar = savedCastBar
+        ns.IsHunterAutoRepeatActive = savedAutoRepeat
+        ns.GetAutoShotCooldown = savedCooldown
+        ns.cachedLatency = savedLatency
+    end
+
+    function Hunter:AutoRepeat_NotWipedDuringCasting()
+        local savedClass = ns.playerClass
+        ns.playerClass = "HUNTER"
+        ns.hunterAutoRepeatActive = true
+        ns.casting = true
+        ns.hunterCastActive = true
+
+        -- Mock C_Spell.IsAutoRepeatSpell returning false during cast (standard client behavior)
+        local cSpell = rawget(_G, "C_Spell")
+        if cSpell and cSpell.IsAutoRepeatSpell then
+            Replace('C_Spell', {
+                IsAutoRepeatSpell = function() return false end
+            })
+        end
+
+        local active = ns.IsHunterAutoRepeatActive()
+        IsTrue(active, "Auto-repeat must not be wiped to false while player is actively casting")
+        IsTrue(ns.hunterAutoRepeatActive, "ns.hunterAutoRepeatActive must remain true")
+
+        ClearReplaces()
+        ns.casting = false
+        ns.hunterCastActive = false
+        ns.playerClass = savedClass
+    end
+
+    function Hunter:GetHunterHiddenCastWindow_AllowsLatencyAndGraceTolerance()
+        local savedClass = ns.playerClass
+        local savedTimers = ns.timers
+        ns.playerClass = "HUNTER"
+        ns.timers = {
+            ranged = { state = "swinging", lastSwing = 100.0, duration = 2.8, speed = 2.8 }
+        }
+        ns.cachedLatency = 0.05
+        ns.lastHunterCastEndedAt = 102.7
+
+        -- Scheduled window is [102.3, 102.8]. Now is 102.84 (40ms past scheduled windowEnd, within latency)
+        Exists(ns.GetHunterHiddenCastWindowFromRangedTimer, "GetHunterHiddenCastWindowFromRangedTimer must be exported")
+        local start, dur = ns.GetHunterHiddenCastWindowFromRangedTimer(102.84)
+        Exists(start, "Hidden cast window must not be nil when within latency buffer of windowEnd")
+        IsTrue(dur and dur > 0, "Hidden cast window duration must be positive")
+
+        ns.lastHunterCastEndedAt = nil
+        ns.playerClass = savedClass
+        ns.timers = savedTimers
+    end
+
+    function Hunter:Aspect_AcceptsNumericFileID()
+        local icon = ns.hunterAspectIcon
+        Exists(icon, "Hunter aspect icon must exist")
+        if not icon or not ns.rangedBar then return end
+
+        local savedAlpha = ns.rangedBar:GetAlpha()
+        ns.rangedBar:SetAlpha(1)
+
+        -- Mock active Aspect of the Hawk returning numeric FileID 136006
+        Replace('UnitAura', function(u, i)
+            if u == "player" and i == 1 then
+                return 'Aspect of the Hawk', 136006, 0, nil, 0, 0, 'player', false, false, 13165
+            end
+            return nil
+        end)
+
+        ns.UpdateHunterAspect(1.0)
+        AreEqual(icon:GetAlpha(), 1, "Aspect icon must be shown (alpha 1)")
+        AreEqual(icon.texture:GetTexture(), 136006, "Aspect icon texture must accept numeric FileID 136006")
+
+        ClearReplaces()
+        ns.rangedBar:SetAlpha(savedAlpha)
+    end
+
+    function Hunter:Aspect_AlertNoAspectInCombat()
+        local icon = ns.hunterAspectIcon
+        Exists(icon, "Hunter aspect icon must exist")
+        if not icon or not ns.rangedBar then return end
+
+        local savedAlpha = ns.rangedBar:GetAlpha()
+        ns.rangedBar:SetAlpha(1)
+
+        -- No auras active
+        Replace('UnitAura', function() return nil end)
+
+        -- 1. Out of combat: icon should hide (alpha 0)
+        Replace('UnitAffectingCombat', function() return false end)
+        ns.playerInCombat = false
+        ns.UpdateHunterAspect(1.0)
+        AreEqual(icon:GetAlpha(), 0, "Out of combat with no aspect: icon must be hidden")
+
+        -- 2. In combat with no aspect: alert must trigger!
+        Replace('UnitAffectingCombat', function() return true end)
+        ns.playerInCombat = true
+        ns.UpdateHunterAspect(1.0)
+        AreEqual(icon:GetAlpha(), 1, "In combat with no aspect: icon must be shown as warning alert")
+        AreEqual(icon.texture:GetTexture(), "Interface\\Icons\\INV_Misc_QuestionMark", "Warning alert should use question mark texture")
+        if icon.border and icon.border.GetColorTexture then
+            local r, g, b = icon.border:GetColorTexture()
+            IsTrue(r > 0.8 and g < 0.2 and b < 0.2, "Warning alert border should be red")
+        end
+
+        -- 3. Gain Aspect of the Hawk during combat: alert clears to standard aspect display
+        Replace('UnitAura', function(u, i)
+            if u == "player" and i == 1 then
+                return 'Aspect of the Hawk', 136006, 0, nil, 0, 0, 'player', false, false, 13165
+            end
+            return nil
+        end)
+        ns.UpdateHunterAspect(1.0)
+        AreEqual(icon:GetAlpha(), 1, "Icon remains shown with active aspect")
+        AreEqual(icon.texture:GetTexture(), 136006, "Icon texture updates to Hawk")
+
+        ClearReplaces()
+        ns.playerInCombat = false
+        ns.rangedBar:SetAlpha(savedAlpha)
     end
 
     -- ============================================================
@@ -442,13 +970,15 @@ local function RegisterSSTTests()
 
     function SoD:MaelstromMultiplier_Bounds()
         if ns.maelstromCastTimeMultiplier ~= nil then
-            IsTrue(ns.maelstromCastTimeMultiplier >= 0.0 and ns.maelstromCastTimeMultiplier <= 1.0, 'Maelstrom multiplier bounded')
+            IsTrue(ns.maelstromCastTimeMultiplier >= 0.0 and ns.maelstromCastTimeMultiplier <= 1.0,
+                'Maelstrom multiplier bounded')
         end
     end
+
     function SoD:TrackedSpells_AllNineClasses()
         if not ns.SOD_TRACKED_SPELLS then return end
-        for _, classKey in ipairs{'WARRIOR','ROGUE','SHAMAN','HUNTER','PALADIN','DRUID','WARLOCK','MAGE','PRIEST'} do
-            Exists(ns.SOD_TRACKED_SPELLS[classKey], 'SoD tracked spells for '..classKey)
+        for _, classKey in ipairs { 'WARRIOR', 'ROGUE', 'SHAMAN', 'HUNTER', 'PALADIN', 'DRUID', 'WARLOCK', 'MAGE', 'PRIEST' } do
+            Exists(ns.SOD_TRACKED_SPELLS[classKey], 'SoD tracked spells for ' .. classKey)
         end
     end
 
@@ -458,11 +988,15 @@ local function RegisterSSTTests()
     local ClassMods = WoWUnit('SST-ClassMods', 'PLAYER_ENTERING_WORLD')
 
     function ClassMods:UpdateWarriorRageBar_Exists()
-        IsTrue(type(ns.UpdateWarriorRageBar) == "function" or type(ns.UpdatePlayerPowerBar) == "function", 'UpdateWarriorRageBar or UpdatePlayerPowerBar function exists')
+        IsTrue(type(ns.UpdateWarriorRageBar) == "function" or type(ns.UpdatePlayerPowerBar) == "function",
+            'UpdateWarriorRageBar or UpdatePlayerPowerBar function exists')
     end
+
     function ClassMods:UpdatePlayerPowerBar_Exists()
-        IsTrue(type(ns.UpdatePlayerPowerBar) == "function" or type(ns.UpdateWarriorRageBar) == "function", 'UpdatePlayerPowerBar function exists')
+        IsTrue(type(ns.UpdatePlayerPowerBar) == "function" or type(ns.UpdateWarriorRageBar) == "function",
+            'UpdatePlayerPowerBar function exists')
     end
+
     function ClassMods:ResolvePowerBarColor_TableFormat()
         local resolver = (T and T.ResolvePowerBarColor) or ns.ResolvePowerBarColor
         if not resolver then return end
@@ -471,12 +1005,14 @@ local function RegisterSSTTests()
         local cDefault = resolver(1, "RAGE", nil)
         IsTrue(cDefault.r ~= nil and cDefault.g ~= nil and cDefault.b ~= nil)
     end
+
     function ClassMods:PlayerPowerBar_Structure()
         if ns.playerPowerBar then
             Exists(ns.playerPowerBar.label, 'powerBar.label exists')
             IsTrue(ns.playerPowerBar.label:GetFont() ~= nil or true)
         end
     end
+
     function ClassMods:CreateGlowBorder_Safe()
         local createGlow = (T and T.CreateGlowBorderFrames) or ns.CreateGlowBorderFrames
         if createGlow and ns.mhBar then
@@ -487,13 +1023,14 @@ local function RegisterSSTTests()
             end
         end
     end
+
     function ClassMods:ExecuteGlowPulse_Calculation()
         local nowSec = 100.0
         local pulse = 0.6 + 0.4 * math.abs(math.sin(nowSec * 6))
         IsTrue(pulse >= 0.6 and pulse <= 1.0, 'Execute pulse bounded between 0.6 and 1.0')
     end
 
-    local BUFF_ICON_BASE_OFFSET = 14  -- mirrors ClassMods.lua
+    local BUFF_ICON_BASE_OFFSET = 14 -- mirrors ClassMods.lua
 
     -- The mocked clock lives on the harness globals rather than on WoWUnit, so
     -- it is read through _G. In a real client the clock is the real one and
@@ -534,6 +1071,22 @@ local function RegisterSSTTests()
         return nil
     end
 
+    local function GetCoreRenderHook()
+        for _, h in ipairs(ns.OnUpdateHooks or {}) do
+            if ResolveUpvalue(h, "UpdateGcdTicker") then return h end
+        end
+        return ns.OnUpdateHooks and ns.OnUpdateHooks[1]
+    end
+
+    local function GetHunterHook()
+        for _, h in ipairs(ns.OnUpdateHooks or {}) do
+            if ResolveUpvalue(h, "hunterRestackBars") or ResolveUpvalue(h, "wingClipBar") then
+                return h
+            end
+        end
+        return ns.OnUpdateHooks and ns.OnUpdateHooks[2]
+    end
+
     -- Drives the real per-frame restack call and records every list it is
     -- handed, without letting the spy's calls perturb the real function.
     -- Returns the recorder plus an undo function; always call the undo.
@@ -541,7 +1094,10 @@ local function RegisterSSTTests()
         if type(debug) ~= "table" or type(debug.setupvalue) ~= "function" then
             return nil
         end
-        local hook = ns.OnUpdateHooks[hookIndex]
+        local hook = (type(hookIndex) == "number" and ns.OnUpdateHooks[hookIndex])
+        if not hook or not ResolveUpvalue(hook, restackUpvalueName) then
+            hook = GetHunterHook()
+        end
         if type(hook) ~= "function" then return nil end
         local listIdx, realRestack, realList
         for i = 1, 64 do
@@ -639,7 +1195,7 @@ local function RegisterSSTTests()
 
     -- (1) GCD latch: the loop must be released even with no ticker bar.
     function Reg:GcdTicker_ExpiredGCD_ReleasesUpdateLoop_WithNoTickerBar()
-        local fn = ResolveUpvalue(ns.OnUpdateHooks[1], "UpdateGcdTicker")
+        local fn = ResolveUpvalue(GetCoreRenderHook(), "UpdateGcdTicker")
         Exists(fn, "UpdateGcdTicker reachable via the core render hook")
 
         -- The Hunter case: InitBars never calls CreateGcdTickerBar for HUNTER,
@@ -664,7 +1220,7 @@ local function RegisterSSTTests()
 
     -- The guard against the naive fix of calling RefreshUpdateLoop every frame.
     function Reg:GcdTicker_ExpiredGCD_ReleasesLoopOnce_NotEveryFrame()
-        local fn = ResolveUpvalue(ns.OnUpdateHooks[1], "UpdateGcdTicker")
+        local fn = ResolveUpvalue(GetCoreRenderHook(), "UpdateGcdTicker")
         Exists(fn, 'UpdateGcdTicker reachable')
 
         ns.playerClass = "HUNTER"
@@ -685,7 +1241,7 @@ local function RegisterSSTTests()
 
     -- A GCD that has NOT expired must keep the loop attached.
     function Reg:GcdTicker_ActiveGCD_KeepsUpdateLoopAttached()
-        local fn = ResolveUpvalue(ns.OnUpdateHooks[1], "UpdateGcdTicker")
+        local fn = ResolveUpvalue(GetCoreRenderHook(), "UpdateGcdTicker")
         Exists(fn, 'UpdateGcdTicker reachable')
 
         ns.playerClass = "HUNTER"
@@ -708,7 +1264,7 @@ local function RegisterSSTTests()
     -- The fix must not be Hunter-only: with a ticker bar present, expiry still
     -- has to clear the latch and refresh the loop.
     function Reg:GcdTicker_ExpiredGCD_ReleasesUpdateLoop_WithTickerBar()
-        local fn = ResolveUpvalue(ns.OnUpdateHooks[1], "UpdateGcdTicker")
+        local fn = ResolveUpvalue(GetCoreRenderHook(), "UpdateGcdTicker")
         Exists(fn, 'UpdateGcdTicker reachable')
 
         ns.playerClass = "WARRIOR"
@@ -726,7 +1282,7 @@ local function RegisterSSTTests()
     -- hook that OnUpdate dispatches. This needs no debug library, so it is the
     -- assertion that survives in a real client.
     function Reg:GcdTicker_ExpiredGCD_EndToEndThroughOnUpdate()
-        local coreHook = ns.OnUpdateHooks[1]
+        local coreHook = GetCoreRenderHook()
         Exists(coreHook, 'core render hook registered')
 
         ns.playerClass = "HUNTER"
@@ -843,7 +1399,7 @@ local function RegisterSSTTests()
     -- and then appear at any time. This is the regression from the hoisted-list
     -- work, and it lives at the call site rather than inside RestackDebuffBars.
     function Reg:ClassHook_RewritesEveryRestackSlot_EveryFrame_NeverLatches()
-        local hook = ns.OnUpdateHooks[2]
+        local hook = GetHunterHook()
         if type(hook) ~= "function" or type(debug) ~= "table"
             or type(debug.setupvalue) ~= "function" then
             IsTrue(true, 'debug library unavailable in this environment')
@@ -853,8 +1409,11 @@ local function RegisterSSTTests()
         for i = 1, 64 do
             local name, value = debug.getupvalue(hook, i)
             if not name then break end
-            if name == "hunterRestackBars" then listIdx = i
-            elseif name == "wingClipBar" then wingClipIdx, wingClipBar = i, value end
+            if name == "hunterRestackBars" then
+                listIdx = i
+            elseif name == "wingClipBar" then
+                wingClipIdx, wingClipBar = i, value
+            end
         end
         Exists(wingClipIdx, 'wingClipBar upvalue found')
         if not listIdx then
@@ -883,12 +1442,12 @@ local function RegisterSSTTests()
         end)
         local withBar = list[2]
         ok2, err2 = pcall(function()
-            debug.setupvalue(hook, wingClipIdx, nil)  -- toggle off: never created
+            debug.setupvalue(hook, wingClipIdx, nil) -- toggle off: never created
             hook(0.016)
         end)
         local withoutBar = list[2]
         ok3, err3 = pcall(function()
-            debug.setupvalue(hook, wingClipIdx, probe)  -- toggle on: Ensure* creates it
+            debug.setupvalue(hook, wingClipIdx, probe) -- toggle on: Ensure* creates it
             hook(0.016)
         end)
         local reEnabled = list[2]
@@ -957,19 +1516,35 @@ local function RegisterSSTTests()
             'hidden bar falls back to the base offset')
     end
 
+    function Reg:ComputeBuffIconOffset_SkipsNilSlot_AccountsForLaterBars()
+        local TT = ns._Test
+        if not TT or not TT.ComputeBuffIconOffset then return end
+        local reference = CreateFrame("Frame")
+        local bar2 = RecordingBar(8)
+        -- slot 1 is nil, slot 2 is bar2 with height 8
+        -- gap=2, bar2 top = gap(2) + height(8) = 10
+        -- icon bottom sits 8px above highest bar top: 10 + 8 = 18
+        local offset = TT.ComputeBuffIconOffset({ nil, bar2 }, reference)
+        AreEqual(offset, 18, 'ComputeBuffIconOffset must skip nil slot and position 8px above bar2 (got ' .. tostring(offset) .. ')')
+
+        -- When no bars are visible, falls back to base offset (14)
+        local emptyOffset = TT.ComputeBuffIconOffset({ nil, nil }, reference)
+        AreEqual(emptyOffset, 14, 'ComputeBuffIconOffset falls back to base offset when no bars visible')
+    end
+
     -- (4) Allocation pin: the per-frame restack lists are pre-allocated tables
     -- whose slots are rewritten, not fresh literals built every frame. Driving
     -- the Hunter hook twice must hand RestackDebuffBars the SAME table object
     -- both times, and that object must be the hoisted upvalue.
     function Reg:HunterRestackList_ReusedAcrossFrames_NotRebuiltPerFrame()
-        local spy = SpyOnRestack(2, "hunterRestackBars", "RestackDebuffBars")
+        local spy = SpyOnRestack(nil, "hunterRestackBars", "RestackDebuffBars")
         if not spy then
             -- No debug library (or the addon reshaped its hook): nothing to pin.
             IsTrue(true, 'restack spy unavailable in this environment')
             return
         end
         local ok, err = pcall(function()
-            local hook = ns.OnUpdateHooks[2]
+            local hook = GetHunterHook()
             hook(0.016)
             hook(0.016)
             hook(0.016)
@@ -992,7 +1567,7 @@ local function RegisterSSTTests()
     end
 
     function Reg:OnUpdate_ClassIsolation()
-        local coreHook = ns.OnUpdateHooks[1]
+        local coreHook = GetCoreRenderHook()
         Exists(coreHook, "core render hook registered")
 
         local savedClass = ns.playerClass
@@ -1206,14 +1781,39 @@ local function RegisterSSTTests()
         ns.playerClass = "HUNTER"
         ns.StartMoveMode()
         IsTrue(ns.mhBar._dragOverlay ~= nil, "MH bar must have drag overlay")
-        IsTrue(ns.mhBar._dragOverlay.text:GetText() == "Main Hand (Follows Ranged)", "Hunter MH label must indicate it follows Ranged")
+        IsTrue(ns.mhBar._dragOverlay.text:GetText() == "Main Hand (Follows Ranged)",
+            "Hunter MH label must indicate it follows Ranged")
         ns.StopMoveMode()
 
         ns.playerClass = "WARRIOR"
         ns.StartMoveMode()
-        IsTrue(ns.mhBar._dragOverlay.text:GetText() == "Main Hand (Drag)", "Warrior MH label must indicate Main Hand (Drag)")
+        IsTrue(ns.mhBar._dragOverlay.text:GetText() == "Main Hand (Drag)",
+            "Warrior MH label must indicate Main Hand (Drag)")
         ns.StopMoveMode()
         ns.playerClass = origClass
+    end
+
+    function MoveMode:Hunter_WithoutOH_OverlayHidesOnLock()
+        local savedOH = ns.ohBar
+        ns.ohBar = nil
+        ns.StartMoveMode()
+        IsTrue(ns.isMoveModeActive, "Move mode must be active")
+        IsTrue(ns.rangedBar._dragOverlay:IsShown(), "Ranged drag overlay must be shown in move mode")
+
+        ns.StopMoveMode()
+        IsFalse(ns.isMoveModeActive, "Move mode must be inactive")
+        IsFalse(ns.rangedBar._dragOverlay:IsShown(), "Ranged drag overlay must be hidden after locking when ohBar is nil")
+        if ns.enemyBar and ns.enemyBar._dragOverlay then
+            IsFalse(ns.enemyBar._dragOverlay:IsShown(), "Enemy drag overlay must be hidden after locking when ohBar is nil")
+        end
+
+        ns.StartMoveMode()
+        IsTrue(ns.rangedBar._dragOverlay:IsShown(), "Ranged drag overlay must be shown again in move mode")
+        SuperSwingTimerDB.lockBars = true
+        ns.ApplyLockBars()
+        IsFalse(ns.rangedBar._dragOverlay:IsShown(), "ApplyLockBars must hide ranged drag overlay even when ohBar is nil")
+
+        ns.ohBar = savedOH
     end
 
     function MoveMode:Combat_Enter_CancelsMoveMode()
@@ -1226,6 +1826,11 @@ local function RegisterSSTTests()
         onEvent(sstFrame, "PLAYER_REGEN_DISABLED")
         IsFalse(ns.isMoveModeActive, "Entering combat must cancel move mode")
         IsTrue(SuperSwingTimerDB.lockBars == true, "Bars must be locked on entering combat")
+        for _, bar in ipairs({ ns.mhBar, ns.ohBar, ns.rangedBar, ns.enemyBar }) do
+            if bar and bar._dragOverlay then
+                IsFalse(bar._dragOverlay:IsShown(), "Bar drag overlay must be hidden on entering combat")
+            end
+        end
         onEvent(sstFrame, "PLAYER_REGEN_ENABLED")
     end
 
@@ -1257,7 +1862,8 @@ local function RegisterSSTTests()
         -- Blizzard canvas must be a separate frame
         IsTrue(ns.blizzardCanvasFrame ~= nil, "Blizzard canvas frame must be registered separately")
         IsTrue(ns.blizzardCanvasFrame ~= p, "Blizzard canvas must not be the standalone panel")
-        IsTrue(ns.blizzardCanvasFrame:GetName() == "SuperSwingTimerBlizzardOptionsPanel", "Blizzard canvas frame must have expected name")
+        IsTrue(ns.blizzardCanvasFrame:GetName() == "SuperSwingTimerBlizzardOptionsPanel",
+            "Blizzard canvas frame must have expected name")
     end
 
     function Config:ResponsiveClamping()
@@ -1299,7 +1905,8 @@ local function RegisterSSTTests()
         ns.isMoveModeActive = false
         SuperSwingTimerDB.lockBars = true
         ns.RefreshConfigLockControls()
-        IsTrue(p.moveHeaderText:GetText() == "Unlock & Move Bars", "Header button must read Unlock & Move Bars when locked")
+        IsTrue(p.moveHeaderText:GetText() == "Unlock & Move Bars",
+            "Header button must read Unlock & Move Bars when locked")
     end
 
     function Config:HeaderButtonToggle()
@@ -1355,7 +1962,8 @@ local function RegisterSSTTests()
 
     function Config:SectionSpacingAndHeaders()
         local parent = CreateFrame("Frame", nil, UIParent)
-        local header = ns._CreateSectionHeader and ns._CreateSectionHeader(parent, "Appearance", -20, { accentColor = { 0, 0.8, 1 } })
+        local header = ns._CreateSectionHeader and
+        ns._CreateSectionHeader(parent, "Appearance", -20, { accentColor = { 0, 0.8, 1 } })
         IsTrue(header ~= nil, "Section header should be created")
         AreEqual(header and header.layoutHeight, 36, "Header layoutHeight must be 36px")
         Exists(header and header.accentBadge, "Header must have accent badge texture")
@@ -1385,6 +1993,275 @@ local function RegisterSSTTests()
         end
     end
 
+    function Config:PowerBarHeightSlider_ExistsAndAdjusts()
+        if not ns.panel and ns.InitConfig then ns.InitConfig() end
+        local p = ns.panel
+        IsTrue(p ~= nil, "Config panel must exist")
+        local slider = p.powerBarHeightSlider
+        IsTrue(slider ~= nil, "Power bar height slider must exist on config panel")
+
+        local initialVal = SuperSwingTimerDB.powerBarHeight or 14
+        local onValueChanged = slider:GetScript("OnValueChanged")
+        IsTrue(type(onValueChanged) == "function", "Slider must have OnValueChanged script")
+
+        -- Test adjustment
+        onValueChanged(slider, 22)
+        AreEqual(SuperSwingTimerDB.powerBarHeight, 22, "DB powerBarHeight must update to 22")
+        AreEqual(ns.POWER_BAR_HEIGHT, 22, "ns.POWER_BAR_HEIGHT must update to 22")
+
+        -- Restore
+        onValueChanged(slider, initialVal)
+        AreEqual(SuperSwingTimerDB.powerBarHeight, initialVal, "DB powerBarHeight must restore")
+    end
+
+    -- ============================================================
+    -- SST-Diag: /sst diag capture, report, and glow adapter fallback
+    -- ============================================================
+    local Diag = WoWUnit('SST-Diag', 'PLAYER_ENTERING_WORLD')
+
+    function Diag:API_Exists()
+        local d = ns.Diag
+        IsTrue(type(d) == 'table', 'ns.Diag table')
+        IsTrue(type(d.Record) == 'function', 'Record')
+        IsTrue(type(d.BuildReport) == 'function', 'BuildReport')
+        IsTrue(type(d.HandleSlash) == 'function', 'HandleSlash')
+        IsTrue(type(d.Clear) == 'function', 'Clear')
+    end
+
+    function Diag:Record_DedupesAndCounts()
+        local d = ns.Diag
+        d.Clear()
+        d.Record('boom at UI.lua:1', 'stack one', 'lua')
+        d.Record('boom at UI.lua:1', 'stack two', 'lua')
+        AreEqual(#d.errors, 1, 'one unique signature')
+        AreEqual(d.errors[1].count, 2, 'count increments')
+        AreEqual(d.errorTotal, 2, 'total increments')
+        d.Clear()
+    end
+
+    function Diag:ErrorHandler_CapturesMessage()
+        local d = ns.Diag
+        d.Clear()
+        local handler = geterrorhandler()
+        handler('SuperSwingTimer test error')
+        IsTrue(#d.errors >= 1, 'error handler recorded the message')
+        IsTrue(d.errors[1].message:find('SuperSwingTimer test error', 1, true) ~= nil, 'message stored')
+        d.Clear()
+    end
+
+    function Diag:LuaWarningEvent_CapturesMessage()
+        local d = ns.Diag
+        d.Clear()
+        local frame = _G.SuperSwingTimerDiagFrame
+        IsTrue(frame ~= nil, 'diag event frame exists')
+        local onEvent = frame and frame:GetScript('OnEvent')
+        IsTrue(type(onEvent) == 'function', 'diag OnEvent script exists')
+        onEvent(frame, 'LUA_WARNING', 'SuperSwingTimer warning test')
+        IsTrue(#d.errors >= 1, 'LUA_WARNING recorded')
+        IsTrue(d.errors[1].source == 'warning', 'warning source tagged')
+        d.Clear()
+    end
+
+    function Diag:Record_AttributesSSTErrors()
+        local d = ns.Diag
+        d.Clear()
+        d.Record('SuperSwingTimer: synthetic failure', nil, 'lua')
+        IsTrue(d.errors[1].attributed, 'SST message attributed')
+        d.Record('OtherAddon: synthetic failure', nil, 'lua')
+        IsFalse(d.errors[1].attributed, 'external message not attributed')
+        d.Clear()
+    end
+
+    function Diag:Record_CapsRingBuffer()
+        local d = ns.Diag
+        d.Clear()
+        for i = 1, d.maxErrors + 5 do
+            d.Record('unique-' .. i, 'stack ' .. i, 'lua')
+        end
+        AreEqual(#d.errors, d.maxErrors, 'ring buffer capped')
+        d.Clear()
+    end
+
+    function Diag:HandleSlash_OnlyConsumesDiag()
+        local d = ns.Diag
+        IsTrue(d.HandleSlash('diag') == true, 'diag consumed')
+        IsTrue(d.HandleSlash('move') == false, 'move not consumed')
+    end
+
+    function Diag:BuildReport_CompactAndFull()
+        local d = ns.Diag
+        d.Clear()
+        local compact = d.BuildReport('compact')
+        IsTrue(type(compact) == 'string' and #compact > 0, 'compact report is text')
+        IsTrue(compact:find('SST diag', 1, true) ~= nil, 'compact header')
+        local full = d.BuildReport('full')
+        IsTrue(full:find('libs', 1, true) ~= nil, 'full report includes libs check')
+        d.Clear()
+    end
+
+    function Diag:BuildReport_IncludesCapturedError()
+        local d = ns.Diag
+        d.Clear()
+        d.Record('synthetic diagnostic failure', 'stack line', 'test')
+        local text = d.BuildReport('errors')
+        IsTrue(text:find('synthetic diagnostic failure', 1, true) ~= nil, 'error text present')
+        d.Clear()
+    end
+
+    function Diag:Clear_ResetsCounters()
+        local d = ns.Diag
+        d.Record('one', 'stack', 'lua')
+        d.Clear()
+        AreEqual(#d.errors, 0, 'errors cleared')
+        AreEqual(d.errorTotal, 0, 'total cleared')
+        AreEqual(d.errorUnique, 0, 'unique cleared')
+    end
+
+    function Diag:GlowFallback_NoError()
+        local glow = ns.Glow
+        IsTrue(type(glow) == 'table', 'glow adapter exists')
+        IsFalse(glow.available, 'LCG absent in headless mode')
+        local frame = CreateFrame('Frame')
+        glow.SetBar(frame, 'test', true, { 1, 1, 1, 1 }, 'proc')
+        glow.SetIcon(frame, true, { 1, 1, 1, 1 })
+        glow.StopAll()
+        glow.SetBar(frame, 'test', false)
+        IsTrue(glow.lastError == nil, 'fallback does not error')
+    end
+
+    function Diag:GlowTransitions_StartStopOnce()
+        local glow = ns.Glow
+        local started, stopped = 0, 0
+        glow._testLib = {
+            ProcGlow_Start = function() started = started + 1 end,
+            ProcGlow_Stop = function() stopped = stopped + 1 end,
+            AutoCastGlow_Start = function() started = started + 1 end,
+            AutoCastGlow_Stop = function() stopped = stopped + 1 end,
+            ButtonGlow_Start = function() started = started + 1 end,
+            ButtonGlow_Stop = function() stopped = stopped + 1 end,
+        }
+        local frame = CreateFrame('Frame')
+        glow.SetBar(frame, 'k', true, { 1, 1, 1, 1 }, 'proc')
+        glow.SetBar(frame, 'k', true, { 1, 1, 1, 1 }, 'proc')
+        AreEqual(started, 1, 'proc start called once')
+        glow.SetBar(frame, 'k', false)
+        glow.SetBar(frame, 'k', false)
+        AreEqual(stopped, 1, 'proc stop called once')
+        glow.SetBar(frame, 'ac', true, { 1, 1, 1, 1 }, 'autocast')
+        glow.SetBar(frame, 'ac', true, { 1, 1, 1, 1 }, 'autocast')
+        AreEqual(started, 2, 'autocast start called once')
+        glow.SetBar(frame, 'ac', false)
+        AreEqual(stopped, 2, 'autocast stop called once')
+        glow.SetIcon(frame, true, { 1, 1, 1, 1 })
+        glow.SetIcon(frame, true, { 1, 1, 1, 1 })
+        AreEqual(started, 3, 'icon start called once')
+        glow.SetIcon(frame, false)
+        AreEqual(stopped, 3, 'icon stop called once')
+        glow._testLib = nil
+        glow.StopAll()
+    end
+
+    function Diag:GlowBar_StopsOnHide()
+        local glow = ns.Glow
+        local stopped = 0
+        glow._testLib = {
+            AutoCastGlow_Start = function() end,
+            AutoCastGlow_Stop = function() stopped = stopped + 1 end,
+        }
+        local bar = CreateFrame('Frame')
+        glow.SetBar(bar, 'k', true, { 1, 1, 1, 1 }, 'autocast')
+        local onHide = bar:GetScript('OnHide')
+        IsTrue(type(onHide) == 'function', 'bar OnHide hook installed')
+        onHide(bar)
+        AreEqual(stopped, 1, 'bar glow stopped on hide')
+        glow._testLib = nil
+        glow.StopAll()
+    end
+
+    function Diag:GlowIcon_StopsOnHide()
+        local glow = ns.Glow
+        local started, stopped = 0, 0
+        glow._testLib = {
+            ButtonGlow_Start = function() started = started + 1 end,
+            ButtonGlow_Stop = function() stopped = stopped + 1 end,
+        }
+        local icon = CreateFrame('Frame')
+        glow.SetIcon(icon, true, { 1, 1, 1, 1 })
+        AreEqual(started, 1, 'icon glow started')
+        local onHide = icon:GetScript('OnHide')
+        IsTrue(type(onHide) == 'function', 'OnHide hook installed')
+        icon:Hide()
+        onHide(icon)
+        AreEqual(stopped, 1, 'icon glow stopped on hide')
+        glow._testLib = nil
+        glow.StopAll()
+    end
+
+    function Diag:DB_GlowDefault()
+        IsTrue(ns.DB_DEFAULTS.showGlowEffects == true, 'glow defaults on')
+    end
+
+    function Diag:SlashAliases_IncludeSTT()
+        AreEqual(SLASH_SUPERSWINGTIMER5, '/stt', 'stt alias registered')
+        IsTrue(type(SlashCmdList['SUPERSWINGTIMER']) == 'function', 'shared slash handler registered')
+    end
+
+    function Diag:SlashGlowToggle()
+        local saved = SuperSwingTimerDB.showGlowEffects
+        SuperSwingTimerDB.showGlowEffects = true
+        local handler = SlashCmdList["SUPERSWINGTIMER"]
+        IsTrue(type(handler) == 'function', 'slash handler registered')
+        handler('glow')
+        IsFalse(SuperSwingTimerDB.showGlowEffects, 'glow toggles off')
+        handler('glow')
+        IsTrue(SuperSwingTimerDB.showGlowEffects, 'glow toggles on')
+        SuperSwingTimerDB.showGlowEffects = saved
+    end
+
+    function Diag:LibsCheck_WithLibStub()
+        local saved = _G.LibStub
+        _G.LibStub = setmetatable({ minor = 2 }, {
+            __call = function(_, major, silent)
+                if major == "LibCustomGlow-1.0" then
+                    return { ProcGlow_Start = function() end }, 21
+                end
+                return nil
+            end,
+        })
+        local full = ns.Diag.BuildReport('full')
+        _G.LibStub = saved
+        IsTrue(full:find('LCG 21', 1, true) ~= nil, 'libs check sees LCG 21')
+    end
+
+    function Diag:Install_IsIdempotent()
+        local d = ns.Diag
+        IsTrue(d.installed, 'error handler installed at load')
+        local before = geterrorhandler()
+        d.Install()
+        local after = geterrorhandler()
+        AreEqual(before, after, 'second install is a no-op')
+    end
+
+    function Diag:Profile_RecordsHookTime()
+        local d = ns.Diag
+        d.StartProfile(5)
+        d.RecordHookTime(1, 0.5, 'core')
+        d.RecordHookTime(1, 1.5, 'core')
+        IsTrue(d.profile.active, 'profile active')
+        d.StopProfile()
+        IsFalse(d.profile.active, 'profile stopped')
+    end
+
+    function Diag:RunTests_NoError()
+        local ok = pcall(ns.Diag.RunTests)
+        IsTrue(ok, 'self-test probes run without error')
+    end
+
+    function Diag:Export_NoError()
+        local ok = pcall(ns.Diag.Export)
+        IsTrue(ok, 'export builds without error')
+    end
+
     local nGroups = 0
     for _ in ipairs(WoWUnit.children) do nGroups = nGroups + 1 end
     print("|cff44ff44[SST] " .. nGroups .. " groups registered. Click WoWUnit toggle or type /ssttest.|r")
@@ -1392,14 +2269,23 @@ end
 
 SLASH_SSTTEST1 = "/ssttest"
 SlashCmdList["SSTTEST"] = function()
-    if not WoWUnit then print("|cffff4444[SST] WoWUnit not installed.|r"); return end
-    local n=0; for _,g in ipairs(WoWUnit.children) do if g.name and g.name:match("^SST%-") then g(); n=n+1 end end
-    print("|cff44ff44[SST] Ran "..n.." groups.|r")
+    if not WoWUnit then
+        print("|cffff4444[SST] WoWUnit not installed.|r"); return
+    end
+    local n = 0; for _, g in ipairs(WoWUnit.children) do if g.name and g.name:match("^SST%-") then
+            g(); n = n + 1
+        end end
+    print("|cff44ff44[SST] Ran " .. n .. " groups.|r")
 end
 
-local f=CreateFrame("Frame")
-f:SetScript("OnUpdate",function(s)
-    s:SetScript("OnUpdate",nil)
-    if WoWUnit then local ok,err=pcall(RegisterSSTTests); if not ok then geterrorhandler()(err); print("|cffff4444[SST] "..tostring(err)) end
-    else print("|cffff4444[SST] WoWUnit not found.|r") end
+local f = CreateFrame("Frame")
+f:SetScript("OnUpdate", function(s)
+    s:SetScript("OnUpdate", nil)
+    if WoWUnit then
+        local ok, err = pcall(RegisterSSTTests); if not ok then
+            geterrorhandler()(err); print("|cffff4444[SST] " .. tostring(err))
+        end
+    else
+        print("|cffff4444[SST] WoWUnit not found.|r")
+    end
 end)

@@ -5,7 +5,7 @@
 ## Overview & Addon Identity
 
 - **Name**: SuperSwingTimer
-- **Current Version**: `v0.2.4` (DB schema migration `v64`)
+- **Current Version**: `v0.2.6` (DB schema migration `v66`)
 - **Author**: AcidBomb
 - **Target Clients**: Classic Era (`11509`) and TBC Anniversary (`20506`), including Season of Discovery (SoD).
 - **Core Purpose**: Ultra-accurate melee, ranged, and target swing timers with class-specific power/debuff bars, spell-weaving assistance, and buff tracking.
@@ -15,28 +15,28 @@
 | File | Role |
 | :--- | :--- |
 | [SuperSwingTimer.toc](file:///home/sam/SuperSwingTimer-WoW/SuperSwingTimer.toc) | TOC metadata, dual-interface support, file load order. |
-| [SuperSwingTimer_Constants.lua](file:///home/sam/SuperSwingTimer-WoW/SuperSwingTimer_Constants.lua) | Colors, dimensions, sound IDs, DB defaults, `ns.GetDefaultFont()`. |
+| [SuperSwingTimer_Constants.lua](file:///home/sam/SuperSwingTimer-WoW/SuperSwingTimer_Constants.lua) | Colors, dimensions, sound IDs, DB defaults, `ns.GetDefaultFont()`, `ns.GetSpellTexture()`. |
 | [Media/SuperSwingTimer_Media.lua](file:///home/sam/SuperSwingTimer-WoW/Media/SuperSwingTimer_Media.lua) | Status bar, spark, and border texture registrations. |
 | [SuperSwingTimer_State.lua](file:///home/sam/SuperSwingTimer-WoW/SuperSwingTimer_State.lua) | Swing timer state machine (MH, OH, Ranged), pause/resume, speed changes, unrolled `HasActiveTimers`. |
 | [SuperSwingTimer_Weaving.lua](file:///home/sam/SuperSwingTimer-WoW/SuperSwingTimer_Weaving.lua) | Shaman spell-weaving calculations, single-pass haste scan, live cast/haste scaling, clip detection. |
 | [SuperSwingTimer_Hooks.lua](file:///home/sam/SuperSwingTimer-WoW/SuperSwingTimer_Hooks.lua) | Combat log and spellcast event routing, swing resets, auto-shot gating. |
-| [SuperSwingTimer_UI.lua](file:///home/sam/SuperSwingTimer-WoW/SuperSwingTimer_UI.lua) | Primary swing bars, Hunter 15px Auto Shot cast bar, spark position & label de-duplication. |
-| [SuperSwingTimer_ClassMods.lua](file:///home/sam/SuperSwingTimer-WoW/SuperSwingTimer_ClassMods.lua) | Class modules (6 physical classes), unified power bar with cached strings, debuff bars, buff icons, `activeBuffIconCount` tracking. |
+| [SuperSwingTimer_UI.lua](file:///home/sam/SuperSwingTimer-WoW/SuperSwingTimer_UI.lua) | Primary swing bars, Hunter 15px Auto Shot cast bar, spark position, real-time options global scaling. |
+| [SuperSwingTimer_ClassMods.lua](file:///home/sam/SuperSwingTimer-WoW/SuperSwingTimer_ClassMods.lua) | Class modules (6 physical classes), unified 14px power bar with cached strings, 8px debuff bars, buff icons, `activeBuffIconCount` tracking. |
 | [SuperSwingTimer_Config.lua](file:///home/sam/SuperSwingTimer-WoW/SuperSwingTimer_Config.lua) | Settings UI panel, Quick Controls, `/sst` slash commands. |
-| [SuperSwingTimer.lua](file:///home/sam/SuperSwingTimer-WoW/SuperSwingTimer.lua) | Addon lifecycle, DB migrations (v64), RegisterUnitEvent C-level unit filtering. |
+| [SuperSwingTimer.lua](file:///home/sam/SuperSwingTimer-WoW/SuperSwingTimer.lua) | Addon lifecycle, DB migrations (v66), RegisterUnitEvent C-level unit filtering. |
 | [SuperSwingTimer_SoD.lua](file:///home/sam/SuperSwingTimer-WoW/SuperSwingTimer_SoD.lua) | Season of Discovery rune matrices across all 9 classes, aura maps, spell definitions. |
-| [SuperSwingTimer_Tests.lua](file:///home/sam/SuperSwingTimer-WoW/SuperSwingTimer_Tests.lua) | In-game WoWUnit test suite across 7 functional groups (`/ssttest`). |
-| [run_tests.lua](file:///home/sam/SuperSwingTimer-WoW/run_tests.lua) | Standalone CLI test execution runner with mock WoW 5.1/Classic environment. |
+| [SuperSwingTimer_Tests.lua](file:///home/sam/SuperSwingTimer-WoW/SuperSwingTimer_Tests.lua) | In-game WoWUnit test suite across 11 functional groups (`/ssttest`). |
+| [run_tests.lua](file:///home/sam/SuperSwingTimer-WoW/run_tests.lua) | Standalone CLI test execution runner with mock WoW 5.1/Classic environment (116 tests). |
 
 ## Key Architectural Decisions
 
 1. **Unified Power Bar**:
-   - Single frame `SuperSwingTimerPlayerPowerBar` (`ns.playerPowerBar`) used across all classes at standardized 10px height.
-   - Rage (Warrior), Energy (Rage/Druid), Mana (Paladin/Shaman/Hunter/Druid). Dynamic shapeshifting supported.
+   - Single frame `SuperSwingTimerPlayerPowerBar` (`ns.playerPowerBar`) used across all classes at standardized 14px height (`ns.POWER_BAR_HEIGHT = 14`).
+   - Rage (Warrior), Energy (Rogue/Druid), Mana (Paladin/Shaman/Hunter/Druid). Dynamic shapeshifting supported.
    - Warrior Execute indicator: texture 5308 with red pulse glow at $\le 20\%$ target HP; text label hidden.
 2. **Debuff Bars**:
-   - Outside-left icon anchoring (`RIGHT`, `bar`, `LEFT`, -2, 0) with `0.07-0.93` texture coordinates.
-   - Bars align 100% with the swing bar width at $X=0$.
+   - Standardized 8px height (`ns.DEBUFF_BAR_HEIGHT = 8`) with matching 8x8 outside-left icon anchoring (`RIGHT`, `bar`, `LEFT`, -2, 0) with `0.07-0.93` texture coordinates.
+   - Bars align 100% with the swing bar width at $X=0$. Stack upward with 2px gap via `RestackDebuffBars()`.
 3. **Buff & CD Icons**:
    - Timer text centered strictly **above** the icon (`"BOTTOM", icon, "TOP", 0, 2`, centered justify).
    - Only stack count text appears over the icon face (`"BOTTOMRIGHT"`, 11pt, outline, white text).

@@ -17,6 +17,7 @@ ns.Media.statusbar = {
     MerfinFlatt    = [[Interface\AddOns\SuperSwingTimer\Media\statusbar\MerfinFlatt.tga]],
     MerfinTexture  = [[Interface\AddOns\SuperSwingTimer\Media\statusbar\MerfinTexture.blp]],
     Flatt          = [[Interface\AddOns\SuperSwingTimer\Media\statusbar\Flatt.blp]],
+    Wglass         = [[Interface\AddOns\SuperSwingTimer\Media\statusbar\Wglass.tga]],
 }
 
 -- Register into LibSharedMedia if it is present (optional, never required).

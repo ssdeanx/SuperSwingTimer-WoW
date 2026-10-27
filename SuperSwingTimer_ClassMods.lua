@@ -10,15 +10,27 @@ local UnitExists = rawget(_G, "UnitExists")
 local UnitCanAttack = rawget(_G, "UnitCanAttack")
 local UnitIsDead = rawget(_G, "UnitIsDead")
 local UnitAttackSpeed = rawget(_G, "UnitAttackSpeed")
+local UnitAffectingCombat = rawget(_G, "UnitAffectingCombat")
 local IsSpellInRange = rawget(_G, "IsSpellInRange")
 local SpellHasRange = rawget(_G, "SpellHasRange")
 local CheckInteractDistance = rawget(_G, "CheckInteractDistance")
-local GetSpellTexture = rawget(_G, "GetSpellTexture")
+local function GetSpellTexture(spellId)
+    if ns.GetSpellTexture then
+        local tex = ns.GetSpellTexture(spellId)
+        if tex then return tex end
+    end
+    local g = rawget(_G, "GetSpellTexture")
+    return g and g(spellId)
+end
 local GetSpecialization = rawget(_G, "GetSpecialization")
 local GetNumTalentTabs = rawget(_G, "GetNumTalentTabs")
 local GetTalentTabInfo = rawget(_G, "GetTalentTabInfo")
 local GetTimePreciseSec = rawget(_G, "GetTimePreciseSec")
 local GetTime = rawget(_G, "GetTime")
+
+-- Shared gold used by the existing border pulse and LibCustomGlow proc
+-- effects. One table avoids per-frame color allocations at call sites.
+local GLOW_GOLD = { 1, 0.85, 0, 1 }
 local GetSpellCooldown = rawget(_G, "GetSpellCooldown")
 local C_Spell = rawget(_G, "C_Spell")
 local pcall = pcall
@@ -66,6 +78,13 @@ local function GetDebuffStackOffset()
     return _debuffStackIconOffset or BUFF_ICON_BASE_OFFSET
 end
 
+-- Fallback walk bound for RestackDebuffBars and ComputeBuffIconOffset when a caller omits barCount.
+-- The longest list in this file is the Hunter's 7, so 8 leaves headroom.
+-- The walk must be bounded rather than ipairs-based: a bar whose config toggle
+-- is off is never created by its Ensure helper, so its slot legitimately holds
+-- nil, and ipairs would stop the walk there and leave every later bar uninspected.
+local MAX_RESTACK_BARS = 8
+
 -- Direct buff icon Y offset computation. Uses the same synthetic arithmetic
 -- as RestackDebuffBars (no GetTop() calls) but takes the bar list and
 -- reference bar directly, so there's no shared-state dependency.
@@ -74,18 +93,22 @@ end
 -- @param barList (table) Ordered list of debuff bar frames to check
 -- @param referenceBar (frame) The main bar they're stacked above
 -- @param gap (number|nil) Pixel gap between stacked bars (default 2)
--- @return (number) Negative Y offset for icon positioning
-local function ComputeBuffIconOffset(barList, referenceBar, gap)
+-- @param barCount (number|nil) Max slots to inspect (defaults to MAX_RESTACK_BARS)
+-- @return (number) Positive Y offset for icon positioning
+local function ComputeBuffIconOffset(barList, referenceBar, gap, barCount)
     if not referenceBar then
         return BUFF_ICON_BASE_OFFSET
     end
     gap = gap or 2
     local currentY = gap
     local highestBarTop = nil
-    for _, bar in ipairs(barList) do
+    local lastIndex = (type(barCount) == "number" and barCount > 0 and barCount) or MAX_RESTACK_BARS
+    local defaultDebuffH = ns.DEBUFF_BAR_HEIGHT or 8
+    for i = 1, lastIndex do
+        local bar = barList and barList[i]
         if bar and bar.IsShown and bar:IsShown() then
-            local h = (bar.GetHeight and bar:GetHeight()) or 6
-            if type(h) ~= "number" then h = 6 end
+            local h = (bar.GetHeight and bar:GetHeight()) or defaultDebuffH
+            if type(h) ~= "number" then h = defaultDebuffH end
             -- Bar top = currentY + h in WoW Y+up coords (SetPoint uses positive Y = UP)
             local barTop = currentY + h
             if highestBarTop == nil or barTop > highestBarTop then
@@ -95,19 +118,12 @@ local function ComputeBuffIconOffset(barList, referenceBar, gap)
         end
     end
     if highestBarTop then
-        -- Icon bottom sits BUFF_ICON_BASE_OFFSET above the tallest debuff bar
-        return highestBarTop + BUFF_ICON_BASE_OFFSET
+        -- Icon bottom sits 8px above the tallest debuff bar (matching RestackDebuffBars)
+        return highestBarTop + 8
     end
     -- No bars visible: icon bottom BUFF_ICON_BASE_OFFSET above reference bar
     return BUFF_ICON_BASE_OFFSET
 end
-
--- Fallback walk bound for RestackDebuffBars when a caller omits barCount.
--- The longest list in this file is the Hunter's 7, so 8 leaves headroom.
--- The walk must be bounded rather than ipairs-based: a bar whose config toggle
--- is off is never created by its Ensure helper, so its slot legitimately holds
--- nil, and ipairs would stop the walk there and leave every later bar unstacked.
-local MAX_RESTACK_BARS = 8
 
 -- Universal debuff bar restacker: positions visible bars in order above referenceBar.
 -- Accepts an ordered table of bar references (bottom to top stacking order).
@@ -144,8 +160,9 @@ local function RestackDebuffBars(barList, referenceBar, gap, barCount)
     for i = 1, lastIndex do
         local bar = barList[i]
         if bar and bar.IsShown and bar:IsShown() then
-            local h = (bar.GetHeight and bar:GetHeight()) or 6
-            if type(h) ~= "number" then h = 6 end
+            local defaultDebuffH = ns.DEBUFF_BAR_HEIGHT or 8
+            local h = (bar.GetHeight and bar:GetHeight()) or defaultDebuffH
+            if type(h) ~= "number" then h = defaultDebuffH end
             -- Anchor writes are the most expensive UI calls here (ClearAllPoints
             -- invalidates WoW's anchor cache and forces a layout pass), so only
             -- re-issue them when the computed target actually moved. The cache is
@@ -248,16 +265,16 @@ end
 
 local function GetHelpfulAuraData(unit, index)
     if not unit or not index then return nil end
-    local name, _, _, count, _, dur, expT, _, _, _, sId = ns.UnitBuff(unit, index)
+    local name, _, icon, count, _, dur, expT, _, _, _, sId = ns.UnitBuff(unit, index)
     if not name then return nil end
-    return name, dur, expT, sId, count or 0
+    return name, dur, expT, sId, count or 0, icon
 end
 
 local function GetHarmfulAuraData(unit, index, filter)
     if not unit or not index then return nil end
-    local name, _, _, count, _, dur, expT, caster, _, _, sId = ns.UnitAura(unit, index, filter or "HARMFUL")
+    local name, _, icon, count, _, dur, expT, caster, _, _, sId = ns.UnitAura(unit, index, filter or "HARMFUL")
     if not name then return nil end
-    return name, count or 0, dur, expT, caster, sId
+    return name, count or 0, dur, expT, caster, sId, icon
 end
 
 local function EnsureVerticalHelperBar(frameName, anchorBar, width, texturePath)
@@ -429,7 +446,7 @@ local function CreatePlayerPowerBar()
     -- (global-scale aware, matching ns.ApplyBarSize's power-bar sizing).
     bar:SetSize(
         (ns.mhBar and ns.mhBar:GetWidth()) or ns.Scale(ns.BAR_WIDTH or 240),
-        ns.Scale(ns.POWER_BAR_HEIGHT or 10)
+        ns.Scale(ns.POWER_BAR_HEIGHT or 14)
     )
     bar:SetMinMaxValues(0, 100)
     bar:SetValue(0)
@@ -968,7 +985,7 @@ local function SetupRetPaladin()
         end
 
         -- Register paladin seal/zone/badge OnUpdate hook
-        ns.RegisterOnUpdateHook(function(elapsed)
+        ns.RegisterNamedOnUpdateHook("paladin-seal", function(elapsed)
             UpdateSealColorAndLabel()
             UpdateSealBreakpointLine()
             UpdateJudgementMarker()
@@ -1173,6 +1190,7 @@ local function SetupRetPaladin()
             ns.activeBuffIconCount = 0
             for _, icon in ipairs(paladinBuffIcons) do
                 if icon and icon.Hide then icon:Hide() end
+                if ns.Glow and ns.Glow.SetIcon then ns.Glow.SetIcon(icon, false) end
             end
             return
         end
@@ -1214,15 +1232,30 @@ local function SetupRetPaladin()
 
         local numActive = #activeIcons
         ns.activeBuffIconCount = numActive
-        if numActive == 0 then return end
+        if numActive == 0 then
+            if ns.Glow and ns.Glow.SetIcon then
+                for _, icon in ipairs(paladinBuffIcons) do ns.Glow.SetIcon(icon, false) end
+            end
+            return
+        end
 
         local referenceBar = ns.mhBar
-        if not referenceBar then return end
+        if not referenceBar then
+            if ns.Glow and ns.Glow.SetIcon then
+                for _, icon in ipairs(paladinBuffIcons) do ns.Glow.SetIcon(icon, false) end
+            end
+            return
+        end
         -- Position icons above all visible target debuff duration bars,
         -- computing the Y offset directly from current bar visibility
         local iconY = ComputeBuffIconOffset({ ns.paladinJudgementBar, ns.paladinSealVengeanceBar }, referenceBar)
         local barGetWidth = referenceBar.GetWidth
-        if not barGetWidth then return end
+        if not barGetWidth then
+            if ns.Glow and ns.Glow.SetIcon then
+                for _, icon in ipairs(paladinBuffIcons) do ns.Glow.SetIcon(icon, false) end
+            end
+            return
+        end
 
         for idx, entry in ipairs(activeIcons) do
             local icon = entry.icon
@@ -1254,7 +1287,10 @@ local function SetupRetPaladin()
                     icon.glow:Hide()
                 end
             end
-
+            -- LibCustomGlow proc animation for the urgent final 2s.
+            if ns.Glow and ns.Glow.SetIcon then
+                ns.Glow.SetIcon(icon, remaining <= 2 and remaining > 0, GLOW_GOLD)
+            end
             -- Countdown text (centered above icon)
             if icon.durationText and icon.durationText.SetText then
                 local text = remaining >= 3 and string.format("%.0f", remaining) or string.format("%.1f", remaining)
@@ -1275,12 +1311,13 @@ local function SetupRetPaladin()
 
             if icon.Show then icon:Show() end
         end
+
     end
 
     -- ========================================================================
     -- Judgement of the Crusader debuff bar (thin gold bar above MH bar)
     -- ========================================================================
-    local JOTC_BAR_HEIGHT = 6
+    local JOTC_BAR_HEIGHT = 8
     local JOTC_FALLBACK_DURATION = 20
     local JOTC_GLOW_WINDOW = 4
     local judgementBar = nil
@@ -1304,6 +1341,9 @@ local function SetupRetPaladin()
                 end
             end
         end
+        if ns.Glow and ns.Glow.SetBar then
+            ns.Glow.SetBar(bar, "jotc", shouldGlow, GLOW_GOLD, "autocast")
+        end
     end
 
     local function EnsureJudgementBar()
@@ -1324,13 +1364,13 @@ local function SetupRetPaladin()
         bar.background:SetColorTexture(0, 0, 0, 0.5)
 
         -- Spell icon
+        bar.icon = bar:CreateTexture(nil, "OVERLAY")
+        bar.icon:SetSize(JOTC_BAR_HEIGHT, JOTC_BAR_HEIGHT)
+        bar.icon:SetPoint("RIGHT", bar, "LEFT", -2, 0)
+        bar.icon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
         local iconPath = GetSpellTexture and GetSpellTexture(21183)
         if iconPath then
-            bar.icon = bar:CreateTexture(nil, "OVERLAY")
-            bar.icon:SetSize(JOTC_BAR_HEIGHT, JOTC_BAR_HEIGHT)
-            bar.icon:SetPoint("RIGHT", bar, "LEFT", -2, 0)
             bar.icon:SetTexture(iconPath)
-            bar.icon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
         end
 
         -- Label
@@ -1440,6 +1480,11 @@ local function SetupRetPaladin()
                     end
                 end
 
+                if bar.icon and bar.icon.SetTexture and not bar.icon:GetTexture() then
+                    local tex = GetSpellTexture and GetSpellTexture(21183)
+                    if tex then bar.icon:SetTexture(tex) end
+                end
+
                 -- Glow
                 SetJudgementGlow(bar, remaining)
 
@@ -1463,7 +1508,7 @@ local function SetupRetPaladin()
     ns.UpdatePaladinJudgementBar = UpdatePaladinJudgementBar
 
     -- Register Judgement bar OnUpdate hook
-    ns.RegisterOnUpdateHook(function(elapsed)
+    ns.RegisterNamedOnUpdateHook("paladin-judgement", function(elapsed)
         UpdatePaladinJudgementBar(false)
     end)
 
@@ -1473,7 +1518,7 @@ local function SetupRetPaladin()
     -- ========================================================================
     -- Seal of Vengeance / Corruption target debuff duration bar (thin gold bar above MH)
     -- ========================================================================
-    local SEAL_VENGEANCE_BAR_HEIGHT = 5
+    local SEAL_VENGEANCE_BAR_HEIGHT = 8
     local SEAL_VENGEANCE_FALLBACK_DURATION = 15
     local SEAL_VENGEANCE_GLOW_WINDOW = 4
     local sealVengeanceBar = nil
@@ -1517,13 +1562,13 @@ local function SetupRetPaladin()
         bar.background:SetColorTexture(0, 0, 0, 0.5)
 
         -- Spell icon (Seal of Vengeance)
+        bar.icon = bar:CreateTexture(nil, "OVERLAY")
+        bar.icon:SetSize(SEAL_VENGEANCE_BAR_HEIGHT, SEAL_VENGEANCE_BAR_HEIGHT)
+        bar.icon:SetPoint("RIGHT", bar, "LEFT", -2, 0)
+        bar.icon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
         local iconPath = GetSpellTexture and GetSpellTexture(31801)
         if iconPath then
-            bar.icon = bar:CreateTexture(nil, "OVERLAY")
-            bar.icon:SetSize(SEAL_VENGEANCE_BAR_HEIGHT, SEAL_VENGEANCE_BAR_HEIGHT)
-            bar.icon:SetPoint("RIGHT", bar, "LEFT", -2, 0)
             bar.icon:SetTexture(iconPath)
-            bar.icon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
         end
 
         -- Label
@@ -1642,6 +1687,11 @@ local function SetupRetPaladin()
                     end
                 end
 
+                if bar.icon and bar.icon.SetTexture and not bar.icon:GetTexture() then
+                    local tex = GetSpellTexture and GetSpellTexture(31801)
+                    if tex then bar.icon:SetTexture(tex) end
+                end
+
                 SetSealVengeanceGlow(bar, remaining)
 
                 if bar.Show then bar:Show() end
@@ -1664,7 +1714,7 @@ local function SetupRetPaladin()
     ns.UpdatePaladinSealVengeanceBar = UpdatePaladinSealVengeanceBar
 
     -- Register Seal Vengeance OnUpdate hook (includes restack + buff icons)
-    ns.RegisterOnUpdateHook(function(elapsed)
+    ns.RegisterNamedOnUpdateHook("paladin-power", function(elapsed)
         UpdatePaladinSealVengeanceBar(false)
         -- Restack all visible debuff bars above MH dynamically
         paladinRestackBars[1] = ns.paladinJudgementBar
@@ -2021,6 +2071,7 @@ local function SetupWarrior()
                 edge:Hide()
             end
             warriorOverpowerText:Hide()
+            if ns.Glow and ns.Glow.SetBar then ns.Glow.SetBar(ns.mhBar, "overpower", false) end
             return
         end
 
@@ -2032,6 +2083,9 @@ local function SetupWarrior()
         end
         warriorOverpowerText:SetText("OP")
         warriorOverpowerText:Show()
+        if ns.Glow and ns.Glow.SetBar then
+            ns.Glow.SetBar(ns.mhBar, "overpower", true, GLOW_GOLD, "autocast")
+        end
     end
 
     ns.UpdateWarriorShieldBlockBar = function(elapsed, force)
@@ -2248,7 +2302,7 @@ local function SetupWarrior()
     -- ============================================================
     -- Deep Wounds target debuff duration bar (Warrior)
     -- ============================================================
-    local DEEP_WOUND_BAR_HEIGHT = 6
+    local DEEP_WOUND_BAR_HEIGHT = 8
     local DEEP_WOUND_FALLBACK_DURATION = 12
     local DEEP_WOUND_GLOW_WINDOW = 4
     local deepWoundsBar = nil
@@ -2386,7 +2440,7 @@ local function SetupWarrior()
     -- ============================================================
     -- Rend target debuff bar (Warrior bleed, Blood Frenzy enhanced)
     -- ============================================================
-    local REND_BAR_HEIGHT = 6
+    local REND_BAR_HEIGHT = 8
     local REND_FALLBACK_DURATION = 9
     local REND_GLOW_WINDOW = 4
     local rendBar = nil
@@ -2538,7 +2592,7 @@ local function SetupWarrior()
     -- ============================================================
     -- Thunder Clap target debuff bar (Warrior attack speed reduction)
     -- ============================================================
-    local THUNDER_CLAP_BAR_HEIGHT = 6
+    local THUNDER_CLAP_BAR_HEIGHT = 8
     local THUNDER_CLAP_FALLBACK_DURATION = 30
     local THUNDER_CLAP_GLOW_WINDOW = 4
     local thunderClapBar = nil
@@ -2678,7 +2732,7 @@ local function SetupWarrior()
     -- ============================================================
     -- Demoralizing Shout target debuff bar (Warrior attack power reduction)
     -- ============================================================
-    local DEMO_SHOUT_BAR_HEIGHT = 6
+    local DEMO_SHOUT_BAR_HEIGHT = 8
     local DEMO_SHOUT_FALLBACK_DURATION = 30
     local DEMO_SHOUT_GLOW_WINDOW = 4
     local demoShoutBar = nil
@@ -2818,7 +2872,7 @@ local function SetupWarrior()
     -- ============================================================
     -- Sunder Armor target debuff bar (Warrior armor reduction, stacks 1-5)
     -- ============================================================
-    local SUNDER_ARMOR_BAR_HEIGHT = 6
+    local SUNDER_ARMOR_BAR_HEIGHT = 8
     local SUNDER_ARMOR_GLOW_WINDOW = 4
     local sunderArmorBar = nil
     local nextSunderArmorUpdateAt = 0
@@ -2952,6 +3006,10 @@ local function SetupWarrior()
         if bar.stackText and bar.stackText.SetText then
             bar.stackText:SetText(tostring(stacks))
         end
+        if bar.icon and bar.icon.SetTexture and not bar.icon:GetTexture() then
+            local tex = GetSpellTexture and GetSpellTexture(7386)
+            if tex then bar.icon:SetTexture(tex) end
+        end
 
         bar:Show()
     end
@@ -2968,7 +3026,7 @@ local function SetupWarrior()
     local warriorRestackBars = {}
 
     -- Register Warrior OnUpdate hook (shield block + cooldown badges)
-    ns.RegisterOnUpdateHook(function(elapsed)
+    ns.RegisterNamedOnUpdateHook("warrior", function(elapsed)
         if ns.UpdateWarriorShieldBlockBar then
             ns.UpdateWarriorShieldBlockBar(elapsed)
         end
@@ -3304,6 +3362,10 @@ local function SetupWarrior()
                     icon.glow:Hide()
                 end
             end
+            -- LibCustomGlow proc animation for the urgent final 2s.
+            if ns.Glow and ns.Glow.SetIcon then
+                ns.Glow.SetIcon(icon, remaining <= 2 and remaining > 0, GLOW_GOLD)
+            end
 
             -- Countdown text (centered above icon)
             if icon.durationText and icon.durationText.SetText then
@@ -3395,6 +3457,7 @@ local function SetupEnhShaman()
             if ns.weaveSparkOH then ns.weaveSparkOH:Hide() end
             ns.weaveTriangleTop:Hide()
             ns.weaveTriangleBottom:Hide()
+            if ns.Glow and ns.Glow.SetBar and ns.mhBar then ns.Glow.SetBar(ns.mhBar, "weave", false) end
             return
         end
 
@@ -3404,6 +3467,7 @@ local function SetupEnhShaman()
             if ns.weaveSparkOH then ns.weaveSparkOH:Hide() end
             ns.weaveTriangleTop:Hide()
             ns.weaveTriangleBottom:Hide()
+            if ns.Glow and ns.Glow.SetBar and ns.mhBar then ns.Glow.SetBar(ns.mhBar, "weave", false) end
             return
         end
 
@@ -3413,6 +3477,7 @@ local function SetupEnhShaman()
             if ns.weaveSparkOH then ns.weaveSparkOH:Hide() end
             ns.weaveTriangleTop:Hide()
             ns.weaveTriangleBottom:Hide()
+            if ns.Glow and ns.Glow.SetBar and ns.mhBar then ns.Glow.SetBar(ns.mhBar, "weave", false) end
             return
         end
 
@@ -3435,6 +3500,20 @@ local function SetupEnhShaman()
             or (info.clipAmount and info.clipAmount > 0 and { r = 1, g = 0.15, b = 0.15, a = 1 })
             or (ns.GetPlayerClassColor and ns.GetPlayerClassColor())
             or { r = 0.0, g = 0.44, b = 0.87, a = 1 }
+        -- LibCustomGlow: shimmer the MH bar while a weave cast is in flight.
+        -- Red when the cast clips the swing, class color when safe.
+        if ns.Glow and ns.Glow.SetBar and ns.mhBar then
+            local glowColor = ns.mhBar._sstWeaveGlowColor
+            if not glowColor then
+                glowColor = {}
+                ns.mhBar._sstWeaveGlowColor = glowColor
+            end
+            glowColor[1] = sparkColor.r or 0.0
+            glowColor[2] = sparkColor.g or 0.44
+            glowColor[3] = sparkColor.b or 0.87
+            glowColor[4] = 1
+            ns.Glow.SetBar(ns.mhBar, "weave", showSpark, glowColor, "autocast")
+        end
         local iconTexture = info.iconTexture
         local triangleGap = ns.GetWeaveTriangleGap and ns.GetWeaveTriangleGap() or 2
         local triangleSize = ns.GetWeaveTriangleSize and ns.GetWeaveTriangleSize() or 14
@@ -3847,7 +3926,7 @@ local function SetupEnhShaman()
         wfIcdBar:Show()
     end
 
-    local FLAME_SHOCK_BAR_HEIGHT = 6
+    local FLAME_SHOCK_BAR_HEIGHT = 8
     local FLAME_SHOCK_FALLBACK_DURATION = 12
     local FLAME_SHOCK_GLOW_WINDOW = 4
     local flameShockBar = nil
@@ -4442,6 +4521,10 @@ local function SetupEnhShaman()
                     icon.glow:Hide()
                 end
             end
+            -- LibCustomGlow proc animation for the urgent final 2s.
+            if ns.Glow and ns.Glow.SetIcon then
+                ns.Glow.SetIcon(icon, remaining <= 2 and remaining > 0, GLOW_GOLD)
+            end
 
             -- Countdown text (centered above icon)
             if icon.durationText and icon.durationText.SetText then
@@ -4473,7 +4556,7 @@ local function SetupEnhShaman()
     -- is actually created.
     local SHAMAN_RESTACK_COUNT = 1
     local shamanRestackBars = {}
-    ns.RegisterOnUpdateHook(function(elapsed)
+    ns.RegisterNamedOnUpdateHook("shaman", function(elapsed)
         if not ns._shamanHookLive then return end
         UpdateWeaveVisuals()
         UpdateShamanFlameShockBar(false)
@@ -4764,7 +4847,7 @@ local function SetupDruid()
         end
 
         -- Register Druid OnUpdate hook (queue tint + energy tick)
-        ns.RegisterOnUpdateHook(function(elapsed)
+        ns.RegisterNamedOnUpdateHook("druid-form", function(elapsed)
             UpdateDruidQueueTint()
             UpdateDruidEnergyTickVisual()
         end)
@@ -4789,7 +4872,7 @@ local function SetupDruid()
     -- ============================================================
     -- Mangle and Rip debuff duration bars (Druid Feral)
     -- ============================================================
-    local MANGLE_BAR_HEIGHT = 6
+    local MANGLE_BAR_HEIGHT = 8
     local MANGLE_FALLBACK_DURATION = 12
     local MANGLE_GLOW_WINDOW = 4
     local mangleBar = nil
@@ -4915,13 +4998,18 @@ local function SetupDruid()
             bar.label:SetText(string.format("%.0f", math.max(remaining, 0)))
         end
 
+        if bar.icon and not bar.icon:GetTexture() then
+            local texPath = GetSpellTexture and GetSpellTexture(33983)
+            if texPath then bar.icon:SetTexture(texPath) end
+        end
+
         bar:Show()
     end
 
     -- ============================================================
     -- Rip debuff duration bar (Druid Feral)
     -- ============================================================
-    local RIP_BAR_HEIGHT = 6
+    local RIP_BAR_HEIGHT = 8
     local RIP_FALLBACK_DURATION = 12
     local RIP_GLOW_WINDOW = 4
     local ripBar = nil
@@ -4947,6 +5035,8 @@ local function SetupDruid()
         ripBar:SetMinMaxValues(0, 1)
         ripBar:SetValue(0)
         ripBar:SetHeight(RIP_BAR_HEIGHT)
+        ripBar:SetPoint("BOTTOMLEFT", ns.mhBar, "TOPLEFT", 0, 2)
+        ripBar:SetPoint("BOTTOMRIGHT", ns.mhBar, "TOPRIGHT", 0, 2)
         ripBar:EnableMouse(false)
 
         local bg = ripBar:CreateTexture(nil, "BACKGROUND")
@@ -5045,20 +5135,10 @@ local function SetupDruid()
             bar.label:SetText(string.format("%.0f", math.max(remaining, 0)))
         end
 
-        -- Dynamic positioning: Rip sits above Mangle (or directly above MH if Mangle hidden)
-        local mangleShown = mangleBar and mangleBar:IsShown()
-        local ripOffset = 2
-        if mangleShown then
-            ripOffset = 2 + MANGLE_BAR_HEIGHT + 5
+        if bar.icon and not bar.icon:GetTexture() then
+            local texPath = GetSpellTexture and GetSpellTexture(27008)
+            if texPath then bar.icon:SetTexture(texPath) end
         end
-        bar:ClearAllPoints()
-        bar:SetPoint("BOTTOMLEFT", ns.mhBar, "TOPLEFT", 0, ripOffset)
-        bar:SetPoint("BOTTOMRIGHT", ns.mhBar, "TOPRIGHT", 0, ripOffset)
-        -- RestackDebuffBars() runs later in the same OnUpdate hook and owns the
-        -- final anchor, so drop its cache entry here — otherwise it would trust
-        -- its own (unchanged) offset and leave this bar on the one set above.
-        bar._lastRestackY = nil
-        bar._lastRestackRef = nil
 
         bar:Show()
     end
@@ -5066,7 +5146,7 @@ local function SetupDruid()
     -- ============================================================
     -- Rake debuff duration bar (Druid Feral Cat bleed, 9s)
     -- ============================================================
-    local RAKE_BAR_HEIGHT = 5
+    local RAKE_BAR_HEIGHT = 8
     local RAKE_FALLBACK_DURATION = 9
     local RAKE_GLOW_WINDOW = 4
     local rakeBar = nil
@@ -5192,27 +5272,10 @@ local function SetupDruid()
             bar.label:SetText(string.format("%.0f", math.max(remaining, 0)))
         end
 
-        -- Dynamic positioning: Rake sits above Rip (or Mangle if Rip hidden, or MH if neither)
-        local ripShown = ripBar and ripBar:IsShown()
-        local mangleShown = mangleBar and mangleBar:IsShown()
-        local rakeOffset = 2
-        if ripShown then
-            local ripTop = 2
-            if mangleShown then
-                ripTop = 2 + MANGLE_BAR_HEIGHT + 5
-            end
-            rakeOffset = ripTop + RIP_BAR_HEIGHT + 4
-        elseif mangleShown then
-            rakeOffset = 2 + MANGLE_BAR_HEIGHT + 4
+        if bar.icon and not bar.icon:GetTexture() then
+            local texPath = GetSpellTexture and GetSpellTexture(1822)
+            if texPath then bar.icon:SetTexture(texPath) end
         end
-        bar:ClearAllPoints()
-        bar:SetPoint("BOTTOMLEFT", ns.mhBar, "TOPLEFT", 0, rakeOffset)
-        bar:SetPoint("BOTTOMRIGHT", ns.mhBar, "TOPRIGHT", 0, rakeOffset)
-        -- RestackDebuffBars() runs later in the same OnUpdate hook and owns the
-        -- final anchor, so drop its cache entry here — otherwise it would trust
-        -- its own (unchanged) offset and leave this bar on the one set above.
-        bar._lastRestackY = nil
-        bar._lastRestackRef = nil
 
         bar:Show()
     end
@@ -5459,6 +5522,10 @@ local function SetupDruid()
                     icon.glow:Hide()
                 end
             end
+            -- LibCustomGlow proc animation for the urgent final 2s.
+            if ns.Glow and ns.Glow.SetIcon then
+                ns.Glow.SetIcon(icon, remaining <= 2 and remaining > 0, GLOW_GOLD)
+            end
 
             -- Countdown text (centered above icon)
             if icon.durationText and icon.durationText.SetText then
@@ -5502,7 +5569,7 @@ local function SetupDruid()
     -- call for this class, so a nil slot is skipped rather than truncating the walk.
     local DRUID_RESTACK_COUNT = 3
     local druidRestackBars = {}
-    ns.RegisterOnUpdateHook(function(elapsed)
+    ns.RegisterNamedOnUpdateHook("druid-dots", function(elapsed)
         UpdateDruidMangleBar(false)
         UpdateDruidRipBar(false)
         UpdateDruidRakeBar(false)
@@ -5844,6 +5911,7 @@ local function SetupHunter()
         icon.border:SetPoint("BOTTOMRIGHT", 1, -1)
         icon:Hide()
         hunterAspectIcon = icon
+        ns.hunterAspectIcon = icon
         return icon
     end
 
@@ -5960,6 +6028,7 @@ local function SetupHunter()
         local db = SuperSwingTimerDB or ns.DB_DEFAULTS
         if not db or db.showHunterRapidFireBar == false then
             if rapidFireBar then rapidFireBar:Hide() end
+            if ns.Glow and ns.Glow.SetBar then ns.Glow.SetBar(rapidFireBar, "rapidfire", false) end
             return
         end
         -- Create lazily
@@ -6016,10 +6085,14 @@ local function SetupHunter()
             if rapidFireBar.label then
                 rapidFireBar.label:SetText(string.format("%.0fs", math.max(remaining, 0)))
             end
+            if ns.Glow and ns.Glow.SetBar then
+                ns.Glow.SetBar(rapidFireBar, "rapidfire", remaining > 0 and remaining <= 4, GLOW_GOLD, "autocast")
+            end
             return
         end
 
         -- No active aura — hide bar. Only show during Rapid Fire's DURATION, not its cooldown.
+        if ns.Glow and ns.Glow.SetBar then ns.Glow.SetBar(rapidFireBar, "rapidfire", false) end
         rapidFireBar:Hide()
     end
 
@@ -6055,15 +6128,15 @@ local function SetupHunter()
 
     local function GetCurrentAspectData()
         for index = 1, 40 do
-            local auraName, _, _, auraSpellId = GetHelpfulAuraData("player", index)
+            local auraName, _, _, auraSpellId, _, auraIcon = GetHelpfulAuraData("player", index)
             if not auraName then
                 break
             end
             if HUNTER_ASPECT_NAMES[auraName] or (type(auraSpellId) == "number" and HUNTER_ASPECT_SPELL_IDS[auraSpellId]) then
-                return auraName, auraSpellId or auraName
+                return auraName, auraSpellId or auraName, auraIcon
             end
         end
-        return nil, nil
+        return nil, nil, nil
     end
 
     -- Update aspect icon each frame via ns.UpdateHunterAspect
@@ -6094,23 +6167,61 @@ local function SetupHunter()
         if hunterAspectTimer < HUNTER_ASPECT_UPDATE_INTERVAL then return end
         hunterAspectTimer = 0
 
-        local aspectName, aspectToken = GetCurrentAspectData()
+        local aspectName, aspectToken, auraIcon = GetCurrentAspectData()
         if not aspectName then
-            if icon.SetAlpha then
-                icon:SetAlpha(0)
+            local inCombat = (ns.playerInCombat == true)
+                or (type(UnitAffectingCombat) == "function" and UnitAffectingCombat("player"))
+                or (type(rawget(_G, "UnitAffectingCombat")) == "function" and rawget(_G, "UnitAffectingCombat")("player"))
+            if inCombat then
+                -- In combat without any aspect active: display warning alert
+                if icon.texture and icon.texture.SetTexture then
+                    icon.texture:SetTexture("Interface\\Icons\\INV_Misc_QuestionMark")
+                end
+                if icon.border and icon.border.SetColorTexture then
+                    icon.border:SetColorTexture(0.9, 0.1, 0.1, 0.9)
+                end
+                local size = 7
+                if type(ns.GetHunterRangeHelperWidth) == "function" then
+                    size = ns.GetHunterRangeHelperWidth() or 7
+                end
+                if type(size) ~= "number" or size < 4 then
+                    size = 4
+                end
+                if icon.SetSize then
+                    icon:SetSize(size, size)
+                end
+                if icon.SetAlpha then
+                    icon:SetAlpha(1)
+                end
+            else
+                if icon.SetAlpha then
+                    icon:SetAlpha(0)
+                end
             end
             return
         end
 
-        -- Resolve spell ID for icon texture with fallback
-        local spellId = tonumber(aspectToken)
-        local resolvedSpellId = spellId or aspectName
-        if type(GetSpellTexture) == "function" then
-            local ok, texturePath = pcall(GetSpellTexture, resolvedSpellId)
-            if ok and type(texturePath) == "string" and texturePath ~= "" then
-                if icon.texture and icon.texture.SetTexture then
-                    icon.texture:SetTexture(texturePath)
+        -- Restore standard border when aspect is active
+        if icon.border and icon.border.SetColorTexture then
+            icon.border:SetColorTexture(0, 0, 0, 0.65)
+        end
+
+        -- Resolve icon texture: prefer direct aura icon, then ns.GetSpellTexture / GetSpellTexture
+        local tex = auraIcon
+        if not tex or tex == "" then
+            local spellId = tonumber(aspectToken)
+            local resolvedSpellId = spellId or aspectName
+            if type(GetSpellTexture) == "function" then
+                local ok, texturePath = pcall(GetSpellTexture, resolvedSpellId)
+                if ok and ((type(texturePath) == "string" and texturePath ~= "") or (type(texturePath) == "number" and texturePath > 0)) then
+                    tex = texturePath
                 end
+            end
+        end
+
+        if tex and ((type(tex) == "string" and tex ~= "") or (type(tex) == "number" and tex > 0)) then
+            if icon.texture and icon.texture.SetTexture then
+                icon.texture:SetTexture(tex)
             end
         end
 
@@ -6375,6 +6486,10 @@ local function SetupHunter()
                     icon.glow:Hide()
                 end
             end
+            -- LibCustomGlow proc animation for the urgent final 2s.
+            if ns.Glow and ns.Glow.SetIcon then
+                ns.Glow.SetIcon(icon, remaining <= 2 and remaining > 0, GLOW_GOLD)
+            end
 
             -- Countdown text (centered above icon)
             if icon.durationText and icon.durationText.SetText then
@@ -6401,7 +6516,7 @@ local function SetupHunter()
     -- ============================================================
     -- Serpent Sting debuff duration bar (Hunter)
     -- ============================================================
-    local SERPENT_STING_BAR_HEIGHT = 6
+    local SERPENT_STING_BAR_HEIGHT = 8
     local SERPENT_STING_FALLBACK_DURATION = 15
     local SERPENT_STING_GLOW_WINDOW = 4
     local serpentStingBar = nil
@@ -6522,13 +6637,18 @@ local function SetupHunter()
             bar.label:SetText(string.format("%.0f", math.max(remaining, 0)))
         end
 
+        if bar.icon and not bar.icon:GetTexture() then
+            local texPath = GetSpellTexture and GetSpellTexture(27019)
+            if texPath then bar.icon:SetTexture(texPath) end
+        end
+
         bar:Show()
     end
 
     -- ============================================================
     -- Wing Clip target debuff bar (Hunter melee snare)
     -- ============================================================
-    local WING_CLIP_BAR_HEIGHT = 6
+    local WING_CLIP_BAR_HEIGHT = 8
     local WING_CLIP_GLOW_WINDOW = 4
     local wingClipBar = nil
     local nextWingClipUpdateAt = 0
@@ -6646,13 +6766,18 @@ local function SetupHunter()
             bar.label:SetText(string.format("%.0f", math.max(remaining, 0)))
         end
 
+        if bar.icon and not bar.icon:GetTexture() then
+            local texPath = GetSpellTexture and GetSpellTexture(2974)
+            if texPath then bar.icon:SetTexture(texPath) end
+        end
+
         bar:Show()
     end
 
     -- ============================================================
     -- Concussion Shot target debuff bar (Hunter ranged snare)
     -- ============================================================
-    local CONCUSSION_SHOT_BAR_HEIGHT = 6
+    local CONCUSSION_SHOT_BAR_HEIGHT = 8
     local CONCUSSION_SHOT_GLOW_WINDOW = 4
     local concussionShotBar = nil
     local nextConcussionShotUpdateAt = 0
@@ -6770,13 +6895,18 @@ local function SetupHunter()
             bar.label:SetText(string.format("%.0f", math.max(remaining, 0)))
         end
 
+        if bar.icon and not bar.icon:GetTexture() then
+            local texPath = GetSpellTexture and GetSpellTexture(5116)
+            if texPath then bar.icon:SetTexture(texPath) end
+        end
+
         bar:Show()
     end
 
     -- ============================================================
     -- Immolation Trap target debuff bar (Hunter fire trap)
     -- ============================================================
-    local IMMOLATION_TRAP_BAR_HEIGHT = 6
+    local IMMOLATION_TRAP_BAR_HEIGHT = 8
     local IMMOLATION_TRAP_GLOW_WINDOW = 4
     local immolationTrapBar = nil
     local nextImmolationTrapUpdateAt = 0
@@ -6902,7 +7032,7 @@ local function SetupHunter()
     -- ============================================================
     -- Explosive Trap target debuff bar (Hunter fire trap)
     -- ============================================================
-    local EXPLOSIVE_TRAP_BAR_HEIGHT = 6
+    local EXPLOSIVE_TRAP_BAR_HEIGHT = 8
     local EXPLOSIVE_TRAP_GLOW_WINDOW = 4
     local explosiveTrapBar = nil
     local nextExplosiveTrapUpdateAt = 0
@@ -7028,7 +7158,7 @@ local function SetupHunter()
     -- ============================================================
     -- Freezing Trap target debuff bar (Hunter CC trap)
     -- ============================================================
-    local FREEZING_TRAP_BAR_HEIGHT = 6
+    local FREEZING_TRAP_BAR_HEIGHT = 8
     local FREEZING_TRAP_GLOW_WINDOW = 4
     local freezingTrapBar = nil
     local nextFreezingTrapUpdateAt = 0
@@ -7153,7 +7283,7 @@ local function SetupHunter()
     -- ============================================================
     -- Frost Trap target debuff bar (Hunter slow trap)
     -- ============================================================
-    local FROST_TRAP_BAR_HEIGHT = 6
+    local FROST_TRAP_BAR_HEIGHT = 8
     local FROST_TRAP_GLOW_WINDOW = 4
     local frostTrapBar = nil
     local nextFrostTrapUpdateAt = 0
@@ -7289,7 +7419,7 @@ local function SetupHunter()
     local HUNTER_RESTACK_COUNT = 7
     local hunterRestackBars = {}
     if not ns._hunterHookRegistered then
-        ns.RegisterOnUpdateHook(function(elapsed)
+        ns.RegisterNamedOnUpdateHook("hunter", function(elapsed)
             if ns.UpdateHunterAspect then ns.UpdateHunterAspect(elapsed) end
             UpdateHunterSerpentStingBar(false)
             UpdateHunterWingClipBar(false)
@@ -7761,6 +7891,7 @@ local function SetupRogue()
         if ns.playerClass ~= "ROGUE" or db.showRogueSliceAndDice == false or (ns.IsMinimalMode and ns.IsMinimalMode()) then
             sndBar:SetAlpha(0)
             sndBar:SetValue(0)
+            if ns.Glow and ns.Glow.SetBar then ns.Glow.SetBar(sndBar, "snd", false) end
             return
         end
 
@@ -7769,11 +7900,13 @@ local function SetupRogue()
         if not previewActive and not mhVisible then
             sndBar:SetAlpha(0)
             sndBar:SetValue(0)
+            if ns.Glow and ns.Glow.SetBar then ns.Glow.SetBar(sndBar, "snd", false) end
             return
         end
 
         local isActive = false
         local progress = 0
+        local sndRemaining = 0
         local now = GetCurrentTime()
         if previewActive then
             isActive = true
@@ -7791,6 +7924,7 @@ local function SetupRogue()
                 local remaining = expirationTime - now
                 if remaining > 0 then
                     isActive = true
+                    sndRemaining = remaining
                     progress = remaining / duration
                 else
                     ns.rogueSliceAndDiceDuration = nil
@@ -7803,6 +7937,7 @@ local function SetupRogue()
         if not isActive then
             sndBar:SetAlpha(0)
             sndBar:SetValue(0)
+            if ns.Glow and ns.Glow.SetBar then ns.Glow.SetBar(sndBar, "snd", false) end
             return
         end
 
@@ -7815,6 +7950,19 @@ local function SetupRogue()
         sndBar:SetValue(math.max(0, math.min(progress, 1)))
         ApplyRogueSliceAndDiceColor()
         sndBar:SetAlpha(1)
+        if ns.Glow and ns.Glow.SetBar then
+            local color = GetRogueSliceAndDiceColor()
+            local glowColor = sndBar._sstGlowColor
+            if not glowColor then
+                glowColor = {}
+                sndBar._sstGlowColor = glowColor
+            end
+            glowColor[1] = color.r or 0.95
+            glowColor[2] = color.g or 0.82
+            glowColor[3] = color.b or 0.22
+            glowColor[4] = color.a or 1
+            ns.Glow.SetBar(sndBar, "snd", sndRemaining > 0 and sndRemaining <= 4, glowColor, "autocast")
+        end
     end
 
     local function HandleRogueComboPointsChanged(unit)
@@ -7921,7 +8069,7 @@ local function SetupRogue()
     -- ============================================================
     -- Rupture target debuff duration bar (Rogue)
     -- ============================================================
-    local RUPTURE_BAR_HEIGHT = 6
+    local RUPTURE_BAR_HEIGHT = 8
     local RUPTURE_FALLBACK_DURATION = 16
     local RUPTURE_GLOW_WINDOW = 4
     local ruptureBar = nil
@@ -8051,13 +8199,18 @@ local function SetupRogue()
             bar.label:SetText(string.format("%.0f", math.max(remaining, 0)))
         end
 
+        if bar.icon and not bar.icon:GetTexture() then
+            local texPath = GetSpellTexture and GetSpellTexture(26867)
+            if texPath then bar.icon:SetTexture(texPath) end
+        end
+
         bar:Show()
     end
 
     -- ============================================================
     -- Expose Armor target debuff bar (Rogue armor reduction)
     -- ============================================================
-    local EXPOSE_ARMOR_BAR_HEIGHT = 6
+    local EXPOSE_ARMOR_BAR_HEIGHT = 8
     local EXPOSE_ARMOR_GLOW_WINDOW = 4
     local exposeArmorBar = nil
     local nextExposeArmorUpdateAt = 0
@@ -8182,6 +8335,11 @@ local function SetupRogue()
 
         if bar.label and bar.label.SetText then
             bar.label:SetText("EA")
+        end
+
+        if bar.icon and not bar.icon:GetTexture() then
+            local texPath = GetSpellTexture and GetSpellTexture(8647)
+            if texPath then bar.icon:SetTexture(texPath) end
         end
 
         bar:Show()
@@ -8337,7 +8495,7 @@ local function SetupRogue()
         -- call for this class, so a nil slot is skipped rather than truncating the walk.
         local ROGUE_RESTACK_COUNT = 2
         local rogueRestackBars = {}
-        ns.RegisterOnUpdateHook(function(elapsed)
+        ns.RegisterNamedOnUpdateHook("rogue", function(elapsed)
             UpdateRogueSinisterAssistVisual()
             UpdateRogueEnergyTickVisual()
             UpdateRogueSliceAndDiceVisual()
@@ -8714,6 +8872,10 @@ local function SetupRogue()
                     icon.glow:Hide()
                 end
             end
+            -- LibCustomGlow proc animation for the urgent final 2s.
+            if ns.Glow and ns.Glow.SetIcon then
+                ns.Glow.SetIcon(icon, remaining <= 2 and remaining > 0, GLOW_GOLD)
+            end
 
             -- Countdown text (centered above icon)
             if icon.durationText and icon.durationText.SetText then
@@ -8952,7 +9114,7 @@ function ns.UpdatePowerBarAnchor()
     end
 
     local width = (ns.mhBar and ns.mhBar:GetWidth()) or ns.Scale(ns.BAR_WIDTH or 240)
-    local height = ns.Scale(ns.POWER_BAR_HEIGHT or 10)
+    local height = ns.Scale(ns.POWER_BAR_HEIGHT or 14)
     if bar:GetWidth() ~= width or bar:GetHeight() ~= height then
         bar:SetSize(width, height)
     end
@@ -8985,6 +9147,7 @@ end
 --  @return (nil)
 --  @usage Called during OnAddonLoaded before InitBars()
 function ns.InitClassMods()
+    if ns.Glow and ns.Glow.StopAll then ns.Glow.StopAll() end
     ns.OnBarsCreated = nil
     ns.OnDruidFormChange = nil
     ns.OnMeleeSwing = nil
@@ -9175,7 +9338,7 @@ function ns.InitClassMods()
         -- Setup*() aborted before registering its hook, this hook is the sole
         -- per-frame updater and the power bar must keep refreshing (fail-open).
         if not classSetupOk then
-            ns.RegisterOnUpdateHook(function()
+            ns.RegisterNamedOnUpdateHook("power-fallback", function()
                 if ns.UpdatePlayerPowerBar then
                     ns.UpdatePlayerPowerBar()
                 end
@@ -9197,6 +9360,9 @@ if WoWUnit then ---@diagnostic disable-line: undefined-global
     ns._Test.GetHarmfulAuraData = GetHarmfulAuraData
     ns._Test.GetHelpfulAuraData = GetHelpfulAuraData
     ns._Test.GetDebuffStackOffset = GetDebuffStackOffset
+    ns._Test.ComputeBuffIconOffset = ComputeBuffIconOffset
     ns._Test.RestackDebuffBars = RestackDebuffBars
     ns._Test.ResolvePowerBarColor = ResolvePowerBarColor
+    ns._Test.SetupRetPaladin = SetupRetPaladin
+    ns._Test.SetupHunter = SetupHunter
 end

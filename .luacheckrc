@@ -4,9 +4,10 @@ std = "lua51+min" -- Use Lua 5.1 with minimal standard library
 globals = {
     "UnitName", "UnitHealth", "UnitHealthMax", "GetTime", "PlaySoundFile",
     "CreateFrame", "UIParent", "GameTooltip", "_G", "select", "pairs", "ipairs",
-    "SuperSwingTimerDB", "C_Timer", "C_UnitAuras", "C_UnitAuras.GetPlayerAuraBySpellID",
+    "SuperSwingTimerDB", "C_Timer", "C_UnitAuras", "C_UnitAuras.GetPlayerAuraBySpellID", "C_Spell",
     "GetTime", "GetSpellInfo", "GetItemInfo", "GetInventoryItemLink", "GetInventoryItemID",
     "SLASH_SUPERSWINGTIMER1", "SLASH_SUPERSWINGTIMER2", "SLASH_SUPERSWINGTIMER3", "SLASH_SUPERSWINGTIMER4",
+    "SLASH_SUPERSWINGTIMER5",
     "GetTimePrecise", "GetSpellCooldown", "HunterTimerDB", "SwangThangDB", "UnitGUID",
     -- UIDropDownMenu internal globals used by nested menu level-2+ init functions
     "UIDROPDOWNMENU_MENU_VALUE", "UIDROPDOWNMENU_MENU_LEVEL",
@@ -60,3 +61,4 @@ files = {
         globals = { "arg" },
     },
 }
+exclude_files = { "docs", ".kilo", ".opencode", "Lib" }

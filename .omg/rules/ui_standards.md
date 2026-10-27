@@ -16,12 +16,13 @@ alwaysApply: false
    - Stacks display for `stacks > 1`, plus `stacks == 1` for Maelstrom Weapon (`408505` / `MSW`) and Paladin Reckoning.
 
 2. **Debuff Duration Bar Alignment**:
-   - Icons must be placed outside to the left of the bar: `spellIcon:SetPoint("RIGHT", bar, "LEFT", -2, 0)` with `SetTexCoord(0.07, 0.93, 0.07, 0.93)`.
+   - Icons must be placed outside to the left of the bar: `spellIcon:SetPoint("RIGHT", bar, "LEFT", -2, 0)` with `SetTexCoord(0.07, 0.93, 0.07, 0.93)` and 8x8 dimensions matching the 8px bar height (`ns.DEBUFF_BAR_HEIGHT = 8`).
    - Debuff bar frame itself aligns directly with the swing bar at $X=0$, without bar offset.
+   - Debuff bars stack cleanly upward from the anchor bar with a 2px gap (`RestackDebuffBars`).
 
 3. **Unified Power Bar**:
-   - Standard height is 10px (`ns.POWER_BAR_HEIGHT = 10`).
-   - Sits below off-hand (or main-hand) melee bar or Auto Shot cast bar.
+   - Standard height is 14px (`ns.POWER_BAR_HEIGHT = 14`).
+   - Sits 4px below off-hand (or main-hand) melee bar or Auto Shot cast bar.
 
 4. **Weave Spark Overlay**:
    - Weave spark overlay must live in a dedicated overlay frame at `FrameLevel + 6`.

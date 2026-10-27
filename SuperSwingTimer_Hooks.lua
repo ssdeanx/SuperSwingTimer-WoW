@@ -19,6 +19,11 @@ local _, ns = ...
 --  @see ns.RegisterOnUpdateHook
 ns.OnUpdateHooks = ns.OnUpdateHooks or {}
 
+--- Human-readable names keyed by hook function (weak keys).
+--  Used only by the opt-in /sst diag profile report. Missing names
+--  fall back to "hook#N" so profiling never depends on this table.
+ns.OnUpdateHookNames = ns.OnUpdateHookNames or setmetatable({}, { __mode = "k" })
+
 --- Register a per-frame OnUpdate hook.
 --  Appends (or inserts at @index) a callback to ns.OnUpdateHooks.
 --  The callback will be called every frame by the main OnUpdate
@@ -54,3 +59,17 @@ local function RegisterOnUpdateHook(hook, index)
     end
 end
 ns.RegisterOnUpdateHook = RegisterOnUpdateHook
+
+--- Register a hook with a profiler label.
+--  Kept separate from RegisterOnUpdateHook so existing call sites and
+--  tests can keep registering unnamed hooks unchanged.
+--  @param name (string) Short label shown by /sst diag profile
+--  @param hook (function) Callback receiving (elapsed)
+--  @param index (number|nil) Optional 1-based insertion position
+local function RegisterNamedOnUpdateHook(name, hook, index)
+    if type(hook) == "function" and type(name) == "string" then
+        ns.OnUpdateHookNames[hook] = name
+    end
+    RegisterOnUpdateHook(hook, index)
+end
+ns.RegisterNamedOnUpdateHook = RegisterNamedOnUpdateHook

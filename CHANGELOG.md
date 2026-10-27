@@ -4,6 +4,142 @@
 > Sections: **Added** / **Changed** / **Fixed** / **Removed** / **Performance** / **Security** / **Docs** / **Internal** / **Notes**
 > DB schema migrations are listed under **Notes** per version.
 
+## v0.2.7 - 2026-10-25
+
+### Added
+
+- **Enterprise Diagnostics (`SuperSwingTimer_Diag.lua`, `/stt diag` / `/sst diag`)**:
+  - New early-loaded diagnostics module. It is the first file in the TOC, so `/stt diag` / `/sst diag` remains reachable even if a library or later SuperSwingTimer module fails to load.
+  - `/sst diag` prints a compact health report: client/build/project, addon version, DB version, class, bar/hook counts, aura API path, precise-clock status, event registration, render-loop state, FPS, addon memory, addon CPU, library status, SoD module status, slash registration, and captured errors.
+  - `/sst diag full` prints every check, including informational rows that are hidden from the compact report. `/sst diag errors` prints captured signatures with stacks and counts. `/sst diag export` opens a copyable report window. `/sst diag clear` resets the ring buffer. `/sst diag test` runs live API probes (clock, spell info, aura path, metadata, glow) and reports pass/fail.
+  - Error capture chains the existing `seterrorhandler` instead of replacing it, so Blizzard's normal error display and logging still run. Capture also listens for `LUA_WARNING`, `ADDON_ACTION_BLOCKED`, and `ADDON_ACTION_FORBIDDEN`.
+  - Deduplicated ring buffer (40 signatures) with repeat counts, first/last timestamps, source tags (`lua`, `warning`, `taint`, `init`, `slash`, `diag`, `glow`), and stack excerpts. Identical failures cannot flood the report or the SavedVariables.
+  - `/sst diag profile [seconds]` adds an opt-in per-hook profiler using `debugprofilestart` / `debugprofilestop`; it reports total time, per-frame average, share, and max for the top hooks. Profiling is completely inactive until requested.
+  - Diagnostics never write to files. Export is an in-game EditBox with the report pre-selected for `Ctrl+A` / `Ctrl+C`.
+- **LibCustomGlow-1.0 Integration (`Lib/LibStub`, `Lib/LibCustomGlow-1.0`, `SuperSwingTimer_Glow.lua`)**:
+  - Added LibStub and LibCustomGlow-1.0 to the TOC in dependency order (`LibStub` before `LibCustomGlow`).
+  - Added `ns.Glow`, a lifecycle-safe adapter with `SetBar` / `SetIcon` / `StopAll` / `Refresh`. Call sites may invoke it every frame; only active↔inactive transitions touch the library. `SetBar` supports `autocast` (default, best for thin bars) and `proc`; `SetIcon` uses ButtonGlow.
+  - Every library call is `pcall`-guarded with failure latches, so a library/client mismatch cannot break swing rendering. Errors are recorded for `/sst diag`.
+  - No-op fallback when LibCustomGlow is absent; the addon continues to render all bars and existing border pulses.
+  - Bar effects:
+    - Paladin Judgement of the Crusader bar: Autocast shine while the debuff is in its final 4-second window.
+    - Rogue Slice and Dice bar: Autocast shine while the buff is in its final 4 seconds.
+    - Warrior Overpower: Autocast shine on the main-hand bar for the full Overpower proc window.
+    - Hunter Rapid Fire bar: Autocast shine while the buff is active and in its final 4 seconds.
+    - Shaman weave: Autocast shine on the main-hand bar while a weave cast is in flight, using the existing safe/clip color (class color when safe, red when clipping).
+  - Icon effect:
+    - All six classes' buff/cooldown icon groups: ButtonGlow only in the urgent final 2 seconds, complementing (not duplicating) the existing 4-second border pulse.
+    - `Glow.SetIcon` installs a one-time `OnHide` hook per icon, so an icon that expires, is hidden by its class toggle, or is hidden by Minimal Mode stops its glow immediately without per-class cleanup bookkeeping.
+  - Deliberately avoids PixelGlow: its `AM_29` mask asset is not referenced by either Classic Era 1.15.9 or TBC Anniversary 2.5.6 FrameXML, and registering a global replacement mask would affect other addons sharing LibStub. AutocastGlow (`UI-ItemSockets`), ProcGlow (proc flipbook atlases), and ButtonGlow (`IconAlert`) use assets verified on both clients.
+  - Added `/sst glow` and `/sst glow on|off` to toggle the effects. Added `DB_DEFAULTS.showGlowEffects = true`; existing SavedVariables without the key are treated as enabled (no migration required).
+  - Added `/stt` as a fifth alias for the existing command table, so `/stt diag` works exactly like `/sst diag`.
+
+### Changed
+
+- **Initialization hardening (`SuperSwingTimer.lua`)**:
+  - `OnAddonLoaded` now runs under `xpcall` with a traceback handler instead of `pcall`, so initialization failures keep a usable stack for `/sst diag`.
+  - On init failure the addon records the error, routes it through the client error handler, prints a short `/sst diag` hint, and **skips event registration** instead of leaving a half-initialized addon receiving combat events.
+  - Exposed `ns.eventFrame` so diagnostics can verify event registration and the render-loop state without duplicating frame bookkeeping.
+- **OnUpdate hook labels (`SuperSwingTimer_Hooks.lua`, `SuperSwingTimer_UI.lua`, `SuperSwingTimer_ClassMods.lua`)**:
+  - Added `ns.RegisterNamedOnUpdateHook(name, hook, index)` and a weak `ns.OnUpdateHookNames` map. Existing `RegisterOnUpdateHook` behavior is unchanged.
+  - Named the core hook and all class hooks (`paladin-seal`, `paladin-judgement`, `paladin-power`, `warrior`, `shaman`, `druid-form`, `druid-dots`, `hunter`, `rogue`, `power-fallback`) so profiler output is readable.
+- **TOC load order (`SuperSwingTimer.toc`)**:
+  - `SuperSwingTimer_Diag.lua` → `LibStub` → `LibCustomGlow` → `SuperSwingTimer_Constants.lua` → `Media\Media.xml` → `SuperSwingTimer_Glow.lua` → engine/UI/class modules → `SuperSwingTimer_SoD.lua` (unchanged last position).
+  - Diagnostics is first so it can capture and report a LibStub or LibCustomGlow load failure, not just failures in later SuperSwingTimer modules.
+- **Documentation (`README.md`, `SuperSwingTimer.toc`)**:
+  - Updated the current version to **v0.2.7**, added the diagnostics/glow command reference and compact-report example, added the LibCustomGlow texture-source row, and corrected the class-support debuff heights to the shipped 8px standard.
+  - Added a 12,000+ downloads note (as of October 2026).
+
+### Performance
+
+- **Idle bar reset guard (`SuperSwingTimer_UI.lua`)**: `ResetBarDisplay` now marks the bar with `_sstResetDone`; `UpdateMeleeBar` and `UpdateRangedBar` skip the full reset while the bar is already idle. The flag is cleared on the first swinging frame and set by every reset path (`HideBars`, `ShowBars`, `ApplyVisibility`, channel rendering, expiry), so labels/values cannot go stale. This removes repeated `SetMinMaxValues`, `SetValue`, label text/style, cast-overlay, cast-threshold, and spark-position work for inactive MH/OH/enemy/ranged bars while the render loop stays alive for power bars.
+- **Library calls are transition-driven**. `ns.Glow.SetBar` / `SetIcon` are safe to call from existing throttled/frame update paths: they compare against weak state maps and only start/stop LibCustomGlow when the desired state changes. Icon and bar glows also stop through one-time `OnHide` hooks, so hidden frames never leave an animation running and the throttled icon scans never need a per-class "dropped out of the active set" pass.
+- **Profiling is opt-in and makes no timing calls when off**: `ns.OnUpdate` checks a single `ns.Diag.profile.active` flag and otherwise runs the original loop unchanged.
+- **No per-frame `xpcall`**: error capture uses the client's `seterrorhandler` chain, so normal rendering keeps its original call shape. `xpcall` is used only for one-time initialization; slash/config failures use `pcall` and are recorded in the diag buffer.
+- **No new per-frame color allocations**: shared `GLOW_GOLD` and a per-bar cached Rogue glow color table replace per-call literals.
+
+### Fixed
+
+- **Init failure could leave the addon half-initialized**: `RegisterEvents()` previously ran even when `OnAddonLoaded` threw. It now runs only after a successful initialization.
+- **Init error stacks were lost**: the old `pcall` + `tostring(initErr)` path discarded the traceback. The new `xpcall` path preserves it and records it for diagnostics.
+- **Diagnostics reachability**: the diagnostics module and a minimal `/sst` + `/stt` fallback are registered at file load, so `/stt diag` / `/sst diag` is available even if a later addon file errors before the full command table is built. The main dispatcher replaces the fallback once it loads.
+- **Hunter Auto Shot could be missed on Classic Era / TBC Anniversary, flashing the MH bar after a ranged swing**: `ns.AUTO_SHOT_NAME = ns.GetSpellInfo(75) or "Auto Shot" or "Shoot"` made the `"Shoot"` fallback unreachable (`"Auto Shot" or ...` always yields the first string), and the only matcher accepted spell ID 75, `"75"`, or the single client-resolved name. The supported clients disagree on whether CLEU and `UNIT_SPELLCAST_*` payloads carry the numeric ID or the localized name, and spell 75 resolves under different names across builds, so an unrecognised token fell through. A miss is not cosmetic: `HandleSpellcastSucceeded` skips the MH/OH restart only for a recognised Auto Shot (`skipMeleeReset`), so the miss restarted melee and showed the MH bar right after each ranged swing. `ns.IsAutoShotSpell` now accepts the numeric ID, its numeric string, the client-resolved localized name, and an explicit `ns.AUTO_SHOT_NAMES` alias set (`"Auto Shot"`, `"Shoot"`).
+- **Auto Shot could disappear or fail to display when a hunter cast ended before the red zone**: `ShouldKeepHunterRangedTimerActive` anchored its hold to the moment the cast ended (a fixed 1.0s window) instead of the ranged cycle end, so a Steady Shot / Arcane Shot / Multi-Shot finishing more than a second ahead of cycle end tore the ranged timer down before the shot fired. The hold is now anchored to `lastSwing + duration` plus latency/grace, so Auto Shot is preserved wherever in the cycle the cast finished, including a cast landing at the very end. The anchor re-targets automatically when a new cycle starts and cannot hold an idle/reset timer.
+- **Interrupted or failed casts left stale cast identity behind**: `HandleSpellcastInterruptedOrFailed` stopped clearing `currentCastSpellId`, `currentCastStartTime`, `lastResolvedHunterCastToken`, and `lastResolvedHunterCastAt` (and only ran for hunters), so a stale token survived into `HandleSpellcastSucceeded`, which re-attributed it to the next successful cast and fabricated a red-zone Steady Shot that never landed. Cleanup is restored for every class.
+
+### Internal
+
+- **Headless tests (`SuperSwingTimer_Tests.lua`, `run_tests.lua`)**:
+  - Expanded the suite from 123 to 146 tests with a new `SST-Diag` group covering: API presence, live error-handler capture, `LUA_WARNING` event capture, error dedupe and count semantics, SST-vs-external attribution, ring-buffer cap, slash consumption, compact/full/error report construction, error text inclusion, clear semantics, glow fallback, glow start/stop transition counting, icon and bar hide-stop via the `OnHide` hooks, the reset-guard flag, the Glow DB default, `/sst glow` toggling, the `/stt` alias, LibStub/LCG library reporting, idempotent error-handler installation, profiler stats, self-test probes, and export construction.
+  - Added harness mocks for `seterrorhandler`, `debugstack`, `debugprofilestart`/`debugprofilestop`, `GetBuildInfo`, `GetFramerate`, addon memory/CPU APIs, `C_AddOns.GetAddOnMetadata`, project constants, `UnitAura`, event registration/`IsEventRegistered`, `SetMultiLine`, `SetToplevel`, and `Raise`.
+  - Added `SuperSwingTimer_Diag.lua` and `SuperSwingTimer_Glow.lua` to the headless load order and to the TOC load-order assertions (LibStub before LCG, Diag before Constants, Glow before ClassMods).
+  - Expanded the suite from 146 to 150 tests with Hunter regression coverage for Auto Shot alias matching (`"Auto Shot"`, `"Shoot"`, numeric ID and numeric string), cast-identity cleanup on interrupt/fail, and the cycle-anchored ranged hold (including that an idle/reset timer is never held).
+- **CI (`.github/workflows/luac.yml`)**:
+  - Added the new files plus `SuperSwingTimer_SoD.lua`, `SuperSwingTimer_Tests.lua`, and `Media/SuperSwingTimer_Media.lua` to the syntax check.
+  - Added a headless test step (`lua5.1 run_tests.lua`, falling back to `lua run_tests.lua`) so the suite runs on every push/PR, not just locally.
+
+### Notes
+
+- **No DB schema migration**: `showGlowEffects` is a new optional key; `nil` is treated as enabled. Existing `SuperSwingTimerDB` versions remain valid.
+- **Pending in-game verification**: this build has not yet been tested on live `classic_era`, `classic_anniversary`, or `classic_titan` clients. The Hunter Auto Shot and cast-window changes are covered by headless tests only; bars, glow, and CLEU-driven behaviour still need an in-game pass.
+- **SoD load order is unchanged** (`SuperSwingTimer_SoD.lua` remains last): class merges run from `ns.InitClassMods()` on `ADDON_LOADED`, after every file has loaded.
+- **LibCustomGlow asset verification**: `AnimateTexCoords` (`UIParent.lua:593`), `Interface\SpellActivationOverlay\IconAlert`, `Interface\SpellActivationOverlay\IconAlertAnts`, `Interface\ItemSocketingFrame\UI-ItemSockets`, `UI-HUD-ActionBar-Proc-Start-Flipbook`, `UI-HUD-ActionBar-Proc-Loop-Flipbook`, `CreateTexturePool`, `CreateFramePool`, `CreateMaskTexture`, and the flipbook animation setters were confirmed against `classic_era` (1.15.9.70003), `classic_anniversary` (2.5.6.70006), and `classic_titan` (3.80.2.69815) UI source.
+
+## v0.2.6 - 2026-10-24
+
+### Added
+
+- **Dual-Client Spell Texture Engine (`SuperSwingTimer_Constants.lua`, `SuperSwingTimer_ClassMods.lua`)**:
+  - Implemented centralized `ns.GetSpellTexture(spellIdentifier)` in `SuperSwingTimer_Constants.lua` with a 4-tier fallback chain:
+    1. Modern namespace `C_Spell.GetSpellTexture(spellIdentifier)`
+    2. Legacy global `GetSpellTexture(spellIdentifier)`
+    3. Icon return from `ns.GetSpellInfo(spellIdentifier)`
+    4. Live aura texture binding
+  - Audited and updated 35+ spell texture call sites across all 6 physical class modules in `SuperSwingTimer_ClassMods.lua` to route through `ns.GetSpellTexture`, preventing blank or missing buff/debuff icons on unlearned spells across Classic Era (1.15.9, build 70003) and TBC Anniversary (2.5.6, build 70006).
+  - Enhanced `GetHelpfulAuraData` and `GetHarmfulAuraData` in `SuperSwingTimer_ClassMods.lua` to return the live aura `icon` field, guaranteeing active buff and debuff icons display their actual applied texture directly from the client aura table.
+- **Power Bar Height Slider in Options GUI (`SuperSwingTimer_Config.lua`)**:
+  - Added dedicated "Power Bar Height" slider (range 6px to 30px, step 1px, default 14px) directly under the "Bar Height" slider in the Appearance section.
+  - Dynamically updates `SuperSwingTimerDB.powerBarHeight` and `ns.POWER_BAR_HEIGHT` in real-time, calling `ns.ApplyBarSize()` and `ns.UpdatePlayerPowerBar()` so the resource bar resizes immediately without a `/reload`.
+  - Fully wired into factory defaults reset and config panel display sync.
+- **Hunter Aspect Numeric FileID & In-Combat Missing Aspect Alert (`SuperSwingTimer_ClassMods.lua`)**:
+  - Enhanced `GetCurrentAspectData()` to return the live aura texture, supporting both numeric FileIDs (e.g. 136006) and texture paths across modern Classic Era (1.15.9) and TBC Anniversary (2.5.6) clients.
+  - Added in-combat missing aspect visual alert: entering combat without an active aspect displays a question mark icon (`"Interface\\Icons\\INV_Misc_QuestionMark"`) with a bright red warning border (`0.9, 0.1, 0.1, 0.9`). Activating any aspect immediately displays the aspect's texture and resets to the subtle black border (`0, 0, 0, 0.65`). Out of combat with no aspect active, the icon remains cleanly hidden.
+- **Subpixel Grid Snapping Helper (`SuperSwingTimer_Constants.lua`)**:
+  - Implemented `ns.PixelSnap(value, customScale)` using physical screen pixel boundary rounding against `UIParent:GetEffectiveScale()`.
+  - Ensures bar coordinates, spark edges, and border thicknesses align cleanly to physical monitor pixel grids, eliminating subpixel shimmering and blur on high-DPI displays.
+- **Database Migration 66 (`SuperSwingTimer.lua`)**:
+  - Added DB migration `v66` (`ns.DB_CURRENT_VERSION = 66`) to automatically upgrade legacy 10px power bar configurations to the new 14px standard default while preserving custom user-configured heights.
+- **Headless Test Expansion (`SuperSwingTimer_Tests.lua`)**:
+  - Expanded test runner to 123 tests across 11 test groups, adding unit tests for `Core:PixelSnap`, `Hunter:Aspect_AcceptsNumericFileID`, `Hunter:Aspect_AlertNoAspectInCombat`, `Config:PowerBarHeightSlider_ExistsAndAdjusts`, `MigrateDB_V66`, `MigrateDB_V66_PreservesCustom`, `PowerBarHeight_Default14`, `DebuffBarHeight_Default8`, `GetSpellTexture_PcallSafety`, `Paladin_DebuffBars_IconCreated`, and regression test `ComputeBuffIconOffset_SkipsNilSlot_AccountsForLaterBars`. Dynamic hook locators (`GetCoreRenderHook` and `GetHunterHook`) prevent hook array index drift.
+
+### Changed
+
+- **Unified Power Bar Default Height (`SuperSwingTimer_Constants.lua`, `SuperSwingTimer_UI.lua`, `SuperSwingTimer_ClassMods.lua`)**:
+  - Increased default height of `SuperSwingTimerPlayerPowerBar` from 10px to **14px** (`ns.POWER_BAR_HEIGHT = 14`, `DB_DEFAULTS.powerBarHeight = 14`).
+  - Provides clean vertical padding for 10pt resource values across Warrior Rage, Rogue/Cat Energy, and Paladin/Shaman/Hunter/Druid Mana bars.
+- **Debuff Duration Bar Default Height & Icons (`SuperSwingTimer_Constants.lua`, `SuperSwingTimer_ClassMods.lua`)**:
+  - Increased default height of all target debuff duration bars from 6px/5px to **8px** (`ns.DEBUFF_BAR_HEIGHT = 8`).
+  - Standardized all 20 class debuff bar constants (`JOTC_BAR_HEIGHT`, `SEAL_VENGEANCE_BAR_HEIGHT`, `DEEP_WOUND_BAR_HEIGHT`, `REND_BAR_HEIGHT`, `THUNDER_CLAP_BAR_HEIGHT`, `DEMO_SHOUT_BAR_HEIGHT`, `SUNDER_ARMOR_BAR_HEIGHT`, `FLAME_SHOCK_BAR_HEIGHT`, `MANGLE_BAR_HEIGHT`, `RIP_BAR_HEIGHT`, `RAKE_BAR_HEIGHT`, `SERPENT_STING_BAR_HEIGHT`, `WING_CLIP_BAR_HEIGHT`, `CONCUSSION_SHOT_BAR_HEIGHT`, `IMMOLATION_TRAP_BAR_HEIGHT`, `EXPLOSIVE_TRAP_BAR_HEIGHT`, `FREEZING_TRAP_BAR_HEIGHT`, `FROST_TRAP_BAR_HEIGHT`, `RUPTURE_BAR_HEIGHT`, `EXPOSE_ARMOR_BAR_HEIGHT`) to 8px with matching 8x8 outside-left icons, significantly improving dot readability.
+
+### Fixed
+
+- **Debuff Stacking Nil-Hole Bug (`SuperSwingTimer_ClassMods.lua`)**:
+  - Fixed `ComputeBuffIconOffset` which was previously using `ipairs` to iterate over class debuff bar tables. Because inactive debuff slots contain `nil`, `ipairs` terminated immediately on the first nil slot, ignoring subsequent active debuffs and causing buff icons to overlap active debuffs. Replaced with bounded index loop matching `RestackDebuffBars`.
+- **Druid Debuff Layout Thrash & Redundant Anchoring (`SuperSwingTimer_ClassMods.lua`)**:
+  - Removed legacy per-frame `ClearAllPoints()` and `_lastRestackY = nil` calls inside `UpdateDruidRipBar` and `UpdateDruidRakeBar`, allowing `RestackDebuffBars` to manage stacking with cached offsets, eliminating layout thrashing and anchor cache invalidation during feral druid combat.
+- **Asynchronous Icon Texture Recovery (`SuperSwingTimer_ClassMods.lua`)**:
+  - Added dynamic spell texture recovery checks to debuff bars across Paladin (Judgement, Seal of Vengeance), Warrior (Sunder Armor, Deep Wounds, Rend, Thunder Clap, Demo Shout), Druid (Mangle, Rip, Rake), Hunter (Serpent Sting, Wing Clip, Concussion Shot), and Rogue (Rupture, Expose Armor). Bars now populate their icon texture dynamically as soon as the debuff is applied even if the spell was uncached during initial login.
+- **Crash Immunity for `ns.GetSpellInfo` and `ns.GetSpellTexture` (`SuperSwingTimer_Constants.lua`)**:
+  - Wrapped both legacy and modern `C_Spell` engine API calls in `pcall` with `rawget` lookups, guaranteeing 100% crash immunity across all patch versions of Classic Era (1.15.9, build 70003) and TBC Anniversary (2.5.6, build 70006).
+- **Real-Time Global Scaling in Options (`SuperSwingTimer_UI.lua`)**:
+  - Fixed `ns.ApplyGlobalScale()` so dragging the Global Scale slider in Options immediately invokes `ns.ApplyBarSize(baseWidth, baseHeight)`.
+  - Swing bars (MH, OH, Ranged, Enemy), sparks, hunter cast bar, power bar, and debuff bars now resize dynamically in real time without requiring a UI `/reload`.
+- **Vertical Bar Stacking & Clearance Geometry (`SuperSwingTimer_ClassMods.lua`)**:
+  - Verified and hardened stacking math in `RestackDebuffBars()`, `UpdatePowerBarAnchor()`, and buff icon placement:
+    - Debuff bars stack upward above MH (or Ranged for hunters) with a clean 2px gap.
+    - Buff/cooldown icon row floats 8px above the topmost visible debuff bar (or 8px above MH when no debuffs are present).
+    - Unified power bar anchors 4px below the lowest bar in the stack (OH if dual-wielding, MH if 2H/sword-and-board, or Hunter cast bar).
+
 ## v0.2.5 - 2026-10-22
 
 ### Added
@@ -37,10 +173,36 @@
   - Enhanced Quick Tab buttons with bright cyan active text (`#33d6ff`) and highlighted bottom accent borders.
   - Cleaned up conflicting right-anchor points on `CreateActionRow` label text fontstrings, eliminating font stretching and text clipping.
 - **Headless Test Suite Expansion (`SuperSwingTimer_Tests.lua`, `run_tests.lua`)**:
-  - Expanded headless test suite to 106 total tests across 11 test groups (added `CLEU_FastPath_IgnoresThirdParty` in `[SST-Combat]`, `OnUpdate_ClassIsolation` in `[SST-Regressions]`, and `SectionSpacingAndHeaders`, `ActionRow_SingleRightAnchor`, `QuickTabStylingAndColorsGutter` in `[SST-Config]`), executing in ~0.040s with a 100% pass rate.
+  - Expanded headless test suite to 113 total tests across 11 test groups (added `SteadyShot_LateLanding_InRedZone_EndToEnd` in `[SST-Hunter]`, `CLEU_FastPath_IgnoresThirdParty` in `[SST-Combat]`, `OnUpdate_ClassIsolation` in `[SST-Regressions]`, `Hunter_WithoutOH_OverlayHidesOnLock` in `[SST-MoveMode]`, `MigrateDB_V65` in `[SST-Core]`, and `SectionSpacingAndHeaders`, `ActionRow_SingleRightAnchor`, `QuickTabStylingAndColorsGutter`, `Combat_Enter_CancelsMoveMode` drag overlay checks in `[SST-Config]`/`[SST-MoveMode]`), executing in ~0.040s with a 100% pass rate.
+
+### Changed
+
+- **Default Bar Texture Updated to Wglass (`SuperSwingTimer_Constants.lua`, `SuperSwingTimer.lua`)**:
+  - Set default `barTexture` and `rangedBarTexture` in `ns.DB_DEFAULTS` to `"Interface\\AddOns\\SuperSwingTimer\\Media\\statusbar\\Wglass.tga"`.
+  - Added **Migration 65** (`SuperSwingTimer.lua`, `ns.DB_CURRENT_VERSION = 65`) to automatically migrate existing installations from legacy default textures (`MerfinMain.tga`, nil, or `UI-CastingBar-Fill`) to `Wglass.tga`.
 
 ### Fixed
 
+- **Drag Overlay Stuck After Unlock and Lock (`SuperSwingTimer_UI.lua`, `SuperSwingTimer.lua`)**:
+  - Resolved an issue where "Ranged (Drag)" and "Enemy (Drag)" overlays remained stuck on screen after unlocking and locking on Hunters and other classes without an off-hand weapon equipped.
+  - Fixed root cause: `ipairs` terminates iteration at the first `nil` entry in an array. Because `ns.ohBar` was `nil` on non-dual-wielding classes, tables like `{ ns.mhBar, ns.ohBar, ns.rangedBar, ns.enemyBar }` stopped iterating at index 2, preventing `ns.rangedBar._dragOverlay:Hide()` from ever running!
+  - Implemented unrolled, zero-allocation `HideAllDragOverlays()`, `ForEachAllBar`, and unrolled bar loops across `SuperSwingTimer_UI.lua`, resolving `ipairs` holes across all bar operations (`ApplyLockBars`, `StopMoveMode`, `ApplyVisibility`, `ApplyBarSize`, `ApplyBarTexture`, `ApplyRangedBarTexture`, `ApplyBarTextureLayer`, `ApplyBarBackgroundColor`, `ApplyBarBorderColor`, `ApplySparkSettings`, `ApplyIndicatorBlendMode`, `ApplySparkTextureLayer`, and `CoreRenderHook`).
+  - Added headless test `MoveMode:Hunter_WithoutOH_OverlayHidesOnLock` to verify drag overlays hide when `ns.ohBar` is `nil`.
+
+- **Hunter Steady Shot & Auto Shot Red Zone Clip Window (`SuperSwingTimer_State.lua`, `SuperSwingTimer_UI.lua`)**:
+  - Fixed an issue where casting Steady Shot slightly late into the red clip zone suppressed or wiped the upcoming Auto Shot window even though the shot landed before clipping.
+  - Steady Shot is now allowed to land anywhere through the end of the clip zone (`now <= windowEnd + latencyBuffer + graceAllowance`) without early reset.
+  - `HandleSpellcastSucceeded` records `ns.hunterSteadyShotEndedInRedZone = now` and passes `preserveCastBar = true` to `ClearHunterCastState`.
+  - `HandleSpellcastStop` and `HandleSpellcastChannelStop` preserve the active cast bar display so `UNIT_SPELLCAST_STOP` doesn't clear the upcoming Auto Shot window.
+  - `StartRangedSwing()` cleanly clears `ns.hunterSteadyShotEndedInRedZone` when the next Auto Shot cycle begins.
+- **Combat & Relock Drag Overlay Suppression (`SuperSwingTimer_UI.lua`, `SuperSwingTimer.lua`)**:
+  - Fixed an issue where "Ranged (Drag)" and "Enemy (Drag)" overlays remained visible after relocking bars or upon entering combat.
+  - Hardened `CoreRenderHook(elapsed)`, `ApplyVisibility()`, and `PLAYER_REGEN_DISABLED` to unconditionally force `ns.isMoveModeActive = false` and hide all 4 bar drag overlays (`bar._dragOverlay:Hide()`) every frame when bars are locked or when entering combat.
+- **Config UI Quick Controls 2-Column Grid & Tabs (`SuperSwingTimer_Config.lua`)**:
+  - Refactored Quick Controls into a responsive 2-column layout (`gutter = 20`, column width `~330px`, `6px` vertical row spacing) with categorical tab filtering (`Visibility`, `Colors`, `Class`).
+  - Fixed control overlapping: Quick Controls header anchored at Y = -118 safely below the Global Scale slider and descriptive label text; tab buttons positioned at `headerBottomY - 14`.
+  - Left-aligned text labels across compact toggle rows and color swatch rows, with whole-row clickability.
+  - Fixed undefined variable references (`topMinimalModeRow` changed to `minimalModeRow`).
 - **Solid Dark Window Backdrop (`SuperSwingTimer_Config.lua`)**:
   - Added dedicated solid dark opaque texture (`bgSolid:SetColorTexture(0.05, 0.05, 0.07, 0.98)`) behind `SuperSwingTimerConfigPanel`.
   - Completely resolved the transparent background issue where the 3D game world leaked through and obscured configuration text and controls.
@@ -55,8 +217,6 @@
   - Guarded Shaman sections in `ReflowConfigSections()` with `ns.playerClass == "SHAMAN"` checks, preventing unreflowed rows from occupying the same Y coordinates as Appearance sliders.
   - Wired `AttachHeaderReflow(mhOhHeader)` so collapsing or expanding the Appearance section properly reflows all subsequent sections.
   - Preserved `generalHelp` description text in `generalRows` without being overwritten by the Lock Bars toggle.
-- **Headless Test Suite Expansion (`SuperSwingTimer_Tests.lua`, `run_tests.lua`)**:
-  - Expanded test runner to 101 total tests across 11 test groups (added `LockControlsSync`, `HeaderButtonToggle`, and `ApplyLockBars_HidesOverlays` to `[SST-Config]`), executing in ~0.040s with a 100% pass rate.
 - **Defensive API Checks (`SuperSwingTimer_UI.lua`)**:
   - Added defensive `bar.IsMouseEnabled and bar:IsMouseEnabled()` checking in `ApplyLockBars`, protecting against custom frame wrappers or mock environments missing `IsMouseEnabled`.
 

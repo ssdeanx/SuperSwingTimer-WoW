@@ -1152,6 +1152,28 @@ local function MigrateDB(targetDb)
                     db.colors.druidManaBarColor = { r = 0.25, g = 0.55, b = 0.90, a = 1.0 }
                 end
             end
+        },
+        {
+            version = 65,
+            apply = function (db)
+                local OLD_DEFAULT = "Interface\\AddOns\\SuperSwingTimer\\Media\\statusbar\\MerfinMain.tga"
+                local NEW_DEFAULT = "Interface\\AddOns\\SuperSwingTimer\\Media\\statusbar\\Wglass.tga"
+                if db.barTexture == nil or db.barTexture == OLD_DEFAULT or db.barTexture == "Interface\\CastingBar\\UI-CastingBar-Fill" then
+                    db.barTexture = NEW_DEFAULT
+                end
+                if db.rangedBarTexture == nil or db.rangedBarTexture == OLD_DEFAULT or db.rangedBarTexture == "Interface\\CastingBar\\UI-CastingBar-Fill" then
+                    db.rangedBarTexture = NEW_DEFAULT
+                end
+            end
+        },
+        {
+            version = 66,
+            apply = function (db)
+                -- Migrate powerBarHeight from previous 10px default to enhanced 14px default
+                if db.powerBarHeight == nil or db.powerBarHeight <= 0 or db.powerBarHeight == 10 then
+                    db.powerBarHeight = 14
+                end
+            end
         }
     }
 
@@ -1168,7 +1190,7 @@ end
 -- Highest migration version currently defined. Tests assert against this
 -- instead of a hard-coded number so they don't go stale when the
 -- migration ladder grows.
-ns.DB_CURRENT_VERSION = 64
+ns.DB_CURRENT_VERSION = 66
 
 -- ============================================================
 -- Initialization
@@ -1183,6 +1205,8 @@ local function OnAddonLoaded()
     ns.BAR_HEIGHT = SuperSwingTimerDB.barHeight or ns.DB_DEFAULTS.barHeight
     ns.HUNTER_CAST_BAR_HEIGHT = SuperSwingTimerDB.hunterCastBarHeight or ns.HUNTER_CAST_BAR_HEIGHT
         or ns.DB_DEFAULTS.hunterCastBarHeight or 15
+    ns.POWER_BAR_HEIGHT = SuperSwingTimerDB.powerBarHeight or ns.POWER_BAR_HEIGHT
+        or ns.DB_DEFAULTS.powerBarHeight or 14
     ns.ROGUE_SLICE_AND_DICE_BAR_HEIGHT = SuperSwingTimerDB.rogueSliceAndDiceBarHeight or ns.ROGUE_SLICE_AND_DICE_BAR_HEIGHT
         or ns.DB_DEFAULTS.rogueSliceAndDiceBarHeight or 4
     ns.ROGUE_ENERGY_TICK_BAR_WIDTH = SuperSwingTimerDB.rogueEnergyTickBarWidth or ns.ROGUE_ENERGY_TICK_BAR_WIDTH
@@ -1233,13 +1257,34 @@ RegisterSlashCommands = function ()
     SLASH_SUPERSWINGTIMER2 = "/super"
     SLASH_SUPERSWINGTIMER3 = "/superswingtimer"
     SLASH_SUPERSWINGTIMER4 = "/swang"
+    SLASH_SUPERSWINGTIMER5 = "/stt"
     SlashCmdList["SUPERSWINGTIMER"] = function (msg)
         msg = strtrim(msg or ""):lower()
-        if msg == "reset" then
+        if ns.Diag and ns.Diag.HandleSlash and ns.Diag.HandleSlash(msg) then
+            return
+        end
+        if msg == "glow" or msg == "glow on" or msg == "glow off" then
+            if type(SuperSwingTimerDB) ~= "table" then
+                print("|cff00ccffSuper Swing Timer:|r Not initialized yet.")
+                return
+            end
+            local enable
+            if msg == "glow" then
+                enable = SuperSwingTimerDB.showGlowEffects == false
+            else
+                enable = msg == "glow on"
+            end
+            SuperSwingTimerDB.showGlowEffects = enable
+            if ns.Glow and ns.Glow.Refresh then ns.Glow.Refresh() end
+            print("|cff00ccffSuper Swing Timer:|r Glow effects " .. (enable and "enabled." or "disabled."))
+        elseif msg == "reset" then
             local ok, err = pcall(ns.ResetConfigDefaults)
             if ok then
                 print("|cff00ccffSuper Swing Timer:|r Settings reset to defaults.")
             else
+                if ns.Diag and ns.Diag.Record then
+                    pcall(ns.Diag.Record, "reset: " .. tostring(err), nil, "slash")
+                end
                 print("|cff00ccffSuper Swing Timer:|r Could not reset settings: " .. tostring(err))
             end
         elseif msg == "move" or msg == "unlock" then
@@ -1270,14 +1315,20 @@ RegisterSlashCommands = function ()
             end
         elseif msg == "help" then
             print("|cff00ccffSuper Swing Timer (/sst):|r")
+            print("  |cff888888Aliases: /sst, /stt, /super, /superswingtimer, /swang|r")
             print("  |cff00ff00/sst|r - Open/close settings panel")
             print("  |cff00ff00/sst move|r or |cff00ff00/sst unlock|r - Unlock bars and show reposition anchors")
             print("  |cff00ff00/sst lock|r - Lock bars in current position")
             print("  |cff00ff00/sst test|r - Toggle test bars preview")
+            print("  |cff00ff00/sst glow|r - Toggle LibCustomGlow effects")
+            print("  |cff00ff00/sst diag|r - Diagnostics, recent errors, and export")
             print("  |cff00ff00/sst reset|r - Restore all default settings")
         else
             local ok, err = pcall(ns.ToggleConfig)
             if not ok then
+                if ns.Diag and ns.Diag.Record then
+                    pcall(ns.Diag.Record, "config: " .. tostring(err), nil, "slash")
+                end
                 print("|cff00ccffSuper Swing Timer:|r Could not open config: " .. tostring(err))
             end
         end
@@ -1290,6 +1341,7 @@ RegisterSlashCommands()
 -- Event frame
 -- ============================================================
 local frame = CreateFrame("Frame", "SuperSwingTimerFrame", UIParent)
+ns.eventFrame = frame
 
 local function RegisterUnitEventSafe(targetFrame, event, unit1, unit2)
     if not targetFrame then return end
@@ -1377,6 +1429,9 @@ function ns.SetUpdateEnabled(enabled)
         nextLatencyRefreshAt = 0
         frame:SetScript("OnUpdate", UpdateFrameOnUpdate)
     else
+        -- Stop library glow animations when the render loop goes idle.
+        -- Hidden glow frames otherwise keep their own OnUpdate running.
+        if ns.Glow and ns.Glow.StopAll then ns.Glow.StopAll() end
         nextLatencyRefreshAt = 0
         frame:SetScript("OnUpdate", nil)
     end
@@ -1388,11 +1443,23 @@ frame:SetScript("OnEvent", function (self, event, ...)
     if event == "ADDON_LOADED" then
         local name = ...
         if name == addonName then
-            local initOk, initErr = pcall(OnAddonLoaded)
-            if not initOk then
-                geterrorhandler()(string.format("SuperSwingTimer init: %s", tostring(initErr)))
+            local function onInitError(err)
+                local stack = ns.Diag and ns.Diag.Stack and ns.Diag.Stack(3) or nil
+                if ns.Diag and ns.Diag.Record then
+                    pcall(ns.Diag.Record, err, stack, "init")
+                end
+                return stack or tostring(err)
             end
-            RegisterEvents()
+            local initOk, initErr = xpcall(OnAddonLoaded, onInitError)
+            if not initOk then
+                local handler = geterrorhandler()
+                if handler then
+                    handler(string.format("SuperSwingTimer init: %s", tostring(initErr)))
+                end
+                print("|cffff4444SuperSwingTimer failed to initialize.|r Type |cffffffff/stt diag|r for details.")
+            else
+                RegisterEvents()
+            end
         end
     elseif event == "COMBAT_LOG_EVENT_UNFILTERED" then
         ns.HandleCLEU()
@@ -1706,6 +1773,20 @@ frame:SetScript("OnEvent", function (self, event, ...)
     elseif event == "PLAYER_REGEN_DISABLED" then
         if ns.isMoveModeActive and ns.StopMoveMode then
             ns.StopMoveMode()
+        end
+        ns.isMoveModeActive = false
+        if not SuperSwingTimerDB then SuperSwingTimerDB = {} end
+        SuperSwingTimerDB.lockBars = true
+        if ns.ApplyLockBars then
+            ns.ApplyLockBars()
+        end
+        if ns.HideAllDragOverlays then
+            ns.HideAllDragOverlays()
+        else
+            if ns.mhBar and ns.mhBar._dragOverlay then ns.mhBar._dragOverlay:Hide() end
+            if ns.ohBar and ns.ohBar._dragOverlay then ns.ohBar._dragOverlay:Hide() end
+            if ns.rangedBar and ns.rangedBar._dragOverlay then ns.rangedBar._dragOverlay:Hide() end
+            if ns.enemyBar and ns.enemyBar._dragOverlay then ns.enemyBar._dragOverlay:Hide() end
         end
         ns.playerInCombat = true
         ns.ShowBars()
