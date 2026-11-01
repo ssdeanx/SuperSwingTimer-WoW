@@ -1,4 +1,4 @@
-local _, ns = ...
+local addonName, ns = ...
 ---@diagnostic disable: undefined-field
 local GetAddOnInfo = rawget(_G, "GetAddOnInfo")
 local GetTimePreciseSec = rawget(_G, "GetTimePreciseSec")
@@ -32,6 +32,31 @@ function ns.GetAlignedTime()
     end
 
     return GetTime and GetTime() or 0
+end
+
+--- Return the addon version from TOC metadata, with a static fallback.
+--  Using the TOC as the single source prevents the settings panel from
+--  drifting behind the release (it previously hardcoded v0.2.5 while the
+--  TOC shipped v0.2.7).
+--  @return (string) Version string including the leading "v"
+function ns.GetDisplayVersion()
+    local cAddOns = rawget(_G, "C_AddOns")
+    if cAddOns and type(cAddOns.GetAddOnMetadata) == "function" then
+        local ok, value = pcall(cAddOns.GetAddOnMetadata, addonName, "Version")
+        if ok and type(value) == "string" and value ~= "" then
+            return value
+        end
+    end
+
+    local legacy = rawget(_G, "GetAddOnMetadata")
+    if type(legacy) == "function" then
+        local ok, value = pcall(legacy, addonName, "Version")
+        if ok and type(value) == "string" and value ~= "" then
+            return value
+        end
+    end
+
+    return "v0.2.8"
 end
 
 --- Authoritative GetSpellInfo wrapper for Classic/TBC Anniversary (1.15+).
@@ -254,6 +279,13 @@ ns.STEADY_SHOT_ID = 34120
 ns.STEADY_SHOT_NAME = ns.GetSpellInfo(ns.STEADY_SHOT_ID) or "Steady Shot"
 ns.STEADY_SHOT_CAST_TIME = 1.5                                            -- TBC Steady Shot cast time (unaffected by haste)
 ns.STEADY_SHOT_GRACE = 0.5                                                -- Auto Shot fires during the last 0.5s of SS without clipping
+-- Steady Shot arrives as an ID on Era and as a localized NAME on some
+-- Anniversary payloads, so every observed shape is collected here the same way
+-- AUTO_SHOT_NAMES does it.
+ns.STEADY_SHOT_NAMES = { ["Steady Shot"] = true }
+if type(ns.STEADY_SHOT_NAME) == "string" then
+    ns.STEADY_SHOT_NAMES[ns.STEADY_SHOT_NAME] = true
+end
 ns.HUNTER_READINESS_ID = 23989
 ns.HUNTER_READINESS_NAME = ns.GetSpellInfo(ns.HUNTER_READINESS_ID) or "Readiness"
 ns.ROGUE_ADRENALINE_RUSH_ID = 13750
@@ -443,12 +475,10 @@ ns.HUNTER_CAST_SPELLS = {
 }
 
 ns.HUNTER_CAST_SPELL_NAMES = {}
-if true then
-    for spellId in pairs(ns.HUNTER_CAST_SPELLS) do
-        local spellName = ns.GetSpellInfo(spellId)
-        if spellName then
-            ns.HUNTER_CAST_SPELL_NAMES[spellName] = true
-        end
+for spellId in pairs(ns.HUNTER_CAST_SPELLS) do
+    local spellName = ns.GetSpellInfo(spellId)
+    if spellName then
+        ns.HUNTER_CAST_SPELL_NAMES[spellName] = true
     end
 end
 ns.HUNTER_CAST_SPELL_NAMES["Volley"] = true
@@ -465,12 +495,10 @@ ns.HUNTER_ACTUAL_CAST_SPELLS = {
 }
 
 ns.HUNTER_ACTUAL_CAST_SPELL_NAMES = {}
-if true then
-    for spellId in pairs(ns.HUNTER_ACTUAL_CAST_SPELLS) do
-        local spellName = ns.GetSpellInfo(spellId)
-        if spellName then
-            ns.HUNTER_ACTUAL_CAST_SPELL_NAMES[spellName] = true
-        end
+for spellId in pairs(ns.HUNTER_ACTUAL_CAST_SPELLS) do
+    local spellName = ns.GetSpellInfo(spellId)
+    if spellName then
+        ns.HUNTER_ACTUAL_CAST_SPELL_NAMES[spellName] = true
     end
 end
 ns.HUNTER_ACTUAL_CAST_SPELL_NAMES["Volley"] = true
@@ -489,6 +517,25 @@ function ns.IsAutoShotSpell(spellValue)
         return true
     end
     return type(spellValue) == "string" and ns.AUTO_SHOT_NAMES[spellValue] == true
+end
+
+--- Check if a spell value corresponds to Steady Shot.
+--  Additive match on the numeric ID, its string form and the localized name —
+--  the same contract as ns.IsAutoShotSpell. Without the name branch a non-enUS
+--  client whose payload carries no ID never registers the shot, and the
+--  red-zone hold that depends on it never engages.
+--  @param spellValue (number|string|nil) Spell ID or localized spell name
+--  @return (boolean) true if the value matches Steady Shot
+function ns.IsSteadyShotSpell(spellValue)
+    if spellValue == nil then
+        return false
+    end
+
+    local spellId = tonumber(spellValue)
+    if spellId and spellId == ns.STEADY_SHOT_ID then
+        return true
+    end
+    return type(spellValue) == "string" and ns.STEADY_SHOT_NAMES[spellValue] == true
 end
 
 --- Check if a spell value is a hunter casting spell (Auto Shot, Multi-Shot,
@@ -538,12 +585,10 @@ ns.MULTI_SHOT_IDS = {
 }
 
 ns.MULTI_SHOT_NAMES = {}
-if true then
-    for spellId in pairs(ns.MULTI_SHOT_IDS) do
-        local spellName = ns.GetSpellInfo(spellId)
-        if spellName then
-            ns.MULTI_SHOT_NAMES[spellName] = true
-        end
+for spellId in pairs(ns.MULTI_SHOT_IDS) do
+    local spellName = ns.GetSpellInfo(spellId)
+    if spellName then
+        ns.MULTI_SHOT_NAMES[spellName] = true
     end
 end
 
@@ -1624,6 +1669,9 @@ end
 
 function ns.AreBarsLocked()
     local db = rawget(_G, "SuperSwingTimerDB")
+    if ns.combatLocked == true then
+        return true
+    end
     return db and db.lockBars == true
 end
 

@@ -149,7 +149,13 @@ local function RegisterSSTTests()
         IsTrue(f ~= nil, "SuperSwingTimer.toc must exist")
         local content = f:read("*all")
         f:close()
-        IsTrue(content:find("## Version: v0.2.7", 1, true) ~= nil, "TOC Version must be v0.2.7")
+        IsTrue(content:find("## Version: v0.2.8", 1, true) ~= nil, "TOC Version must be v0.2.8")
+
+        -- The settings panel reads its label from TOC metadata; keep the
+        -- helper and the TOC in lockstep so a release bump cannot drift.
+        local tocVersion = content:match("## Version:%s*([^%s]+)")
+        IsTrue(tocVersion ~= nil, "TOC must declare a Version")
+        AreEqual(ns.GetDisplayVersion(), tocVersion)
         IsTrue(content:find("38002", 1, true) ~= nil, "TOC must contain Titanforge interface 38002")
         IsTrue(content:find("11509", 1, true) ~= nil, "TOC must contain Classic Era interface 11509")
         IsTrue(content:find("20506", 1, true) ~= nil, "TOC must contain TBC Anniversary interface 20506")
@@ -1825,7 +1831,8 @@ local function RegisterSSTTests()
         IsTrue(type(onEvent) == "function", "SuperSwingTimerFrame must have OnEvent handler")
         onEvent(sstFrame, "PLAYER_REGEN_DISABLED")
         IsFalse(ns.isMoveModeActive, "Entering combat must cancel move mode")
-        IsTrue(SuperSwingTimerDB.lockBars == true, "Bars must be locked on entering combat")
+        IsTrue(ns.combatLocked == true, "Bars must be locked for the duration of the fight")
+        IsTrue(ns.AreBarsLocked(), "The combat lock must make AreBarsLocked true")
         for _, bar in ipairs({ ns.mhBar, ns.ohBar, ns.rangedBar, ns.enemyBar }) do
             if bar and bar._dragOverlay then
                 IsFalse(bar._dragOverlay:IsShown(), "Bar drag overlay must be hidden on entering combat")
@@ -2260,6 +2267,395 @@ local function RegisterSSTTests()
     function Diag:Export_NoError()
         local ok = pcall(ns.Diag.Export)
         IsTrue(ok, 'export builds without error')
+    end
+
+    -- ============================================================
+    -- SST-Release-0.2.8: regression tests for this release's fixes.
+    -- Every case in this group failed before its fix; keep them paired.
+    -- ============================================================
+    local Release028 = WoWUnit('SST-Release-0.2.8', 'PLAYER_ENTERING_WORLD')
+
+    -- The mock clock lives on the harness globals; guard it the same way the
+    -- existing regression helpers guard AdvanceMockTime.
+    local SetMockTime = rawget(_G, 'SetMockTime')
+
+    -- The Blizzard-settings checkbox stored the new value and then called
+    -- ApplyMinimalMode() with no argument, which used to coerce to false.
+    function Release028:MinimalMode_NilArgumentKeepsStoredValue()
+        local previous = SuperSwingTimerDB.minimalMode
+        SuperSwingTimerDB.minimalMode = true
+        IsTrue(pc(ns.ApplyMinimalMode), 'ApplyMinimalMode() must not error')
+        IsTrue(SuperSwingTimerDB.minimalMode == true,
+            'a no-argument call must keep the stored setting instead of forcing it off')
+        pc(ns.ApplyMinimalMode, false)
+        IsFalse(SuperSwingTimerDB.minimalMode, 'an explicit false must switch minimal mode off')
+        SuperSwingTimerDB.minimalMode = previous
+    end
+
+    -- /sst reset used to restore only the keys in a hand-written list (~69 of
+    -- 104 defaults).
+    function Release028:ResetConfigDefaults_RestoresEveryDefaultKey()
+        local defaults = ns.DB_DEFAULTS
+        for key, value in pairs(defaults) do
+            if key ~= 'version' and type(value) ~= 'table' then
+                SuperSwingTimerDB[key] = 'SST_SENTINEL'
+            end
+        end
+        SuperSwingTimerDB.colors = {}
+        SuperSwingTimerDB.positions = {}
+        pc(ns.ResetConfigDefaults)
+        -- Second pass so the Apply* helpers run against correctly typed values.
+        pc(ns.ResetConfigDefaults)
+        for key, value in pairs(defaults) do
+            if key ~= 'version' and type(value) ~= 'table' then
+                AreEqual(SuperSwingTimerDB[key], value, 'default not restored: ' .. key)
+            end
+        end
+        IsTrue(SuperSwingTimerDB.barBorderSize ~= 'SST_SENTINEL', 'barBorderSize must be restored')
+        IsTrue(SuperSwingTimerDB.showGcdTicker ~= 'SST_SENTINEL', 'showGcdTicker must be restored')
+        IsTrue(SuperSwingTimerDB.colors and SuperSwingTimerDB.colors.mh ~= nil, 'bar colours must be restored')
+        IsTrue(SuperSwingTimerDB.positions and SuperSwingTimerDB.positions.mh ~= nil, 'positions must be restored')
+        AreEqual(SuperSwingTimerDB.version, ns.DB_CURRENT_VERSION,
+            'a reset must not rewind the migration ladder to DB_DEFAULTS.version')
+    end
+
+    -- A granted extra attack whose own swing event never arrives used to pin the
+    -- suppression counter and discard every later real swing.
+    function Release028:ExtraAttack_CreditExpires()
+        -- HandleCLEU keys off the addon's cached UnitGUID("player"), not the
+        -- global GetPlayerGUID, so the fixture must use the live value.
+        local playerGuid = UnitGUID('player')
+        if SetMockTime then SetMockTime(3000) end
+        Replace('CombatLogGetCurrentEventInfo', function()
+            return nil, 'SPELL_EXTRA_ATTACKS', nil, playerGuid, 'Player', 0, 0,
+                'Creature-1', 'Mob', 0, 0, 17364, 'Stormstrike', 1, 2
+        end)
+        pc(ns.HandleCLEU)
+        AreEqual(ns.extraAttackPending, 2, 'both granted extra attacks must be counted')
+
+        if SetMockTime then SetMockTime(3005) end
+        ns.timers.mh.state = 'idle'
+        ns.timers.mh.lastSwing = 0
+        Replace('CombatLogGetCurrentEventInfo', function()
+            -- SWING_DAMAGE: param10 (isOffHand) is the 21st return value
+            return nil, 'SWING_DAMAGE', nil, playerGuid, 'Player', 0, 0,
+                'Creature-1', 'Mob', 0, 0,
+                100, 0, 1, 0, 0, 0, false, false, false, false
+        end)
+        local ok = pc(ns.HandleCLEU)
+        local pendingAfter = ns.extraAttackPending
+        local state = ns.timers.mh.state
+        ClearReplaces()
+        IsTrue(ok, 'HandleCLEU must not error')
+        AreEqual(pendingAfter, 0, 'a stale extra-attack credit must expire')
+        IsTrue(state == 'swinging', 'the real swing must still restart the main-hand timer')
+        ns.extraAttackPending = 0
+        ns.extraAttackExpiresAt = nil
+        ns.ResetTimer('mh')
+    end
+
+    -- The expiry must not disable the feature: a credited extra swing is still
+    -- swallowed while its window is open.
+    function Release028:ExtraAttack_StillSuppressesTheCreditedSwing()
+        local playerGuid = UnitGUID('player')
+        if SetMockTime then SetMockTime(4000) end
+        Replace('CombatLogGetCurrentEventInfo', function()
+            return nil, 'SPELL_EXTRA_ATTACKS', nil, playerGuid, 'Player', 0, 0,
+                'Creature-1', 'Mob', 0, 0, 17364, 'Stormstrike', 1, 1
+        end)
+        pc(ns.HandleCLEU)
+        AreEqual(ns.extraAttackPending, 1, 'one extra attack must be credited')
+        ns.timers.mh.state = 'idle'
+        Replace('CombatLogGetCurrentEventInfo', function()
+            return nil, 'SWING_DAMAGE', nil, playerGuid, 'Player', 0, 0,
+                'Creature-1', 'Mob', 0, 0,
+                100, 0, 1, 0, 0, 0, false, false, false, false
+        end)
+        pc(ns.HandleCLEU)
+        local pendingAfter = ns.extraAttackPending
+        local state = ns.timers.mh.state
+        ClearReplaces()
+        AreEqual(pendingAfter, 0, 'the credited swing must consume one credit')
+        IsTrue(state == 'idle', 'the extra swing must not restart the main-hand timer')
+        ns.extraAttackPending = 0
+        ns.extraAttackExpiresAt = nil
+    end
+
+    -- Entering combat used to write lockBars=true into SavedVariables.
+    function Release028:CombatLock_DoesNotRewriteSavedPreference()
+        local previous = SuperSwingTimerDB.lockBars
+        SuperSwingTimerDB.lockBars = false
+        ns.combatLocked = false
+        local frame = rawget(_G, 'SuperSwingTimerFrame')
+        local onEvent = frame and frame:GetScript('OnEvent')
+        IsTrue(type(onEvent) == 'function', 'event frame must have an OnEvent handler')
+        if type(onEvent) ~= 'function' then return end
+        onEvent(frame, 'PLAYER_REGEN_DISABLED')
+        local saved = SuperSwingTimerDB.lockBars
+        local locked = ns.combatLocked
+        local effective = ns.AreBarsLocked()
+        onEvent(frame, 'PLAYER_REGEN_ENABLED')
+        local afterCombat = ns.combatLocked
+        SuperSwingTimerDB.lockBars = previous
+        IsTrue(saved == false, 'entering combat must not rewrite the saved lock preference')
+        IsTrue(locked == true, 'bars must still lock for the duration of the fight')
+        IsTrue(effective, 'the combat lock must make AreBarsLocked true')
+        IsFalse(afterCombat, 'the combat lock must release when the fight ends')
+    end
+
+    -- A localized Steady Shot name used to be unmatched, so the red-zone hold
+    -- never engaged on a non-enUS client.
+    function Release028:LocalizedSteadyShot_RegistersRedZone()
+        local localized = 'Zuverlaessiger Schuss'
+        ns.STEADY_SHOT_NAMES[localized] = true
+        ns.HUNTER_CAST_SPELL_NAMES[localized] = true
+        ns.HUNTER_ACTUAL_CAST_SPELL_NAMES[localized] = true
+
+        local previousClass = ns.playerClass
+        ns.playerClass = 'HUNTER'
+        ns.hunterSteadyShotEndedInRedZone = nil
+        ns.casting = true
+        ns.timers.ranged.state = 'swinging'
+        ns.timers.ranged.lastSwing = ns.GetAlignedTime()
+        ns.timers.ranged.duration = 2.8
+
+        pc(ns.HandleSpellcastSucceeded, 'player', localized, nil)
+        local flagged = ns.hunterSteadyShotEndedInRedZone
+
+        ns.hunterSteadyShotEndedInRedZone = nil
+        ns.STEADY_SHOT_NAMES[localized] = nil
+        ns.HUNTER_CAST_SPELL_NAMES[localized] = nil
+        ns.HUNTER_ACTUAL_CAST_SPELL_NAMES[localized] = nil
+        ns.casting = false
+        ns.playerClass = previousClass
+        ns.ResetTimer('ranged')
+
+        IsTrue(flagged ~= nil, 'a localized Steady Shot name must register the red-zone hold')
+    end
+
+    -- ClassMods mixed the raw client aura tuple with the wrapper's normalized
+    -- one, so the Reckoning stack count read a dispel type as the count.
+    function Release028:ClassModsUsesOnlyWrappedAuraCalls()
+        local f = io.open('SuperSwingTimer_ClassMods.lua', 'r')
+        IsTrue(f ~= nil, 'SuperSwingTimer_ClassMods.lua must exist')
+        if not f then return end
+        local source = f:read('*all')
+        f:close()
+        local function count(pattern)
+            local n = 0
+            for _ in source:gmatch(pattern) do n = n + 1 end
+            return n
+        end
+        AreEqual(count('UnitBuff%s*%('), count('ns%.UnitBuff%s*%('),
+            'raw UnitBuff() mixes the client tuple with the normalized one; use ns.UnitBuff')
+        AreEqual(count('UnitAura%s*%('), count('ns%.UnitAura%s*%('),
+            'raw UnitAura() mixes the client tuple with the normalized one; use ns.UnitAura')
+    end
+
+    function Release028:GcdDuration_FollowsMeasuredValue()
+        local previous = ns.gcdDuration
+        ns.gcdDuration = 1.25
+        local measured = ns.GetGcdDuration()
+        ns.gcdDuration = previous
+        AreEqual(measured, 1.25, 'GetGcdDuration must return the measured GCD, not the constant')
+    end
+
+    function Release028:SpellcastStopHandlers_ShareOneImplementation()
+        IsTrue(ns.HandleSpellcastStop == ns.HandleSpellcastChannelStop,
+            'UNIT_SPELLCAST_STOP and UNIT_SPELLCAST_CHANNEL_STOP must share one handler')
+    end
+
+    -- Feign Death (5384) is registered in RESET_SWING_SPELLS, so the dedicated
+    -- Feign Death branch used to be unreachable and restarted the ranged cycle.
+    function Release028:FeignDeath_CancelsRangedCycle()
+        local previousClass = ns.playerClass
+        ns.playerClass = 'HUNTER'
+        ns.hunterAutoRepeatActive = true
+        ns.casting = true
+        ns.timers.ranged.state = 'swinging'
+        ns.timers.ranged.lastSwing = ns.GetAlignedTime()
+        ns.timers.ranged.duration = 2.8
+        pc(ns.HandleSpellcastSucceeded, 'player', 5384, 5384)
+        local state = ns.timers.ranged.state
+        ns.casting = false
+        ns.playerClass = previousClass
+        ns.ResetTimer('ranged')
+        IsTrue(state == 'idle', 'Feign Death must cancel the ranged cycle instead of restarting it')
+    end
+
+    -- Every non-Hunter class has classConfig.ranged=false. Before v0.2.8 a
+    -- successful cast started a hidden "swinging" ranged timer for all of them,
+    -- which kept HasActiveTimers() true and ran ranged speed sync for a bar the
+    -- class never renders. The gate must hold for every class, not just Warrior.
+    function Release028:MeleeClass_CastDoesNotStartRangedTimer()
+        local previousClass, previousConfig = ns.playerClass, ns.classConfig
+        local failures = {}
+        for className, config in pairs(ns.CLASS_CONFIG) do
+            if config.ranged ~= true then
+                ns.playerClass = className
+                ns.classConfig = config
+                ns.ResetTimer('ranged')
+                ns.ResetTimer('mh')
+                ns.ResetTimer('oh')
+                ns.casting = true
+                local ok = pc(ns.HandleSpellcastSucceeded, 'player', 'Battle Shout', 6673)
+                local state = ns.timers.ranged.state
+                if not ok or state == 'swinging' then
+                    failures[#failures + 1] = className .. ':' .. tostring(state) .. (ok and '' or ':error')
+                end
+            end
+        end
+        ns.casting = false
+        ns.ResetTimer('ranged')
+        ns.ResetTimer('mh')
+        ns.ResetTimer('oh')
+        ns.playerClass, ns.classConfig = previousClass, previousConfig
+        IsTrue(#failures == 0,
+            'no class without a ranged slot may start a phantom ranged timer: ' .. table.concat(failures, ', '))
+    end
+
+    -- A Hunter melee ability must never start or restart the Auto Shot cycle.
+    -- v0.2.8 widened the generic cast-success ranged reset to every class with
+    -- a ranged slot, so a Raptor Strike success that reached this branch while
+    -- ns.casting was true started a ranged timer with no Auto Shot behind it.
+    function Release028:RaptorStrikeCast_DoesNotRestartRangedCycle()
+        local previousClass, previousConfig = ns.playerClass, ns.classConfig
+        local previousQueued = ns.hunterQueuedMeleeSpell
+        ns.playerClass = 'HUNTER'
+        ns.classConfig = ns.CLASS_CONFIG.HUNTER
+        ns.hunterQueuedMeleeSpell = nil
+        ns.preventSwingReset = false
+        ns.ResetTimer('ranged')
+        ns.ResetTimer('mh')
+        if SetMockTime then SetMockTime(2000) end
+
+        local okStart = pc(ns.HandleSpellcastStart, 'player', 2973, 2973)
+        local castingAfterStart = ns.casting
+        local okSuccess = pc(ns.HandleSpellcastSucceeded, 'player', 2973, 2973)
+        local rangedState = ns.timers.ranged.state
+        local mhState = ns.timers.mh.state
+        local castingAfterSuccess = ns.casting
+
+        ns.playerClass, ns.classConfig = previousClass, previousConfig
+        ns.hunterQueuedMeleeSpell = previousQueued
+        IsTrue(okStart, 'HandleSpellcastStart must not error for Raptor Strike')
+        IsTrue(okSuccess, 'HandleSpellcastSucceeded must not error for Raptor Strike')
+        IsTrue(castingAfterStart == true, 'a spellcast start must set ns.casting (the branch precondition)')
+        IsFalse(castingAfterSuccess, 'a spellcast success must clear ns.casting')
+        AreEqual(rangedState, 'idle', 'Raptor Strike must not start or restart the Auto Shot cycle')
+        AreEqual(mhState, 'swinging', 'Raptor Strike must still restart the main-hand timer')
+    end
+
+    -- The main-hand CLEU branches must restart MH/OH only. They must never
+    -- write the ranged timer (the ranged cycle is owned by Auto Shot events).
+    function Release028:MainHandCLEU_DoesNotResetRangedTimer()
+        local previousClass, previousConfig = ns.playerClass, ns.classConfig
+        local previousEnemy = ns.enemyTargetGUID
+        local previousPending, previousExpires = ns.extraAttackPending, ns.extraAttackExpiresAt
+        local playerGuid = UnitGUID('player')
+        ns.playerClass = 'HUNTER'
+        ns.classConfig = ns.CLASS_CONFIG.HUNTER
+        ns.enemyTargetGUID = nil
+        ns.extraAttackPending = 0
+        ns.extraAttackExpiresAt = nil
+        ns.timers.ranged.state = 'swinging'
+        ns.timers.ranged.lastSwing = 100.0
+        ns.timers.ranged.duration = 2.8
+        ns.timers.ranged.speed = 2.8
+        ns.ResetTimer('mh')
+
+        if SetMockTime then SetMockTime(101.0) end
+        Replace('CombatLogGetCurrentEventInfo', function()
+            -- SWING_DAMAGE: base args 1-11, then amount..isOffHand (arg 21)
+            return nil, 'SWING_DAMAGE', nil, playerGuid, 'Player', 0, 0,
+                'Creature-1', 'Mob', 0, 0,
+                100, 0, 1, 0, 0, 0, false, false, false, false
+        end)
+        local okDamage = pc(ns.HandleCLEU)
+        local rangedStateAfterDamage = ns.timers.ranged.state
+        local rangedLastSwingAfterDamage = ns.timers.ranged.lastSwing
+        local mhStateAfterDamage = ns.timers.mh.state
+        local mhLastSwingAfterDamage = ns.timers.mh.lastSwing
+
+        if SetMockTime then SetMockTime(102.0) end
+        Replace('CombatLogGetCurrentEventInfo', function()
+            -- SWING_MISSED: missType arg 12, isOffHand arg 13
+            return nil, 'SWING_MISSED', nil, playerGuid, 'Player', 0, 0,
+                'Creature-1', 'Mob', 0, 0,
+                'MISS', false
+        end)
+        local okMiss = pc(ns.HandleCLEU)
+        local rangedStateAfterMiss = ns.timers.ranged.state
+        local rangedLastSwingAfterMiss = ns.timers.ranged.lastSwing
+        local mhLastSwingAfterMiss = ns.timers.mh.lastSwing
+
+        ClearReplaces()
+        ns.playerClass, ns.classConfig = previousClass, previousConfig
+        ns.enemyTargetGUID = previousEnemy
+        ns.extraAttackPending, ns.extraAttackExpiresAt = previousPending, previousExpires
+        IsTrue(okDamage, 'HandleCLEU must not error for a player SWING_DAMAGE')
+        IsTrue(okMiss, 'HandleCLEU must not error for a player SWING_MISSED')
+        AreEqual(rangedStateAfterDamage, 'swinging', 'a main-hand hit must not reset the ranged timer')
+        AreEqual(rangedLastSwingAfterDamage, 100.0, 'a main-hand hit must not move the ranged cycle anchor')
+        AreEqual(mhStateAfterDamage, 'swinging', 'a main-hand hit must restart the main-hand timer')
+        AreEqual(mhLastSwingAfterDamage, 101.0, 'the main-hand timer must use the CLEU event time')
+        AreEqual(rangedStateAfterMiss, 'swinging', 'a main-hand miss must not reset the ranged timer')
+        AreEqual(rangedLastSwingAfterMiss, 100.0, 'a main-hand miss must not move the ranged cycle anchor')
+        AreEqual(mhLastSwingAfterMiss, 102.0, 'a main-hand miss must restart the main-hand timer')
+    end
+
+    -- The legitimate Auto Shot path must still start the ranged cycle.
+    function Release028:AutoShotCLEU_StartsRangedCycle()
+        local previousClass, previousConfig = ns.playerClass, ns.classConfig
+        local playerGuid = UnitGUID('player')
+        ns.playerClass = 'HUNTER'
+        ns.classConfig = ns.CLASS_CONFIG.HUNTER
+        ns.ResetTimer('ranged')
+        if SetMockTime then SetMockTime(1100.0) end
+        Replace('CombatLogGetCurrentEventInfo', function()
+            return nil, 'SPELL_CAST_SUCCESS', nil, playerGuid, 'Player', 0, 0,
+                'Creature-1', 'Mob', 0, 0, ns.AUTO_SHOT_ID
+        end)
+        local ok = pc(ns.HandleCLEU)
+        local state = ns.timers.ranged.state
+        local duration = ns.timers.ranged.duration
+        ClearReplaces()
+        ns.playerClass, ns.classConfig = previousClass, previousConfig
+        IsTrue(ok, 'HandleCLEU must not error for an Auto Shot cast success')
+        AreEqual(state, 'swinging', 'an Auto Shot cast success must start the ranged cycle')
+        IsTrue(duration and duration > 0, 'the started ranged cycle must have a positive duration')
+    end
+
+    -- "Shoot" is the Classic Era alias shape for Auto Shot. The narrowed gate
+    -- must still accept it, or a real Auto Shot would stop restarting ranged.
+    function Release028:AutoShotShootAlias_StillStartsRangedCycle()
+        local previousClass, previousConfig = ns.playerClass, ns.classConfig
+        ns.playerClass = 'HUNTER'
+        ns.classConfig = ns.CLASS_CONFIG.HUNTER
+        ns.ResetTimer('ranged')
+        ns.casting = true
+        ns.preventSwingReset = false
+        ns.currentCastSpellId = nil
+        ns.lastResolvedHunterCastToken = nil
+        ns.lastResolvedHunterCastAt = nil
+        if SetMockTime then SetMockTime(1200.0) end
+        local ok = pc(ns.HandleSpellcastSucceeded, 'player', 'Shoot', nil)
+        local state = ns.timers.ranged.state
+        ns.casting = false
+        ns.playerClass, ns.classConfig = previousClass, previousConfig
+        IsTrue(ok, 'HandleSpellcastSucceeded must not error for the Shoot alias')
+        AreEqual(state, 'swinging', 'the Shoot alias must still start the ranged cycle')
+    end
+
+    -- Every historical DB version must migrate to the current one.
+    function Release028:MigrateDB_FromEveryHistoricalVersion()
+        for version = 0, ns.DB_CURRENT_VERSION do
+            local db = { version = version }
+            local ok = pc(ns.MigrateDB, db)
+            IsTrue(ok, 'migration from v' .. version .. ' must not error')
+            AreEqual(db.version, ns.DB_CURRENT_VERSION,
+                'migration from v' .. version .. ' must reach the current version')
+        end
     end
 
     local nGroups = 0

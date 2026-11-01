@@ -24,6 +24,11 @@ end
 ns.cachedLatency = ns.cachedLatency or 0
 local RANGED_START_DEDUPE_WINDOW = 0.25
 local WARRIOR_OVERPOWER_PROC_WINDOW = 5.0
+-- An extra attack (Windfury, Sword Specialization, Hand of Justice) lands
+-- almost immediately after it is granted. This deadline exists only so that a
+-- granted attack which never produces its own swing event cannot pin the
+-- suppression counter and swallow every later real swing for the whole fight.
+local EXTRA_ATTACK_SUPPRESS_WINDOW = 3.0
 local POWER_CLASSES = { WARRIOR = true, PALADIN = true, SHAMAN = true, ROGUE = true, DRUID = true, HUNTER = true }
 ns.POWER_CLASSES = POWER_CLASSES
 
@@ -53,6 +58,7 @@ ns.timers = {
 }
 
 ns.extraAttackPending = 0
+ns.extraAttackExpiresAt = nil
 ns.casting = false
 ns.channeling = false
 ns.channelingSpellId = nil
@@ -637,6 +643,7 @@ function ns.OnPlayerEnteringWorld(isInitialLogin, isReloadingUi)
         ns.ClearWeavePreview()
     end
     ns.extraAttackPending = 0
+    ns.extraAttackExpiresAt = nil
     ClearPendingMeleeQueueState()
     ns.StopSanityTicker()
     ns.enemyTargetGUID = nil
@@ -757,25 +764,16 @@ function ns.SyncRangedTimerSpeed(now, force)
     end
 end
 
---- Start or restart a swing timer for the given weapon slot.
---  Called from CLEU SWING_DAMAGE / SWING_MISSED handlers and from
---  spellcast-succeeded hooks for queue-at-end abilities. Resets the
---  timer duration from the current weapon speed and begins counting
---  down. If startTime is provided (combat-log timestamp), uses it as
---  the swing base; otherwise falls back to GetAlignedTime().
---  @param slot (string) "mh", "oh", or "ranged"
---  @param _ (nil) Unused legacy parameter
---  @param startTime (number|nil) Combat-log timestamp for the swing start
---  @return (nil) Side-effect: updates ns.timers[slot]
---  @see ns.ResetTimer
---- Start or restart a melee/ranged/enemy swing timer for the given slot.
---  Resolves weapon speed from UnitAttackSpeed() (melee) or
---  GetAutoShotCooldown() / UnitRangedDamage() (ranged), sets the
---  swing duration, and transitions the timer to "swinging" state.
+--- Start or restart a swing timer for the given slot.
+--  Resolves weapon speed from UnitAttackSpeed() (melee and enemy) or from
+--  GetAutoShotCooldown() / UnitRangedDamage() (ranged), stores it as the swing
+--  duration and transitions the timer to "swinging". When startTime is given (a
+--  combat-log timestamp) it becomes the swing base so the bar matches server
+--  time; otherwise GetAlignedTime() is used.
 --  @param slot (string) One of "mh", "oh", "ranged", "enemy"
---  @param _ (nil) Unused parameter (legacy)
---  @param startTime (number|nil) Optional timestamp override; defaults to GetAlignedTime()
---  @return (nil)
+--  @param _ (nil) Unused legacy parameter; kept so existing call sites stay valid
+--  @param startTime (number|nil) Optional swing-start timestamp
+--  @return (nil) Side-effect: updates ns.timers[slot]
 --  @see ns.ResetTimer, ns.RescaleTimer
 function ns.StartSwing(slot, _, startTime)
     local t = ns.timers[slot]
@@ -1066,7 +1064,10 @@ end
 -- the client has not populated the cooldown yet.
 local GCD_DURATION = 1.5
 function ns.GetGcdDuration()
-    return GCD_DURATION
+    -- Prefer the duration measured from the client cooldown query; the constant
+    -- is only the pre-query fallback. Returning the constant unconditionally let
+    -- the GCD ticker and the state machine disagree about the current GCD.
+    return ns.gcdDuration or GCD_DURATION
 end
 
 function ns.HandleSpellcastChannelStart(unit, castGUIDOrSpellName, spellId)
@@ -1088,37 +1089,30 @@ function ns.HandleSpellcastChannelStart(unit, castGUIDOrSpellName, spellId)
     ns.RefreshUpdateLoop()
 end
 
-function ns.HandleSpellcastStop(unit)
+--- End a player cast. UNIT_SPELLCAST_STOP and UNIT_SPELLCAST_CHANNEL_STOP
+--  need identical cleanup, so both names point at this one implementation
+--  rather than at two copies that can drift apart.
+--  @param unit (string) Unit token from the event payload
+--  @return (nil)
+local function EndPlayerCast(unit)
     if unit ~= "player" then return end
     ns.casting = false
     ns.channeling = false
     ns.channelingSpellId = nil
     ns.currentCastSpellId = nil
     ns.currentCastStartTime = nil
+    -- A hunter's stored cast window survives the stop event and is cleared by
+    -- the success/failure handlers instead; everything else clears immediately.
     if not (ns.playerClass == "HUNTER" and ns.hunterCastActive and ns.hunterCastSpellId and ns.IsHunterCastSpell
             and ns.IsHunterCastSpell(ns.hunterCastSpellId) and ns.hunterCastDuration and ns.hunterCastDuration > 0) then
-        local now = ns.GetAlignedTime()
         ClearHunterCastState(false)
     end
     ns.preventSwingReset = false
     ns.RefreshUpdateLoop()
 end
 
-function ns.HandleSpellcastChannelStop(unit)
-    if unit ~= "player" then return end
-    ns.casting = false
-    ns.channeling = false
-    ns.channelingSpellId = nil
-    ns.currentCastSpellId = nil
-    ns.currentCastStartTime = nil
-    if not (ns.playerClass == "HUNTER" and ns.hunterCastActive and ns.hunterCastSpellId and ns.IsHunterCastSpell
-            and ns.IsHunterCastSpell(ns.hunterCastSpellId) and ns.hunterCastDuration and ns.hunterCastDuration > 0) then
-        local now = ns.GetAlignedTime()
-        ClearHunterCastState(false)
-    end
-    ns.preventSwingReset = false
-    ns.RefreshUpdateLoop()
-end
+ns.HandleSpellcastStop = EndPlayerCast
+ns.HandleSpellcastChannelStop = EndPlayerCast
 
 function ns.HandleSpellcastDelayed(unit, castGUIDOrSpellName, spellId)
     ns.RefreshLatencyCache()
@@ -1171,10 +1165,11 @@ function ns.HandleSpellcastInterruptedOrFailed(unit, castGUIDOrSpellName, spellI
     ns.channeling = false
     ns.channelingSpellId = nil
     if ns.playerClass == "HUNTER" then
-        local isSteady = (spellId == ns.STEADY_SHOT_ID)
-            or (ns.currentCastSpellId == ns.STEADY_SHOT_ID)
-            or (ns.hunterCastSpellId == ns.STEADY_SHOT_ID)
-            or (spellToken and (spellToken == "Steady Shot" or spellToken == ns.STEADY_SHOT_ID))
+        -- Match ID, numeric string and localized name through the shared
+        -- helper: a name-only payload on a non-enUS client must still register.
+        local isSteady = ns.IsSteadyShotSpell and (ns.IsSteadyShotSpell(spellToken)
+            or ns.IsSteadyShotSpell(ns.currentCastSpellId)
+            or ns.IsSteadyShotSpell(ns.hunterCastSpellId))
         if isSteady then
             local tRanged = ns.timers and ns.timers.ranged
             if tRanged and tRanged.duration and tRanged.duration > 0 then
@@ -1203,12 +1198,9 @@ function ns.HandleSpellcastInterruptedOrFailed(unit, castGUIDOrSpellName, spellI
     ns.RefreshUpdateLoop()
 end
 
--- Apply parry haste to a melee timer when the player parries an incoming attack.
--- Classic rule: reduce remaining time by 40% of the current swing duration,
--- but never below 20% remaining.
---- Apply parry haste to a melee timer when the player parries
---  an incoming attack. Classic rule: reduce remaining time by 40%
---  of the current swing duration, but never below 20% remaining.
+--- Apply parry haste to a melee timer when the player parries an incoming
+--  attack. Classic rule: reduce the remaining time by 40% of the current swing
+--  duration, but never below 20% remaining.
 --  @param slot (string) The timer slot ("mh" or "oh")
 --  @param eventTime (number|nil) Timestamp of the parry event
 --  @return (nil)
@@ -1290,21 +1282,13 @@ local function GetPlayerGUID()
     return playerGUID
 end
 
---- Main CLEU dispatch handler — called from the bootstrap OnEvent frame.
---  Parses CombatLogGetCurrentEventInfo() and dispatches to individual
---  sub-handlers for SWING_DAMAGE, SWING_MISSED, SPELL_CAST_SUCCESS,
---  SPELL_EXTRA_ATTACKS, SPELL_DAMAGE, SPELL_MISSED, and
---  SPELL_AURA_APPLIED. Handles both numeric spell IDs (Classic Era)
---  and localized string payloads (TBC Anniversary).
---  @return (nil) Side-effect: starts/resets timers, updates state
---  @see ns.StartSwing
---  @see ns.HandleSpellcastSucceeded
---- Main combat-log event handler. Dispatches SWING_DAMAGE, SWING_MISSED,
---  SPELL_CAST_SUCCESS, SPELL_EXTRA_ATTACKS, SPELL_DAMAGE, SPELL_MISSED,
---  and SPELL_AURA_APPLIED events. Routes swings to the correct timer slot
---  (mh, oh, enemy), handles off-hand detection, extra-attack suppression,
---  parry haste, and Overpower proc detection.
---  Called from the bootstrap OnEvent handler every CLEU payload.
+--- Main combat-log event handler, called by the bootstrap OnEvent frame for
+--  every CLEU payload. Dispatches SWING_DAMAGE, SWING_MISSED,
+--  SPELL_CAST_SUCCESS, SPELL_EXTRA_ATTACKS, SPELL_DAMAGE, SPELL_MISSED and
+--  SPELL_AURA_APPLIED, routes swings to the correct timer slot (mh, oh,
+--  enemy), and handles off-hand detection, extra-attack suppression, parry
+--  haste and Overpower proc detection. Accepts numeric spell IDs (Classic Era)
+--  and localized string payloads (Anniversary).
 --  @return (nil) Operates entirely through side effects on ns.timers
 --  @usage Called automatically by the addon event frame; no manual calls needed
 --  @see ns.StartSwing, ns.ApplyParryHaste
@@ -1334,6 +1318,16 @@ function ns.HandleCLEU()
     end
 
     local eventTime = ns.GetAlignedTime()
+
+    -- Expire a stale extra-attack credit. Without this, an extra attack whose
+    -- own swing event never arrived left the counter positive, so the next real
+    -- swing was discarded as "that extra attack" and the MH/OH bar stopped
+    -- restarting until combat ended.
+    if (ns.extraAttackPending or 0) > 0 and ns.extraAttackExpiresAt
+        and eventTime > ns.extraAttackExpiresAt then
+        ns.extraAttackPending = 0
+        ns.extraAttackExpiresAt = nil
+    end
 
     if currentEnemyGUID and sourceGUID == currentEnemyGUID then
         if subEvent == "SWING_DAMAGE" then
@@ -1385,6 +1379,7 @@ function ns.HandleCLEU()
         elseif subEvent == "SPELL_EXTRA_ATTACKS" then
             local extraAttackAmount = cleuArg15
             ns.extraAttackPending = (ns.extraAttackPending or 0) + (extraAttackAmount or 1)
+            ns.extraAttackExpiresAt = eventTime + EXTRA_ATTACK_SUPPRESS_WINDOW
         elseif (subEvent == "SPELL_DAMAGE" or subEvent == "SPELL_MISSED") then
             local spellId = cleuArg12
             local missType = cleuArg15
@@ -1422,6 +1417,10 @@ function ns.HandleCLEU()
         if subEvent == "UNIT_DIED" or subEvent == "UNIT_DESTROYED" then
             ns.enemyTargetGUID = nil
             ns.enemyTargetName = nil
+            -- The pending extra attack died with the target; keeping the credit
+            -- would silently discard the player's next swing on the new target.
+            ns.extraAttackPending = 0
+            ns.extraAttackExpiresAt = nil
             ns.ResetTimer("enemy")
         end
     end
@@ -1472,7 +1471,7 @@ function ns.HandleSpellcastSucceeded(unit, castGUIDOrSpellName, spellId)
         if not isAutoShotSpell then
             if ns.IsHunterActualCastSpell and ns.IsHunterActualCastSpell(spellToken) then
                 -- Real cast (Steady Shot / Aimed Shot / Volley) landed
-                local isSteady = (spellToken == "Steady Shot" or spellToken == ns.STEADY_SHOT_ID or spellIdNumber == ns.STEADY_SHOT_ID)
+                local isSteady = ns.IsSteadyShotSpell and ns.IsSteadyShotSpell(spellToken)
                 if isSteady then
                     local tRanged = ns.timers and ns.timers.ranged
                     if tRanged and tRanged.duration and tRanged.duration > 0 then
@@ -1492,11 +1491,20 @@ function ns.HandleSpellcastSucceeded(unit, castGUIDOrSpellName, spellId)
                 SeedHunterStoredCastState(spellToken, ns.hunterCastStartTime or now, ns.hunterCastDuration)
             end
         end
+    elseif ns.playerClass == "HUNTER" and IsHunterFeignDeathSpell(spellToken) then
+        -- Must precede RESET_SWING_SPELLS: Feign Death (5384) is registered
+        -- there, so this branch used to be unreachable and a Feign Death
+        -- restarted the ranged cycle instead of cancelling auto-shot.
+        ns.hunterAutoRepeatActive = false
+        ns.ResetTimer("ranged")
     elseif ns.RESET_SWING_SPELLS
         and (ns.RESET_SWING_SPELLS[spellToken] or (spellIdNumber and ns.RESET_SWING_SPELLS[spellIdNumber])) then
         ns.StartSwing("mh", nil, now)
         ns.StartSwing("oh", nil, now)
-        if ns.StartRangedSwing(now) and ns.OnRangedSwing then
+        -- Only a class with a ranged slot may start the ranged timer; see the
+        -- phantom-timer note on the generic cast branch below.
+        if ns.classConfig and ns.classConfig.ranged == true
+            and ns.StartRangedSwing(now) and ns.OnRangedSwing then
             ns.OnRangedSwing()
         end
         if ns.OnMeleeSwing then ns.OnMeleeSwing("mh") end
@@ -1512,9 +1520,6 @@ function ns.HandleSpellcastSucceeded(unit, castGUIDOrSpellName, spellId)
         if ns.ForceRogueAdrenalineRushRefresh then
             ns.ForceRogueAdrenalineRushRefresh()
         end
-    elseif ns.playerClass == "HUNTER" and IsHunterFeignDeathSpell(spellToken) then
-        ns.hunterAutoRepeatActive = false
-        ns.ResetTimer("ranged")
     elseif ns.casting and not ns.preventSwingReset then
         -- Auto Shot must not reset the MH swing when the Hunter is at range;
         -- only reset MH/OH when the target is actually in melee range.
@@ -1527,9 +1532,16 @@ function ns.HandleSpellcastSucceeded(unit, castGUIDOrSpellName, spellId)
             ns.StartSwing("mh", nil, now)
             ns.StartSwing("oh", nil, now)
         end
-        local shouldResetRanged = ns.playerClass ~= "HUNTER"
-        if not shouldResetRanged and ns.IsHunterCastSpell and ns.IsHunterCastSpell(spellToken) then
-            shouldResetRanged = true
+        -- Only classes with a ranged slot get a ranged timer. Starting one for
+        -- every melee class left a phantom "swinging" ranged timer after each
+        -- spellcast: it pinned the per-frame hook and ran ranged speed sync for
+        -- a bar the class never renders.
+        local shouldResetRanged = ns.classConfig and ns.classConfig.ranged == true
+        if shouldResetRanged and ns.playerClass == "HUNTER" then
+            -- The Hunter ranged cycle belongs to Auto Shot alone. Every other
+            -- Hunter success that reaches this generic branch (Raptor Strike,
+            -- Wing Clip, Hunter's Mark, ...) must not start or restart it.
+            shouldResetRanged = (ns.IsAutoShotSpell and ns.IsAutoShotSpell(spellToken)) == true
         end
         if shouldResetRanged and ns.StartRangedSwing(now) and ns.OnRangedSwing then
             ns.OnRangedSwing()

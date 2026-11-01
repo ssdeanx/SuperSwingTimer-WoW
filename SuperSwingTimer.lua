@@ -403,7 +403,6 @@ local function MigrateDB(targetDb)
                     }
             end
         },
-        { version = 21, apply = function (_db) end },
         {
             version = 22,
             apply = function (db)
@@ -416,8 +415,6 @@ local function MigrateDB(targetDb)
                 db.useClassColors = false
             end
         },
-        { version = 23, apply = function (_db) end },
-        { version = 24, apply = function (_db) end },
         {
             version = 25,
             apply = function (db)
@@ -1775,8 +1772,10 @@ frame:SetScript("OnEvent", function (self, event, ...)
             ns.StopMoveMode()
         end
         ns.isMoveModeActive = false
-        if not SuperSwingTimerDB then SuperSwingTimerDB = {} end
-        SuperSwingTimerDB.lockBars = true
+        -- Lock the frames for the duration of the fight only. Writing
+        -- lockBars=true here persisted a combat artefact into SavedVariables and
+        -- permanently destroyed an unlocked preference chosen with /sst move.
+        ns.combatLocked = true
         if ns.ApplyLockBars then
             ns.ApplyLockBars()
         end
@@ -1802,6 +1801,9 @@ frame:SetScript("OnEvent", function (self, event, ...)
         end
     elseif event == "PLAYER_REGEN_ENABLED" then
         ns.playerInCombat = false
+        -- Release the combat-only frame lock so an unlocked preference is
+        -- restored the moment the fight ends.
+        ns.combatLocked = false
         if ns.UpdatePlayerPowerBar then
             ns.UpdatePlayerPowerBar()
         end

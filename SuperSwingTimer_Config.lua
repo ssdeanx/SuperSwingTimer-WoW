@@ -2219,7 +2219,7 @@ local function CreateBlizzardOptionsCanvas()
 
     local title = f:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
     title:SetPoint("TOPLEFT", f, "TOPLEFT", 16, -16)
-    title:SetText("Super Swing Timer |cff00ccffv0.2.5|r")
+    title:SetText("Super Swing Timer |cff00ccff" .. (ns.GetDisplayVersion and ns.GetDisplayVersion() or "v0.2.8") .. "|r")
 
     local desc = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     desc:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -8)
@@ -2364,7 +2364,7 @@ local function CreateBlizzardOptionsCanvas()
         function(val)
             if not SuperSwingTimerDB then SuperSwingTimerDB = {} end
             SuperSwingTimerDB.minimalMode = val
-            if ns.ApplyMinimalMode then ns.ApplyMinimalMode() end
+            if ns.ApplyMinimalMode then ns.ApplyMinimalMode(val) end
         end, lockCb)
     table.insert(checks, minCb)
 
@@ -2496,7 +2496,7 @@ local function CreatePanel()
     -- Title
     local title = f:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
     title:SetPoint("TOPLEFT", f, "TOPLEFT", 18, -14)
-    title:SetText("Super Swing Timer |cff00ccffv0.2.5|r")
+    title:SetText("Super Swing Timer |cff00ccff" .. (ns.GetDisplayVersion and ns.GetDisplayVersion() or "v0.2.8") .. "|r")
 
     -- Move/Unlock button in header — toggles move mode and saves positions
     local moveHeaderBtn = CreateFrame("Button", nil, f)
@@ -5705,127 +5705,56 @@ function ns.ToggleConfig()
     end
 end
 
---- Reset all SavedVariables to their default values.
---  Preserves positions, then wipes everything to ns.DB_DEFAULTS
---  and reapplies all settings to active frames. Called by /sst reset.
+--- Reset every SavedVariables key to its value in ns.DB_DEFAULTS.
+--  Derived from the defaults table instead of a hand-maintained list: the old
+--  list silently missed about thirty keys (class-overlay toggles, barBorderSize,
+--  showGlowEffects, showPowerBar, showSwingFlash, ...), so /sst reset left
+--  settings behind and could not honour its "restore all defaults" promise.
+--  Tables are deep-copied so DB_DEFAULTS is never aliased into SavedVariables.
 --  @return (nil)
 function ns.ResetConfigDefaults()
-    SuperSwingTimerDB.colors = SuperSwingTimerDB.colors or {}
-    SuperSwingTimerDB.positions = {
-        mh = {
-            point = ns.DB_DEFAULTS.positions.mh.point,
-            relativePoint = ns.DB_DEFAULTS.positions.mh.relativePoint,
-            x = ns.DB_DEFAULTS.positions.mh.x,
-            y = ns.DB_DEFAULTS.positions.mh.y
-        },
-        oh = {
-            point = ns.DB_DEFAULTS.positions.oh.point,
-            relativePoint = ns.DB_DEFAULTS.positions.oh.relativePoint,
-            x = ns.DB_DEFAULTS.positions.oh.x,
-            y = ns.DB_DEFAULTS.positions.oh.y
-        },
-        ranged = {
-            point = ns.DB_DEFAULTS.positions.ranged.point,
-            relativePoint = ns.DB_DEFAULTS.positions.ranged.relativePoint,
-            x = ns.DB_DEFAULTS.positions.ranged.x,
-            y = ns.DB_DEFAULTS.positions.ranged.y
-        },
-        enemy = {
-            point = ns.DB_DEFAULTS.positions.enemy.point,
-            relativePoint = ns.DB_DEFAULTS.positions.enemy.relativePoint,
-            x = ns.DB_DEFAULTS.positions.enemy.x,
-            y = ns.DB_DEFAULTS.positions.enemy.y
-        }
-    }
-    SuperSwingTimerDB.barWidth = ns.DB_DEFAULTS.barWidth
-    SuperSwingTimerDB.barHeight = ns.DB_DEFAULTS.barHeight
-    SuperSwingTimerDB.powerBarHeight = ns.DB_DEFAULTS.powerBarHeight
-    SuperSwingTimerDB.hunterCastBarHeight = ns.DB_DEFAULTS.hunterCastBarHeight
-    SuperSwingTimerDB.rogueSliceAndDiceBarHeight = ns.DB_DEFAULTS.rogueSliceAndDiceBarHeight
-    SuperSwingTimerDB.rogueEnergyTickBarWidth = ns.DB_DEFAULTS.rogueEnergyTickBarWidth
-    SuperSwingTimerDB.warriorShieldBlockBarHeight = ns.DB_DEFAULTS.warriorShieldBlockBarHeight
-    SuperSwingTimerDB.hunterRangeHelperWidth = ns.DB_DEFAULTS.hunterRangeHelperWidth
-    SuperSwingTimerDB.hunterRapidFireBarHeight = ns.DB_DEFAULTS.hunterRapidFireBarHeight
-    SuperSwingTimerDB.druidPowerShiftBarHeight = ns.DB_DEFAULTS.druidPowerShiftBarHeight
-    SuperSwingTimerDB.druidEnergyTickBarWidth = ns.DB_DEFAULTS.druidEnergyTickBarWidth
-    SuperSwingTimerDB.rogueAdrenalineRushBarHeight = ns.DB_DEFAULTS.rogueAdrenalineRushBarHeight
-    SuperSwingTimerDB.barTexture = ns.DB_DEFAULTS.barTexture
-    SuperSwingTimerDB.barTextureLayer = ns.DB_DEFAULTS.barTextureLayer
-    SuperSwingTimerDB.rangedBarTexture = ns.DB_DEFAULTS.rangedBarTexture
-    SuperSwingTimerDB.sparkTexture = ns.DB_DEFAULTS.sparkTexture
-    SuperSwingTimerDB.sparkTextureLayer = ns.DB_DEFAULTS.sparkTextureLayer
-    SuperSwingTimerDB.weaveSparkTexture = ns.DB_DEFAULTS.weaveSparkTexture
-    SuperSwingTimerDB.weaveSparkTextureLayer = ns.DB_DEFAULTS.weaveSparkTextureLayer
-    SuperSwingTimerDB.weaveSparkWidth = ns.DB_DEFAULTS.weaveSparkWidth
-    SuperSwingTimerDB.weaveSparkHeight = ns.DB_DEFAULTS.weaveSparkHeight
-    SuperSwingTimerDB.weaveSparkAlpha = ns.DB_DEFAULTS.weaveSparkAlpha
-    SuperSwingTimerDB.weaveTriangleTopTexture = ns.DB_DEFAULTS.weaveTriangleTopTexture
-    SuperSwingTimerDB.weaveTriangleBottomTexture = ns.DB_DEFAULTS.weaveTriangleBottomTexture
-    SuperSwingTimerDB.weaveTriangleTextureLayer = ns.DB_DEFAULTS.weaveTriangleTextureLayer
-    SuperSwingTimerDB.weaveTriangleSize = ns.DB_DEFAULTS.weaveTriangleSize
-    SuperSwingTimerDB.weaveTriangleGap = ns.DB_DEFAULTS.weaveTriangleGap
-    SuperSwingTimerDB.weaveTriangleAlpha = ns.DB_DEFAULTS.weaveTriangleAlpha
-    SuperSwingTimerDB.weaveMarkerLayer = ns.DB_DEFAULTS.weaveMarkerLayer
-    SuperSwingTimerDB.sparkWidth = ns.DB_DEFAULTS.sparkWidth
-    SuperSwingTimerDB.sparkHeight = ns.DB_DEFAULTS.sparkHeight
-    SuperSwingTimerDB.barBackgroundAlpha = ns.DB_DEFAULTS.barBackgroundAlpha
-    SuperSwingTimerDB.barBackgroundColor = {
-        r = ns.DB_DEFAULTS.barBackgroundColor.r,
-        g = ns.DB_DEFAULTS.barBackgroundColor.g,
-        b = ns.DB_DEFAULTS.barBackgroundColor.b,
-        a = ns.DB_DEFAULTS.barBackgroundColor.a
-    }
-    SuperSwingTimerDB.barBorderColor = {
-        r = ns.DB_DEFAULTS.barBorderColor.r,
-        g = ns.DB_DEFAULTS.barBorderColor.g,
-        b = ns.DB_DEFAULTS.barBorderColor.b,
-        a = ns.DB_DEFAULTS.barBorderColor.a
-    }
-    SuperSwingTimerDB.sparkAlpha = ns.DB_DEFAULTS.sparkAlpha
-    SuperSwingTimerDB.sparkColor = {
-        r = ns.DB_DEFAULTS.sparkColor.r,
-        g = ns.DB_DEFAULTS.sparkColor.g,
-        b = ns.DB_DEFAULTS.sparkColor.b,
-        a = ns.DB_DEFAULTS.sparkColor.a
-    }
-    SuperSwingTimerDB.minimalMode = ns.DB_DEFAULTS.minimalMode
-    SuperSwingTimerDB.lockBars = ns.DB_DEFAULTS.lockBars
-    SuperSwingTimerDB.showMH = ns.DB_DEFAULTS.showMH
-    SuperSwingTimerDB.showOH = ns.DB_DEFAULTS.showOH
-    SuperSwingTimerDB.showRanged = ns.DB_DEFAULTS.showRanged
-    SuperSwingTimerDB.showHunterRangeHelper = ns.DB_DEFAULTS.showHunterRangeHelper
-    SuperSwingTimerDB.showEnemy = ns.DB_DEFAULTS.showEnemy
-    SuperSwingTimerDB.showRogueSinisterAssist = ns.DB_DEFAULTS.showRogueSinisterAssist
-    SuperSwingTimerDB.showRogueEnergyTick = ns.DB_DEFAULTS.showRogueEnergyTick
-    SuperSwingTimerDB.showDruidEnergyTickBar = ns.DB_DEFAULTS.showDruidEnergyTickBar
-    SuperSwingTimerDB.showRogueSliceAndDice = ns.DB_DEFAULTS.showRogueSliceAndDice
-    SuperSwingTimerDB.showWeaveAssist = ns.DB_DEFAULTS.showWeaveAssist
-    SuperSwingTimerDB.showShamanLightningTracker = ns.DB_DEFAULTS.showShamanLightningTracker
-    SuperSwingTimerDB.showShamanFlameShockBar = ns.DB_DEFAULTS.showShamanFlameShockBar
-    SuperSwingTimerDB.showShamanBuffIcons = ns.DB_DEFAULTS.showShamanBuffIcons
-    SuperSwingTimerDB.shamanBuffIconSize = ns.DB_DEFAULTS.shamanBuffIconSize
-    SuperSwingTimerDB.showWarriorBuffIcons = ns.DB_DEFAULTS.showWarriorBuffIcons
-    SuperSwingTimerDB.warriorBuffIconSize = ns.DB_DEFAULTS.warriorBuffIconSize
-    SuperSwingTimerDB.showRogueBuffIcons = ns.DB_DEFAULTS.showRogueBuffIcons
-    SuperSwingTimerDB.rogueBuffIconSize = ns.DB_DEFAULTS.rogueBuffIconSize
-    SuperSwingTimerDB.showPaladinBuffIcons = ns.DB_DEFAULTS.showPaladinBuffIcons
-    SuperSwingTimerDB.paladinBuffIconSize = ns.DB_DEFAULTS.paladinBuffIconSize
-    SuperSwingTimerDB.shamanLightningTrackerGap = ns.DB_DEFAULTS.shamanLightningTrackerGap
-    SuperSwingTimerDB.useClassColors = ns.DB_DEFAULTS.useClassColors
-    SuperSwingTimerDB.globalScale = ns.DB_DEFAULTS.globalScale
-    SuperSwingTimerDB.indicatorBlendMode = ns.DB_DEFAULTS.indicatorBlendMode
-    SuperSwingTimerDB.weaveSpellFamilies = {
-        LB = ns.DB_DEFAULTS.weaveSpellFamilies.LB,
-        CL = ns.DB_DEFAULTS.weaveSpellFamilies.CL,
-        HW = ns.DB_DEFAULTS.weaveSpellFamilies.HW,
-        LHW = ns.DB_DEFAULTS.weaveSpellFamilies.LHW,
-        CH = ns.DB_DEFAULTS.weaveSpellFamilies.CH
-    }
-    for key, def in pairs(ns.DB_DEFAULTS.colors) do
-        SuperSwingTimerDB.colors[key] = { r = def.r, g = def.g, b = def.b, a = def.a }
+    local db = SuperSwingTimerDB
+    local defaults = ns.DB_DEFAULTS
+
+    -- Deep copy so a reset never aliases, and therefore never lets later user
+    -- edits mutate, the shared defaults table.
+    local function CopyDefault(value)
+        if type(value) ~= "table" then
+            return value
+        end
+        local copy = {}
+        for key, nested in pairs(value) do
+            copy[key] = CopyDefault(nested)
+        end
+        return copy
     end
-    SuperSwingTimerDB.preClassColors = nil
-    SuperSwingTimerDB.preClassSparkColor = nil
+
+    -- colours are handled separately below; they are merged rather than
+    -- replaced so keys created by migrations survive.
+    for key, value in pairs(defaults) do
+        if key ~= "version" and key ~= "colors" then
+            db[key] = CopyDefault(value)
+        end
+    end
+
+    -- Merge colours: per-seal colour keys are created by migration v35 and are
+    -- not all present in DB_DEFAULTS, so replacing the table would drop them
+    -- and leave the seal colour rows empty after a reset.
+    db.colors = db.colors or {}
+    for key, value in pairs(defaults.colors) do
+        db.colors[key] = CopyDefault(value)
+    end
+
+    -- Runtime-only colour caches: the class-colour toggle stashes the user's
+    -- pre-class colours here, and a reset must not bring them back.
+    db.preClassColors = nil
+    db.preClassSparkColor = nil
+
+    -- Never rewind the migration ladder. DB_DEFAULTS.version is the schema
+    -- version the defaults were authored at (56), not the current one; storing
+    -- it would make the next login re-run migrations 57..66 on top of the
+    -- settings the user just reset.
+    db.version = ns.DB_CURRENT_VERSION or defaults.version
     ns.POWER_BAR_HEIGHT = ns.DB_DEFAULTS.powerBarHeight
     ns.HUNTER_CAST_BAR_HEIGHT = ns.DB_DEFAULTS.hunterCastBarHeight
     ns.ROGUE_SLICE_AND_DICE_BAR_HEIGHT = ns.DB_DEFAULTS.rogueSliceAndDiceBarHeight

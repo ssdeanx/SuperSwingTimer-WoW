@@ -1804,21 +1804,7 @@ local function UpdateMeleeBar(slot, frame)
 end
 
 -- ============================================================
--- GCD ticker bar (thin bar above MH showing 1.5s GCD)
--- ============================================================
--- ============================================================
--- Swing landing flash and GCD ticker support
--- ============================================================
--- These helpers are defined here so the melee update loop can reference them
--- without needing a second pass through the file.
--- ============================================================
--- Runtime apply functions (called from config panel)
--- ============================================================
--- Runtime apply functions (called from config panel)
--- ============================================================
--- ============================================================
--- Global Scale: multiplies all bar/icon/font pixel sizes
--- proportionally. Called from the config slider and at init.
+-- Runtime apply functions (called from the config panel and at init)
 -- ============================================================
 
 --- Apply the current global scale to every visual element in the addon.
@@ -2590,6 +2576,12 @@ function ns.ApplySparkAlpha(alpha)
 end
 
 function ns.ApplyMinimalMode(enabled)
+    -- nil means "apply the stored setting". Coercing nil straight to false let
+    -- the Blizzard-settings checkbox switch minimal mode back off, because that
+    -- setter stored the new value and then called this with no argument.
+    if enabled == nil then
+        enabled = ns.IsMinimalMode()
+    end
     enabled = enabled == true
     SuperSwingTimerDB.minimalMode = enabled
     for _, texture in ipairs({ ns.weaveSpark, ns.weaveTriangleTop, ns.weaveTriangleBottom }) do

@@ -5,7 +5,7 @@
 ## Overview & Addon Identity
 
 - **Name**: SuperSwingTimer
-- **Current Version**: `v0.2.6` (DB schema migration `v66`)
+- **Current Version**: `v0.2.8` (DB schema migration `v66`)
 - **Author**: AcidBomb
 - **Target Clients**: Classic Era (`11509`) and TBC Anniversary (`20506`), including Season of Discovery (SoD).
 - **Core Purpose**: Ultra-accurate melee, ranged, and target swing timers with class-specific power/debuff bars, spell-weaving assistance, and buff tracking.
@@ -25,8 +25,8 @@
 | [SuperSwingTimer_Config.lua](file:///home/sam/SuperSwingTimer-WoW/SuperSwingTimer_Config.lua) | Settings UI panel, Quick Controls, `/sst` slash commands. |
 | [SuperSwingTimer.lua](file:///home/sam/SuperSwingTimer-WoW/SuperSwingTimer.lua) | Addon lifecycle, DB migrations (v66), RegisterUnitEvent C-level unit filtering. |
 | [SuperSwingTimer_SoD.lua](file:///home/sam/SuperSwingTimer-WoW/SuperSwingTimer_SoD.lua) | Season of Discovery rune matrices across all 9 classes, aura maps, spell definitions. |
-| [SuperSwingTimer_Tests.lua](file:///home/sam/SuperSwingTimer-WoW/SuperSwingTimer_Tests.lua) | In-game WoWUnit test suite across 11 functional groups (`/ssttest`). |
-| [run_tests.lua](file:///home/sam/SuperSwingTimer-WoW/run_tests.lua) | Standalone CLI test execution runner with mock WoW 5.1/Classic environment (116 tests). |
+| [SuperSwingTimer_Tests.lua](file:///home/sam/SuperSwingTimer-WoW/SuperSwingTimer_Tests.lua) | Headless-suite test cases loaded by `run_tests.lua` (the production TOC does not load this file; the operator verifies in-game with `/sst diag`). |
+| [run_tests.lua](file:///home/sam/SuperSwingTimer-WoW/run_tests.lua) | Standalone CLI test execution runner with mock WoW 5.1/Classic environment (166 tests). |
 
 ## Key Architectural Decisions
 

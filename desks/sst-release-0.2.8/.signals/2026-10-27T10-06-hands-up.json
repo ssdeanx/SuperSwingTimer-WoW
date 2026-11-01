@@ -1,0 +1,23 @@
+{
+  "signal_type": "escalation",
+  "subtype": "hands-up",
+  "timestamp": "2026-10-27T10:06:00Z",
+  "agent_name": "sst-release-0.2.8",
+  "self_assessment": {
+    "intent": 4,
+    "confidence": 4,
+    "accuracy": 4,
+    "completeness": 3
+  },
+  "patterns": {
+    "what_worked": "Reading client sources via git show settled three contested claims (aura tuple order, deprecation shim gating, TOC convention) without touching the worktree.",
+    "what_was_hard": "Distinguishing documented-vs-present APIs: generated API docs omit legacy globals, so absence there was not evidence.",
+    "skill_gap": "None blocking."
+  },
+  "escalation": {
+    "reason": "Six behaviour questions cannot be settled from code alone; answering them changes which fixes are correct.",
+    "blocked_on": "Operator decision on D-10 (melee queue), R-02 (interrupted Steady Shot hold), D-05 (combat lock intent), D-02 visibility, caster-class scope, legacy aura support.",
+    "recommendation": "Proceed with D-01, D-03, D-04, D-06..D-09, D-11, D-12 now; hold D-02, D-05, D-10 until answered.",
+    "signal_file": "desks/sst-release-0.2.8/.signals/2026-10-27T10-06-hands-up.json"
+  }
+}

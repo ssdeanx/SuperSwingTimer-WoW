@@ -4,6 +4,46 @@
 > Sections: **Added** / **Changed** / **Fixed** / **Removed** / **Performance** / **Security** / **Docs** / **Internal** / **Notes**
 > DB schema migrations are listed under **Notes** per version.
 
+## v0.2.8 - 2026-10-27
+
+### Fixed
+
+- **Settings panel version label now follows the TOC.** The standalone settings studio and the Blizzard Options canvas both hardcoded `v0.2.5`, so the v0.2.7 release shipped showing the wrong version in-game. Both titles now read `ns.GetDisplayVersion()`, which resolves the TOC `## Version` metadata with a static fallback.
+- **Removed two unused clock locals** left in `HandleSpellcastStop` / `HandleSpellcastChannelStop` by the v0.2.7 cast-identity change.
+- **Blizzard-settings "Minimal Mode" could never be turned on.** The canvas checkbox stored the new value and then called `ns.ApplyMinimalMode()` with no argument, which coerced `nil` to `false` and wrote that straight back to `SuperSwingTimerDB.minimalMode`. The setter now passes the value, and `ApplyMinimalMode()` treats a missing argument as "apply the stored setting" so the same mistake cannot invert the toggle again.
+- **Reckoning stack count read the wrong aura fields.** `GetReckoningStackCount` called the raw `UnitBuff` global but destructured it with the addon's normalized 11-value contract, so the "count" received `dispelName` and the "spellID" received the `canApplyAura` boolean. It now reads through `ns.UnitBuff`; `GetShieldChargeCount` was normalized the same way so one contract is used everywhere.
+- **A granted extra attack could freeze the swing bar for the rest of the fight.** `SPELL_EXTRA_ATTACKS` credits a suppression counter that is only consumed by the player's next swing event; when that extra swing never surfaced, every later real swing was discarded and the main-hand bar stopped restarting. Credits now expire after a short window and are cleared when the target dies.
+- **`/sst reset` did not restore every setting.** The hand-written reset covered about 69 of the 104 `DB_DEFAULTS` keys, leaving class-overlay toggles, `barBorderSize`, `showGlowEffects`, `showPowerBar`, `showSwingFlash` and others untouched. The reset is now derived from `DB_DEFAULTS` (deep-copied) and pins `version` to `DB_CURRENT_VERSION` so it cannot rewind the migration ladder.
+- **Entering combat rewrote the saved lock preference.** `PLAYER_REGEN_DISABLED` wrote `lockBars = true` into SavedVariables, permanently destroying an unlocked preference chosen with `/sst move`. Combat now sets a runtime-only lock that releases when the fight ends.
+- **Localized Steady Shot was never matched.** Both red-zone paths compared against the literal `"Steady Shot"` while `ns.STEADY_SHOT_NAME` existed unused, so a name-only payload on a non-enUS client did not register the shot. Matching now uses `ns.IsSteadyShotSpell` (ID, numeric string, localized name) — additive only; no timing math changed.
+- **Feign Death restarted the ranged cycle instead of cancelling it.** Spell 5384 is registered in `RESET_SWING_SPELLS`, which was checked before the dedicated Feign Death branch, making that branch unreachable. Feign Death is now checked first.
+- **Non-Hunter classes started a phantom ranged timer** after every successful spellcast and on `RESET_SWING_SPELLS` casts, pinning the render loop for a bar the class never renders. Both sites now require `classConfig.ranged`.
+- **A Hunter melee ability could restart the Auto Shot cycle.** The phantom-ranged-timer fix widened the generic cast-success ranged reset to every class with a ranged slot, so for Hunters any ability that fell through the earlier spell branches — including Raptor Strike — started a fresh ranged timer whenever a cast-start had set `ns.casting`. The generic branch now restarts the Hunter ranged cycle only for a recognised Auto Shot payload; the dedicated Auto Shot paths are unchanged, so meleeing cannot restart Auto Shot. Regression tests cover the Raptor Strike cast and both main-hand CLEU branches.
+- **Two GCD durations.** `ns.GetGcdDuration()` returned a constant while the state machine stored the measured value; it now prefers the measured duration.
+- **Class-setup failures were silent.** Only the Shaman initializer failed open; the others discarded the `pcall` result, so a class whose setup threw rendered nothing with no `/sst diag` trace. All six now run through one recorder that logs the failure.
+- **Duplicated stop handlers merged.** `HandleSpellcastStop` and `HandleSpellcastChannelStop` were byte-identical and are now one implementation.
+
+### Removed
+
+- Duplicate doc blocks on `ns.StartSwing`, `ns.ApplyParryHaste` and `ns.HandleCLEU`; orphaned section banners and a duplicated header in `SuperSwingTimer_UI.lua`; three `if true then` wrappers in the spell tables; three no-op migration rungs (v21, v23, v24); and the dead Shaman `OnUpdate` restore that its own comment described as a no-op.
+
+### Tests
+
+- Headless suite expanded from 150 to **166** tests. Every fix above has a regression test that was verified to fail with the fix removed, including a source-level guard that `ClassMods` never calls a raw `UnitBuff`/`UnitAura` again and the Hunter Raptor Strike / main-hand CLEU ranged-reset guards.
+
+### Docs
+
+- Version bumped to **v0.2.8** in the TOC, README, MEMORY and the test-harness metadata stub; the TOC test now also asserts the panel version helper matches the TOC.
+- `docs/QA.md` file count corrected and a version-label check added.
+
+### Notes
+
+- **No DB schema migration.** `DB_DEFAULTS.version` stays 56 and `DB_CURRENT_VERSION` stays 66; existing `SuperSwingTimerDB` profiles are unchanged.
+- **Timing math unchanged.** Auto Shot cycle math, red-zone bounds, Steady Shot grace and GCD math are untouched. The Feign Death, ranged-timer and Steady Shot changes are branch-ordering, spell-matching and restart-gating only; no duration or window calculation changed.
+- **Behaviour changes to verify in-game:** bars now unlock automatically at the end of combat if you had unlocked them; Feign Death cancels the Auto Shot cycle; non-Hunter classes no longer run an invisible ranged timer; a Hunter melee or utility cast no longer starts the Auto Shot cycle.
+- **Carried from v0.2.7:** fresh installs default to locked bars (`lockBars = true`); existing profiles keep their stored value.
+- **Pending in-game verification** on `classic_era` 1.15.9 (normal, hardcore and SoD), `classic_anniversary` 2.5.6 and `classic_titan` 3.80.2.
+
 ## v0.2.7 - 2026-10-25
 
 ### Added

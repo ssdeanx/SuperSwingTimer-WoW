@@ -7,8 +7,9 @@ Run through this checklist before every release.
 ## 1. Addon loads cleanly
 
 - [ ] No Lua errors on login or reload (`/reload`)
-- [ ] `luac -p` passes on all 8 Lua files
+- [ ] `luac5.1 -p` passes on all 12 addon Lua files
 - [ ] `/sst` opens config panel without errors
+- [ ] The settings title shows the same version as `SuperSwingTimer.toc`
 - [ ] `/sst help` displays slash command reference
 
 ## 2. Swing timers
@@ -45,11 +46,11 @@ Run through this checklist before every release.
 
 - [ ] `/sst reset` restores all defaults without errors (slash command only)
 - [ ] Fresh install (delete `SuperSwingTimerDB` via `/script`) → all defaults present, no nil fields
-- [ ] Upgrade from v53 → v54: all new fields populated with defaults
+- [ ] Upgrade from an older profile: every migration through the current DB version runs once and preserves custom values
 
 ## 6. Dual-client awareness
 
 - [ ] Test on **Classic Era (1.15.x):** CLEU `SWING_DAMAGE` / spell ID payloads
-- [ ] Test on **TBC Anniversary (2.5.5):** CLEU localized string payloads
+- [ ] Test on **TBC Anniversary (2.5.6):** CLEU localized string payloads
 - [ ] `ns.GetSpellInfo(id)` returns correct results on both clients
 - [ ] `ns.GetAlignedTime()` returns consistent values on both clients

@@ -826,13 +826,16 @@ local function SetupRetPaladin()
     end
 
     local function GetReckoningStackCount()
-        if not UnitBuff then
-            return nil
-        end
-
+        -- Read through ns.UnitBuff, whose normalized tuple is
+        -- (name, rank, icon, count, debuffType, duration, expirationTime,
+        --  unitCaster, isStealable, shouldConsolidate, spellID). This used to
+        -- call the raw UnitBuff global with those same positions, so "count"
+        -- actually received the dispel type and "spellID" received the
+        -- canApplyAura boolean: the badge always showed one stack and the ID
+        -- match could never succeed.
         local reckoningName = ns.GetSpellInfo and (ns.GetSpellInfo(20178) or "Reckoning") or "Reckoning"
         for index = 1, 40 do
-            local auraName, _, _, auraCount, _, _, _, _, _, _, auraSpellId = UnitBuff("player", index)
+            local auraName, _, _, auraCount, _, _, _, _, _, _, auraSpellId = ns.UnitBuff("player", index)
             if not auraName then
                 break
             end
@@ -4175,17 +4178,11 @@ local function SetupEnhShaman()
         if not auraIndex then
             return nil
         end
-        if not UnitBuff then
-            return nil
-        end
-        local _, _, count = UnitBuff("player", auraIndex)
+        -- ns.UnitBuff returns the stack count at position 4; the raw UnitBuff
+        -- global returned it at position 3. Both spell this out so a future
+        -- reader cannot mix the two contracts up again.
+        local _, _, _, count = ns.UnitBuff("player", auraIndex)
         if type(count) ~= "number" or count <= 0 then
-            if UnitAura then
-                local _, _, auraCount = UnitAura("player", auraIndex, "HELPFUL")
-                if type(auraCount) == "number" and auraCount > 0 then
-                    return auraCount
-                end
-            end
             return nil
         end
         return count
@@ -9264,48 +9261,51 @@ function ns.InitClassMods()
     -- class registers an OnUpdate hook that calls its own power-bar delegate
     -- (which forwards to ns.UpdatePlayerPowerBar), so the extra per-frame
     -- fallback updater below is only needed when that Setup*() aborted.
+    -- Run a class initializer and record any failure in /sst diag. These used
+    -- to be bare pcalls whose result was discarded, so a class whose setup
+    -- threw rendered nothing with no trace of why.
+    local function RunClassSetup(label, setupFn)
+        local ok, err = pcall(setupFn)
+        if not ok and ns.Diag and ns.Diag.Record then
+            pcall(ns.Diag.Record, "class setup " .. label .. ": " .. tostring(err), nil, "init")
+        end
+        return ok
+    end
+
     local classSetupOk = true
     if class == "PALADIN" then
-        classSetupOk = pcall(SetupRetPaladin)
+        classSetupOk = RunClassSetup("PALADIN", SetupRetPaladin)
     elseif class == "WARRIOR" then
-        classSetupOk = pcall(SetupWarrior)
+        classSetupOk = RunClassSetup("WARRIOR", SetupWarrior)
     elseif class == "ROGUE" then
-        classSetupOk = pcall(SetupRogue)
+        classSetupOk = RunClassSetup("ROGUE", SetupRogue)
     elseif class == "HUNTER" then
-        classSetupOk = pcall(SetupHunter)
+        classSetupOk = RunClassSetup("HUNTER", SetupHunter)
     elseif class == "SHAMAN" then
         -- Save base OnUpdate before SetupEnhShaman wraps it, so we can restore
         -- the chain if the initializer fails silently (e.g. from a weave catalog
         -- lookup error on Anniversary 2.5.5).
-        -- NOTE: the restore below is a no-op — SetupEnhShaman registers an
-        -- OnUpdate hook and never reassigns ns.OnUpdate. The hook itself is
-        -- neutralised by ns._shamanHookLive instead.
-        local preShamanOnUpdate = ns.OnUpdate
-        local ok = pcall(SetupEnhShaman)
+        local ok = RunClassSetup("SHAMAN", SetupEnhShaman)
         classSetupOk = ok
         if not ok then
             -- Fail-open for production safety: keep core bars operational even if a
             -- class helper initializer throws in edge client/API states.
             -- Clear ALL partial Shaman state so OnUpdate doesn't call broken upvalues.
             -- The Shaman OnUpdate hook was already registered before the failure and
-            -- captures its helpers directly, so it has to be flagged dead as well.
+            -- captures its helpers directly, so ns._shamanHookLive is what flags it
+            -- dead; the hook checks that flag before doing any work.
             ns._shamanHookLive = false
             ns.OnBarsCreated = nil
             ns.UpdateLightningShieldVisual = nil
             ns.UpdateShamanFlameShockBar = nil
             ns.UpdateShamanWindfuryIcd = nil
             ns.UpdateShamanBuffIcons = nil
-            -- Restore OnUpdate to the pre-Shaman version so bar rendering chain
-            -- is intact even though Shaman overlays are offline.
-            if preShamanOnUpdate then
-                ns.OnUpdate = preShamanOnUpdate
-            end
         end
     elseif class == "DRUID" then
-        classSetupOk = pcall(SetupDruid)
+        classSetupOk = RunClassSetup("DRUID", SetupDruid)
     end
 
-    pcall(function()
+    local powerOk, powerErr = pcall(function()
         local supported = { WARRIOR = true, SHAMAN = true, ROGUE = true, HUNTER = true, DRUID = true, PALADIN = true }
         if not class or not supported[class] then return end
 
@@ -9349,6 +9349,10 @@ function ns.InitClassMods()
             ns.OnBarsCreated()
         end
     end)
+
+    if not powerOk and ns.Diag and ns.Diag.Record then
+        pcall(ns.Diag.Record, "power bar setup: " .. tostring(powerErr), nil, "init")
+    end
 end
 
 -- ============================================================

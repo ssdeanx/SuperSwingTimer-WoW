@@ -8,7 +8,9 @@ Super Swing Timer tracks white-hit swing timers across main hand, off hand, rang
 
 **12,000+ downloads** (as of October 2026) — thank you to everyone using the addon and reporting issues.
 
-Current version: **v0.2.7**. Status: release-ready. Adds enterprise diagnostics (`/stt diag`, alias `/sst diag`) with an error ring buffer, compact health report, copyable export, API self-tests, and opt-in per-hook profiling; adds LibCustomGlow-1.0 bar glows (Paladin Judgement, Rogue Slice and Dice, Warrior Overpower, Hunter Rapid Fire, Shaman weave) plus ButtonGlow on expiring buff icons across all six classes (with `/sst glow` control and a graceful no-op fallback when the library is absent); hardens initialization so failures keep a traceback, skip event registration, and stay diagnosable; and retains dual-client spell texture normalization (`ns.GetSpellTexture`), subpixel grid snapping (`ns.PixelSnap`), the 14px power bar, 8px debuff bars, interactive Move Mode, the Hunter Steady Shot clip window, the fast-path CLEU filter, native `C_UnitAuras` support, and cross-client TOC support (`Interface: 11509, 20506, 38002`). Verified by a 146-test headless suite.
+Current version: **v0.2.8**. Status: release-ready (v0.2.8 hardening pass; see CHANGELOG). Adds enterprise diagnostics (`/stt diag`, alias `/sst diag`) with an error ring buffer, compact health report, copyable export, API self-tests, and opt-in per-hook profiling; adds LibCustomGlow-1.0 bar glows (Paladin Judgement, Rogue Slice and Dice, Warrior Overpower, Hunter Rapid Fire, Shaman weave) plus ButtonGlow on expiring buff icons across all six classes (with `/sst glow` control and a graceful no-op fallback when the library is absent); hardens initialization so failures keep a traceback, skip event registration, and stay diagnosable; and retains dual-client spell texture normalization (`ns.GetSpellTexture`), subpixel grid snapping (`ns.PixelSnap`), the 14px power bar, 8px debuff bars, interactive Move Mode, the Hunter Steady Shot clip window, the fast-path CLEU filter, native `C_UnitAuras` support, and cross-client TOC support (`Interface: 11509, 20506, 38002`). Verified by a 166-test headless suite.
+
+**v0.2.8 (2026-10-27):** the settings panel version label now follows the TOC (no more stale `v0.2.5`); the release is lint-clean; the Hunter ranged-restart gate now ignores melee and utility casts, so Raptor Strike cannot start Auto Shot; no timing math changed.
 
 **Recent changes (v0.2.7 - 2026-10-25):**
 
@@ -21,7 +23,7 @@ Current version: **v0.2.7**. Status: release-ready. Adds enterprise diagnostics 
 | Glow Controls | `/sst glow` toggles LibCustomGlow effects without touching the existing gold border pulse; `showGlowEffects` defaults to on and existing SavedVariables are treated as enabled. |
 | Init Hardening | Initialization now uses `xpcall` with a traceback, records the failure for `/sst diag`, prints a short recovery hint, and skips event registration instead of running a half-initialized addon. |
 | Performance | Idle bars now reset once per state transition instead of every frame, removing repeated `SetMinMaxValues`/`SetValue`/label-style/cast-overlay/spark-position work for inactive MH/OH/enemy/ranged bars while the render loop stays alive for power bars. |
-| Tests & CI | Expanded the headless suite from 123 to 146 tests (diagnostics, error capture/dedupe/cap/attribution, `LUA_WARNING` capture, report/export, profiler stats, glow transitions, icon/bar hide-stop, reset-guard flag, `/sst glow`, `/stt` alias, TOC load order). Added the new files to the syntax check and wired the test runner into CI. |
+| Tests & CI | Expanded the headless suite from 123 to 150 tests (diagnostics, error capture/dedupe/cap/attribution, `LUA_WARNING` capture, report/export, profiler stats, glow transitions, icon/bar hide-stop, reset-guard flag, `/sst glow`, `/stt` alias, TOC load order). Added the new files to the syntax check and wired the test runner into CI. |
 
 **Earlier changes (v0.2.6 - 2026-10-24):**
 
@@ -155,7 +157,7 @@ The main commands are `/sst`, `/stt`, `/super`, and `/superswingtimer`. `/swang`
 The compact report is intentionally short. A healthy client prints the header, the summary line, and the command hint:
 
 ```
-SST diag  v0.2.7  |  2.5.6.70006  |  TBC Anniversary | toc 20506
+SST diag  v0.2.8  |  2.5.6.70006  |  TBC Anniversary | toc 20506
 db v66  |  HUNTER  |  fps 60 | mem 412 KB | cpu 0.50 ms  |  loop ON
 /stt diag full | errors | export | clear | test | profile [sec]
 ```
