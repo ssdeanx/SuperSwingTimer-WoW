@@ -1,278 +1,146 @@
-# Super Swing Timer
+# Super Swing Timer <span style="color:#00ccff">v0.2.9</span>
 
-Melee, ranged, and current-target enemy swing timer for World of Warcraft Classic, Season of Discovery, and TBC (including Anniversary Edition).
+A fast, customizable **Main Hand**, **Off Hand**, **Ranged**, and **Enemy** swing timer for World of Warcraft Classic clients, featuring class-specific rotation helpers, target debuff bars, and a unified player power bar.
 
-Super Swing Timer tracks white-hit swing timers across main hand, off hand, ranged attacks, and your current hostile target. It is tuned for Classic/TBC mechanics such as next-melee-attack abilities, dual-wield desync, parry haste, extra-attack suppression, haste rescaling, druid form resets with a lightweight Maul queue tint path, warrior Shield Block duration timing, rogue Sinister Strike end-window timing, a Rogue energy-tick helper plus Slice and Dice upkeep bar, ret paladin seal-breakpoint timing, shaman weave breakpoints, and current-target enemy swing detection. All melee classes now have target debuff duration bars (Deep Wounds, Mangle/Rip/Rake, Rupture, Serpent Sting, Judgement, Seal Vengeance, Flame Shock) with small spell icons equal to bar height, gold glow in the last 4 seconds, and dynamic stacking — buff/CD icons always sit above all visible debuff bars. The timing engine runs on high-precision `GetTimePreciseSec()` for sub-millisecond timer accuracy (with `GetTime()` only as a fallback), applies cached latency only to predictive windows such as Auto Shot safe-stop timing, rogue Sinister Strike queue guidance, and weave clip math, keeps Maul, Heroic Strike, Cleave, and Raptor Strike on separate next-attack paths, and avoids mixed clock-domain drift.
+**<span style="color:#2ecc71">12,000+ downloads</span>** — thank you to everyone using the addon and reporting feedback!
 
-**Dual-client CLEU architecture:** Classic Era `COMBAT_LOG_EVENT` payloads use numeric spell IDs; TBC Anniversary sends localized spell names (strings) instead. All swing-affecting spell lookup tables (`RESET_SWING_SPELLS`, `NO_RESET_SWING_SPELLS`, `PAUSE_SWING_SPELLS`, `RESET_RANGED_SWING_SPELLS`) populate both key types at init time via `ns.GetSpellInfo(id)` so swing resets, pauses, ranged resets, and NMA queue detection work identically on both clients.
+---
 
-**12,000+ downloads** (as of October 2026) — thank you to everyone using the addon and reporting issues.
+## Client Availability
 
-Current version: **v0.2.8**. Status: release-ready (v0.2.8 hardening pass; see CHANGELOG). Adds enterprise diagnostics (`/stt diag`, alias `/sst diag`) with an error ring buffer, compact health report, copyable export, API self-tests, and opt-in per-hook profiling; adds LibCustomGlow-1.0 bar glows (Paladin Judgement, Rogue Slice and Dice, Warrior Overpower, Hunter Rapid Fire, Shaman weave) plus ButtonGlow on expiring buff icons across all six classes (with `/sst glow` control and a graceful no-op fallback when the library is absent); hardens initialization so failures keep a traceback, skip event registration, and stay diagnosable; and retains dual-client spell texture normalization (`ns.GetSpellTexture`), subpixel grid snapping (`ns.PixelSnap`), the 14px power bar, 8px debuff bars, interactive Move Mode, the Hunter Steady Shot clip window, the fast-path CLEU filter, native `C_UnitAuras` support, and cross-client TOC support (`Interface: 11509, 20506, 38002`). Verified by a 166-test headless suite.
+| Client Version | TOC Interface | Swing Bars (MH / OH / Ranged) | Enemy Swing Bar | Class Helpers, Auras & Debuffs | Status |
+| :--- | :---: | :---: | :---: | :---: | :---: |
+| **Classic Era & Season of Discovery** | `11509` | <span style="color:#2ecc71">**Full Support**</span> | <span style="color:#2ecc71">**Supported**</span> | <span style="color:#2ecc71">**Full Support**</span> (incl. SoD Runes) | <span style="color:#2ecc71">**Ready**</span> |
+| **TBC Anniversary Edition** | `20506` | <span style="color:#2ecc71">**Full Support**</span> | <span style="color:#2ecc71">**Supported**</span> | <span style="color:#2ecc71">**Full Support**</span> | <span style="color:#2ecc71">**Ready**</span> |
+| **Titanforge (WotLK Classic)** | `38002` | <span style="color:#2ecc71">**Full Support**</span> | <span style="color:#2ecc71">**Supported**</span> | <span style="color:#2ecc71">**Full Support**</span> | <span style="color:#2ecc71">**Ready**</span> |
+| **WoW Forever** | `16001` | <span style="color:#2ecc71">**Supported**</span> (`C_SwingTimer`) | <span style="color:#e67e23">**Preview Only**</span> | <span style="color:#e67e23">**Unrestricted APIs Only**</span> | <span style="color:#00ccff">**Compatible**</span> |
 
-**v0.2.8 (2026-10-27):** the settings panel version label now follows the TOC (no more stale `v0.2.5`); the release is lint-clean; the Hunter ranged-restart gate now ignores melee and utility casts, so Raptor Strike cannot start Auto Shot; no timing math changed.
+> **<span style="color:#e67e23">WoW Forever (`16001`) Note:</span>** WoW Forever restricts `COMBAT_LOG_EVENT_UNFILTERED` and wraps combat auras/cooldowns in secret values, but provides a native `C_SwingTimer` (`PLAYER_SWING`) API. Super Swing Timer automatically detects Forever, switches **Main Hand**, **Off Hand**, and **Ranged** bars to `PLAYER_SWING`, and includes a **Hide Blizzard Swing Bars** toggle (enabled by default on Forever) that turns off Blizzard's default swing bars (`showSwingTimer` CVar) so only your custom bars appear.
 
-**Recent changes (v0.2.7 - 2026-10-25):**
+---
 
-| Area | Change |
-| --- | --- |
-| Diagnostics | Added `/stt diag` (alias `/sst diag`) — a compact health report (client, DB, class, aura path, timing, events, render loop, FPS/memory/CPU, libraries, SoD, slash, captured errors) that prints only warnings/failures plus a summary. `/stt diag full` shows every check; `/stt diag errors` shows stacks; `/stt diag export` opens a copyable report; `/stt diag clear` resets. |
-| Error Capture | Chained `seterrorhandler` capture (keeps Blizzard's normal error display), `xpcall` + traceback around initialization, and `LUA_WARNING`, `ADDON_ACTION_BLOCKED`, and `ADDON_ACTION_FORBIDDEN` event capture. Ring buffer of 40 deduplicated signatures with counts and first/last timestamps. |
-| Profiling | `/stt diag profile [seconds]` measures each registered `OnUpdate` hook with `debugprofilestart`/`debugprofilestop` and prints the top hooks by total time, share, and max. Off by default; no timing calls outside a profile. |
-| LibCustomGlow | Bundled LibStub + LibCustomGlow-1.0 as a TOC dependency. Added a lifecycle-safe `ns.Glow` adapter with Autocast/ProcGlow/ButtonGlow and a no-op fallback. Bars: Paladin Judgement, Rogue Slice and Dice, Warrior Overpower, Hunter Rapid Fire, and Shaman weave (Autocast). Icons: every class's buff/CD icons in the urgent last 2s (ButtonGlow, auto-stopped on icon hide). |
-| Glow Controls | `/sst glow` toggles LibCustomGlow effects without touching the existing gold border pulse; `showGlowEffects` defaults to on and existing SavedVariables are treated as enabled. |
-| Init Hardening | Initialization now uses `xpcall` with a traceback, records the failure for `/sst diag`, prints a short recovery hint, and skips event registration instead of running a half-initialized addon. |
-| Performance | Idle bars now reset once per state transition instead of every frame, removing repeated `SetMinMaxValues`/`SetValue`/label-style/cast-overlay/spark-position work for inactive MH/OH/enemy/ranged bars while the render loop stays alive for power bars. |
-| Tests & CI | Expanded the headless suite from 123 to 150 tests (diagnostics, error capture/dedupe/cap/attribution, `LUA_WARNING` capture, report/export, profiler stats, glow transitions, icon/bar hide-stop, reset-guard flag, `/sst glow`, `/stt` alias, TOC load order). Added the new files to the syntax check and wired the test runner into CI. |
+## Quick Start & Slash Commands
 
-**Earlier changes (v0.2.6 - 2026-10-24):**
+Type `/sst` in chat to open the settings window. Bars stay hidden out of combat during normal play and appear automatically when you enter combat, start Auto Shot, or open `/sst`.
 
-| Area | Change |
-| --- | --- |
-| Client Compatibility & Spell Textures | Centralized `ns.GetSpellTexture(spellIdentifier)` in `SuperSwingTimer_Constants.lua` with 4-tier fallback (`C_Spell.GetSpellTexture` -> `GetSpellTexture` -> `ns.GetSpellInfo` icon -> live aura binding); upgraded 35+ spell texture call sites across all 6 physical classes in `SuperSwingTimer_ClassMods.lua` ensuring icons load reliably on both Classic Era (1.15.9) and TBC Anniversary (2.5.6) |
-| Power Bar Height Slider | Added a dedicated "Power Bar Height" slider (range 6px to 30px, step 1px, default 14px) directly under Bar Height in Appearance settings; adjusts `SuperSwingTimerDB.powerBarHeight` and dynamically resizes player resource bars across all classes in real-time |
-| Hunter Aspect & In-Combat Alert | Added numeric FileID texture support to `GetCurrentAspectData()` / `ns.UpdateHunterAspect` preventing dropped icons on modern clients; added in-combat missing aspect alert displaying a question mark icon with a bright red border (`0.9, 0.1, 0.1, 0.9`) whenever entering combat without an active aspect |
-| Subpixel Grid Snapping | Added `ns.PixelSnap(value, customScale)` physical screen pixel rounding against `UIParent:GetEffectiveScale()`, ensuring bar coordinates, spark lines, and borders align cleanly without 1px blurriness or shimmering on high-DPI displays |
-| Real-Time Global Scaling | Fixed `ns.ApplyGlobalScale()` so dragging the Global Scale slider in Options immediately invokes `ns.ApplyBarSize(baseWidth, baseHeight)`, resizing all swing bars, sparks, hunter cast bar, power bar, and debuff bars in real time without requiring a `/reload` |
-| Power Bar Default (14px) & DB v66 | Enlarged default Player Power Bar height from 10px to **14px** (`ns.POWER_BAR_HEIGHT = 14`, `DB_DEFAULTS.powerBarHeight = 14`), providing clean vertical padding for 10pt text values across Rage, Energy, and Mana bars; added Database Migration 66 (`ns.DB_CURRENT_VERSION = 66`) to automatically upgrade legacy 10px bars while preserving custom user heights |
-| Debuff Bars Default (8px) | Enlarged default height of all target debuff duration bars from 6px/5px to **8px** (`ns.DEBUFF_BAR_HEIGHT = 8`) across all 20 class debuff bar constants with matching 8x8 outside-left icons, making dots and debuffs distinctly readable |
-| Stacking & Buff Clearance Geometry | Verified and hardened vertical stacking rules: debuff bars stack cleanly upward from MH (or Ranged) with a 2px gap; buff/cooldown icons float 8px above highest active debuff; unified power bar anchors 4px below the lowest bar in the stack |
-| Headless Test Suite | Expanded test runner to 123 total tests across 11 test groups (added unit tests for `Core:PixelSnap`, `Hunter:Aspect_AcceptsNumericFileID`, `Hunter:Aspect_AlertNoAspectInCombat`, `Config:PowerBarHeightSlider_ExistsAndAdjusts`, `MigrateDB_V66`, `MigrateDB_V66_PreservesCustom`, `PowerBarHeight_Default14`, `DebuffBarHeight_Default8`, and TOC version checks), passing 100% headlessly with 0 luacheck warnings |
+| Command | Action |
+| :--- | :--- |
+| `/sst` or `/super` | Open or close the **Super Swing Timer** settings panel |
+| `/sst move` or `/sst unlock` | <span style="color:#2ecc71">**Unlock bars**</span> and display draggable anchor overlays |
+| `/sst lock` | <span style="color:#e67e23">**Lock bars**</span> in their current position and save |
+| `/sst test` | Toggle a **20-second animated preview** of all active bars |
+| `/sst glow` | Toggle `LibCustomGlow` proc and expiring-icon animations on/off |
+| `/sst reset` | Reset all settings and bar positions to factory defaults |
+| `/stt diag` | Print a compact health & diagnostics summary (`/stt diag full` for all checks) |
 
-## At a glance
-
-| Area | What it covers |
-| --- | --- |
-| Hunter | Auto Shot cooldown sync, a hunter-linked MH bar that only appears for real melee swings or queued Raptor Strike (dynamically anchored above the ranged bar), a yellow Raptor queue tint, configurable movement-safe / late colors, Anniversary-safe auto-repeat state gating, Feign Death ranged reset handling, Readiness refresh handling for Rapid Fire, a dedicated hunter bar that covers the hidden Auto Shot window plus real Steady Shot / Aimed Shot casts with clip-safety feedback (now accounts for the TBC 0.5s Steady Shot grace period for accurate safe/unsafe timing) and a live latency end slice, **a 4-state Range Helper** (melee/sweet spot/ranged/OOR) with configurable colors and width, an **aspect/stance icon** showing the active Aspect texture (supporting numeric FileIDs on modern clients, plus an in-combat red question mark warning alert when fighting with no active aspect), an adaptive **25x25 CD/buff icon group** above the ranged bar for Bestial Wrath, Rapid Fire, The Beast Within, Quick Shots, Rapid Killing, Kill Command, Readiness, Misdirection, Aspect of the Hawk, Trueshot Aura, and racials with gold glow in the last 4 seconds, **7 target debuff duration bars** (Serpent Sting, Wing Clip, Concussion Shot + Immolation Trap, Explosive Trap, Freezing Trap, Frost Trap) with spell icons, gold glow borders, and dynamic stacking above whichever anchor bar is active (MH in melee, ranged at range), **SoD Melee Specialist, DW Spec, Aspect of the Viper, Flanking Strike, and Carve rune tracking**, and an **independent hunter cast bar color** (default light blue) with a clean dark background, independent from the Clip Zone ("Red Zone") swatch |
-| Warrior | Heroic Strike and Cleave queue tints with yellow/green MH bar coloring, Slam pause/extend timing with a live Slam cast bar above the MH bar, a Shield Block duration bar above the MH stack with configurable height and color, an Execute-phase `EXEC` badge on the rage bar, **Battle Shout and Overpower proc tracking**, **SoD Quick Strike, Raging Blow, Devastate, Blood Surge, Precise Timing, and Rampage rune support**, and next-melee queue cancellation support |
-| Druid | Feral MH timing, form reset support, a lightweight Maul queue tint path without extra helper-bar bloat, **Clearcasting / Omen of Clarity proc tracking**, **SoD Savage Roar, Wild Strikes, Berserk, Mangle, Lacerate, and Survival Instincts rune support**, and a dedicated form-aware power bar that dynamically switches between Bear (Rage), Cat (Energy), and Caster/Moonkin (Mana) |
-| Paladin | Aura-aware seal breakpoint logic with a proportional-width red twist zone (right-anchored, matching Rogue Sinister Strike pattern) for Seal of Command, Blood, and Martyr timing, plus a GCD-aware reseal marker. Buff/CD icon group above the MH bar tracks Avenging Wrath, Divine Shield, Hammer of Justice, Blessing of Protection, Holy Wrath, Lay on Hands, and racials with gold glow in the last 4 seconds, plus **SoD Aegis, Hand of Reckoning, Guarded by the Light, Sacred Shield, Fanaticism, Art of War, Divine Storm, and Crusader Strike rune tracking** |
-| Shaman | Lightning Bolt / Chain Lightning / Healing Wave / Lesser Healing Wave / Chain Heal weave markers with per-family toggles (auto-resolving to the highest rank you currently know per family), plus a red moving cast spark and cast-following breakpoint indicators that travel toward bar end while you cast, an 8px Flame Shock target-duration bar above MH (checkbox-toggleable), a Lightning Shield / Water Shield 3-charge tracker with improved aura-refresh wiring plus configurable left-side gap spacing (checkbox-toggleable), **Rockbiter Weapon tracking**, and **event-driven SoD Maelstrom Weapon 5-stack cast-time reduction weaving math with Way of Earth, Shield Mastery, Molten Blast, and Lava Lash rune support** |
-| Rogue | Slim Slice and Dice duration bar above MH, 4px vertical energy-tick helper to the left of MH, latency-adjusted main-hand end window for Sinister Strike landing guidance, and **SoD Saber Slash, Main Gauche, Envenom, Blade Dance, Mutilate, Shadowstrike, and Secret Technique rune tracking** |
-| UI | Collapsible config sections, top Quick Controls columns for Visibility + Key Colors with extra breathing room under titles, compact non-overlapping quick rows that push later sections down automatically, slimmer 15px main bars with an 8px OH default, a scrolling full-preview bar-texture picker, mouse-wheel scrolling in `/sst`, class-color palettes, border/background controls, **interactive Move Mode (`/sst move`, `/sst unlock`, `/sst lock`) with floating reposition HUD and anchor overlays**, **decoupled Blizzard Settings canvas**, **responsive 1080p window sizing with bottom-right corner resize grip**, a red default enemy bar toggle, dedicated per-class power bars for all 6 physical classes (always the bottom-most bar of the swing stack — same width as the swing bars, configurable 6px–30px height, default 14px), SavedVariables Migration v66, and the **20s dynamic Test Bars preview** |
-| Diagnostics | `/sst diag` compact health report with error ring buffer, `/sst diag full`, `/sst diag errors`, `/sst diag export` copyable report, `/sst diag test` API probes, and `/sst diag profile [seconds]` per-hook timing. Captures Lua errors, `LUA_WARNING`, and `ADDON_ACTION_BLOCKED` / `ADDON_ACTION_FORBIDDEN` without replacing Blizzard's error display. |
-| Glow | Bundled LibStub + LibCustomGlow-1.0 with a lifecycle-safe adapter. Five class bars use the Autocast shine (Paladin Judgement, Rogue Slice and Dice, Warrior Overpower, Hunter Rapid Fire, Shaman weave); all six classes' expiring buff/CD icons use ButtonGlow; `/sst glow` toggles the effects and a missing library degrades to a no-op. |
-
-## Key features
-
-- All melee classes: Warrior, Rogue, Paladin, Shaman, Druid, and Hunter
-- Current-target enemy swing bar that tracks your selected hostile target from `PLAYER_TARGET_CHANGED`, `UnitGUID("target")`, `UnitAttackSpeed("target")`, and hostile `SWING_DAMAGE` / `SWING_MISSED` combat-log events, while ignoring off-hand hits so the single enemy bar stays readable
-- Hunter auto shot with `GetSpellCooldown(75)` + ranged-speed sync for the ranged timer, plus ranged-haste-aware fallback resync when `UnitRangedDamage()` is temporarily unavailable; while the cooldown API is active, live ranged resync also reuses the cooldown start anchor instead of only stretching duration mid-cycle; the addon now also cross-checks real Hunter auto-repeat state through Blizzard's current spell API before letting `SPELL_UPDATE_COOLDOWN` seed a new cycle, treats mounted Hunters as not auto-repeating, blocks cooldown re-anchors while the bar is pinned in the red moving window, and no longer hard-resets the current ranged timer on transient stop events; the shared swing clock runs on high-precision `GetTimePreciseSec()` (with `GetTime()` only as a fallback) while cached latency is applied only to predictive windows, the Hunter MH bar is anchored to the ranged stack and only appears for a live melee swing or a queued Raptor Strike, queued Raptor now uses its own yellow next-attack tint without sharing Warrior or Druid queue state, melee handoffs no longer leave the ranged bar stuck full red after the last ranged cycle expires, and the dedicated 15px hunter cast bar beneath ranged now resolves live Steady Shot / Aimed Shot casts through a Classic-safe `UnitCastingInfo()` spell-name-first path while tinting those casts by whether they still fit before the next Auto Shot and shading the final latency slice at the end of the bar. A **4-state Range Helper** (melee/sweet spot/ranged/OOR) with configurable per-state colors sits next to the ranged stack, with an **aspect/stance icon** to its left showing the active Aspect. An adaptive **25x25 CD/buff icon group** above the ranged bar tracks Bestial Wrath, Rapid Fire, The Beast Within, Quick Shots, and Rapid Killing with countdown dimming. A **0.1s `rangedTimerHoldEnd` holdover** plus melee-range gating (melee only counts as active while the target is actually in melee range) prevents MH bar flicker and ranged-bar resets during ranged-only cycling. The hunter cast bar uses its own **independent default color** (light blue) with an unobstructed dark background, separate from the ranged bar Clip Zone color, and defaults to **15px height**
-- Off-hand timing now requires a real off-hand weapon speed instead of fabricating hidden OH cycles, and the OH frame is reused cleanly across equipment swaps
-- Dual-wield tracking with independent MH and OH timers
-- NMA detection for Heroic Strike, Cleave, Maul, and Raptor Strike
-- Warrior and Druid queue colors for Heroic Strike, Cleave, and Maul so the MH bar clearly shows which special is queued, while the spark remains on its own manual/default color for readability and Maul queue state stays isolated from the Warrior queue-cleanup path
-- Warrior Shield Block now has its own slim duration bar above the MH stack, and Druid Ravage now gets an opener-ready amber cue when Cat Form Ravage is actually usable on the current target
-- Haste rescaling when weapon speed changes mid-swing, while keeping live swing anchors on the addon's aligned precise timer path so bars do not lead early from alternate CLEU clock remapping
-- Parry haste handling using the standard Classic 40% reduction with a 20% remaining-time floor
-- Extra attack suppression for Sword Spec and Windfury
-- Druid form reset handling
-- Ret Paladin seal breakpoint line that shows the actual strike-edge end marker plus a GCD/swing-aware reseal point on twist seals, with full seal tracking covered by aura-name fallback and the breakpoint lines clamped above the bar texture
-- Shaman weave assist for Lightning Bolt, Chain Lightning, Healing Wave, Lesser Healing Wave, and Chain Heal breakpoints, with color-coded family timing, highest-known-rank spell resolution per family (so leveling profiles do not default to rank 1), a red moving cast spark that starts from the live cast-start point and advances with cast progress toward bar end, cast-following upper/lower indicators during active casts, Classic-safe spell-name resolution through the shared spell-info wrapper, stronger on-demand weave-overlay reinitialization if bars were rebuilt, clean hide/reset behavior when Minimal Mode, the weave toggle, or the cast state disables it, and a thin 8px Flame Shock target-duration bar above MH for player-applied dots
-- Shaman Lightning Shield / Water Shield helper: 3 thin charge rectangles to the left of MH that refresh immediately on player aura changes, use hardened spell-ID plus aura-name fallback matching for better Classic/TBC payload compatibility, recognize Water Shield / Mana Shield alias paths, stay class-colored (with Water Shield override) from the Quick Controls swatch/toggle path, and now support an Appearance slider for left-gap spacing
-- Shaman Quick Controls now expose explicit checkboxes for both `Lightning Shield Tracker` and `Flame Shock Bar`, so each helper can be disabled independently without touching weave settings
-- Optional class colors for MH / OH / ranged bar fills, with the spark color kept independent so queue tints and white/manual spark colors stay readable, turning class colors off restoring the saved manual bar colors instead of leaving the class tint behind, and live bar text now flipping to black with a white outlined backing while class colors are enabled for better readability on bright fills
-- Class power bar (rage / energy / mana) shows only numeric values: Warrior rage and Rogue energy display the bare amount, while mana classes (Shaman, Hunter, Druid, Paladin) show `current/max` — no resource-type word labels such as "RAGE", "MANA", or "EN"
-- Rogue latency-adjusted main-hand end window that turns red on the final slice of the MH bar so Combat Rogues can press Sinister Strike into the swing landing and more reliably fire it immediately after the main-hand hit, while the spark stays layered above that red slice for readability, the default alpha stays a little softer for clearer bar reading, and the helper now falls back to the live MH weapon speed whenever the MH bar itself is visible
-- Rogue Slice and Dice helper: a slim duration bar above the MH bar that uses the shared bar texture path, matches MH width, tracks the active Slice and Dice buff in real time from a Classic-safe helpful-aura read (`UnitBuff` / `UnitAura` signature tolerant), rechecks its aura state on a short throttle for smoother live updates, and stays hidden whenever the buff is down or the MH bar itself is hidden
-- Rogue energy-tick helper: one slim 4px vertical bar to the left of the MH bar that fills on the Classic/TBC 2-second energy-tick cadence, re-syncs from likely natural energy gains, and keeps the swing timer stack cleaner than the earlier paired test helper
-- Customizable bars, separate MH/OH and ranged textures, glow/opaque indicator mode, compact spark settings with a 3px default spark width, a slight forward-biased pixel-snapped spark edge so the thin spark reads closer to the live fill edge, alpha-enabled color pickers, configurable bar background tint and opacity, adjustable bar border color and thickness, widened drag hitboxes plus real drag handlers for easier bar movement, reset-to-default position restore, visibility, lock state, and the Test Bars preview via `/sst`, `/super`, or `/superswingtimer`
-- When unlocked for setup, left-click still drags bars while right-click now preserves camera mouselook behavior over the bars so viewpoint control does not get blocked during adjustment.
-- Toggle MH / OH / ranged / enemy bars, the Rogue Sinister Strike cue, the Rogue Slice and Dice bar, the Rogue Energy Tick checkbox, plus the shaman weave helper and its family controls from the config panel or Blizzard's Interface Options → AddOns list
-- Collapse or expand the major config sections so the `/sst` panel stays easier to scan while you tune textures, colors, timing, and weave settings, with stable row groups that keep the panel rendering cleanly
-- **Dual-client CLEU engine:** Classic Era combat-log events use numeric spell IDs; TBC Anniversary sends localized spell names. All swing-affecting spell lookup tables (`RESET_SWING_SPELLS`, `NO_RESET_SWING_SPELLS`, `PAUSE_SWING_SPELLS`, `RESET_RANGED_SWING_SPELLS`, plus next-melee-attack sets for Heroic Strike, Cleave, Maul, Raptor Strike, Paladin Judgement) populate both key types at init time via `ns.GetSpellInfo(id)`, so swing resets, pauses, ranged resets, and queue detection work correctly on both clients without runtime branches.
-- Texture picker: the MH/OH and ranged texture rows now open a scrolling full-preview list that keeps each texture stretched behind its label, stays focused on bar-style textures from Blizzard, WeakAuras, and installed LibSharedMedia media packs, and keeps the spark / shaman weave spark rows on the dedicated thumbnail browser seeded with the WeakAuras `Square_FullWhite` preset surfaced as `Normal`.
-- **LibCustomGlow-1.0 effects** on five class bars (Paladin Judgement, Rogue Slice and Dice, Warrior Overpower, Hunter Rapid Fire, Shaman weave; Autocast shine) and on every class's expiring buff/CD icons (last 2 seconds, ButtonGlow), with per-feature keys, start/stop transition tracking (no per-frame library calls), automatic stop when an icon hides, and a graceful no-op fallback when the library is absent. `/sst glow` toggles the effects without touching the existing gold border pulse.
-- **`/stt diag` diagnostics** with a deduplicated error ring buffer, traceback capture at initialization, `LUA_WARNING` / `ADDON_ACTION_BLOCKED` / `ADDON_ACTION_FORBIDDEN` capture, a compact health report (client, DB version, class, aura path, timing, events, render loop, FPS, memory, CPU, libraries, SoD, slash, errors), a copyable export, API self-tests, and an opt-in per-hook profiler. The module is the first file in the TOC, so diagnostics remain available even if a library or later file fails to initialize.
-
-## Timing model
-
-| Situation | What you see | Why it matters |
-| --- | --- | --- |
-| Auto Shot / Multi-Shot / Steady Shot | A dedicated hunter cast bar under the ranged timer: Auto Shot locks to the same end-of-cycle hidden cast window as the ranged red/green zone, BC Classic instant Multi-Shot shots use a short stored shot window when no live cast data is available, and real Steady Shot / Aimed Shot casts now use a Classic-safe `UnitCastingInfo()` lookup, safe/unsafe tinting (accounting for the 0.5s TBC Steady Shot grace period where Auto Shot can fire during the last 0.5s without clipping), and a latency slice on the trailing edge. Stored Steady/Aimed displays now end at cast landing, so the tail of the cycle hands straight over to the Auto Shot window | Shows the stop-to-fire window near cycle end without Auto Shot bounce, keeps instant Multi-Shot feedback visible on Classic/TBC clients that do not expose a normal live cast, and gives Hunters a live read on whether a cast is likely to clip the next Auto Shot (now with correct TBC grace-period timing) plus how much end-of-cast latency cushion remains |
-| Rogue Sinister Strike | A red tail slice on the MH bar that scales with latency and uses a softer default alpha | Highlights the best press-into-the-landing window so Sinister Strike can fire immediately after the main-hand hit more reliably without overpowering the spark/readout |
-| Rogue Slice and Dice | A slim bar above the MH frame that uses the main bar width and tracks the buff's remaining time | Gives Rogues a clean real-time read on SnD upkeep without cluttering the main swing bar |
-| Rogue energy tick | One 4px vertical bar to the left of the MH bar that shows the next likely energy pulse cadence | Gives Rogues a quick read on the next energy tick without adding extra clutter or touching the authoritative swing timers |
-| Paladin seal-twist zone | A proportional-width red fill zone anchored to the right end of the MH bar for Seal of Command, Blood, and Martyr, with the zone width matching `(0.4s + latency) / swingDuration * barWidth`, plus a separate thin GCD/swing-aware reseal marker line | Makes the safe twist-before-landing period immediately visible as a red right-hand tail (same visual pattern as the Rogue Sinister Strike cue), with the reseal marker showing where to press the next seal |
-| Paladin buff/CD icons | 25x25 adaptive icon group above the MH bar tracking Avenging Wrath, Divine Shield, Hammer of Justice, Blessing of Protection, Holy Wrath, Lay on Hands, and racials (Blood Fury, Berserking, Stoneform, Shadowmeld, War Stomp, Gift of the Naaru, Escape Artist, Will of the Forsaken, Perception, Arcane Torrent) | Icons glow gold with a pulsing ADD blend effect in the last 4 seconds, show countdown text, and are configurable via Quick Controls toggle + Buff Icon Size slider |
-| Queued next-melee tint | MH bar tint changes to show the queued next-melee attack while the spark keeps its manual/default tint | Shows the queued state and helps you cancel or preserve rage before the hit lands without losing the spark contrast |
-| Slam | MH bar pauses and resumes instead of behaving like a next-melee queue ability | Preserves Slam's unique pause/extend mechanic while keeping the raw swing anchor stable through the pause/extend step |
-| Shaman weave | A red cast spark plus upper/lower indicators now move with cast progress from cast start toward the end of the bar during active weave casts | Gives an immediate visual of where your cast currently sits in the swing timeline instead of looking static at one breakpoint |
-| Hunter bar-jump prevention | `rangedTimerHoldEnd` holdover plus melee-range gating (melee only counts as active while the target is actually in melee range) | Prevents the MH bar from flickering and the ranged bar from resetting/jumping when auto-shot transitions between cycles without a real melee swing |
-
-## Texture sources
-
-| Source | Used for | Notes |
-| --- | --- | --- |
-| Blizzard | Bar textures | Built-in fallback skins are always available in the scrolling bar-texture picker |
-| SharedMedia | Bar / ranged textures | Any installed LibSharedMedia statusbar pack, including SharedMedia-Blizzard when present, shows up automatically |
-| WeakAuras media | Spark and weave thumbnail browsers | `Square_FullWhite` is surfaced as `Normal` in the picker |
-| Super Swing Timer (`Media/statusbar`) | Bar / ranged fill textures | Ships its own fill textures (`MerfinMain`, `MerfinMainDark`, `MerfinFlatt`, `MerfinTexture`, `Flatt`) so the default bar is always a visible, locally-hosted skin — no dependency on a missing external texture |
-| LibCustomGlow-1.0 | Proc / button glow animations | Bundled under `Lib/`; uses Blizzard's proc flipbook atlases and `Interface\SpellActivationOverlay\IconAlert`, both present on Classic Era 1.15.9 and TBC Anniversary 2.5.6 |
-| Installed addon packs | Extra texture catalogs | Bar-style textures are auto-discovered when the pack exposes them |
+---
 
 ## Installation
 
-1. Download the latest release ZIP from [GitHub Releases](https://github.com/ssdeanx/SuperSwingTimer)
-2. Extract the archive into your AddOns folder so the final path looks like:
-
-   - **Classic Era**: `World of Warcraft\_classic_era_\Interface\AddOns\SuperSwingTimer\`
+1. Download the latest release ZIP from [GitHub Releases](https://github.com/ssdeanx/SuperSwingTimer/releases).
+2. Extract the archive into your client's `AddOns` folder so the path matches:
+   - **Classic Era / SoD**: `World of Warcraft\_classic_era_\Interface\AddOns\SuperSwingTimer\`
    - **TBC Anniversary**: `World of Warcraft\_anniversary_\Interface\AddOns\SuperSwingTimer\`
    - **Titanforge**: `World of Warcraft\_classic_titan_\Interface\AddOns\SuperSwingTimer\`
+   - **WoW Forever**: `World of Warcraft\_classic_forever_\Interface\AddOns\SuperSwingTimer\`
+3. Launch the game or `/reload`.
 
-3. Log in and play
+---
 
-## Usage
+## Class Highlights
 
-Opening `/sst` previews the bars for setup, but the live gameplay bars remain combat-driven and stay hidden out of combat unless you are using preview/test mode. Hidden or idle live bars reset to an empty state so entering combat no longer shows stale full bars from the previous cycle. The ranged bar for Hunters also appears when auto-shot mode starts, and the smaller hunter cast bar appears beneath it for the fixed Auto Shot hidden cast window (`ns.CAST_WINDOW` plus cached latency) instead of the full ranged cooldown cycle; BC Classic instant Multi-Shot shots now seed that helper with a short stored shot window when the client does not expose a live cast, while real Steady Shot / Aimed Shot casts use a Classic-safe `UnitCastingInfo()` path plus a trailing latency slice that scales with the current cached latency and cast duration.
+| Class | Supported Bars & Visuals | Key Rotation Helpers |
+| :--- | :--- | :--- |
+| **<span style="color:#abd473">Hunter</span>** | Ranged + Linked MH + Cast Bar + Range Helper + Aspect Icon + CD Icons + 7 Debuff Bars | Auto Shot cooldown sync, **Steady Shot / Aimed Shot** no-clip coloring (with TBC 0.5s grace period & trailing latency slice), yellow **Raptor Strike** queue tint, **4-state Range Helper** (Melee / Sweet Spot / Ranged / Out of Range), missing-aspect combat warning, and 7 target debuff bars (Serpent Sting, Wing Clip, Concussive Shot, Traps). |
+| **<span style="color:#c79c6e">Warrior</span>** | MH + OH + Shield Block Bar + Rage Bar + CD Icons + Debuff Bars | **Heroic Strike** (yellow) and **Cleave** (green) queue tints on MH, **Slam** pause/extend timing with live cast bar, **Shield Block** duration bar, **Overpower** proc glow, `EXEC` badge in Execute range, plus **Deep Wounds** and **Sunder Armor** target debuff bars. |
+| **<span style="color:#fff569">Rogue</span>** | MH + OH + SnD Bar + Energy Tick + Energy Bar + CD Icons + Debuff Bar | Latency-adjusted red **Sinister Strike** landing window at the end of MH, slim **Slice and Dice** duration bar, vertical 4px **2s Energy Tick** bar with energy-cap warning tint, **Adrenaline Rush** bar, and **Rupture** target debuff bar. |
+| **<span style="color:#f58cba">Paladin</span>** | MH + Mana Bar + CD Icons + Debuff Bars | Aura-aware **Seal Twist Zone** (proportional red tail for `0.4s + latency` on Seal of Command / Blood / Martyr) with a GCD-aware reseal marker line, **Reckoning** stack badge, and **Judgement** / **Seal of Vengeance** target debuff bars. |
+| **<span style="color:#0070de">Shaman</span>** | MH + OH + Shield Charges + Mana Bar + CD Icons + Debuff Bar | **Weave Assist** for Lightning Bolt, Chain Lightning, Healing Wave, Lesser Healing Wave, and Chain Heal (auto-resolving highest known rank + SoD **Maelstrom Weapon** cast reduction), moving active-cast spark, **3-charge Lightning/Water Shield** tracker, **Windfury** ICD tracking, and **Flame Shock** debuff bar. |
+| **<span style="color:#ff7d0a">Druid</span>** | Feral MH + Form Power Bar + Energy Tick + CD Icons + Debuff Bars | Instant Cat/Bear form swing resets, bear-yellow **Maul** queue tint, Cat **2s Energy Tick** helper, **Clearcasting** proc tracking, dynamic form-switching power bar (Rage / Energy / Mana), and **Mangle**, **Rip**, and **Rake** target debuff bars. |
 
-| Bar | Default | Meaning |
-| --- | --- | --- |
-| Ranged | Class blue (0.25,0.72,1.0) by default | Auto Shot cooldown |
-| Ranged | Green by default | Safe stop before the cast-window breakpoint (configurable) |
-| Ranged | Red by default | Cast window - you are still moving (configurable) |
-| Enemy | Red | Current hostile target main-hand swing cooldown |
-| Hunter Cast | Light blue (independent) | Auto Shot hidden-window bar, stored short Multi-Shot shot bar, or real Steady Shot / Aimed Shot cast progress beneath the ranged timer, with a trailing latency slice. Defaults to its own `hunterCastBar` color (0.35/0.65/0.95) with an unobstructed dark background, independent from the ranged swing bar Clip Zone |
-| Hunter Range Helper | Green / Yellow / Blue / Gray | 4-state distance strip: green melee, yellow sweet spot, blue ranged, gray out of range |
-| Main Hand | Class blue (0.25,0.72,1.0) by default | MH swing cooldown |
-| Off Hand | Class blue (0.25,0.72,1.0) by default | OH swing cooldown |
+* **<span style="color:#e74c3c">Enemy Swing Bar</span>** *(All Classes)*: Tracks your current hostile target's main-hand swing timer in red whenever `COMBAT_LOG_EVENT_UNFILTERED` is available.
 
-The main commands are `/sst`, `/stt`, `/super`, and `/superswingtimer`. `/swang` remains as a legacy alias.
+---
 
-### Diagnostics and glow commands
+## Understanding Bar Colors
 
-`/stt` is an alias for `/sst`; the examples below work with either prefix.
+| Bar / Indicator | Default Color | What It Means |
+| :--- | :--- | :--- |
+| **Main Hand / Off Hand / Ranged** | <span style="color:#40b8ff">**Class Blue**</span> *(or Class Color)* | Active weapon or Auto Shot swing progress |
+| **Hunter Safe Zone** | <span style="color:#2ecc71">**Green**</span> | Safe to move before Auto Shot locks in |
+| **Hunter Clip / Red Zone** | <span style="color:#e74c3c">**Red**</span> | Auto Shot wind-up window — stand still to fire |
+| **Hunter Cast Bar** | <span style="color:#59a6f2">**Light Blue**</span> | Live Steady / Aimed / Multi-Shot cast progress beneath the ranged bar |
+| **Hunter Range Helper** | <span style="color:#2ecc71">**Green**</span> / <span style="color:#f1c40f">**Yellow**</span> / <span style="color:#3498db">**Blue**</span> / <span style="color:#95a5a6">**Gray**</span> | Melee / Deadzone (Sweet Spot) / Ranged / Out of Range |
+| **Next-Melee Queue (HS / Maul / Raptor)** | <span style="color:#f1c40f">**Yellow**</span> *(Cleave: <span style="color:#2ecc71">**Green**</span>)* | Next-melee ability is queued on your next main-hand swing |
+| **Rogue Sinister / Paladin Twist Tail** | <span style="color:#e74c3c">**Red Right-End Slice**</span> | Optimal latency-adjusted window to press Sinister Strike or twist seals |
+| **Enemy Swing Bar** | <span style="color:#e74c3c">**Red**</span> | Current hostile target's main-hand swing cooldown |
 
-| Command | What it does |
-| --- | --- |
-| `/stt diag` | Compact health report: only warnings/failures plus a one-line summary and recent error signatures |
-| `/stt diag full` | Every check (client, addon metadata, libraries, DB, class, aura path, timing, events, render loop, performance, glow, SoD, slash) |
-| `/stt diag errors` | Captured error signatures with stacks and counts |
-| `/stt diag export` | Opens a copyable report window (Ctrl+A, Ctrl+C) |
-| `/stt diag test` | Runs live API probes (clock, spell info, aura path, metadata, glow) and reports pass/fail |
-| `/stt diag profile [seconds]` | Opt-in per-hook profiler; prints total/share/max time for the top hooks |
-| `/stt diag clear` | Clears the error ring buffer |
-| `/stt glow` | Toggles LibCustomGlow effects (bar Autocast shine + icon ButtonGlow) on/off |
+---
 
-The compact report is intentionally short. A healthy client prints the header, the summary line, and the command hint:
-
-```
-SST diag  v0.2.8  |  2.5.6.70006  |  TBC Anniversary | toc 20506
-db v66  |  HUNTER  |  fps 60 | mem 412 KB | cpu 0.50 ms  |  loop ON
-/stt diag full | errors | export | clear | test | profile [sec]
-```
-
-Warnings and failures are appended with `[!!]` / `[XX]` tags, and each unique error signature is listed once with its repeat count. Errors are captured by chaining the client's error handler, so Blizzard's normal error display and logging still run.
-
-## Class support
-
-| Class | Bars | Special |
-| --- | --- | --- |
-| Hunter | Ranged + MH + cast bar + Range Helper + CD icons | Auto Shot cooldown sync, a ranged-linked MH bar that only appears for live melee / queued Raptor Strike, yellow Raptor queue tint, movement clipping protection with green/red safe-stop feedback, real auto-repeat gating for cleaner cycle starts, a dedicated hunter helper bar for the hidden Auto Shot window plus real Steady Shot / Aimed Shot casts with live no-clip feedback and a latency end slice, a 4-state Range Helper strip (melee/sweet spot/ranged/OOR), an aspect/stance icon, a Rapid Fire CD bar toggle, and an adaptive 25x25 CD/buff icon group with countdown dimming. Cast bar has its own independent color (default light blue, never repainted by the Auto Shot window colors), default height 15px, and hands over to the Auto Shot window the moment a cast lands. |
-| Warrior | MH + OH + Shield Block + CD icons + debuff bars | Heroic Strike, Cleave, Shield Block timing, Slam handling, an Overpower proc glow on the MH bar, a Deep Wounds target debuff bar (8px, orange-red, above MH), a Sunder Armor debuff bar (8px, tan, above MH), and a full buff/CD 25x25 icon group above the debuff bars tracking Flurry, Death Wish, Bloodrage, Rampage, Sweeping Strikes, Recklessness, Bloodthirst, Shield Wall, Last Stand, Retaliation, racials, and external buffs (Bloodlust, Heroism, Drums, Haste Potion) with gold glow in last 4s |
-| Rogue | MH + OH + Rogue helpers + CD icons + debuff bar | Dual-wield tracking plus a latency-adjusted MH end-window cue for Sinister Strike timing, a slim Slice and Dice duration bar directly above MH with Classic-safe helpful-aura parsing, a dedicated Adrenaline Rush duration/cooldown bar with adjustable height, Blade Flurry and Cold Blood badges, a Rogue energy-cap warning tint, a single vertical energy-tick helper to the left of MH, a Rupture target debuff bar (8px, purple, above MH), and a full buff/CD 25x25 icon group above debuff bars tracking Adrenaline Rush, Blade Flurry, Cold Blood, Sprint, Evasion, Cloak of Shadows, racials, and external buffs with gold glow in last 4s |
-| Paladin | MH + debuff bars + CD icons | Seal breakpoint line plus a small Reckoning stack badge. Judgement of the Crusader debuff bar (8px, gold, above MH) and Seal of Vengeance/Corruption debuff bar (8px, dark gold, above MH), both with left-aligned spell icons + gold countdown + glow in last 4s. Full buff/CD 25x25 icon group above debuff bars tracking Avenging Wrath, Divine Shield, Hammer of Justice, Blessing of Protection, Holy Wrath, Lay on Hands, Holy Shield, Divine Protection, Vengeance, racials, and external buffs with gold glow in last 4s (toggle + icon size slider in Quick Controls) |
-| Enhancement Shaman | MH + OH + CD icons + debuff bar | Weave assist for LB, CL, HW, LHW, and CH breakpoints with spell-haste fallback support (`UnitSpellHaste` → `GetSpellHaste`), fixed breakpoint markers plus a moving active-cast icon/spark that starts from the live cast-start point and continuously resizes with current haste/buffs toward projected impact timing on the MH bar, Windfury ICD tracking, a Flame Shock target debuff bar (8px, fire orange, above MH), a Lightning Shield charge tracker (rectangles to the left of the bar), and a full buff/CD 25x25 icon group above debuff bars tracking Flurry, Shamanistic Rage, Stormstrike, Heroism, Bloodlust, Windfury Weapon, Elemental Devastation, racials, and external buffs |
-| Feral Druid | MH + debuff bars + CD icons | Form reset support, Maul queue tinting, Mangle target debuff bar (8px, orange, above MH), Rip target debuff bar (8px, green, dynamically above Mangle), Rake target debuff bar (8px, burnt orange, dynamically above Rip), all with left-aligned spell icons + gold countdown + glow in last 4s. Full buff/CD 25x25 icon group above all debuff bars tracking Tiger's Fury, Frenzied Regeneration, Barkskin, Dash, Enrage, Bash, Innervate, racials, and external buffs with gold glow in last 4s (toggle + icon size slider in Quick Controls) |
-| Mage / Priest / Warlock | None | No auto-attack bars |
-
-Enemy bar support is not class-restricted: if you have a hostile target selected, the addon can track that target's main-hand swing timer with the red default enemy bar.
-
-## Configuration
-
-Type `/sst`, `/super`, or `/superswingtimer` to open the config panel.
-
-| Command | Action |
-| --- | --- |
-| `/sst` | Open or close the full settings panel |
-| `/super` | Open or close the full settings panel (alias) |
-| `/superswingtimer` | Open or close the full settings panel (alias) |
-| `/sst move` or `/sst unlock` | Unlock bars and show reposition drag guide overlays |
-| `/sst lock` | Lock bars in current position and save |
-| `/sst test` | Toggle 20-second dynamic animated test preview |
-| `/sst reset` | Restore all default settings and positions |
-| `/sst help` | Show command help in chat |
-
-## Config Panel Walkthrough
-
-The `/sst` panel is organized into collapsible sections. Here's how they lay out:
+## Customization & Settings (`/sst`)
 
 ```text
 +------------------------------------------------------------------+
-| Super Swing Timer                   [ Unlock & Move Bars ]  [X]  |
+| Super Swing Timer v0.2.9            [ Unlock & Move Bars ]  [X]  |
 | Global Scale [=====slider (0.5x–3.0x)=====] [1.0]               |
-| Proportionally scales all bars, icons, sparks, borders, fonts     |
 |------------------------------------------------------------------|
-| Quick Controls (always visible)                                   |
-| Tabs: [ All ]  [ Visibility ]  [ Colors ]  [ Class ]             |
-| Column 1 (Toggles)         |  Column 2 (Colors / Extra)          |
-| Use Class Colors           |  MH Color    [■]                     |
-| Show Main Hand             |  OH Color    [■]                     |
-| Show Off Hand              |  Ranged Color[■]                     |
-| Lock Bars                  |  Enemy Color [■]                     |
-| [class-specific toggles]   |  [class swatches]                    |
+| Quick Controls (Tabs: [ All ] [ Visibility ] [ Colors ] [ Class ])|
+| Column 1 (Toggles)         |  Column 2 (Color Swatches)          |
+| [x] Use Class Colors       |  MH Color     [■]                   |
+| [x] Show Main Hand         |  OH Color     [■]                   |
+| [x] Show Off Hand          |  Ranged Color [■]                   |
+| [x] Lock Bars              |  Enemy Color  [■]                   |
 |------------------------------------------------------------------|
-| Appearance (collapsible)                                          |
-| Bar Width [slider] Bar Height [slider]                            |
-| MH Texture [picker] Layer [dropdown]                              |
-| Spark settings, Border, Background, Glow mode                     |
-|------------------------------------------------------------------|
-| Combat & Timer Behavior (collapsible)                             |
-| Minimal Mode, Swing Flash, GCD Ticker, Test Bars                  |
-|------------------------------------------------------------------|
-| Shaman Weave Assist / Shaman Weave Spells (collapsible, Shaman)   |
+| > Appearance (Width, Height, Power Bar Height, Textures, Spark)  |
+| > Combat & Timer Behavior (Minimal Mode, Flash, GCD, Test Bars)  |
+| > Shaman Weave Assist / Spells (Shaman only)                     |
 +------------------------------------------------------------------+
 ```
 
-### Quick Controls (top section)
+- **Global Scale (`0.5x` – `3.0x`)**: Proportionally scales all bars, icons, sparks, borders, and fonts in real time with subpixel grid snapping (`ns.PixelSnap`).
+- **Power Bar Height (`6px` – `30px`, default `14px`)**: Independently resize the unified Rage / Energy / Mana bar anchored below your swing stack.
+- **Built-in & SharedMedia Textures**: Ships with custom statusbar textures (`Wglass`, `MerfinMain`, `MerfinMainDark`, `MerfinFlatt`, `MerfinTexture`, `Flatt`) and auto-discovers any installed `LibSharedMedia` or `WeakAuras` textures.
+- **Interactive Move Mode (`/sst move`)**: Left-click and drag any bar group while right-click preserves camera mouselook. Automatically locks if combat begins.
 
-Two responsive columns with categorical tab filtering for your most-used settings:
+---
 
-- **Tabs** — filter controls by **All**, **Visibility**, **Colors**, or **Class** to keep the panel compact and focused.
-- **Visibility** — checkboxes to show/hide bars, lock position, and class-specific helpers (Rapid Fire, Shield Block, Buff Icons, Lightning Shield Tracker, etc.) with left-aligned text and whole-row clickability.
-- **Key Colors** — click any color swatch in the right column to open the color picker. Swatches show their name directly on the colored button. MH/OH/Ranged can use class colors via the toggle.
+## Diagnostics & Profiling (`/stt diag`)
 
-### Appearance
+`/stt` is a short alias for `/sst`. Diagnostics load first in the TOC so they remain available even if a later module encounters an error.
 
-All visual sizing and texture settings:
+| Command | Description |
+| :--- | :--- |
+| `/stt diag` | Compact health report showing client, TOC, DB version, FPS/memory/CPU, and any warnings |
+| `/stt diag full` | Detailed status across all 13 subsystems (client, metadata, libs, DB, class, aura, timing, events, loop, perf, glow, SoD, slash) |
+| `/stt diag errors` | View captured error signatures, stack traces, and repeat counts |
+| `/stt diag export` | Open a copyable report window (`Ctrl+A`, `Ctrl+C`) for bug reports |
+| `/stt diag test` | Run live self-tests on clock, spell info, aura wrapper, metadata, and glow |
+| `/stt diag profile [sec]` | Profile per-hook `OnUpdate` CPU time over `N` seconds (default `5s`) |
 
-- **Global Scale** — first control at the top. Multiplies all bar dimensions, icon sizes, sparks, borders, and fonts proportionally (0.5x–3.0x). Individual sliders below fine-tune each base size
-- **Bar Width / Height** — set the base dimensions for all bars. Off-hand height derives automatically
-- **Power Bar Height** — dedicated slider (6px–30px, default 14px) to adjust the height of the Player Power Bar (Rage/Energy/Mana) independently in real time
-- **Texture pickers** — click to browse installed textures. Bar and ranged rows use a scrolling preview list; spark rows use a thumbnail browser
-- **Spark settings** — width, height, alpha, color, draw layer
-- **Border / Background** — color and thickness controls for bar borders and background fill
-- **Indicator Glow Mode** — ADD (bright glow) or BLEND (opaque)
+---
 
-### Combat & Timer Behavior
+## Recent Releases
 
-Toggles for timing helpers:
+### <span style="color:#00ccff">v0.2.9</span> (2026-11-01)
+- **<span style="color:#2ecc71">WoW Forever (`16001`) Compatibility Gate</span>**: Added native `C_SwingTimer` (`PLAYER_SWING`) support for Main Hand, Off Hand, and Ranged swing bars when `COMBAT_LOG_EVENT_UNFILTERED` is restricted.
+- **<span style="color:#2ecc71">Hide Blizzard Swing Bars (Forever Only)</span>**: Added a Quick Controls toggle (`hideBlizzardSwingBars`, enabled by default on Forever) that disables Blizzard's built-in default swing bars (`showSwingTimer` CVar) and enables Super Swing Timer's custom bars.
+- **<span style="color:#2ecc71">Secret-Value Hardening</span>**: Added `ns.IsSecretValue` and `ns.SafeNumber` guards across `C_UnitAuras`, `C_Spell.GetSpellCooldown`, `UnitAttackSpeed`, `UnitPower`, and `UnitHealth` so restricted client values never cause Lua errors.
+- **<span style="color:#2ecc71">Hunter Range Helper Fallback</span>**: Falls back to `C_SwingTimer.IsTargetWithinSwingRange` on Forever when spell-range queries are restricted.
+- **<span style="color:#2ecc71">Test Suite</span>**: Expanded headless verification to **168 tests** (`0` luacheck warnings across 14 files).
 
-- **Minimal Mode** — hides all non-essential overlays
-- **Swing Flash** — brief spark flash on each swing landing
-- **GCD Ticker** — thin 3px bar at the bottom of the bar stack tracking the 1.5s global cooldown
-- **Test Bars** — runs a 20-second animated preview so you can reposition bars without being in combat
+### v0.2.8 (2026-10-27)
+- Synced settings panel version display directly with `.toc` metadata via `ns.GetDisplayVersion()`.
+- Narrowed the Hunter ranged-restart gate so melee/utility casts (such as Raptor Strike) never falsely start an Auto Shot cycle.
+- Hardened extra-attack credit expiration, localized Steady Shot red-zone detection, and GCD duration tracking.
 
-### Class-Specific Sections
+### v0.2.7 (2026-10-25)
+- Added `/stt diag` enterprise diagnostics, error ring buffer, export modal, and opt-in `OnUpdate` hook profiler.
+- Bundled `LibStub` + `LibCustomGlow-1.0` with `/sst glow` toggle for bar Autocast shine and expiring buff icon ButtonGlow.
 
-- **Shaman Weave Assist** — weave marker textures, sizes, layers. Quick Controls row for Lightning Shield Tracker, Flame Shock Bar
-- **Shaman Weave Spells** — per-family toggles for Lightning Bolt, Chain Lightning, Healing Wave, Lesser Healing Wave, Chain Heal
-- **Quick Controls** per-class rows appear dynamically: Warrior gets Shield Block + Rage Bar toggles, Hunter gets Range Helper + Rapid Fire + Cast Bar + Buff Icons, Rogue gets Sinister Cue + SnD + Energy Tick + Adrenaline Rush, etc.
+*(See [CHANGELOG.md](CHANGELOG.md) for the complete version history.)*
 
-### General tips
+---
 
-- **Hover** any control for a tooltip explaining what it does
-- **Scroll** with mouse wheel in any section
-- **Collapse** section headers to reduce visual noise
-- **Reset Defaults** button at the bottom restores all settings including positions
-- **Lock Bars** to prevent accidental dragging during combat. Unlock to reposition
-- Opening `/sst` shows a preview with all bars filled; they return to combat-only behavior when you close the panel
+## Feedback & Issues
 
-## Feedback
-
-Found a bug or want a feature? Open an issue at:
-[GitHub Issues](https://github.com/ssdeanx/SuperSwingTimer/issues)
-
-## Changelog
-
-See `CHANGELOG.md` for the release history.
+Found a bug or have a feature request? Please open an issue on [GitHub Issues](https://github.com/ssdeanx/SuperSwingTimer/issues) and include the output of `/stt diag export` if reporting a bug.

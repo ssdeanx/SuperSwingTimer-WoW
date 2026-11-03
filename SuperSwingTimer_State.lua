@@ -115,11 +115,15 @@ function ns.GetAutoShotCooldown()
     if C_Spell and type(C_Spell.GetSpellCooldown) == "function" then
         local ok, cooldownInfo = pcall(C_Spell.GetSpellCooldown, ns.AUTO_SHOT_ID)
         if ok and type(cooldownInfo) == "table" then
-            startTime = tonumber(cooldownInfo.startTime or cooldownInfo.start_time)
-            duration = tonumber(cooldownInfo.duration)
+            startTime = ns.SafeNumber and ns.SafeNumber(cooldownInfo.startTime or cooldownInfo.start_time)
+                or tonumber(cooldownInfo.startTime or cooldownInfo.start_time)
+            duration = ns.SafeNumber and ns.SafeNumber(cooldownInfo.duration) or tonumber(cooldownInfo.duration)
             enabled = cooldownInfo.isEnabled
             if enabled == nil then
                 enabled = cooldownInfo.enabled
+            end
+            if ns.IsSecretValue and ns.IsSecretValue(enabled) then
+                enabled = nil
             end
         end
     end
@@ -542,7 +546,7 @@ end
 function ns.RefreshEnemyTarget()
     local enemyTimer = ns.timers and ns.timers.enemy
     local hadTrackedTarget = ns.enemyTargetGUID ~= nil
-    if not HasAttackableTarget() then
+    if (ns.IsRestrictedCombatLog and ns.IsRestrictedCombatLog()) or not HasAttackableTarget() then
         ns.enemyTargetGUID = nil
         ns.enemyTargetName = nil
         if hadTrackedTarget then
@@ -699,6 +703,7 @@ function ns.SyncMeleeTimerSpeed(slot, now, force)
     else
         local mhSpeed, ohSpeed = UnitAttackSpeed("player")
         currentSpeed = (slot == "oh") and ohSpeed or mhSpeed
+        currentSpeed = ns.SafeNumber and ns.SafeNumber(currentSpeed) or tonumber(currentSpeed)
     end
     if currentSpeed and currentSpeed > 0 then
         ns.RescaleTimer(slot, currentSpeed)
@@ -742,9 +747,15 @@ function ns.SyncRangedTimerSpeed(now, force)
 
     -- On TBC Classic 2.5.5 (Legion-based client) UnitRangedDamage may return
     -- min damage (not weapon speed). Prefer the cached t.speed which was last
-    -- set from GetSpellCooldown(75), and fall back to UnitRangedDamage only
-    -- when no cached speed exists.
-    local rangedSpeedValue = (t.speed and t.speed > 0) and t.speed or UnitRangedDamage("player")
+    -- set from GetSpellCooldown(75), then the 3rd return of UnitAttackSpeed("player")
+    -- on WoW Forever, and fall back to UnitRangedDamage only when no cached speed exists.
+    local _, _, unitAttackRangedSpeed = UnitAttackSpeed("player")
+    unitAttackRangedSpeed = ns.SafeNumber and ns.SafeNumber(unitAttackRangedSpeed) or tonumber(unitAttackRangedSpeed)
+    local rangedDamageSpeed = type(UnitRangedDamage) == "function" and UnitRangedDamage("player") or nil
+    rangedDamageSpeed = ns.SafeNumber and ns.SafeNumber(rangedDamageSpeed) or tonumber(rangedDamageSpeed)
+    local rangedSpeedValue = (t.speed and t.speed > 0 and t.speed)
+        or (unitAttackRangedSpeed and unitAttackRangedSpeed > 0 and unitAttackRangedSpeed)
+        or rangedDamageSpeed
     if rangedSpeedValue and rangedSpeedValue > 0 then
         -- Invalidate hidden cast window cache on speed change (see above).
         t.hiddenCastWindowStart = nil
@@ -775,23 +786,34 @@ end
 --  @param startTime (number|nil) Optional swing-start timestamp
 --  @return (nil) Side-effect: updates ns.timers[slot]
 --  @see ns.ResetTimer, ns.RescaleTimer
-function ns.StartSwing(slot, _, startTime)
+function ns.StartSwing(slot, _, startTime, explicitDuration)
     local t = ns.timers[slot]
     if not t then return end
 
     local now = startTime or ns.GetAlignedTime()
+    local explicitSpeed = ns.SafeNumber and ns.SafeNumber(explicitDuration) or tonumber(explicitDuration)
     local speed
 
     if slot == "ranged" then
         local rangedHastePercent = GetPlayerRangedHastePercent()
         local autoShotStart, autoShotDuration = ns.GetAutoShotCooldown()
-        if autoShotDuration and autoShotDuration > 0 then
+        if explicitSpeed and explicitSpeed > 0 then
+            speed = explicitSpeed
+            t.lastSwing = now
+            t.hastePercent = rangedHastePercent
+        elseif autoShotDuration and autoShotDuration > 0 then
             speed = autoShotDuration
             t.lastSwing = (autoShotStart and autoShotStart > 0) and autoShotStart or now
             t.hastePercent = rangedHastePercent
         else
             -- Prefer cached speed; UnitRangedDamage may return min damage on TBC Classic 2.5.6
-            local s = (t.speed and t.speed > 0) and t.speed or UnitRangedDamage("player")
+            local _, _, unitAttackRangedSpeed = UnitAttackSpeed("player")
+            unitAttackRangedSpeed = ns.SafeNumber and ns.SafeNumber(unitAttackRangedSpeed) or tonumber(unitAttackRangedSpeed)
+            local rangedDmgSpeed = type(UnitRangedDamage) == "function" and UnitRangedDamage("player") or nil
+            rangedDmgSpeed = ns.SafeNumber and ns.SafeNumber(rangedDmgSpeed) or tonumber(rangedDmgSpeed)
+            local s = (t.speed and t.speed > 0 and t.speed)
+                or (unitAttackRangedSpeed and unitAttackRangedSpeed > 0 and unitAttackRangedSpeed)
+                or rangedDmgSpeed
             speed = (s and s > 0) and s or 2.0
             t.lastSwing = now
             t.hastePercent = rangedHastePercent
@@ -804,14 +826,19 @@ function ns.StartSwing(slot, _, startTime)
         t.lastSwing = now
     else
         local mhSpeed, ohSpeed = UnitAttackSpeed("player")
+        mhSpeed = ns.SafeNumber and ns.SafeNumber(mhSpeed) or tonumber(mhSpeed)
+        ohSpeed = ns.SafeNumber and ns.SafeNumber(ohSpeed) or tonumber(ohSpeed)
         if slot == "mh" then
-            speed = (mhSpeed and mhSpeed > 0) and mhSpeed or ((t.speed and t.speed > 0) and t.speed or 2.0)
+            speed = (explicitSpeed and explicitSpeed > 0 and explicitSpeed)
+                or ((mhSpeed and mhSpeed > 0) and mhSpeed)
+                or ((t.speed and t.speed > 0) and t.speed or 2.0)
         else
-            if not ohSpeed or ohSpeed <= 0 then
+            local resolvedOhSpeed = (explicitSpeed and explicitSpeed > 0 and explicitSpeed) or ohSpeed
+            if not resolvedOhSpeed or resolvedOhSpeed <= 0 then
                 ns.ResetTimer("oh")
                 return
             end
-            speed = ohSpeed
+            speed = resolvedOhSpeed
         end
         t.lastSwing = now
     end
@@ -821,7 +848,9 @@ function ns.StartSwing(slot, _, startTime)
     t.state = "swinging"
     t.nextSpeedCheckAt = now
 
-    if slot == "ranged" then
+    if explicitSpeed and explicitSpeed > 0 then
+        t.nextSpeedCheckAt = now + SPEED_CHECK_INTERVAL
+    elseif slot == "ranged" then
         ns.SyncRangedTimerSpeed(now, true)
     else
         ns.SyncMeleeTimerSpeed(slot, now, true)
@@ -842,7 +871,7 @@ function ns.StartEnemySwing(startTime)
     return ns.timers.enemy and ns.timers.enemy.state == "swinging"
 end
 
-function ns.StartRangedSwing(startTime)
+function ns.StartRangedSwing(startTime, explicitDuration)
     local t = ns.timers.ranged
     if not t then
         return false
@@ -857,13 +886,47 @@ function ns.StartRangedSwing(startTime)
         end
     end
 
-    ns.StartSwing("ranged", nil, now)
+    ns.StartSwing("ranged", nil, now, explicitDuration)
     t.lastRangedStartTime = now
     ns.hunterSteadyShotEndedInRedZone = nil
     if ns.UpdateCastZoneVisual then
         ns.UpdateCastZoneVisual()
     end
     return true
+end
+
+--- Native PLAYER_SWING event handler for WoW Forever (C_SwingTimer).
+--  Maps Enum.PlayerSwingType (0=MainHand, 1=OffHand, 2=Ranged) to SST's
+--  existing timer slots and triggers class/flash callbacks identically to CLEU.
+--  @param swingDuration (number) Weapon swing duration in seconds from the event
+--  @param swingType (number) Enum.PlayerSwingType value (0, 1, or 2)
+--  @return (nil)
+function ns.HandlePlayerSwing(swingDuration, swingType)
+    local duration = ns.SafeNumber and ns.SafeNumber(swingDuration) or tonumber(swingDuration)
+    local sType = ns.SafeNumber and ns.SafeNumber(swingType) or tonumber(swingType)
+    if not sType then return end
+
+    local enumTbl = rawget(_G, "Enum")
+    local swingEnum = enumTbl and enumTbl.PlayerSwingType
+    local mhType = (swingEnum and swingEnum.MainHand) or 0
+    local ohType = (swingEnum and swingEnum.OffHand) or 1
+    local rangedType = (swingEnum and swingEnum.Ranged) or 2
+    local now = ns.GetAlignedTime()
+
+    if sType == mhType then
+        ns.StartSwing("mh", nil, now, duration)
+        if ns.OnMeleeSwing then ns.OnMeleeSwing("mh") end
+        if ns.TriggerSwingLandingFlash then ns.TriggerSwingLandingFlash("mh") end
+    elseif sType == ohType then
+        ns.StartSwing("oh", nil, now, duration)
+        if ns.OnMeleeSwing then ns.OnMeleeSwing("oh") end
+        if ns.TriggerSwingLandingFlash then ns.TriggerSwingLandingFlash("oh") end
+    elseif sType == rangedType then
+        if ns.StartRangedSwing(now, duration) then
+            if ns.OnRangedSwing then ns.OnRangedSwing() end
+            if ns.TriggerSwingLandingFlash then ns.TriggerSwingLandingFlash("ranged") end
+        end
+    end
 end
 
 function ns.AdjustSwingTimesAfterPause(now)
@@ -913,11 +976,15 @@ local function QuerySpellCooldown(spellToken)
     if C_Spell and type(C_Spell.GetSpellCooldown) == "function" then
         local ok, cooldownInfo = pcall(C_Spell.GetSpellCooldown, spellToken)
         if ok and type(cooldownInfo) == "table" then
-            local startTime = tonumber(cooldownInfo.startTime or cooldownInfo.start_time)
-            local duration = tonumber(cooldownInfo.duration)
+            local startTime = ns.SafeNumber and ns.SafeNumber(cooldownInfo.startTime or cooldownInfo.start_time)
+                or tonumber(cooldownInfo.startTime or cooldownInfo.start_time)
+            local duration = ns.SafeNumber and ns.SafeNumber(cooldownInfo.duration) or tonumber(cooldownInfo.duration)
             local enabled = cooldownInfo.isEnabled
             if enabled == nil then
                 enabled = cooldownInfo.enabled
+            end
+            if ns.IsSecretValue and ns.IsSecretValue(enabled) then
+                enabled = nil
             end
             if (enabled == nil or enabled == true or enabled == 1) and type(startTime) == "number"
                 and type(duration) == "number" and duration > 0 then

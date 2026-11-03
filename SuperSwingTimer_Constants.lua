@@ -56,7 +56,90 @@ function ns.GetDisplayVersion()
         end
     end
 
-    return "v0.2.8"
+    return "v0.2.9"
+end
+
+--- Return true when a value is a restricted/secret value on modern clients.
+--  Classic Era, TBC Anniversary, and Titanforge do not expose `_G.issecretvalue`,
+--  so this returns false with zero overhead there.
+--  @param value (any) Value to inspect
+--  @return (boolean) true if value is secret or the secret probe raised
+function ns.IsSecretValue(value)
+    if value == nil then return false end
+    local probe = rawget(_G, "issecretvalue")
+    if type(probe) ~= "function" then
+        return false
+    end
+    local ok, res = pcall(function()
+        if probe(value) == true then return 1 end
+        return 0
+    end)
+    if not ok then
+        return true
+    end
+    return res == 1
+end
+
+--- Convert a value to a plain number, returning fallback (default nil) if it is a secret value.
+--  @param value (any) Value to convert
+--  @param fallback (number|nil) Optional fallback value when nil or secret
+--  @return (number|nil) Plain number or fallback
+function ns.SafeNumber(value, fallback)
+    if value == nil or ns.IsSecretValue(value) then
+        return fallback
+    end
+    local ok, num = pcall(tonumber, value)
+    if ok and type(num) == "number" then
+        return num
+    end
+    return fallback
+end
+
+--- Return true when the client exposes the native C_SwingTimer API (WoW Forever).
+--  @return (boolean) true if C_SwingTimer and Enum.PlayerSwingType are available
+function ns.HasNativeSwingTimer()
+    local cSwing = rawget(_G, "C_SwingTimer")
+    local enumTbl = rawget(_G, "Enum")
+    return type(cSwing) == "table" and type(enumTbl) == "table" and type(enumTbl.PlayerSwingType) == "table"
+end
+
+--- Return true when COMBAT_LOG_EVENT_UNFILTERED is restricted on this client.
+--  @return (boolean) true if CLEU is restricted or native C_SwingTimer is active
+function ns.IsRestrictedCombatLog()
+    if ns.HasNativeSwingTimer() then
+        return true
+    end
+    local cCombatLog = rawget(_G, "C_CombatLog")
+    if type(cCombatLog) == "table" and type(cCombatLog.IsCombatLogRestricted) == "function" then
+        local ok, restricted = pcall(cCombatLog.IsCombatLogRestricted)
+        if ok and restricted == true then
+            return true
+        end
+    end
+    return false
+end
+
+--- Toggle Blizzard's built-in WoW Forever swing timer bars ("showSwingTimer" CVar).
+--  No-op on clients without native C_SwingTimer (Classic Era, TBC Anniversary, Titanforge).
+--  @param hideBlizzard (boolean|nil) When true (default), disables Blizzard's default swing bars
+function ns.ApplyBlizzardSwingTimerVisibility(hideBlizzard)
+    if not (ns.HasNativeSwingTimer and ns.HasNativeSwingTimer()) then
+        return
+    end
+    if hideBlizzard == nil then
+        local db = rawget(_G, "SuperSwingTimerDB")
+        hideBlizzard = (not db) or (db.hideBlizzardSwingBars ~= false)
+    end
+    local cvarVal = hideBlizzard and "0" or "1"
+    local cCVar = rawget(_G, "C_CVar")
+    if type(cCVar) == "table" and type(cCVar.SetCVar) == "function" then
+        pcall(cCVar.SetCVar, "showSwingTimer", cvarVal)
+    else
+        local legacySetCVar = rawget(_G, "SetCVar")
+        if type(legacySetCVar) == "function" then
+            pcall(legacySetCVar, "showSwingTimer", cvarVal)
+        end
+    end
 end
 
 --- Authoritative GetSpellInfo wrapper for Classic/TBC Anniversary (1.15+).
@@ -178,14 +261,19 @@ end
 function ns.UnitAura(unit, index, filter)
     if not unit or not index then return nil end
 
-    -- Primary: Check modern / Titanforge C_UnitAuras API
+    -- Primary: Check modern / Titanforge / Forever C_UnitAuras API
     local cUnitAuras = rawget(_G, "C_UnitAuras")
     if cUnitAuras and cUnitAuras.GetAuraDataByIndex then
-        local aura = cUnitAuras.GetAuraDataByIndex(unit, index, filter)
-        if aura then
-            return aura.name, nil, aura.icon, tonumber(aura.applications) or 0, aura.dispelName,
-                   aura.duration, aura.expirationTime, aura.sourceUnit,
-                   aura.isStealable, nil, aura.spellId
+        local ok, aura = pcall(cUnitAuras.GetAuraDataByIndex, unit, index, filter)
+        if ok and aura then
+            if ns.IsSecretValue(aura.name) or ns.IsSecretValue(aura.spellId)
+                or ns.IsSecretValue(aura.duration) or ns.IsSecretValue(aura.expirationTime)
+                or ns.IsSecretValue(aura.sourceUnit) then
+                return nil
+            end
+            return aura.name, nil, aura.icon, ns.SafeNumber(aura.applications) or 0, aura.dispelName,
+                   ns.SafeNumber(aura.duration), ns.SafeNumber(aura.expirationTime), aura.sourceUnit,
+                   aura.isStealable, nil, ns.SafeNumber(aura.spellId)
         end
         return nil
     end
@@ -1000,6 +1088,7 @@ ns.DB_DEFAULTS = {
     showWarriorRageProtection = true,
     showWarriorShieldBlockBar = true,
     showSwingFlash = true,
+    hideBlizzardSwingBars = true,
     showGcdTicker = true,
     showRogueEnergyCountdown = true,
     -- Phase 2 defaults (v39→v40)

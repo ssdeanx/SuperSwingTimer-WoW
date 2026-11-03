@@ -239,9 +239,14 @@ local function projectName()
             if toc == 11509 then return "Classic Era" end
             if toc == 20506 then return "TBC Anniversary" end
             if toc == 38002 then return "Titanforge" end
+            if toc == 16001 then return "WoW Forever" end
         end
     end
     local id = rawget(_G, "WOW_PROJECT_ID")
+    local camelot = rawget(_G, "WOW_PROJECT_CAMELOT") or 18
+    if id ~= nil and id == camelot then
+        return "WoW Forever"
+    end
     local projects = {
         { "WOW_PROJECT_MAINLINE", "Retail" },
         { "WOW_PROJECT_CLASSIC", "Classic Era" },
@@ -388,8 +393,10 @@ addCheck("events", "events", function()
     if not frame or type(frame.IsEventRegistered) ~= "function" then
         return "skip", "event frame not exposed"
     end
+    local swingEvent = (ns.HasNativeSwingTimer and ns.HasNativeSwingTimer()) and "PLAYER_SWING"
+        or "COMBAT_LOG_EVENT_UNFILTERED"
     local required = {
-        "COMBAT_LOG_EVENT_UNFILTERED",
+        swingEvent,
         "PLAYER_TARGET_CHANGED",
         "PLAYER_REGEN_DISABLED",
         "PLAYER_REGEN_ENABLED",

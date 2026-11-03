@@ -4,6 +4,31 @@
 > Sections: **Added** / **Changed** / **Fixed** / **Removed** / **Performance** / **Security** / **Docs** / **Internal** / **Notes**
 > DB schema migrations are listed under **Notes** per version.
 
+## v0.2.9 - 2026-11-01
+
+### Added
+
+- **WoW Forever (`16001` / `WOW_PROJECT_CAMELOT`) Compatibility Gate**:
+  - Added `16001` to `SuperSwingTimer.toc` (`## Interface: 11509, 20506, 38002, 16001`).
+  - Added `ns.HasNativeSwingTimer()` and `ns.IsRestrictedCombatLog()` capability gates in `SuperSwingTimer_Constants.lua`.
+  - Added `ns.HandlePlayerSwing(swingDuration, swingType)` in `SuperSwingTimer_State.lua` and wired `PLAYER_SWING` in `SuperSwingTimer.lua` so **Main Hand** (`Enum.PlayerSwingType.MainHand = 0`), **Off Hand** (`1`), and **Ranged** (`2`) custom swing bars work natively on WoW Forever without touching Classic Era, TBC Anniversary, or Titanforge code paths.
+  - Added fallback to the 3rd return of `UnitAttackSpeed("player")` (`rangedAttackSpeed` on Forever) in `ns.StartSwing` and `ns.SyncRangedTimerSpeed`.
+  - Added fallback to `C_SwingTimer.IsTargetWithinSwingRange(swingType)` for Hunter Range Helper (`IsHunterTargetInMeleeRange` / `IsHunterTargetInRangedShotRange`) when available.
+  - Updated `/stt diag` (`SuperSwingTimer_Diag.lua`) to identify `"WoW Forever"` (`toc 16001` / `WOW_PROJECT_CAMELOT = 18`) and check `PLAYER_SWING` registration when `C_SwingTimer` is present.
+- **Hide Blizzard Default Swing Bars Toggle (WoW Forever Only)**:
+  - Added `hideBlizzardSwingBars = true` to `ns.DB_DEFAULTS` and `ns.ApplyBlizzardSwingTimerVisibility()` in `SuperSwingTimer_Constants.lua`.
+  - On WoW Forever (`ns.HasNativeSwingTimer()`), automatically disables Blizzard's built-in default swing timer bars (`C_CVar.SetCVar("showSwingTimer", "0")`) on load and `PLAYER_ENTERING_WORLD` so only Super Swing Timer's custom bars are displayed.
+  - Added a highlighted **Hide Blizzard Swing Bars** checkbox right at the top of the bar visibility toggles in both `/sst` (**Quick Controls -> Visibility**) and the **Blizzard Options AddOn Canvas** (visible only on WoW Forever). Checking it turns off Blizzard's default bars and enables Super Swing Timer's custom MH/OH/Ranged bars; unchecking it restores Blizzard's default swing timer (`showSwingTimer = 1`).
+- **Secret-Value (`issecretvalue`) Hardening**:
+  - Added `ns.IsSecretValue(value)` and `ns.SafeNumber(value, fallback)` helpers in `SuperSwingTimer_Constants.lua`.
+  - Hardened `ns.UnitAura` (`C_UnitAuras.GetAuraDataByIndex`), `QuerySpellCooldown` / `ns.GetAutoShotCooldown` (`C_Spell.GetSpellCooldown`), `UnitAttackSpeed`, `UnitPower`, `UnitPowerMax`, `UnitHealth`, and `UnitHealthMax` so secret values on restricted clients never trigger Lua comparison or arithmetic errors.
+  - Auto-suppressed live Enemy Swing Bar target tracking (`ns.RefreshEnemyTarget`) when `ns.IsRestrictedCombatLog()` is true (since `C_SwingTimer` only reports player swings and `COMBAT_LOG_EVENT_UNFILTERED` is restricted), while keeping the Enemy bar visible in `/sst test` and `/sst move`.
+
+### Tests & Docs
+
+- Expanded headless test suite from 166 to **168** tests (`Release028:ForeverGate_HandlePlayerSwing_StartsTimers` including `showSwingTimer` CVar assertions, and `Release028:ForeverGate_SecretValues_GuardedSafely`), passing 100% with `0` luacheck warnings across all 14 files.
+- Redesigned `README.md` for readability with a top-level **Client Availability** table and color-coded highlights.
+
 ## v0.2.8 - 2026-10-27
 
 ### Fixed

@@ -235,17 +235,23 @@ local function QuerySpellCooldown(spellToken)
     if C_Spell and type(C_Spell.GetSpellCooldown) == "function" then
         local ok, cooldownInfo = pcall(C_Spell.GetSpellCooldown, spellToken)
         if ok and type(cooldownInfo) == "table" then
-            startTime = tonumber(cooldownInfo.startTime or cooldownInfo.start_time)
-            duration = tonumber(cooldownInfo.duration)
+            startTime = ns.SafeNumber(cooldownInfo.startTime or cooldownInfo.start_time)
+            duration = ns.SafeNumber(cooldownInfo.duration)
             enabled = cooldownInfo.isEnabled
             if enabled == nil then
                 enabled = cooldownInfo.enabled
+            end
+            if ns.IsSecretValue and ns.IsSecretValue(enabled) then
+                enabled = nil
             end
         end
     end
 
     if (not duration or duration <= 0) and type(GetSpellCooldown) == "function" then
-        startTime, duration, enabled = GetSpellCooldown(spellToken)
+        local rawStart, rawDuration, rawEnabled = GetSpellCooldown(spellToken)
+        startTime = ns.SafeNumber(rawStart)
+        duration = ns.SafeNumber(rawDuration)
+        enabled = (ns.IsSecretValue and ns.IsSecretValue(rawEnabled)) and nil or rawEnabled
     end
 
     local isEnabled = enabled == nil or enabled == 1 or enabled == true
@@ -520,7 +526,7 @@ end
 
 local function SetupRetPaladin()
     local function GetActivePaladinSeal()
-        if not UnitAura then
+        if not ns.UnitBuff then
             return nil
         end
 
@@ -1095,16 +1101,7 @@ local function SetupRetPaladin()
                 end
             end
             -- Step 3: Fall back to cooldown tracking
-            local startTime, cdDuration
-            if type(GetSpellCooldown) == "function" then
-                startTime, cdDuration = GetSpellCooldown(info.spellId)
-            elseif C_Spell and type(C_Spell.GetSpellCooldown) == "function" then
-                local ok, cdInfo = pcall(C_Spell.GetSpellCooldown, info.spellId)
-                if ok and cdInfo then
-                    startTime = cdInfo.startTime
-                    cdDuration = cdInfo.duration
-                end
-            end
+            local startTime, cdDuration = QuerySpellCooldown(info.spellId)
             if type(startTime) ~= "number" or type(cdDuration) ~= "number" or cdDuration <= 0 then
                 return nil, nil, nil
             end
@@ -3186,16 +3183,7 @@ local function SetupWarrior()
                 end
             end
             -- Step 3: Fall back to cooldown tracking
-            local startTime, cdDuration
-            if type(GetSpellCooldown) == "function" then
-                startTime, cdDuration = GetSpellCooldown(info.spellId)
-            elseif C_Spell and type(C_Spell.GetSpellCooldown) == "function" then
-                local ok, cdInfo = pcall(C_Spell.GetSpellCooldown, info.spellId)
-                if ok and cdInfo then
-                    startTime = cdInfo.startTime
-                    cdDuration = cdInfo.duration
-                end
-            end
+            local startTime, cdDuration = QuerySpellCooldown(info.spellId)
             if type(startTime) ~= "number" or type(cdDuration) ~= "number" or cdDuration <= 0 then
                 return nil, nil, nil
             end
@@ -4345,16 +4333,7 @@ local function SetupEnhShaman()
                 end
             end
             -- Step 3: Fall back to cooldown tracking
-            local startTime, cdDuration
-            if type(GetSpellCooldown) == "function" then
-                startTime, cdDuration = GetSpellCooldown(info.spellId)
-            elseif C_Spell and type(C_Spell.GetSpellCooldown) == "function" then
-                local ok, cdInfo = pcall(C_Spell.GetSpellCooldown, info.spellId)
-                if ok and cdInfo then
-                    startTime = cdInfo.startTime
-                    cdDuration = cdInfo.duration
-                end
-            end
+            local startTime, cdDuration = QuerySpellCooldown(info.spellId)
             if type(startTime) ~= "number" or type(cdDuration) ~= "number" or cdDuration <= 0 then
                 return nil, nil, nil
             end
@@ -4768,7 +4747,7 @@ local function SetupDruid()
             return
         end
 
-        local currentEnergy = UnitPower("player") or 0
+        local currentEnergy = (type(UnitPower) == "function" and ns.SafeNumber(UnitPower("player"))) or 0
         local previousEnergy = ns.druidLastEnergy
         if IsDruidCatFormActive() and previousEnergy ~= nil then
             local delta = currentEnergy - previousEnergy
@@ -4816,7 +4795,7 @@ local function SetupDruid()
         if ns.mhBar and ns.mhBar.labelText then
             ns.mhBar.labelText:SetText(GetDruidFormLabel())
         end
-        ns.druidLastEnergy = type(UnitPower) == "function" and UnitPower("player") or ns.druidLastEnergy
+        ns.druidLastEnergy = (type(UnitPower) == "function" and ns.SafeNumber(UnitPower("player"))) or ns.druidLastEnergy
         ns.druidEnergyTickStartTime = GetCurrentTime()
         UpdateDruidEnergyTickVisual()
         UpdateDruidQueueTint(true)
@@ -4835,7 +4814,7 @@ local function SetupDruid()
         end
 
         ApplyDruidEnergyTickColor()
-        ns.druidLastEnergy = type(UnitPower) == "function" and UnitPower("player") or ns.druidLastEnergy
+        ns.druidLastEnergy = (type(UnitPower) == "function" and ns.SafeNumber(UnitPower("player"))) or ns.druidLastEnergy
         if not ns.druidEnergyTickStartTime then
             ns.druidEnergyTickStartTime = GetCurrentTime()
         end
@@ -5342,16 +5321,7 @@ local function SetupDruid()
                 end
             end
             -- Step 3: Fall back to cooldown tracking
-            local startTime, cdDuration
-            if type(GetSpellCooldown) == "function" then
-                startTime, cdDuration = GetSpellCooldown(info.spellId)
-            elseif C_Spell and type(C_Spell.GetSpellCooldown) == "function" then
-                local ok, cdInfo = pcall(C_Spell.GetSpellCooldown, info.spellId)
-                if ok and cdInfo then
-                    startTime = cdInfo.startTime
-                    cdDuration = cdInfo.duration
-                end
-            end
+            local startTime, cdDuration = QuerySpellCooldown(info.spellId)
             if type(startTime) ~= "number" or type(cdDuration) ~= "number" or cdDuration <= 0 then
                 return nil, nil, nil
             end
@@ -5652,12 +5622,29 @@ local function SetupHunter()
         if inRange == nil and raptorSpellName and raptorSpellName ~= ns.WING_CLIP_NAME then
             inRange = IsSpellTokenInRange(raptorSpellName, "target")
         end
+        if inRange == nil and ns.HasNativeSwingTimer and ns.HasNativeSwingTimer() then
+            local cSwingTimer = rawget(_G, "C_SwingTimer")
+            local enum = rawget(_G, "Enum")
+            local mhType = (enum and enum.PlayerSwingType and enum.PlayerSwingType.MainHand) or 0
+            if cSwingTimer and type(cSwingTimer.IsTargetWithinSwingRange) == "function" then
+                inRange = cSwingTimer.IsTargetWithinSwingRange(mhType)
+            end
+        end
         return inRange
     end
     ns.IsHunterTargetInMeleeRange = IsHunterTargetInMeleeRange
 
     local function IsHunterTargetInRangedShotRange()
-        return IsSpellTokenInRange(ns.AUTO_SHOT_NAME, "target")
+        local inRange = IsSpellTokenInRange(ns.AUTO_SHOT_NAME, "target")
+        if inRange == nil and ns.HasNativeSwingTimer and ns.HasNativeSwingTimer() then
+            local cSwingTimer = rawget(_G, "C_SwingTimer")
+            local enum = rawget(_G, "Enum")
+            local rangedType = (enum and enum.PlayerSwingType and enum.PlayerSwingType.Ranged) or 2
+            if cSwingTimer and type(cSwingTimer.IsTargetWithinSwingRange) == "function" then
+                inRange = cSwingTimer.IsTargetWithinSwingRange(rangedType)
+            end
+        end
+        return inRange
     end
 
     local function GetHunterRangeState(previewActive)
@@ -6305,16 +6292,7 @@ local function SetupHunter()
                 end
             end
             -- Step 3: Fall back to cooldown tracking
-            local startTime, cdDuration
-            if type(GetSpellCooldown) == "function" then
-                startTime, cdDuration = GetSpellCooldown(info.spellId)
-            elseif C_Spell and type(C_Spell.GetSpellCooldown) == "function" then
-                local ok, cdInfo = pcall(C_Spell.GetSpellCooldown, info.spellId)
-                if ok and cdInfo then
-                    startTime = cdInfo.startTime
-                    cdDuration = cdInfo.duration
-                end
-            end
+            local startTime, cdDuration = QuerySpellCooldown(info.spellId)
             if type(startTime) ~= "number" or type(cdDuration) ~= "number" or cdDuration <= 0 then
                 return nil, nil, nil
             end
@@ -7848,7 +7826,7 @@ local function SetupRogue()
         local tickProgress = (elapsed % ROGUE_ENERGY_TICK_DURATION) / ROGUE_ENERGY_TICK_DURATION
         tickBar:SetValue(tickProgress)
 
-        local currentEnergy = (UnitPower and UnitPower("player")) or 0
+        local currentEnergy = (UnitPower and ns.SafeNumber(UnitPower("player"))) or 0
         if currentEnergy >= 100 then
             tickBar:SetStatusBarColor(1.0, 0.2, 0.2, 1)
         elseif currentEnergy >= 90 then
@@ -7975,7 +7953,7 @@ local function SetupRogue()
             return
         end
 
-        local currentEnergy = UnitPower("player") or 0
+        local currentEnergy = (type(UnitPower) == "function" and ns.SafeNumber(UnitPower("player"))) or 0
         local previousEnergy = ns.rogueLastEnergy
         if previousEnergy ~= nil then
             local delta = currentEnergy - previousEnergy
@@ -8474,7 +8452,7 @@ local function SetupRogue()
         end
         ApplyRogueEnergyTickColor()
         ApplyRogueSliceAndDiceColor()
-        ns.rogueLastEnergy = UnitPower and UnitPower("player") or ns.rogueLastEnergy
+        ns.rogueLastEnergy = (UnitPower and ns.SafeNumber(UnitPower("player"))) or ns.rogueLastEnergy
         if not ns.rogueEnergyTickStartTime then
             ns.rogueEnergyTickStartTime = GetCurrentTime()
         end
@@ -8606,8 +8584,7 @@ local function SetupRogue()
             return
         end
 
-        if not GetSpellCooldown then return end
-        local start, duration = GetSpellCooldown(ADRENALINE_RUSH_SPELL_ID)
+        local start, duration = QuerySpellCooldown(ADRENALINE_RUSH_SPELL_ID)
         if not duration or duration <= 0 then
             adrenalineRushBar:Hide()
             return
@@ -8691,16 +8668,7 @@ local function SetupRogue()
                 end
             end
             -- Step 3: Fall back to cooldown tracking
-            local startTime, cdDuration
-            if type(GetSpellCooldown) == "function" then
-                startTime, cdDuration = GetSpellCooldown(info.spellId)
-            elseif C_Spell and type(C_Spell.GetSpellCooldown) == "function" then
-                local ok, cdInfo = pcall(C_Spell.GetSpellCooldown, info.spellId)
-                if ok and cdInfo then
-                    startTime = cdInfo.startTime
-                    cdDuration = cdInfo.duration
-                end
-            end
+            local startTime, cdDuration = QuerySpellCooldown(info.spellId)
             if type(startTime) ~= "number" or type(cdDuration) ~= "number" or cdDuration <= 0 then
                 return nil, nil, nil
             end
@@ -8983,8 +8951,8 @@ local function UpdatePlayerPowerBar()
         end
     end
 
-    local curPower = (type(UnitPower) == "function") and UnitPower("player", powerType) or 0
-    local maxPower = (type(UnitPowerMax) == "function") and UnitPowerMax("player", powerType) or 100
+    local curPower = (type(UnitPower) == "function" and ns.SafeNumber(UnitPower("player", powerType))) or 0
+    local maxPower = (type(UnitPowerMax) == "function" and ns.SafeNumber(UnitPowerMax("player", powerType))) or 100
     if not maxPower or maxPower <= 0 then maxPower = 100 end
 
     local customColor
@@ -9026,8 +8994,8 @@ local function UpdatePlayerPowerBar()
     end
 
     if class == "WARRIOR" then
-        local targetHealth = (type(UnitHealth) == "function") and UnitHealth("target") or 0
-        local targetMaxHealth = (type(UnitHealthMax) == "function") and UnitHealthMax("target") or 0
+        local targetHealth = (type(UnitHealth) == "function" and ns.SafeNumber(UnitHealth("target"))) or 0
+        local targetMaxHealth = (type(UnitHealthMax) == "function" and ns.SafeNumber(UnitHealthMax("target"))) or 0
         local executeActive = targetHealth > 0 and targetMaxHealth > 0 and (targetHealth / targetMaxHealth) <= 0.20
         if executeActive then
             if not bar.executeIcon then

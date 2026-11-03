@@ -149,7 +149,7 @@ local function RegisterSSTTests()
         IsTrue(f ~= nil, "SuperSwingTimer.toc must exist")
         local content = f:read("*all")
         f:close()
-        IsTrue(content:find("## Version: v0.2.8", 1, true) ~= nil, "TOC Version must be v0.2.8")
+        IsTrue(content:find("## Version: v0.2.9", 1, true) ~= nil, "TOC Version must be v0.2.9")
 
         -- The settings panel reads its label from TOC metadata; keep the
         -- helper and the TOC in lockstep so a release bump cannot drift.
@@ -159,6 +159,7 @@ local function RegisterSSTTests()
         IsTrue(content:find("38002", 1, true) ~= nil, "TOC must contain Titanforge interface 38002")
         IsTrue(content:find("11509", 1, true) ~= nil, "TOC must contain Classic Era interface 11509")
         IsTrue(content:find("20506", 1, true) ~= nil, "TOC must contain TBC Anniversary interface 20506")
+        IsTrue(content:find("16001", 1, true) ~= nil, "TOC must contain WoW Forever interface 16001")
 
         local diagPos = content:find("SuperSwingTimer_Diag.lua", 1, true)
         local constPos = content:find("SuperSwingTimer_Constants.lua", 1, true)
@@ -2656,6 +2657,94 @@ local function RegisterSSTTests()
             AreEqual(db.version, ns.DB_CURRENT_VERSION,
                 'migration from v' .. version .. ' must reach the current version')
         end
+    end
+
+    -- WoW Forever (16001) C_SwingTimer / PLAYER_SWING compatibility gate.
+    function Release028:ForeverGate_HandlePlayerSwing_StartsTimers()
+        local previousClass, previousConfig = ns.playerClass, ns.classConfig
+        ns.playerClass = 'HUNTER'
+        ns.classConfig = ns.CLASS_CONFIG.HUNTER
+        ns.ResetTimer('mh')
+        ns.ResetTimer('oh')
+        ns.ResetTimer('ranged')
+
+        local prevSwingTimer = rawget(_G, 'C_SwingTimer')
+        local prevEnum = rawget(_G, 'Enum')
+        rawset(_G, 'C_SwingTimer', {
+            IsTargetWithinSwingRange = function() return true end,
+        })
+        rawset(_G, 'Enum', {
+            PlayerSwingType = { MainHand = 0, OffHand = 1, Ranged = 2 },
+        })
+
+        IsTrue(ns.HasNativeSwingTimer(), 'HasNativeSwingTimer must be true when C_SwingTimer is present')
+        IsTrue(ns.IsRestrictedCombatLog(), 'IsRestrictedCombatLog must be true when C_SwingTimer is present')
+
+        ns.HandlePlayerSwing(2.6, 0)
+        AreEqual(ns.timers.mh.state, 'swinging', 'MainHand (0) PLAYER_SWING must start MH timer')
+        AreEqual(ns.timers.mh.duration, 2.6, 'MainHand PLAYER_SWING must use explicit duration')
+
+        ns.HandlePlayerSwing(1.8, 1)
+        AreEqual(ns.timers.oh.state, 'swinging', 'OffHand (1) PLAYER_SWING must start OH timer')
+        AreEqual(ns.timers.oh.duration, 1.8, 'OffHand PLAYER_SWING must use explicit duration')
+
+        ns.HandlePlayerSwing(2.9, 2)
+        AreEqual(ns.timers.ranged.state, 'swinging', 'Ranged (2) PLAYER_SWING must start Ranged timer')
+        AreEqual(ns.timers.ranged.duration, 2.9, 'Ranged PLAYER_SWING must use explicit duration')
+
+        ns.RefreshEnemyTarget()
+        AreEqual(ns.enemyTargetGUID, nil, 'RefreshEnemyTarget must keep enemyTargetGUID nil under restricted combat log')
+
+        local prevCVar = rawget(_G, 'C_CVar')
+        local recordedCVarName, recordedCVarVal
+        rawset(_G, 'C_CVar', {
+            SetCVar = function(k, v)
+                recordedCVarName = k
+                recordedCVarVal = v
+            end,
+        })
+        ns.ApplyBlizzardSwingTimerVisibility(true)
+        AreEqual(recordedCVarName, 'showSwingTimer', 'ApplyBlizzardSwingTimerVisibility must set showSwingTimer CVar')
+        AreEqual(recordedCVarVal, '0', 'ApplyBlizzardSwingTimerVisibility(true) must disable Blizzard swing timer')
+        ns.ApplyBlizzardSwingTimerVisibility(false)
+        AreEqual(recordedCVarVal, '1', 'ApplyBlizzardSwingTimerVisibility(false) must re-enable Blizzard swing timer')
+        rawset(_G, 'C_CVar', prevCVar)
+
+        rawset(_G, 'C_SwingTimer', prevSwingTimer)
+        rawset(_G, 'Enum', prevEnum)
+        ns.playerClass, ns.classConfig = previousClass, previousConfig
+    end
+
+    -- WoW Forever secret-value guard for UnitAura and SafeNumber.
+    function Release028:ForeverGate_SecretValues_GuardedSafely()
+        local prevIsSecret = rawget(_G, 'issecretvalue')
+        local prevCUnitAuras = rawget(_G, 'C_UnitAuras')
+        local secretSentinel = {}
+        rawset(_G, 'issecretvalue', function(v) return v == secretSentinel or v == 999999 end)
+
+        IsTrue(ns.IsSecretValue(secretSentinel), 'IsSecretValue must detect secret values')
+        AreEqual(ns.SafeNumber(999999, 42), 42, 'SafeNumber must return fallback for secret number')
+        AreEqual(ns.SafeNumber(2.5, 42), 2.5, 'SafeNumber must return numeric value when not secret')
+
+        rawset(_G, 'C_UnitAuras', {
+            GetAuraDataByIndex = function()
+                return {
+                    name = secretSentinel,
+                    icon = 136000,
+                    applications = 1,
+                    duration = 10,
+                    expirationTime = 100,
+                    sourceUnit = 'player',
+                    spellId = 12345,
+                }
+            end,
+        })
+
+        local auraName = ns.UnitAura('player', 1, 'HELPFUL')
+        AreEqual(auraName, nil, 'ns.UnitAura must return nil when C_UnitAuras returns secret fields')
+
+        rawset(_G, 'issecretvalue', prevIsSecret)
+        rawset(_G, 'C_UnitAuras', prevCUnitAuras)
     end
 
     local nGroups = 0

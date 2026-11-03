@@ -2219,7 +2219,7 @@ local function CreateBlizzardOptionsCanvas()
 
     local title = f:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
     title:SetPoint("TOPLEFT", f, "TOPLEFT", 16, -16)
-    title:SetText("Super Swing Timer |cff00ccff" .. (ns.GetDisplayVersion and ns.GetDisplayVersion() or "v0.2.8") .. "|r")
+    title:SetText("Super Swing Timer |cff00ccff" .. (ns.GetDisplayVersion and ns.GetDisplayVersion() or "v0.2.9") .. "|r")
 
     local desc = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     desc:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -8)
@@ -2368,13 +2368,34 @@ local function CreateBlizzardOptionsCanvas()
         end, lockCb)
     table.insert(checks, minCb)
 
+    local prevQuickCb = minCb
+    if ns.HasNativeSwingTimer and ns.HasNativeSwingTimer() then
+        local hideBlizzCb = CreateQuickCheck(f, "|cff00ccffHide Blizzard Default Swing Bars (WoW Forever)|r",
+            function() return not SuperSwingTimerDB or SuperSwingTimerDB.hideBlizzardSwingBars ~= false end,
+            function(val)
+                if not SuperSwingTimerDB then SuperSwingTimerDB = {} end
+                SuperSwingTimerDB.hideBlizzardSwingBars = val
+                if ns.ApplyBlizzardSwingTimerVisibility then
+                    ns.ApplyBlizzardSwingTimerVisibility(val)
+                end
+                if val then
+                    SuperSwingTimerDB.showMH = true
+                    SuperSwingTimerDB.showOH = true
+                    SuperSwingTimerDB.showRanged = true
+                    if ns.ApplyVisibility then ns.ApplyVisibility() end
+                end
+            end, prevQuickCb)
+        table.insert(checks, hideBlizzCb)
+        prevQuickCb = hideBlizzCb
+    end
+
     local mhCb = CreateQuickCheck(f, "Show Main Hand Bar",
         function() return SuperSwingTimerDB and SuperSwingTimerDB.showMH end,
         function(val)
             if not SuperSwingTimerDB then SuperSwingTimerDB = {} end
             SuperSwingTimerDB.showMH = val
             if ns.ApplyVisibility then ns.ApplyVisibility() end
-        end, minCb)
+        end, prevQuickCb)
     table.insert(checks, mhCb)
 
     local ohCb = CreateQuickCheck(f, "Show Off Hand Bar",
@@ -2496,7 +2517,7 @@ local function CreatePanel()
     -- Title
     local title = f:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
     title:SetPoint("TOPLEFT", f, "TOPLEFT", 18, -14)
-    title:SetText("Super Swing Timer |cff00ccff" .. (ns.GetDisplayVersion and ns.GetDisplayVersion() or "v0.2.8") .. "|r")
+    title:SetText("Super Swing Timer |cff00ccff" .. (ns.GetDisplayVersion and ns.GetDisplayVersion() or "v0.2.9") .. "|r")
 
     -- Move/Unlock button in header — toggles move mode and saves positions
     local moveHeaderBtn = CreateFrame("Button", nil, f)
@@ -2946,6 +2967,32 @@ local function CreatePanel()
         "visibility"
     )
     f.showAdvancedRow = showAdvancedRow
+
+    if ns.HasNativeSwingTimer and ns.HasNativeSwingTimer() then
+        f.hideBlizzardSwingBarsRow = AddQuickToggle(
+            "|cff00ccffHide Blizzard Swing Bars|r",
+            function() return SuperSwingTimerDB.hideBlizzardSwingBars ~= false end,
+            function(enabled)
+                SuperSwingTimerDB.hideBlizzardSwingBars = enabled
+                if ns.ApplyBlizzardSwingTimerVisibility then
+                    ns.ApplyBlizzardSwingTimerVisibility(enabled)
+                end
+                if enabled then
+                    SuperSwingTimerDB.showMH = true
+                    SuperSwingTimerDB.showOH = true
+                    SuperSwingTimerDB.showRanged = true
+                    if ns.ApplyVisibility then
+                        ns.ApplyVisibility()
+                    end
+                end
+            end,
+            {
+                tooltipText =
+                "WoW Forever: Disable Blizzard's built-in default swing timer bars (showSwingTimer CVar) and enable Super Swing Timer's custom bars."
+            },
+            "visibility"
+        )
+    end
 
     local showMHRow = nil
     if cfg.melee then
@@ -5869,6 +5916,9 @@ function ns.ResetConfigDefaults()
     if panel and panel.useClassColorsRow and panel.useClassColorsRow.refresh then
         panel.useClassColorsRow.refresh()
     end
+    if panel and panel.hideBlizzardSwingBarsRow and panel.hideBlizzardSwingBarsRow.refresh then
+        panel.hideBlizzardSwingBarsRow.refresh()
+    end
     if panel and panel.showMHRow and panel.showMHRow.refresh then
         panel.showMHRow.refresh()
     end
@@ -5906,5 +5956,8 @@ function ns.ResetConfigDefaults()
     -- Apply global scale after all other settings are restored
     if ns.ApplyGlobalScale then
         ns.ApplyGlobalScale()
+    end
+    if ns.ApplyBlizzardSwingTimerVisibility then
+        ns.ApplyBlizzardSwingTimerVisibility()
     end
 end

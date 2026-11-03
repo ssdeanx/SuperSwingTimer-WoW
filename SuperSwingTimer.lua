@@ -1245,6 +1245,9 @@ local function OnAddonLoaded()
 
     -- Create config panel (hidden)
     ns.InitConfig()
+    if ns.ApplyBlizzardSwingTimerVisibility then
+        ns.ApplyBlizzardSwingTimerVisibility()
+    end
 
     RegisterSlashCommands()
 end
@@ -1358,8 +1361,13 @@ ns.RegisterUnitEventSafe = RegisterUnitEventSafe
 local function RegisterEvents()
     local cfg = ns.classConfig or {}
 
-    -- Core events for all classes
-    frame:RegisterEvent("COMBAT_LOG_EVENT_UNFILTERED")
+    -- Core events for all classes (gate CLEU vs native C_SwingTimer PLAYER_SWING)
+    if ns.HasNativeSwingTimer and ns.HasNativeSwingTimer() then
+        frame:RegisterEvent("PLAYER_SWING")
+    end
+    if not (ns.IsRestrictedCombatLog and ns.IsRestrictedCombatLog()) then
+        frame:RegisterEvent("COMBAT_LOG_EVENT_UNFILTERED")
+    end
     frame:RegisterEvent("ADDON_LOADED")
     RegisterUnitEventSafe(frame, "UNIT_ATTACK_SPEED", "player", "target")
     frame:RegisterEvent("PLAYER_TARGET_CHANGED")
@@ -1457,6 +1465,10 @@ frame:SetScript("OnEvent", function (self, event, ...)
             else
                 RegisterEvents()
             end
+        end
+    elseif event == "PLAYER_SWING" then
+        if ns.HandlePlayerSwing then
+            ns.HandlePlayerSwing(...)
         end
     elseif event == "COMBAT_LOG_EVENT_UNFILTERED" then
         ns.HandleCLEU()
@@ -1721,6 +1733,9 @@ frame:SetScript("OnEvent", function (self, event, ...)
         local isInitialLogin, isReloadingUi = ...
         ns.playerInCombat = false
         ns.OnPlayerEnteringWorld(isInitialLogin, isReloadingUi)
+        if ns.ApplyBlizzardSwingTimerVisibility then
+            ns.ApplyBlizzardSwingTimerVisibility()
+        end
         if ns.playerClass == "HUNTER" and ns.IsHunterAutoRepeatActive then
             ns.hunterAutoRepeatActive = ns.IsHunterAutoRepeatActive()
         end
