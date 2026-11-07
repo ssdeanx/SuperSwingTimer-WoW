@@ -1185,6 +1185,17 @@ local function SeedHunterStoredCastState(spellToken, fallbackStartTime, fallback
     return true
 end
 
+-- Pause rules: the shared list, plus Forever's Slam rule (Improved Slam
+-- removes the swing delay; without the talent the cast still pushes the swing).
+local function ShouldPauseSwingForSpell(spellToken, spellIdNumber)
+    if ns.PAUSE_SWING_SPELLS and (ns.PAUSE_SWING_SPELLS[spellToken]
+        or (spellIdNumber and ns.PAUSE_SWING_SPELLS[spellIdNumber])) then
+        return true
+    end
+    return ns.isForever == true and ns.ForeverSlamPausesSwing ~= nil
+        and ns.ForeverSlamPausesSwing(spellIdNumber) == true
+end
+
 function ns.HandleSpellcastStart(unit, castGUIDOrSpellName, spellId)
     -- Classic/BCC payloads provide castGUID + spellID; older paths may still pass
     -- spellName/rank, so resolve whichever spell token is actually present.
@@ -1221,8 +1232,7 @@ function ns.HandleSpellcastStart(unit, castGUIDOrSpellName, spellId)
     ns.preventSwingReset = ns.preventSwingReset
         or (ns.NO_RESET_SWING_SPELLS
             and (ns.NO_RESET_SWING_SPELLS[spellToken] or (spellIdNumber and ns.NO_RESET_SWING_SPELLS[spellIdNumber])))
-    if ns.PAUSE_SWING_SPELLS and (ns.PAUSE_SWING_SPELLS[spellToken]
-            or (spellIdNumber and ns.PAUSE_SWING_SPELLS[spellIdNumber])) and not ns.pauseSwingTime then
+    if ShouldPauseSwingForSpell(spellToken, spellIdNumber) and not ns.pauseSwingTime then
         ns.pauseSwingTime = ns.GetAlignedTime()
     end
     ns.RefreshUpdateLoop()
@@ -1313,8 +1323,7 @@ function ns.HandleSpellcastInterruptedOrFailed(unit, castGUIDOrSpellName, spellI
     local now = ns.GetAlignedTime()
     local spellToken = ResolveSpellcastEventSpell(castGUIDOrSpellName, spellId)
     local spellIdNumber = tonumber(spellToken)
-    if ns.PAUSE_SWING_SPELLS and (ns.PAUSE_SWING_SPELLS[spellToken]
-            or (spellIdNumber and ns.PAUSE_SWING_SPELLS[spellIdNumber])) and ns.pauseSwingTime then
+    if ShouldPauseSwingForSpell(spellToken, spellIdNumber) and ns.pauseSwingTime then
         ns.AdjustSwingTimesAfterPause(now)
     end
     if ns.playerClass == "WARRIOR" and ns.warriorQueuedMeleeSpell then
@@ -1672,8 +1681,7 @@ function ns.HandleSpellcastSucceeded(unit, castGUIDOrSpellName, spellId)
     end
     local spellIdNumber = tonumber(spellToken)
 
-    if ns.PAUSE_SWING_SPELLS and (ns.PAUSE_SWING_SPELLS[spellToken]
-            or (spellIdNumber and ns.PAUSE_SWING_SPELLS[spellIdNumber])) and ns.pauseSwingTime then
+    if ShouldPauseSwingForSpell(spellToken, spellIdNumber) and ns.pauseSwingTime then
         ns.AdjustSwingTimesAfterPause(now)
     elseif ns.playerClass == "WARRIOR" and ns.WARRIOR_OVERPOWER_ID
         and (spellToken == ns.WARRIOR_OVERPOWER_ID or spellIdNumber == ns.WARRIOR_OVERPOWER_ID

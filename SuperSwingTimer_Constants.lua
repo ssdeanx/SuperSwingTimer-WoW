@@ -56,7 +56,7 @@ function ns.GetDisplayVersion()
         end
     end
 
-    return "v0.3.0"
+    return "v0.3.1"
 end
 
 -- Reused scratch table for the secret-string probe; no per-call allocation.

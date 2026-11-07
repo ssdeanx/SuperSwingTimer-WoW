@@ -1,4 +1,4 @@
-# Super Swing Timer <span style="color:#00ccff">v0.3.0</span>
+# Super Swing Timer <span style="color:#00ccff">v0.3.1</span>
 
 A fast, customizable **Main Hand**, **Off Hand**, **Ranged**, and **Enemy** swing timer for World of Warcraft Classic clients, featuring class-specific rotation helpers, target debuff bars, and a unified player power bar.
 
@@ -120,6 +120,14 @@ Type `/sst` in chat to open the settings window. Bars stay hidden out of combat 
 ---
 
 ## Recent Releases
+
+### <span style="color:#00ccff">v0.3.1</span> (2026-11-07)
+- **<span style="color:#2ecc71">WoW Forever Native Auras</span>**: Player buffs and target debuffs render through the client's `AuraContainer` API. Buffs use `HELPFUL`; debuffs use `HARMFUL|PLAYER`, so only your own Serpent Sting / Flame Shock / Rend is shown on a shared target.
+- **<span style="color:#2ecc71">Forever-Owned Maelstrom + Weave Ranks</span>**: Maelstrom reading, stack state and the Lightning-Bolt-only reduction live in `SuperSwingTimer_Forever.lua`; the Forever weave table carries the verified Forever ranks (LB 10, CL 4, HW 10, LHW 6, CH 3).
+- **<span style="color:#2ecc71">New Forever Abilities + Slam Rule</span>**: Every new Forever melee ability is tracked per class; Slam (1240193) pauses the swing only without Improved Slam (12862).
+- **<span style="color:#2ecc71">Forever Diagnostics</span>**: `/sst diag` adds `auraGroup`, `maelstrom` and `weave` lines for in-game verification.
+- **<span style="color:#2ecc71">No Cross-Client Logic on Forever</span>**: Every Forever branch is gated on `ns.isForever`; other clients keep their existing paths.
+- **<span style="color:#2ecc71">Test Suite</span>**: 181 headless tests, `0` luacheck warnings across 15 files.
 
 ### <span style="color:#00ccff">v0.3.0</span> (2026-11-06)
 - **<span style="color:#2ecc71">WoW Forever (`16001`) Gate Hardened</span>**: Native `C_SwingTimer` (`PLAYER_SWING`) drives Main Hand, Off Hand, and Ranged bars; the payload duration stays authoritative for its swing.

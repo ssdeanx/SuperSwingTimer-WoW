@@ -135,7 +135,7 @@ end
 --- Read one helpful player aura by spell ID on Forever.
 --  The AuraData table and every field used here are probed before use; a
 --  secret or forbidden value returns nil instead of entering addon logic.
---  This is the Forever path — it does not call the SoD module.
+--  This is the Forever path; it uses C_UnitAuras directly.
 --  @param spellID (number) aura spell ID
 --  @return (table|nil) { spellID, stacks, duration, expirationTime }
 function ns.GetForeverPlayerAura(spellID)
@@ -184,6 +184,126 @@ function ns.GetForeverMaelstromData()
     data.stacks = stacks
     return data
 end
+
+-- ============================================================
+-- 2b. Forever Maelstrom Weapon (weaving input)
+-- ============================================================
+ns.FOREVER_MAELSTROM_AURA_ID = 408505
+ns.FOREVER_MAELSTROM_TALENT_ID = 408498
+ns.foreverMaelstromStacks = 0
+ns.foreverMaelstromMultiplier = 1.0
+
+--- Read the live Maelstrom Weapon stacks on Forever.
+--  Returns nil when the aura is absent or unreadable. An unreadable read
+--  clears the cached value so the weave math can never use stale stacks.
+--  @return (number|nil) stacks in 1..5
+function ns.GetForeverMaelstromStacks()
+    local data = ns.GetForeverMaelstromData()
+    if not data then
+        ns.foreverMaelstromStacks = 0
+        ns.foreverMaelstromMultiplier = 1.0
+        ns.maelstromStacks = 0
+        ns.maelstromCastTimeMultiplier = 1.0
+        return nil
+    end
+    local multiplier = 1.0 - (0.20 * data.stacks)
+    if multiplier < 0 then
+        multiplier = 0
+    end
+    ns.foreverMaelstromStacks = data.stacks
+    ns.foreverMaelstromMultiplier = multiplier
+    ns.maelstromStacks = data.stacks
+    ns.maelstromCastTimeMultiplier = multiplier
+    return data.stacks
+end
+
+--- Cast-time multiplier from Maelstrom Weapon for one weave spell.
+--  Only Lightning Bolt is reduced; Chain Lightning and the heals return 1.0.
+--  @param abbrev (string|nil) weave spell abbreviation
+--  @return (number) multiplier in [0, 1]
+function ns.ForeverMaelstromMultiplier(abbrev)
+    if not ns.isForever or abbrev ~= "LB" then
+        return 1.0
+    end
+    if not ns.GetForeverMaelstromStacks() then
+        return 1.0
+    end
+    return ns.foreverMaelstromMultiplier
+end
+
+--- A successful Lightning Bolt consumes every Maelstrom Weapon stack.
+function ns.ForeverMaelstromConsume()
+    ns.foreverMaelstromStacks = 0
+    ns.foreverMaelstromMultiplier = 1.0
+    ns.maelstromStacks = 0
+    ns.maelstromCastTimeMultiplier = 1.0
+end
+
+-- ============================================================
+-- 2b-2. Forever swing-delay rules
+-- ============================================================
+--- True when a Forever Slam cast should still delay the melee swing.
+--  Improved Slam (12862) explicitly removes Slam's swing delay; without the
+--  talent the cast still pushes the next swing. Non-Forever clients are never
+--  affected because the helper returns false when ns.isForever is false.
+--  @param spellId (number|nil) cast spell ID
+--  @return (boolean) true when the swing should pause for this cast
+function ns.ForeverSlamPausesSwing(spellId)
+    if not ns.isForever or tonumber(spellId) ~= 1240193 then
+        return false
+    end
+    local isPlayerSpell = rawget(_G, "IsPlayerSpell")
+    if type(isPlayerSpell) == "function" then
+        local ok, known = pcall(isPlayerSpell, 12862)
+        if ok then
+            return known ~= true
+        end
+    end
+    -- Unknown talent state: keep the delay rather than dropping it.
+    return true
+end
+
+-- ============================================================
+-- 2c. Forever weave spell families
+-- ============================================================
+-- Ranks verified on ForeverDB (build 1.60.1.70862). The live GetSpellInfo
+-- supplies each rank's cast time, so the weave marker uses the real Forever
+-- value: LB r1 1.5 s, r2 2.0 s, r3-r10 2.5 s (Classic r4+ is 3.0 s);
+-- CL 2.5 s for every rank (Forever changed it from 2.0 s); HW 2.5 s;
+-- LHW 1.5 s; CH 2.5 s. TBC-only rank IDs do not exist on Forever and are
+-- intentionally absent.
+ns.FOREVER_WEAVE_SPELL_GROUPS = {
+    {
+        abbrev = "LB",
+        label = "Lightning Bolt",
+        castTime = 2.5,
+        ids = { 403, 529, 548, 915, 943, 6041, 10391, 10392, 15207, 15208 },
+    },
+    {
+        abbrev = "CL",
+        label = "Chain Lightning",
+        castTime = 2.5,
+        ids = { 421, 930, 2860, 10605 },
+    },
+    {
+        abbrev = "HW",
+        label = "Healing Wave",
+        castTime = 2.5,
+        ids = { 331, 332, 547, 913, 939, 959, 8005, 10395, 10396, 25357 },
+    },
+    {
+        abbrev = "LHW",
+        label = "Lesser Healing Wave",
+        castTime = 1.5,
+        ids = { 8004, 8008, 8010, 10466, 10467, 10468 },
+    },
+    {
+        abbrev = "CH",
+        label = "Chain Heal",
+        castTime = 2.5,
+        ids = { 1064, 10622, 10623 },
+    },
+}
 
 -- ============================================================
 -- 3. Forever tracked spell data
@@ -251,6 +371,7 @@ ns.FOREVER_BUFF_SPELLS = {
         425336, -- Rage of the Farseer (Forever: new, +30% attack speed, 25 s)
         408505, -- Maelstrom Weapon aura (Instant, 30 s, -20% Lightning Bolt)
         408498, -- Maelstrom Weapon talent/buff record (passive; harmless if not an aura)
+        1223031, -- Improved Stormstrike (Forever: 15 s mana-regen buff)
         -- Windfury Totem r1-r3 / Grace of Air Totem r1-r3
         8512, 10613, 10614, 8835, 10627, 25359,
     },
@@ -285,7 +406,8 @@ ns.FOREVER_BUFF_SPELLS = {
         5277,  -- Evasion
         2983, 8696, 11305, -- Sprint r1-r3
         1856, 1857, -- Vanish r1-r2
-        14179, -- Premeditation (Forever: 20 s)
+        14179, -- Premeditation (Classic rank)
+        14183, -- Premeditation (Forever: 20 s)
         36554, -- Shadowstep
         31209, -- Cloak of Shadows
         14278, -- Ghostly Strike (Forever: 7 s)
@@ -323,13 +445,16 @@ ns.FOREVER_DEBUFF_SPELLS = {
         770, 778, 9749, 9907,                         -- Faerie Fire (Forever: usable in forms, 40 s)
         99, 1735, 9490, 9747, 9898,                   -- Demoralizing Roar (Forever: 30 s)
         -- Mangle 33876/33878 and Faerie Fire (Feral) 16857 were removed from
-        -- Forever; do not add them back.
+        -- Forever 1.60.1 (Primal Bite 407995 replaces Mangle and has no
+        -- debuff); do not add them back.
     },
     SHAMAN = {
         8050, 8052, 8053, 10447, 10448, 29228,        -- Flame Shock (Forever: 12 s)
         17364,                                        -- Stormstrike (Forever: 12 s)
         8056, 8058, 10472, 10473,                     -- Frost Shock (Forever: 8 s slow)
-        -- Earth Shock's 2 s lockout is a school lock, not a trackable aura.
+        -- Earth Shock r1-r7 (2 s school lockout; harmless if the client
+        -- exposes it as a plain debuff aura).
+        8042, 8044, 8045, 8046, 10412, 10413, 10414,
     },
     PALADIN = {
         -- Judgement of the Crusader r2-r6 (Forever: 40 s)
@@ -356,6 +481,7 @@ ns.FOREVER_DEBUFF_SPELLS = {
         -- Hunter's Mark: Forever ranks 1-4 are 1130/14323/14324/14325 (120 s).
         1130, 14323, 14324, 14325,
         1310533,                                                       -- Lacerating Strikes (Forever: 21 s bleed)
+        1265831,                                                       -- Savage Rend (Forever pet bleed, 18 s)
     },
 }
 
@@ -372,19 +498,27 @@ ns.FOREVER_NEW_ABILITY_CANDIDATES = {
     ROGUE = {
         1329283, -- Shank (off-hand strike, not a swing)
         399956,  -- Mutilate
+        1329256, -- Blood Splatter (passive; no aura, harmless)
+        1328825, -- Poised (passive; no aura, harmless)
     },
     DRUID = {
         407995,  -- Primal Bite (replaces Mangle)
+        16958,   -- Blood Frenzy (passive; no aura, harmless)
+        1223246, -- Rend and Tear (passive; no aura, harmless)
+        417051,  -- Natural Reaction (passive; no aura, harmless)
     },
     SHAMAN = {
         408341,  -- Fire Nova
     },
     PALADIN = {
         679,     -- Holy Strike
+        1311606, -- Holy Shock (Forever: 10 s cooldown)
     },
     HUNTER = {
         1317257, -- Strider Kick
         19306,   -- Counterattack
+        1495,    -- Mongoose Bite
+        2973,    -- Raptor Strike
     },
 }
 
@@ -526,17 +660,44 @@ local function GetBarTexture()
         or "Interface\\TargetingFrame\\UI-StatusBar"
 end
 
+-- Debuff bars exposed by the classic modules. The Forever module counts the
+-- visible ones itself so it never needs a base-file hook (and never reads
+-- aura data to place the rows).
+local DEBUFF_BARS_BY_CLASS = {
+    WARRIOR = { "warriorDeepWoundsBar", "warriorRendBar", "warriorThunderClapBar",
+        "warriorDemoShoutBar", "warriorSunderArmorBar" },
+    ROGUE = { "rogueRuptureBar" },
+    PALADIN = { "paladinJudgementBar", "paladinSealVengeanceBar" },
+    SHAMAN = { "shamanFlameShockBar" },
+    DRUID = {},
+    HUNTER = {},
+}
+
+--- Count the classic debuff bars that are currently visible for this class.
+--  The bars are addon-owned frames, so IsShown() is a plain boolean.
+--  @return (number) visible debuff bar count
+local function CountVisibleDebuffBars()
+    local names = DEBUFF_BARS_BY_CLASS[ns.playerClass]
+    if not names then
+        return 0
+    end
+    local count = 0
+    for _, name in ipairs(names) do
+        local bar = ns[name]
+        if bar and bar.IsShown and bar:IsShown() then
+            count = count + 1
+        end
+    end
+    return count
+end
+
 --- Vertical offset (above the primary bar) for the native icon rows.
---  SuperSwingTimer_ClassMods.lua publishes the exact offset its classic icon
---  groups use (8 px above the tallest visible debuff bar). Reusing it keeps
---  the Forever rows in the same place without reading any aura data.
+--  Icons sit above the tallest visible debuff bar, with a fixed gap when no
+--  bar is visible. Self-contained: no base-file hook is required.
 --  @return (number) offset in pixels
 local function ComputeIconYOffset()
-    local offset = ns.debuffStackIconOffset
-    if type(offset) == "number" and offset > 0 then
-        return offset
-    end
-    return 8
+    local barHeight = ns.DEBUFF_BAR_HEIGHT or 8
+    return 8 + (CountVisibleDebuffBars() * (barHeight + 2))
 end
 
 --- Build a colour curve that turns the duration text red below 4 seconds.

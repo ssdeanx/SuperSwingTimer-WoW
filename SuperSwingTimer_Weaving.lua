@@ -25,6 +25,19 @@ end
 
 GetClock()
 
+-- Forever uses its own secret-safe reader (ns.GetForeverPlayerAura, defined in
+-- SuperSwingTimer_Forever.lua). Every other client keeps its existing reader
+-- unchanged.
+local function GetPlayerBuffAura(spellID)
+	if ns.isForever and ns.GetForeverPlayerAura then
+		return ns.GetForeverPlayerAura(spellID)
+	end
+	if ns.GetSoDAuraData then
+		return ns.GetSoDAuraData("player", spellID, "HELPFUL")
+	end
+	return nil
+end
+
 local function GetLatencySeconds()
 	if ns.cachedLatency and ns.cachedLatency > 0 then
 		return ns.cachedLatency
@@ -61,10 +74,10 @@ local function GetLiveSpellHasteMultiplier()
 	-- Bloodlust (2825) / Heroism (32182): +30% haste (multiplier 1.30)
 	-- Berserking (20554, 26285): 10% - 30%
 	local buffHasteMult = 1.0
-	if type(ns.UnitBuff) == "function" or type(ns.GetSoDAuraData) == "function" then
+	if type(ns.UnitBuff) == "function" or ns.isForever or type(ns.GetSoDAuraData) == "function" then
 		local bl = false
-		if ns.GetSoDAuraData then
-			bl = (ns.GetSoDAuraData("player", 2825, "HELPFUL") ~= nil) or (ns.GetSoDAuraData("player", 32182, "HELPFUL") ~= nil)
+		if ns.isForever or ns.GetSoDAuraData then
+			bl = (GetPlayerBuffAura(2825) ~= nil) or (GetPlayerBuffAura(32182) ~= nil)
 		end
 
 		local berserk = false
@@ -113,11 +126,11 @@ local function GetEffectiveSpellCastTime(spellInfo)
 	end
 
 	-- Check for instant-cast buffs
-	if type(ns.UnitBuff) == "function" or type(ns.GetSoDAuraData) == "function" then
+	if type(ns.UnitBuff) == "function" or ns.isForever or type(ns.GetSoDAuraData) == "function" then
 		-- Nature's Swiftness (16188): next Nature spell is instant
 		local nsBuff = false
-		if ns.GetSoDAuraData then
-			nsBuff = (ns.GetSoDAuraData("player", 16188, "HELPFUL") ~= nil)
+		if ns.isForever or ns.GetSoDAuraData then
+			nsBuff = (GetPlayerBuffAura(16188) ~= nil)
 		end
 		if not nsBuff and type(ns.UnitBuff) == "function" then
 			local idx = 1
@@ -139,8 +152,8 @@ local function GetEffectiveSpellCastTime(spellInfo)
 		local isDamageSpell = (spellInfo.abbrev == "LB" or spellInfo.abbrev == "CL")
 		if isDamageSpell then
 			local emBuff = false
-			if ns.GetSoDAuraData then
-				emBuff = (ns.GetSoDAuraData("player", 16166, "HELPFUL") ~= nil)
+			if ns.isForever or ns.GetSoDAuraData then
+				emBuff = (GetPlayerBuffAura(16166) ~= nil)
 			end
 			if not emBuff and type(ns.UnitBuff) == "function" then
 				local idx = 1
@@ -163,8 +176,8 @@ local function GetEffectiveSpellCastTime(spellInfo)
 		local isPowerSurgeSpell = (spellInfo.abbrev == "CL" or spellInfo.abbrev == "HW" or spellInfo.abbrev == "LHW" or spellInfo.abbrev == "CH")
 		if isPowerSurgeSpell then
 			local psBuff = false
-			if ns.GetSoDAuraData then
-				psBuff = (ns.GetSoDAuraData("player", 415100, "HELPFUL") ~= nil)
+			if ns.isForever or ns.GetSoDAuraData then
+				psBuff = (GetPlayerBuffAura(415100) ~= nil)
 			end
 			if not psBuff and type(ns.UnitBuff) == "function" then
 				local idx = 1
@@ -184,9 +197,15 @@ local function GetEffectiveSpellCastTime(spellInfo)
 		end
 	end
 
-	-- Maelstrom Weapon (SoD: 408505)
+	-- Maelstrom Weapon.
+	-- Forever: the read, stack clamp and cast-time multiplier all live in
+	-- SuperSwingTimer_Forever.lua (ns.ForeverMaelstromMultiplier). This path
+	-- does not call any other client's aura module.
+	-- Every other client: existing path unchanged.
 	local maelstromMult = 1.0
-	if type(ns.GetSoDAuraData) == "function" or type(ns.UnitBuff) == "function" then
+	if ns.isForever and ns.ForeverMaelstromMultiplier then
+		maelstromMult = ns.ForeverMaelstromMultiplier(spellInfo.abbrev)
+	elseif type(ns.GetSoDAuraData) == "function" or type(ns.UnitBuff) == "function" then
 		local mswData = (ns.GetSoDAuraData and ns.GetSoDAuraData("player", 408505, "HELPFUL"))
 		if mswData then
 			local count = mswData.count or 1
@@ -216,7 +235,8 @@ local function GetEffectiveSpellCastTime(spellInfo)
 			end
 		end
 	end
-	if maelstromMult == 1.0 and ns.maelstromCastTimeMultiplier ~= nil then
+	-- Legacy fallback, unchanged for every non-Forever client.
+	if not ns.isForever and maelstromMult == 1.0 and ns.maelstromCastTimeMultiplier ~= nil then
 		maelstromMult = ns.maelstromCastTimeMultiplier
 	end
 
@@ -283,6 +303,11 @@ local function ResolveSpellInfo(group)
 				spellName = spellInfo[1]
 				spellIcon = spellInfo[3]
 				castTime = spellInfo[4]
+			end
+			-- Data-driven fallback for families that carry a base cast time
+			-- (the Forever table does; the shared table does not).
+			if (not castTime or castTime <= 0) and group.castTime then
+				castTime = group.castTime * 1000
 			end
 			if spellName and castTime and castTime > 0 then
 				return {
@@ -356,7 +381,10 @@ function ns.RebuildWeaveSpellCatalog()
 	state.trackedSpellNameLookup = {}  -- name → spellInfo for Classic TBC events
 	state.defaultSpellId = nil
 
-	for _, group in ipairs(ns.WEAVE_SPELL_GROUPS or {}) do
+	-- Forever uses its own verified rank list; every other client keeps the
+	-- existing family table unchanged.
+	local groups = (ns.isForever and ns.FOREVER_WEAVE_SPELL_GROUPS) or ns.WEAVE_SPELL_GROUPS or {}
+	for _, group in ipairs(groups) do
 		local familyEnabled = true
 		if ns.GetWeaveFamilyEnabled then
 			familyEnabled = ns.GetWeaveFamilyEnabled(group.abbrev)
@@ -679,6 +707,12 @@ function ns.HandleWeavingSpellcast(event, unit, castGUIDOrSpellName, spellId)
 		if spellInfo then
 			state.isCasting = false
 			state.lastSpellId = spellInfo.spellId
+			-- Forever: a successful Lightning Bolt consumes every Maelstrom
+			-- Weapon stack. Reading the aura is illegal in combat, so clear the
+			-- cached value from the event instead of trusting a stale scan.
+			if ns.isForever and spellInfo.abbrev == "LB" and ns.ForeverMaelstromConsume then
+				ns.ForeverMaelstromConsume()
+			end
 		end
 		state.currentSpellId = nil
 		state.currentSpellName = nil

@@ -149,7 +149,7 @@ local function RegisterSSTTests()
         IsTrue(f ~= nil, "SuperSwingTimer.toc must exist")
         local content = f:read("*all")
         f:close()
-        IsTrue(content:find("## Version: v0.3.0", 1, true) ~= nil, "TOC Version must be v0.3.0")
+        IsTrue(content:find("## Version: v0.3.1", 1, true) ~= nil, "TOC Version must be v0.3.1")
 
         -- The settings panel reads its label from TOC metadata; keep the
         -- helper and the TOC in lockstep so a release bump cannot drift.
@@ -2888,6 +2888,192 @@ local function RegisterSSTTests()
         IsTrue(ok, 'SafeNumber must not raise on a restricted conversion: ' .. tostring(result))
         AreEqual(result, 42,
             'SafeNumber must fall back when the numeric conversion raises')
+    end
+
+    local ForeverAura = WoWUnit('SST-ForeverAura', 'PLAYER_ENTERING_WORLD')
+
+    function ForeverAura:TOC_LoadsForeverModule()
+        local f = io.open("SuperSwingTimer.toc", "r")
+        IsTrue(f ~= nil, "SuperSwingTimer.toc must exist")
+        local content = f:read("*all")
+        f:close()
+        IsTrue(content:find("SuperSwingTimer_Forever.lua", 1, true) ~= nil,
+            "TOC must load SuperSwingTimer_Forever.lua")
+    end
+
+    function ForeverAura:WeaveFamilies_HaveForeverRanks()
+        local groups = ns.FOREVER_WEAVE_SPELL_GROUPS or {}
+        local byAbbrev = {}
+        for _, group in ipairs(groups) do
+            byAbbrev[group.abbrev] = group
+        end
+        IsTrue(byAbbrev.LB ~= nil, "LB family must exist")
+        AreEqual(#byAbbrev.LB.ids, 10, "Forever LB must have 10 ranks")
+        AreEqual(byAbbrev.LB.ids[10], 15208, "Forever LB rank 10 is 15208")
+        AreEqual(#byAbbrev.CL.ids, 4, "Forever CL must have 4 ranks")
+        AreEqual(byAbbrev.CL.ids[4], 10605, "Forever CL rank 4 is 10605")
+        AreEqual(#byAbbrev.HW.ids, 10, "Forever HW must have 10 ranks")
+        AreEqual(byAbbrev.HW.ids[10], 25357, "Forever HW rank 10 is 25357")
+        AreEqual(#byAbbrev.LHW.ids, 6, "Forever LHW must have 6 ranks")
+        AreEqual(#byAbbrev.CH.ids, 3, "Forever CH must have 3 ranks")
+    end
+
+    function ForeverAura:Maelstrom_ReadsAndConsumes()
+        local prevForever = ns.isForever
+        local prevCUnitAuras = rawget(_G, 'C_UnitAuras')
+        local prevSecret = rawget(_G, 'issecretvalue')
+        local prevSecrecy = ns.GetSpellAuraSecrecy
+
+        ns.isForever = true
+        ns.GetSpellAuraSecrecy = function() return 0 end -- NeverSecret
+        rawset(_G, 'issecretvalue', function() return false end)
+        rawset(_G, 'C_UnitAuras', {
+            GetPlayerAuraBySpellID = function(spellID)
+                if spellID == 408505 then
+                    return { spellId = 408505, applications = 3, duration = 20, expirationTime = 100 }
+                end
+                return nil
+            end,
+        })
+
+        AreEqual(ns.GetForeverMaelstromStacks(), 3, "Maelstrom stacks must be read from the Forever aura")
+        IsTrue(math.abs(ns.ForeverMaelstromMultiplier("LB") - 0.4) < 1e-9,
+            "3 stacks = 40% cast time on LB")
+        AreEqual(ns.ForeverMaelstromMultiplier("CL"), 1.0, "CL must not receive the reduction")
+        ns.ForeverMaelstromConsume()
+        AreEqual(ns.foreverMaelstromStacks, 0, "consume must clear the stacks")
+
+        ns.GetSpellAuraSecrecy = prevSecrecy
+        ns.isForever = prevForever
+        rawset(_G, 'C_UnitAuras', prevCUnitAuras)
+        rawset(_G, 'issecretvalue', prevSecret)
+    end
+
+    function ForeverAura:Maelstrom_SecretIsRejected()
+        local prevForever = ns.isForever
+        local prevCUnitAuras = rawget(_G, 'C_UnitAuras')
+        local prevSecret = rawget(_G, 'issecretvalue')
+        local prevSecrecy = ns.GetSpellAuraSecrecy
+        local secret = setmetatable({}, { __tostring = function() return "secret" end })
+
+        ns.isForever = true
+        ns.GetSpellAuraSecrecy = function() return 0 end
+        rawset(_G, 'issecretvalue', function(value) return value == secret end)
+        rawset(_G, 'C_UnitAuras', {
+            GetPlayerAuraBySpellID = function()
+                return { spellId = 408505, applications = secret, duration = 20, expirationTime = 100 }
+            end,
+        })
+
+        AreEqual(ns.GetForeverMaelstromStacks(), nil, "a secret stack count must return nil")
+        AreEqual(ns.ForeverMaelstromMultiplier("LB"), 1.0, "unreadable stacks must not reduce cast time")
+
+        ns.GetSpellAuraSecrecy = prevSecrecy
+        ns.isForever = prevForever
+        rawset(_G, 'C_UnitAuras', prevCUnitAuras)
+        rawset(_G, 'issecretvalue', prevSecret)
+    end
+
+    function ForeverAura:Weave_UsesForeverRanksAndLBOnly()
+        local prevForever = ns.isForever
+        local prevCUnitAuras = rawget(_G, 'C_UnitAuras')
+        local prevSecret = rawget(_G, 'issecretvalue')
+        local prevSecrecy = ns.GetSpellAuraSecrecy
+        local prevGetSpellInfo = _G.GetSpellInfo
+
+        ns.isForever = true
+        ns.GetSpellAuraSecrecy = function() return 0 end
+        rawset(_G, 'issecretvalue', function() return false end)
+        rawset(_G, 'C_UnitAuras', {
+            GetPlayerAuraBySpellID = function(spellID)
+                if spellID == 408505 then
+                    return { spellId = 408505, applications = 3, duration = 20, expirationTime = 100 }
+                end
+                return nil
+            end,
+        })
+        _G.GetSpellInfo = function(id)
+            local cast = 1500
+            if id == 15208 then cast = 2500 end
+            if id == 10605 then cast = 2500 end
+            return "Spell-" .. tostring(id), "", "icon", cast, 0, 30, id
+        end
+
+        IsTrue(math.abs(ns.GetEffectiveSpellCastTime({ spellId = 15208, abbrev = "LB", castTime = 2.5 }) - 1.0) < 1e-9,
+            "Forever LB rank 10 at 3 stacks = 1.0 s")
+        IsTrue(math.abs(ns.GetEffectiveSpellCastTime({ spellId = 10605, abbrev = "CL", castTime = 2.5 }) - 2.5) < 1e-9,
+            "Forever CL keeps its 2.5 s cast time (no Maelstrom reduction)")
+
+        _G.GetSpellInfo = prevGetSpellInfo
+        ns.GetSpellAuraSecrecy = prevSecrecy
+        ns.isForever = prevForever
+        rawset(_G, 'C_UnitAuras', prevCUnitAuras)
+        rawset(_G, 'issecretvalue', prevSecret)
+    end
+
+    function ForeverAura:SlamPauseRule_ForeverOnly()
+        local prevForever = ns.isForever
+        local prevIsPlayerSpell = _G.IsPlayerSpell
+
+        ns.isForever = true
+        _G.IsPlayerSpell = function(id) return id == 12862 end
+        IsFalse(ns.ForeverSlamPausesSwing(1240193), "Improved Slam removes the swing delay")
+
+        _G.IsPlayerSpell = function() return false end
+        IsTrue(ns.ForeverSlamPausesSwing(1240193), "without Improved Slam the cast delays the swing")
+        IsFalse(ns.ForeverSlamPausesSwing(1464), "other Slam ranks are not the Forever rule")
+
+        ns.isForever = false
+        IsFalse(ns.ForeverSlamPausesSwing(1240193), "non-Forever clients never use the rule")
+
+        ns.isForever = prevForever
+        _G.IsPlayerSpell = prevIsPlayerSpell
+    end
+
+    function ForeverAura:NewAbilities_AreTracked()
+        local function has(list, id)
+            for _, value in ipairs(list or {}) do
+                if value == id then return true end
+            end
+            return false
+        end
+        local function hasAnywhere(id)
+            for _, list in pairs(ns.FOREVER_BUFF_SPELLS or {}) do
+                if has(list, id) then return true end
+            end
+            for _, list in pairs(ns.FOREVER_DEBUFF_SPELLS or {}) do
+                if has(list, id) then return true end
+            end
+            for _, list in pairs(ns.FOREVER_NEW_ABILITY_CANDIDATES or {}) do
+                if has(list, id) then return true end
+            end
+            return false
+        end
+        local required = {
+            402927, 1310222, 1329555, 1240193, -- Warrior
+            1329283, 1329328, 399956, 1328825, -- Rogue
+            1328617, 407995, 1223246, 417051, -- Druid
+            408498, 425336, 408341, 1223031,  -- Shaman
+            679, 1311649, 20183, 1310735,      -- Paladin
+            1317257, 1310533, 19306, 19552, 13161, 1265831, -- Hunter
+        }
+        for _, id in ipairs(required) do
+            IsTrue(hasAnywhere(id), "new Forever ability " .. tostring(id) .. " must be tracked")
+        end
+    end
+
+    function ForeverAura:DruidDebuffs_ExcludeRemovedSpells()
+        local function has(list, id)
+            for _, value in ipairs(list or {}) do
+                if value == id then return true end
+            end
+            return false
+        end
+        local druid = ns.FOREVER_DEBUFF_SPELLS.DRUID
+        IsFalse(has(druid, 16857), "Faerie Fire (Feral) was removed from Forever")
+        IsFalse(has(druid, 33876), "Mangle (cat) was removed from Forever")
+        IsFalse(has(druid, 33878), "Mangle (bear) was removed from Forever")
+        IsTrue(has(druid, 770), "base Faerie Fire must stay tracked")
     end
 
     local nGroups = 0

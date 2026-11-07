@@ -423,6 +423,63 @@ addCheck("secrets", "secrets", function()
     return "ok", detail
 end)
 
+addCheck("auraGroup", "aura groups", function()
+    if not ns.isForever then
+        return "skip", "not a Forever client"
+    end
+    if type(ns.GetForeverAuraDiagnostics) ~= "function" then
+        return "skip", "Forever module not loaded"
+    end
+    local d = ns.GetForeverAuraDiagnostics()
+    if type(d) ~= "table" then
+        return "fail", "no diagnostics"
+    end
+    local parts = {
+        "native=" .. tostring(d.nativeActive),
+        "buffContainer=" .. tostring(d.buffContainer),
+        "debuffContainer=" .. tostring(d.debuffContainer),
+        "buffFrames=" .. tostring(d.buffFrames),
+        "debuffFrames=" .. tostring(d.debuffFrames),
+        "buffSpells=" .. tostring(d.buffSpells),
+        "debuffSpells=" .. tostring(d.debuffSpells),
+        "auraSecret=" .. tostring(d.auraSecret),
+        "attempts=" .. tostring(d.initAttempts),
+    }
+    if d.initError then
+        parts[#parts + 1] = "err=" .. tostring(d.initError)
+    end
+    if d.nativeActive then
+        return "ok", table_concat(parts, " ")
+    end
+    return "warn", table_concat(parts, " ")
+end)
+
+addCheck("maelstrom", "maelstrom", function()
+    if not (ns.isForever and ns.playerClass == "SHAMAN") then
+        return "skip", "not a Forever Shaman"
+    end
+    local readable505 = ns.IsSpellAuraReadable and ns.IsSpellAuraReadable(408505) or false
+    local readable498 = ns.IsSpellAuraReadable and ns.IsSpellAuraReadable(408498) or false
+    local data = ns.GetForeverMaelstromData and ns.GetForeverMaelstromData()
+    local stacks = data and data.stacks or nil
+    return "ok", string_format("aura505=%s aura498=%s stacks=%s mult=%s",
+        tostring(readable505), tostring(readable498), tostring(stacks),
+        ns.foreverMaelstromMultiplier and string_format("%.2f", ns.foreverMaelstromMultiplier) or "nil")
+end)
+
+addCheck("weave", "weave", function()
+    if not (ns.isForever and ns.playerClass == "SHAMAN") then
+        return "skip", "not a Forever Shaman"
+    end
+    local info = ns.GetWeaveDisplayInfo and ns.GetWeaveDisplayInfo()
+    if type(info) ~= "table" then
+        return "warn", "no active weave window (swing idle or assist disabled)"
+    end
+    return "ok", string_format("spell=%s cast=%.2f marker=%.2f safe=%s",
+        tostring(info.spellAbbrev), info.castTime or 0, info.markerFraction or 0,
+        tostring(info.safe))
+end)
+
 addCheck("ranged", "ranged", function()
     -- Which source is driving the Hunter ranged cycle: the native PLAYER_SWING
     -- event, the combat-log Auto Shot signal, or the Auto Shot cooldown.

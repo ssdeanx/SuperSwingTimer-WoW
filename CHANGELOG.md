@@ -4,6 +4,28 @@
 > Sections: **Added** / **Changed** / **Fixed** / **Removed** / **Performance** / **Security** / **Docs** / **Internal** / **Notes**
 > DB schema migrations are listed under **Notes** per version.
 
+## v0.3.1 - 2026-11-07
+
+### Added
+
+- **WoW Forever native aura rows (Forever only).** `SuperSwingTimer_Forever.lua` is now loaded from the TOC. Player buffs render through a native `AuraContainer` (`HELPFUL` on `player`); target debuffs through a second container (`HARMFUL|PLAYER`, so only the player's own Serpent Sting, Flame Shock, Rend, etc. is shown). The client fills `SetIcon`, `SetDurationText`, `SetApplicationCount` and `SetDurationBar`; secret aura fields never enter addon code.
+- **New Forever abilities and the Slam swing rule.** All new Forever melee abilities are tracked per class (Victory Rush, Spearing Strike, Reckless Swings, Slam, Shank, Venom, Mutilate, Poised, Blood Splatter, Premeditation, Primal Bite, Lacerate, Rend and Tear, Natural Reaction, Blood Frenzy, Improved Stormstrike, Fire Nova, Holy Strike, Seal of Fury, Judgement of Fury, Unsealed Wrath, Holy Shock, Strider Kick, Lacerating Strikes, Counterattack, Deadly Aspects, Aspect of the Beast, Savage Rend). Forever Slam (1240193) pauses the swing only when Improved Slam (12862) is not known; the rule is gated so every other client keeps the existing pause list.
+- **Forever-owned Maelstrom Weapon and weave ranks.** `GetForeverPlayerAura` reads `C_UnitAuras.GetPlayerAuraBySpellID` with secrecy probes; `GetForeverMaelstromStacks`, `ForeverMaelstromMultiplier` and `ForeverMaelstromConsume` own the stack state. Weaving uses `FOREVER_WEAVE_SPELL_GROUPS` on Forever: LB 10 ranks (r1 1.5 s, r2 2.0 s, r3-r10 2.5 s), CL 4 ranks, HW 10, LHW 6, CH 3. Only Lightning Bolt receives the Maelstrom reduction.
+
+### Changed
+
+- TOC `## Version: v0.3.1`; the settings-panel and test fallbacks move together.
+- Weaving gates the Forever branch on `ns.isForever`; every other client keeps its existing reader and family table unchanged.
+
+### Added
+
+- **Forever diagnostics.** `/sst diag` gains three Forever-only lines: `auraGroup` (native rows, containers, frame counts, spell counts, aura-secrecy, init attempts/errors), `maelstrom` (408505/408498 readability, stacks, multiplier) and `weave` (active spell, cast time, marker fraction, safe flag). Non-Forever clients return `skip`.
+
+### Notes
+
+- The Forever path does not use SoD/Classic Era data.
+- Headless suite: 181 tests, 0 luacheck warnings across 15 files.
+
 ## v0.3.0 - 2026-11-06
 
 ### Fixed
