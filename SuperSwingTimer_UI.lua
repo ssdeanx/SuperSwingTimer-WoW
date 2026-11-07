@@ -168,11 +168,21 @@ local function GetBarProgressFraction(bar)
     end
 
     local minValue, maxValue = bar:GetMinMaxValues()
+    -- A bar fed secret power values reports secret min/max/value back
+    -- (SecretAspect.BarValue); arithmetic on them would raise, so the spark
+    -- simply stays at the start.
+    if ns.IsSecretValue(minValue) or ns.IsSecretValue(maxValue) then
+        return 0
+    end
     if type(minValue) ~= "number" or type(maxValue) ~= "number" or maxValue <= minValue then
         return 0
     end
 
-    local value = bar:GetValue() or minValue
+    local value = bar:GetValue()
+    if ns.IsSecretValue(value) then
+        return 0
+    end
+    value = value or minValue
     local fraction = (value - minValue) / (maxValue - minValue)
     if fraction < 0 then
         return 0
@@ -285,6 +295,18 @@ local function SyncBarLabelText(bar, text)
         return
     end
 
+    -- Secret text may be handed to SetText (SecretArguments = AllowedWhenTainted)
+    -- so the value is displayed instead of dropped, but it must never be
+    -- compared with the cached string.
+    if ns.IsSecretValue(text) then
+        bar._renderedLabelText = nil
+        bar.labelText:SetText(text)
+        if bar.labelOutlineText then
+            bar.labelOutlineText:SetText(text)
+        end
+        return
+    end
+
     text = text or ""
     if bar._renderedLabelText == text then
         return
@@ -350,7 +372,11 @@ local function SetBarLabelText(bar, text, shown)
 
     SyncBarLabelText(bar, text)
     if shown == nil then
-        shown = (text or "") ~= ""
+        if ns.IsSecretValue(text) then
+            shown = true
+        else
+            shown = (text or "") ~= ""
+        end
     end
     SetBarLabelShown(bar, shown)
 end
@@ -1571,6 +1597,7 @@ local function ShowBars()
     local cfg = ns.classConfig
     local db = SuperSwingTimerDB or ns.DB_DEFAULTS
     local _, ohSpeed = UnitAttackSpeed("player")
+    ohSpeed = ns.SafeNumber(ohSpeed)
     local hasOffHand = ohSpeed and ohSpeed > 0
     local showEnemy = db.showEnemy ~= false and ns.enemyBar
         and (ns.enemyTargetGUID ~= nil or (ns.timers.enemy and ns.timers.enemy.state == "swinging"))
@@ -1667,7 +1694,7 @@ local function UpdateRangedBar(elapsed)
     if not f or not t then return end
 
     if ns.channeling and UnitChannelInfo then
-        local channelName, _, _, startTimeMs, endTimeMs = UnitChannelInfo("player")
+        local channelName, _, _, startTimeMs, endTimeMs = ns.Scrub(UnitChannelInfo("player"))
         if not channelName and ns.channelingSpellId and ns.GetSpellInfo then
             channelName = ns.GetSpellInfo(ns.channelingSpellId)
         end
@@ -2628,6 +2655,7 @@ function ns.ApplyVisibility()
     local cfg = ns.classConfig or {}
     local db = SuperSwingTimerDB or ns.DB_DEFAULTS
     local _, ohSpeed = UnitAttackSpeed("player")
+    ohSpeed = ns.SafeNumber(ohSpeed)
     local hasOffHand = ohSpeed and ohSpeed > 0
     local inCombat = (ns.playerInCombat == true) or (InCombatLockdown and InCombatLockdown() or false)
     local previewActive = ns.barTestActive == true
@@ -3055,6 +3083,7 @@ function ns.InitBars()
         -- Only create OH bar if player has an OH weapon equipped
         -- (checked via UnitAttackSpeed returning a non-nil ohSpeed)
         local _, ohSpeed = UnitAttackSpeed("player")
+        ohSpeed = ns.SafeNumber(ohSpeed)
         if ohSpeed then
             CreateOHBar()
             -- OH doesn't need drag â€” it follows MH automatically
@@ -3090,6 +3119,7 @@ function ns.UpdateOHBar()
     if not cfg or not cfg.dualWield then return end
 
     local _, ohSpeed = UnitAttackSpeed("player")
+    ohSpeed = ns.SafeNumber(ohSpeed)
     if ohSpeed and ohSpeed > 0 then
         CreateOHBar()
         if ns.ApplyVisibility then

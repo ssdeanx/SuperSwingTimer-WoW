@@ -39,11 +39,15 @@ end
 
 local function GetSpellHastePercent()
 	if type(UnitSpellHaste) == "function" then
-		return math_max(UnitSpellHaste("player") or 0, 0)
+		-- Restricted stats return a secret value; treat it as "unknown" (0)
+		-- instead of doing arithmetic on it.
+		local haste = ns.SafeNumber(UnitSpellHaste("player")) or 0
+		return math_max(haste, 0)
 	end
 
 	if type(GetSpellHaste) == "function" then
-		return math_max(GetSpellHaste() or 0, 0)
+		local haste = ns.SafeNumber(GetSpellHaste()) or 0
+		return math_max(haste, 0)
 	end
 
 	return 0
@@ -452,14 +456,14 @@ end
 
 local function GetLivePlayerCastTiming()
 	if type(UnitCastingInfo) == "function" then
-		local _, _, _, startTimeMs, endTimeMs = UnitCastingInfo("player")
+		local _, _, _, startTimeMs, endTimeMs = ns.Scrub(UnitCastingInfo("player"))
 		if type(startTimeMs) == "number" and type(endTimeMs) == "number" and endTimeMs > startTimeMs then
 			return startTimeMs / 1000, endTimeMs / 1000
 		end
 	end
 
 	if type(UnitChannelInfo) == "function" then
-		local _, _, _, startTimeMs, endTimeMs = UnitChannelInfo("player")
+		local _, _, _, startTimeMs, endTimeMs = ns.Scrub(UnitChannelInfo("player"))
 		if type(startTimeMs) == "number" and type(endTimeMs) == "number" and endTimeMs > startTimeMs then
 			return startTimeMs / 1000, endTimeMs / 1000
 		end

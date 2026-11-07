@@ -2219,7 +2219,7 @@ local function CreateBlizzardOptionsCanvas()
 
     local title = f:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
     title:SetPoint("TOPLEFT", f, "TOPLEFT", 16, -16)
-    title:SetText("Super Swing Timer |cff00ccff" .. (ns.GetDisplayVersion and ns.GetDisplayVersion() or "v0.2.9") .. "|r")
+    title:SetText("Super Swing Timer |cff00ccff" .. (ns.GetDisplayVersion and ns.GetDisplayVersion() or "v0.3.0") .. "|r")
 
     local desc = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     desc:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -8)
@@ -2517,7 +2517,7 @@ local function CreatePanel()
     -- Title
     local title = f:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
     title:SetPoint("TOPLEFT", f, "TOPLEFT", 18, -14)
-    title:SetText("Super Swing Timer |cff00ccff" .. (ns.GetDisplayVersion and ns.GetDisplayVersion() or "v0.2.9") .. "|r")
+    title:SetText("Super Swing Timer |cff00ccff" .. (ns.GetDisplayVersion and ns.GetDisplayVersion() or "v0.3.0") .. "|r")
 
     -- Move/Unlock button in header — toggles move mode and saves positions
     local moveHeaderBtn = CreateFrame("Button", nil, f)
@@ -2971,8 +2971,9 @@ local function CreatePanel()
     if ns.HasNativeSwingTimer and ns.HasNativeSwingTimer() then
         f.hideBlizzardSwingBarsRow = AddQuickToggle(
             "|cff00ccffHide Blizzard Swing Bars|r",
-            function() return SuperSwingTimerDB.hideBlizzardSwingBars ~= false end,
+            function() return not SuperSwingTimerDB or SuperSwingTimerDB.hideBlizzardSwingBars ~= false end,
             function(enabled)
+                if not SuperSwingTimerDB then SuperSwingTimerDB = {} end
                 SuperSwingTimerDB.hideBlizzardSwingBars = enabled
                 if ns.ApplyBlizzardSwingTimerVisibility then
                     ns.ApplyBlizzardSwingTimerVisibility(enabled)

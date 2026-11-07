@@ -373,6 +373,90 @@ addCheck("aura", "aura", function()
     return "ok", path
 end)
 
+addCheck("secrets", "secrets", function()
+    -- Report whether the client is handing the addon restricted values and
+    -- whether the guard detects them. This is the in-game proof that the
+    -- Forever gate is engaging instead of failing open.
+    local probe = rawget(_G, "issecretvalue")
+    if type(probe) ~= "function" then
+        return "skip", "issecretvalue not exposed"
+    end
+
+    local cSecrets = rawget(_G, "C_Secrets")
+    local buildFlag = "?"
+    if type(cSecrets) == "table" and type(cSecrets.HasSecretRestrictions) == "function" then
+        local ok, active = pcall(cSecrets.HasSecretRestrictions)
+        if ok then buildFlag = tostring(active) end
+    end
+
+    local samples = {}
+    local function sample(label, fn)
+        local ok, value = pcall(fn)
+        if not ok then
+            samples[#samples + 1] = label .. "=error"
+        elseif ns.IsSecretValue(value) then
+            samples[#samples + 1] = label .. "=secret"
+        elseif value == nil then
+            samples[#samples + 1] = label .. "=nil"
+        else
+            samples[#samples + 1] = label .. "=plain"
+        end
+    end
+
+    local getRangedHaste = rawget(_G, "GetRangedHaste")
+    if type(getRangedHaste) == "function" then
+        sample("rangedHaste", function() return getRangedHaste() end)
+    end
+    local unitAttackSpeed = rawget(_G, "UnitAttackSpeed")
+    if type(unitAttackSpeed) == "function" then
+        sample("attackSpeed", function() return (select(2, unitAttackSpeed("player"))) end)
+    end
+    local unitPower = rawget(_G, "UnitPower")
+    if type(unitPower) == "function" then
+        sample("power", function() return unitPower("player") end)
+    end
+
+    local detail = string_format("restrictions=%s | %s", buildFlag, table_concat(samples, " "))
+    if detail:find("=error", 1, true) then
+        return "warn", detail
+    end
+    return "ok", detail
+end)
+
+addCheck("ranged", "ranged", function()
+    -- Which source is driving the Hunter ranged cycle: the native PLAYER_SWING
+    -- event, the combat-log Auto Shot signal, or the Auto Shot cooldown.
+    if ns.playerClass ~= "HUNTER" then
+        return "skip", "not a Hunter"
+    end
+    local t = ns.timers and ns.timers.ranged
+    if not t then
+        return "fail", "ranged timer missing"
+    end
+
+    local currentTime = ns.GetAlignedTime()
+    local function age(ts)
+        if type(ts) ~= "number" or ts <= 0 then
+            return "never"
+        end
+        return string_format("%.1fs", currentTime - ts)
+    end
+
+    local _, autoShotDuration = ns.GetAutoShotCooldown()
+    local cleuRestricted = ns.IsRestrictedCombatLog and ns.IsRestrictedCombatLog() or false
+    local parts = {
+        string_format("state=%s", tostring(t.state)),
+        string_format("dur=%.2f", t.duration or 0),
+        string_format("lastSwing=%s", age(t.lastSwing)),
+        string_format("repeat=%s", tostring(ns.hunterAutoRepeatActive == true)),
+        string_format("cd=%s", autoShotDuration and string_format("%.2f", autoShotDuration) or "none"),
+        string_format("swingEvent=%s", age(t.lastNativeStartAt)),
+        string_format("cleuAutoShot=%s", age(ns.lastAutoShotCLEUAt)),
+        string_format("cleuRestricted=%s", tostring(cleuRestricted)),
+    }
+    return "ok", table_concat(parts, " ")
+end)
+
 addCheck("timing", "timing", function()
     local precise = type(GetTimePreciseSec) == "function"
     local aligned = ns.GetAlignedTime
@@ -393,14 +477,20 @@ addCheck("events", "events", function()
     if not frame or type(frame.IsEventRegistered) ~= "function" then
         return "skip", "event frame not exposed"
     end
-    local swingEvent = (ns.HasNativeSwingTimer and ns.HasNativeSwingTimer()) and "PLAYER_SWING"
-        or "COMBAT_LOG_EVENT_UNFILTERED"
+    -- PLAYER_SWING and CLEU are independent capabilities: a client can expose
+    -- the native swing timer and still keep a readable combat log, so report
+    -- each registration separately instead of treating them as exclusive.
     local required = {
-        swingEvent,
         "PLAYER_TARGET_CHANGED",
         "PLAYER_REGEN_DISABLED",
         "PLAYER_REGEN_ENABLED",
     }
+    if ns.HasNativeSwingTimer and ns.HasNativeSwingTimer() then
+        required[#required + 1] = "PLAYER_SWING"
+    end
+    if not (ns.IsRestrictedCombatLog and ns.IsRestrictedCombatLog()) then
+        required[#required + 1] = "COMBAT_LOG_EVENT_UNFILTERED"
+    end
     local missing = {}
     for _, event in ipairs(required) do
         if not frame:IsEventRegistered(event) then

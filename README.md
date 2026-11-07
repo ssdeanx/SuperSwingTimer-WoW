@@ -1,4 +1,4 @@
-# Super Swing Timer <span style="color:#00ccff">v0.2.9</span>
+# Super Swing Timer <span style="color:#00ccff">v0.3.0</span>
 
 A fast, customizable **Main Hand**, **Off Hand**, **Ranged**, and **Enemy** swing timer for World of Warcraft Classic clients, featuring class-specific rotation helpers, target debuff bars, and a unified player power bar.
 
@@ -15,7 +15,7 @@ A fast, customizable **Main Hand**, **Off Hand**, **Ranged**, and **Enemy** swin
 | **Titanforge (WotLK Classic)** | `38002` | <span style="color:#2ecc71">**Full Support**</span> | <span style="color:#2ecc71">**Supported**</span> | <span style="color:#2ecc71">**Full Support**</span> | <span style="color:#2ecc71">**Ready**</span> |
 | **WoW Forever** | `16001` | <span style="color:#2ecc71">**Supported**</span> (`C_SwingTimer`) | <span style="color:#e67e23">**Preview Only**</span> | <span style="color:#e67e23">**Unrestricted APIs Only**</span> | <span style="color:#00ccff">**Compatible**</span> |
 
-> **<span style="color:#e67e23">WoW Forever (`16001`) Note:</span>** WoW Forever restricts `COMBAT_LOG_EVENT_UNFILTERED` and wraps combat auras/cooldowns in secret values, but provides a native `C_SwingTimer` (`PLAYER_SWING`) API. Super Swing Timer automatically detects Forever, switches **Main Hand**, **Off Hand**, and **Ranged** bars to `PLAYER_SWING`, and includes a **Hide Blizzard Swing Bars** toggle (enabled by default on Forever) that turns off Blizzard's default swing bars (`showSwingTimer` CVar) so only your custom bars appear.
+> **<span style="color:#e67e23">WoW Forever (`16001`) Note:</span>** WoW Forever exposes a native `C_SwingTimer` (`PLAYER_SWING`) API and can wrap combat values (unit stats, power, health, cooldowns, auras, cast payloads) in secret values. Super Swing Timer detects Forever, drives **Main Hand**, **Off Hand**, and **Ranged** bars from `PLAYER_SWING`, and gates every restricted read: `UnitAttackSpeed`, `UnitPower`, `UnitHealth`, `UnitCastingInfo`, cooldown tables, aura tables and event payloads are probed before use, so a restricted value degrades to "unknown" instead of raising. The combat log is gated by the client's own `C_CombatLog.IsCombatLogRestricted()` query, so CLEU features stay enabled whenever the log is readable. A **Hide Blizzard Swing Bars** toggle (enabled by default on Forever) turns off Blizzard's default swing bars (`showSwingTimer` CVar) and restores the user's original value when unchecked.
 
 ---
 
@@ -81,7 +81,7 @@ Type `/sst` in chat to open the settings window. Bars stay hidden out of combat 
 
 ```text
 +------------------------------------------------------------------+
-| Super Swing Timer v0.2.9            [ Unlock & Move Bars ]  [X]  |
+| Super Swing Timer v0.3.0            [ Unlock & Move Bars ]  [X]  |
 | Global Scale [=====slider (0.5x–3.0x)=====] [1.0]               |
 |------------------------------------------------------------------|
 | Quick Controls (Tabs: [ All ] [ Visibility ] [ Colors ] [ Class ])|
@@ -121,12 +121,16 @@ Type `/sst` in chat to open the settings window. Bars stay hidden out of combat 
 
 ## Recent Releases
 
-### <span style="color:#00ccff">v0.2.9</span> (2026-11-01)
-- **<span style="color:#2ecc71">WoW Forever (`16001`) Compatibility Gate</span>**: Added native `C_SwingTimer` (`PLAYER_SWING`) support for Main Hand, Off Hand, and Ranged swing bars when `COMBAT_LOG_EVENT_UNFILTERED` is restricted.
-- **<span style="color:#2ecc71">Hide Blizzard Swing Bars (Forever Only)</span>**: Added a Quick Controls toggle (`hideBlizzardSwingBars`, enabled by default on Forever) that disables Blizzard's built-in default swing bars (`showSwingTimer` CVar) and enables Super Swing Timer's custom bars.
-- **<span style="color:#2ecc71">Secret-Value Hardening</span>**: Added `ns.IsSecretValue` and `ns.SafeNumber` guards across `C_UnitAuras`, `C_Spell.GetSpellCooldown`, `UnitAttackSpeed`, `UnitPower`, and `UnitHealth` so restricted client values never cause Lua errors.
-- **<span style="color:#2ecc71">Hunter Range Helper Fallback</span>**: Falls back to `C_SwingTimer.IsTargetWithinSwingRange` on Forever when spell-range queries are restricted.
-- **<span style="color:#2ecc71">Test Suite</span>**: Expanded headless verification to **168 tests** (`0` luacheck warnings across 14 files).
+### <span style="color:#00ccff">v0.3.0</span> (2026-11-06)
+- **<span style="color:#2ecc71">WoW Forever (`16001`) Gate Hardened</span>**: Native `C_SwingTimer` (`PLAYER_SWING`) drives Main Hand, Off Hand, and Ranged bars; the payload duration stays authoritative for its swing.
+- **<span style="color:#2ecc71">Secret-Value Gating Completed</span>**: Every restricted call site (`UnitAttackSpeed`, `UnitPower`, `UnitHealth`, `UnitPowerType`, `GetRangedHaste`, `UnitSpellHaste`, `UnitCastingInfo`, `UnitChannelInfo`, cooldown tables, aura tables, `UnitGUID`, `UnitName`, CLEU and spellcast payloads) is probed or scrubbed before use.
+- **<span style="color:#2ecc71">Secret Values Are Displayed, Not Dropped</span>**: Status bars and font strings accept secrets from tainted code, so restricted power values and enemy names are passed straight to `SetValue`/`SetText` and rendered; only the numeric comparisons are skipped.
+- **<span style="color:#2ecc71">Hunter Ranged Cycle</span>**: Auto Shot restarts no longer abort on the restricted-haste guard, and the combat-log Auto Shot signal remains a fallback when `PLAYER_SWING` does not deliver a ranged swing.
+- **<span style="color:#2ecc71">Fail-Safe Secret Detection</span>**: `ns.IsSecretValue` verifies restricted values behaviourally (arithmetic, string and table probes) after the client probe, so a "not secret" answer can never let a restricted value reach numeric conversion. `/sst diag` now shows a **secrets** line reporting whether the client is handing the addon secret values.
+- **<span style="color:#2ecc71">Combat-Log Gate Corrected</span>**: `C_CombatLog.IsCombatLogRestricted()` is the only authority; a native swing timer no longer disables CLEU features.
+- **<span style="color:#2ecc71">Hide Blizzard Swing Bars (Forever Only)</span>**: Restores the user's original `showSwingTimer` value when unchecked.
+- **<span style="color:#2ecc71">Hunter Range Helper Fallback</span>**: `C_SwingTimer.IsTargetWithinSwingRange` is pcall-guarded and `nil` is treated as "unknown".
+- **<span style="color:#2ecc71">Test Suite</span>**: Expanded headless verification to **171 tests** (`0` luacheck warnings across 14 files).
 
 ### v0.2.8 (2026-10-27)
 - Synced settings panel version display directly with `.toc` metadata via `ns.GetDisplayVersion()`.

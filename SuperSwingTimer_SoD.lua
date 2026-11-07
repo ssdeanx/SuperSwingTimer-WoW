@@ -279,19 +279,24 @@ function ns.GetSoDAuraData(unit, targetSpellId, filter)
     local C_UnitAuras = rawget(_G, "C_UnitAuras")
     if unit == "player" and C_UnitAuras and type(C_UnitAuras.GetPlayerAuraBySpellID) == "function" then
         if type(targetSpellId) == "number" then
-            local auraData = C_UnitAuras.GetPlayerAuraBySpellID(targetSpellId)
-            if auraData then
+            local ok, auraData = pcall(C_UnitAuras.GetPlayerAuraBySpellID, targetSpellId)
+            -- The AuraData table and its fields can be secret on restricted
+            -- clients; probe before indexing or comparing any of them.
+            if ok and not ns.IsSecretValue(auraData) and type(auraData) == "table"
+                and not ns.IsSecretValue(auraData.name)
+                and not ns.IsSecretValue(auraData.sourceUnit)
+                and not ns.IsSecretValue(auraData.spellId) then
                 return {
                     name = auraData.name,
                     rank = nil,
                     icon = auraData.icon,
-                    count = auraData.applications or auraData.count or 0,
-                    debuffType = auraData.dispelName,
-                    duration = auraData.duration or 0,
-                    expirationTime = auraData.expirationTime or 0,
-                    unitCaster = auraData.sourceUnit,
+                    count = ns.SafeNumber(auraData.applications) or ns.SafeNumber(auraData.count) or 0,
+                    debuffType = ns.SafeString(auraData.dispelName),
+                    duration = ns.SafeNumber(auraData.duration) or 0,
+                    expirationTime = ns.SafeNumber(auraData.expirationTime) or 0,
+                    unitCaster = ns.SafeString(auraData.sourceUnit),
                     isPlayerCaster = (auraData.sourceUnit == "player"),
-                    spellID = auraData.spellId or targetSpellId,
+                    spellID = ns.SafeNumber(auraData.spellId) or targetSpellId,
                 }
             end
         end
@@ -328,7 +333,9 @@ end
 -- ============================================================
 -- 6. Standalone Event Listener for SoD Procs & Maelstrom Tracking
 -- ============================================================
-if ns.isSoD then
+-- SoD proc tracking reads CLEU, so it must follow the same restriction gate
+-- as the core combat-log path instead of registering on a restricted client.
+if ns.isSoD and not (ns.IsRestrictedCombatLog and ns.IsRestrictedCombatLog()) then
     local sodEventFrame = CreateFrame("Frame")
     sodEventFrame:RegisterEvent("COMBAT_LOG_EVENT_UNFILTERED")
     sodEventFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
@@ -349,10 +356,19 @@ if ns.isSoD then
 
         if event == "COMBAT_LOG_EVENT_UNFILTERED" then
             local getInfo = rawget(_G, "CombatLogGetCurrentEventInfo")
+            if not getInfo then
+                local cCombatLog = rawget(_G, "C_CombatLog")
+                if type(cCombatLog) == "table" and type(cCombatLog.GetCurrentEventInfo) == "function" then
+                    getInfo = cCombatLog.GetCurrentEventInfo
+                end
+            end
             if not getInfo then return end
 
             local _, subevent, _, sourceGUID, _, _, _, _, _, _, _, spellID = getInfo()
-            local playerGUID = (type(UnitGUID) == "function") and UnitGUID("player") or nil
+            -- Restricted clients can return secret payload fields; scrub before
+            -- the identity comparison below.
+            subevent, sourceGUID, spellID = ns.Scrub(subevent, sourceGUID, spellID)
+            local playerGUID = (type(UnitGUID) == "function") and ns.SafeString(UnitGUID("player")) or nil
 
             if not playerGUID or sourceGUID ~= playerGUID then return end
 

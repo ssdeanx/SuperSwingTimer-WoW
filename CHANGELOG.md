@@ -4,6 +4,49 @@
 > Sections: **Added** / **Changed** / **Fixed** / **Removed** / **Performance** / **Security** / **Docs** / **Internal** / **Notes**
 > DB schema migrations are listed under **Notes** per version.
 
+## v0.3.0 - 2026-11-06
+
+### Fixed
+
+- **Hunter ranged cycle no longer dies on Forever.** `StartSwing("ranged")` calls `GetPlayerRangedHastePercent()`, so the detector crash aborted every Auto Shot restart before the timer was written, while melee (which never calls that function) kept working. The detector fix removes the throw; the combat-log Auto Shot signal is also restored as a fallback for clients where `PLAYER_SWING` does not deliver a ranged swing, guarded by a 1 s window so one cycle is never started twice.
+- **`/sst diag` gains a ranged line**: timer state, duration, last-swing age, auto-repeat flag, Auto Shot cooldown, last `PLAYER_SWING` ranged age, last CLEU Auto Shot age, and whether the combat log is restricted.
+- **Secret detection could fail open (in-game crash fixed).** Two shortcuts added during the v0.3.0 work could report "not secret" for a genuinely restricted value: the build-level `C_Secrets.HasSecretRestrictions()` fast path, and a probe self-test that returned false when the probe raised. That let `ns.SafeNumber(GetRangedHaste())` hand a secret number to `math.max` — the in-game error `attempt to perform numeric conversion on a secret number value` at `SuperSwingTimer_State.lua:241` (repeated every frame while the ranged bar updated). Both fail-open paths are removed.
+  - `ns.IsSecretValue` now verifies behaviourally after the client probe: numbers must survive `math.max` (the exact call that raises in-game — `math.abs` does **not** raise on a restricted number and was the wrong validator), strings must survive concatenation and table indexing, tables must survive iteration. Any doubt reports "secret".
+  - `ns.SafeNumber` runs the documented `scrubsecretvalues` sanitizer first, then converts inside a single `pcall` whose final step is `math.max(n, n)`. A restricted number therefore cannot be returned even when `issecretvalue` answers false.
+  - `GetPlayerRangedHastePercent` guards the whole getter-convert-clamp chain in `pcall`, so the reported line (`State.lua:241`) cannot raise again.
+  - `/sst diag` gains a **secrets** check that reports the build restriction flag and samples `rangedHaste` / `attackSpeed` / `power` as `secret` or `plain`, so the gate can be confirmed in-game.
+- **WoW Forever: every secret-value call site is now gated.** The v0.2.9 gate still let restricted values reach comparisons:
+  - `ns.SafeNumber(x) or tonumber(x)` re-read the value after `ns.SafeNumber` had already rejected it as secret. The fall-through is removed at every site in `SuperSwingTimer_State.lua` and `SuperSwingTimer_ClassMods.lua`; `ns.SafeNumber` is now the only conversion.
+  - `UnitAttackSpeed` (`SecretWhenUnitStatsRestricted`) is gated in `SuperSwingTimer_UI.lua` (ShowBars, ApplyVisibility, InitBars, UpdateOHBar) and `SuperSwingTimer_ClassMods.lua` (seal zone, Judgement marker, preview duration).
+  - `GetRangedHaste` and `UnitSpellHaste` arithmetic is gated in `SuperSwingTimer_State.lua` and `SuperSwingTimer_Weaving.lua`.
+  - `UnitCastingInfo` / `UnitChannelInfo` payloads are scrubbed in `ns.GetUnitCastingSpellInfo`, the ranged bar and weaving cast timing.
+  - `C_Spell.GetSpellCooldown` and the legacy `GetSpellCooldown` returns are gated in both cooldown readers.
+  - `C_UnitAuras.GetAuraDataByIndex` and `GetPlayerAuraBySpellID` tables are probed before any field access.
+  - `UnitGUID` / `UnitName` comparisons in the enemy-target path and the SoD proc listener are secret-safe.
+  - `UnitClass` falls back to `UnitClassBase` when the class token is secret.
+- **`UNIT_SPELLCAST_*` payloads are scrubbed** through `ns.Scrub` (Forever `scrubsecretvalues`) before any comparison, and the CLEU payload is scrubbed before identity comparisons.
+- **Combat-log gate now uses the authoritative client query.** `ns.IsRestrictedCombatLog()` previously returned true whenever `C_SwingTimer` existed, silently disabling every CLEU feature on Forever. It now reports only `C_CombatLog.IsCombatLogRestricted()`; `PLAYER_SWING` and CLEU are independent capabilities and `/sst diag` reports each registration separately.
+- **Native `PLAYER_SWING` duration is authoritative for its swing.** The throttled `UnitAttackSpeed` sync no longer overwrites the payload duration mid-cycle (`t.nativeSwingUntil`).
+- **Restricted `UnitPower` / `UnitHealth` no longer read as 0.** Energy-tick detection, the power bar and the Warrior Execute highlight skip the update instead of treating a secret as an empty pool.
+- **Hide Blizzard Swing Bars restores the user's original CVar value** instead of forcing `showSwingTimer = 1`, and no longer writes `showMH/showOH/showRanged` when the DB is not initialised.
+- **Hunter range fallback treats `nil` as "unknown"** and is pcall-guarded (`C_SwingTimer.IsTargetWithinSwingRange` returns nil when no check could be made).
+- **SoD proc listener respects the combat-log restriction gate** instead of registering CLEU unconditionally when a season is active.
+- **Secret values are passed through, not dropped.** Status bars and font strings accept secret arguments from tainted code (`SecretArguments = AllowedWhenTainted`), so restricted `UnitPower`/`UnitPowerMax` flow straight into `SetMinMaxValues`/`SetValue`/`SetFormattedText`, a restricted enemy `UnitName` flows into `SetText`, and bar labels display secret text without ever comparing or concatenating it. Only the numeric threshold and cache comparisons are skipped.
+- **`UnitPowerType` returns are gated** before they are compared or fed back into `UnitPower`/`UnitPowerMax` (`powerType`/`powerToken`).
+- **The CLEU payload is scrubbed field-by-field** (`C_CombatLog.GetCurrentEventInfo` is `SecretReturns`), and `PLAYER_SWING` owns swing restarts and landing flashes when present so the same swing is never started twice.
+- **The legacy `UnitAura` fallback is pcall-guarded and scrubbed** (it only exists behind the `loadDeprecationFallbacks` CVar).
+- **Bar progress arithmetic is gated** for the secret `BarValue` aspect, so the spark never divides a secret value.
+- **Build-level fast path**: `C_Secrets.HasSecretRestrictions()` is read once at load, so classic clients skip every secret probe and the addon pays nothing for the Forever guards.
+
+### Changed
+
+- Version v0.3.0; the TOC and both settings-panel fallbacks move together.
+
+### Tests
+
+- Headless suite 168 -> 173: `ForeverGate_SecretAttackSpeed_DoesNotThrow`, `ForeverGate_SecretSpellcastPayload_DoesNotThrow`, `ForeverGate_NativeSwingDuration_SurvivesSpeedSync`, `ForeverGate_SecretLabelText_IsPassedThrough`, `ForeverGate_NoSecretRestrictions_FastPath`; `ForeverGate_HandlePlayerSwing_StartsTimers` now asserts that a native swing timer alone does not mark the combat log restricted.
+- Both timing guards were proved by removing the fix and confirming the test fails.
+
 ## v0.2.9 - 2026-11-01
 
 ### Added

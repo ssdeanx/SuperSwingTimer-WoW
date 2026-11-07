@@ -1,0 +1,146 @@
+[
+ {
+  "id": 6673,
+  "title": "Battle Shout Rank 1",
+  "desc": "The warrior shouts, increasing the melee attack power of all party or raid members within 20 yards by 9. Lasts 3 min. Weaker effect (all 7 ranks); duration 3 min instead of 2 min. - Weaker effect (all 7 ranks). Rank 7: 139 instead of 232.",
+  "same": false
+ },
+ {
+  "id": 2565,
+  "title": "Shield Block",
+  "desc": "Increases chance to block by 75% for 7 sec, but will only block 2 attacks. Requires a shield. Requires Defensive Stance.",
+  "same": false
+ },
+ {
+  "id": 871,
+  "title": "Shield Wall",
+  "desc": "Reduces the damage taken from all attacks by 60% for 12 sec. Requires a shield. Requires Defensive Stance.",
+  "same": false
+ },
+ {
+  "id": 12328,
+  "title": "Death Wish",
+  "desc": "When activated, increases your Physical damage done by 20% and makes you immune to Fear effects, but increases all damage you take by 5%. Lasts 30 sec. Data from the WoW Forever client, build 1.60.1.70862, extracted 2026-11-07. World of Warcraft Forever",
+  "same": false
+ },
+ {
+  "id": 1329555,
+  "title": "Reckless Swings",
+  "desc": "Your next 4 melee attacks generate 5 additional Rage. Lasts 8 sec. New in the live client ([build 70790](https://foreverdb.net/changelog/1.60.1.70862)): this talent wasn't in beta build 70450. Data from the WoW Forever client, build 1.60.1.70862, extracted 2026-11-07.",
+  "same": false
+ },
+ {
+  "id": 402927,
+  "title": "Victory Rush",
+  "desc": "Instantly attack the target causing 1 (+15% of attack power) damage and healing you for 10% of your maximum health. Only useable within 20 sec after you kill a non-trivial enemy. Changed in the live client ([build 70658](https://foreverdb.net/changelog/1.60.1.70862)) since beta build 70450: - Tooltip: “Instantly attack the target causing 1 (+15% of attack power) damage and healing you for 10% of your maximum health. Only useable within 20 sec a",
+  "same": false
+ },
+ {
+  "id": 1310222,
+  "title": "Spearing Strike",
+  "desc": "A brutal attack that deals 75% weapon damage. Deals an additional 75% weapon damage against Giants, Dragonkin, and mounted targets. Mounted targets are dismounted. Requires a melee weapon. Requires Battle Stance.",
+  "same": false
+ },
+ {
+  "id": 1328825,
+  "title": "Poised Passive",
+  "desc": "While at maximum Energy, and out of combat, reduce the Energy cost of your next ability by 10. New in the live client ([build 70755](https://foreverdb.net/changelog/1.60.1.70862)): this class ability wasn't in beta build 70450. Data from the WoW Forever client, build 1.60.1.70862, extracted 2026-11-07.",
+  "same": false
+ },
+ {
+  "id": 1329283,
+  "title": "Shank Rank 1",
+  "desc": "Instantly strike with your off-hand weapon, dealing 50% weapon damage and generating 15 Energy. Shank cannot Miss. Requires a melee weapon. New in the live client ([build 70790](https://foreverdb.net/changelog/1.60.1.70862)): this class ability wasn't in beta build 70450.",
+  "same": false
+ },
+ {
+  "id": 1317257,
+  "title": "Strider Kick",
+  "desc": "A powerful kick that deals 100% melee weapon damage and increases movement speed by 30% for 3 sec. Data from the WoW Forever client, build 1.60.1.70862, extracted 2026-11-07. World of Warcraft Forever",
+  "same": false
+ },
+ {
+  "id": 1310533,
+  "title": "Lacerating Strikes",
+  "desc": "Your Mongoose Bite also causes the target to Bleed for damage equal to 40% of the damage done by Mongoose Bite over 21 sec Data from the WoW Forever client, build 1.60.1.70862, extracted 2026-11-07. World of Warcraft Forever",
+  "same": false
+ },
+ {
+  "id": 1310735,
+  "title": "Unsealed Wrath",
+  "desc": "Your melee attacks store a copy of your active Seal for 15 sec, stacking up to 3 times. Landing an attack with a different Seal consumes all stacks, giving the stored Seal its normal chance to activate once per stack. Changed in the live client ([build 70707](https://foreverdb.net/changelog/1.60.1.70862)) since beta build 70450: - Name: Twist of Light → Unsealed Wrath",
+  "same": false
+ },
+ {
+  "id": 20049,
+  "title": "Vengeance",
+  "desc": "Increases your Physical and Holy damage dealt by 1% for 30 sec after landing a non-periodic critical strike. Stacks up to 5 times. Changed in the live client ([build 70707](https://foreverdb.net/changelog/1.60.1.70862)) since beta build 70450: - Place in the tree: tier 5, column 2 → tier 5, column 3",
+  "same": false
+ },
+ {
+  "id": 12292,
+  "title": "Sweeping Strikes",
+  "desc": "Your next 5 melee attacks strike an additional nearby opponent. Requires Battle Stance. Data from the WoW Forever client, build 1.60.1.70862, extracted 2026-11-07.",
+  "same": false
+ },
+ {
+  "id": 13877,
+  "title": "Blade Flurry",
+  "desc": "Increases your melee attack speed by 20% and your melee attacks strike an additional nearby opponent. Lasts 15 sec. Data from the WoW Forever client, build 1.60.1.70862, extracted 2026-11-07. World of Warcraft Forever",
+  "same": false
+ },
+ {
+  "id": 14183,
+  "title": "Premeditation",
+  "desc": "Adds 2 Combo Points to your target. You must add to or use those combo points within 20 sec or the combo points are lost. Changed in the live client ([build 70790](https://foreverdb.net/changelog/1.60.1.70862)) since beta build 70450: - Place in the tree: tier 4, column 2 → tier 3, column 2",
+  "same": false
+ },
+ {
+  "id": 408498,
+  "title": "Maelstrom Weapon",
+  "desc": "When you deal damage with a melee attack, you have a chance to reduce the cast time and Mana cost of your next Lightning Bolt spell by 4%. Stacks up to 5 times. Lasts 30 sec. Data from the WoW Forever client, build 1.60.1.70862, extracted 2026-11-07. World of Warcraft Forever",
+  "same": false
+ },
+ {
+  "id": 425336,
+  "title": "Rage of the Farseer",
+  "desc": "Increases your attack speed by 30% for 25 sec. Data from the WoW Forever client, build 1.60.1.70862, extracted 2026-11-07. World of Warcraft Forever",
+  "same": false
+ },
+ {
+  "id": 16256,
+  "title": "Flurry",
+  "desc": "Increases your attack speed by 6% for your next 3 swings after dealing a melee critical strike. Changed in the live client ([build 70790](https://foreverdb.net/changelog/1.60.1.70862)) since beta build 70450: - Rank 1 tooltip: “Increases your attack speed by 5% for your next 3 swings after dealing a melee critical strike.” → “Increases your attack speed by 6% for your next 3 swings after dealing a melee critical strike.”",
+  "same": false
+ },
+ {
+  "id": 1223031,
+  "title": "Improved Stormstrike",
+  "desc": "When you Stormstrike, you have a 50% chance to gain 50% mana regeneration while casting spells for 15 sec, and Stormstrike's cooldown has a 50% chance to reset each time you Dodge or Parry. Data from the WoW Forever client, build 1.60.1.70862, extracted 2026-11-07. World of Warcraft Forever",
+  "same": false
+ },
+ {
+  "id": 1310661,
+  "title": "Improved Stings",
+  "desc": "Increases the damage of your Serpent Sting ability by 6%, reduces the cooldown of your Viper Sting ability by 2 sec, and increases the duration of your Scorpid Sting ability by 15 sec. Data from the WoW Forever client, build 1.60.1.70862, extracted 2026-11-07. World of Warcraft Forever",
+  "same": false
+ },
+ {
+  "id": 19552,
+  "title": "Deadly Aspects",
+  "desc": "While Aspect of the Hawk is active, Auto Shot has a 2% chance of increasing ranged attack speed by 30% for 12 sec. While Aspect of the Beast is active, all melee auto attacks have a 2% chance of increasing melee attack speed by 30% for 12 sec. Data from the WoW Forever client, build 1.60.1.70862, extracted 2026-11-07. World of Warcraft Forever",
+  "same": false
+ },
+ {
+  "id": 1265831,
+  "title": "Savage Rend Rank 1",
+  "desc": "Slash an enemy with razor talons, causing the target to Bleed for 30 damage over 18 sec and take ?% additional damage from Bleed effects for the duration. Data from the WoW Forever client, build 1.60.1.70862, extracted 2026-11-07. World of Warcraft Forever",
+  "same": false
+ },
+ {
+  "id": 24118,
+  "title": "Lacerate Rank 1",
+  "desc": "Wounds the target causing them to bleed for 119 damage over 21 sec. Requires a melee weapon. Data from the WoW Forever client, build 1.60.1.70862, extracted 2026-11-07.",
+  "same": false
+ }
+]

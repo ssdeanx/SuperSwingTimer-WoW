@@ -56,43 +56,149 @@ function ns.GetDisplayVersion()
         end
     end
 
-    return "v0.2.9"
+    return "v0.3.0"
+end
+
+-- Reused scratch table for the secret-string probe; no per-call allocation.
+local SecretProbeTable = {}
+local function ProbeSecretIndex(value)
+    SecretProbeTable[value] = true
+    local indexed = SecretProbeTable[value] == true
+    SecretProbeTable[value] = nil
+    return indexed
 end
 
 --- Return true when a value is a restricted/secret value on modern clients.
---  Classic Era, TBC Anniversary, and Titanforge do not expose `_G.issecretvalue`,
---  so this returns false with zero overhead there.
+--  The client probe is trusted when it answers "secret". A tainted caller can
+--  receive "false" for a value the engine still refuses to use, so the value is
+--  also verified behaviourally: a secret number rejects math.max (the exact
+--  conversion that raises in-game), a secret string rejects concatenation and
+--  table indexing, a secret table rejects iteration. Any doubt reports "secret".
 --  @param value (any) Value to inspect
---  @return (boolean) true if value is secret or the secret probe raised
+--  @return (boolean) true if the value must not be used in addon logic
 function ns.IsSecretValue(value)
-    if value == nil then return false end
     local probe = rawget(_G, "issecretvalue")
-    if type(probe) ~= "function" then
-        return false
+    if type(probe) == "function" then
+        local ok, res = pcall(probe, value)
+        if ok and res == true then
+            return true
+        end
+        -- A probe that raises is not trusted, and a false answer is verified
+        -- behaviourally below: a tainted caller can receive false for a value
+        -- the engine still refuses to use.
     end
-    local ok, res = pcall(function()
-        if probe(value) == true then return 1 end
-        return 0
-    end)
-    if not ok then
-        return true
+    local valueType = type(value)
+    if valueType == "number" then
+        -- math.max is the operation that raises in-game on a restricted number;
+        -- if it survives, the value is plain.
+        return not pcall(math.max, value, value)
     end
-    return res == 1
+    if valueType == "string" then
+        -- A secret string rejects case conversion and cannot be a table index.
+        if not pcall(string.upper, value) then
+            return true
+        end
+        return not pcall(ProbeSecretIndex, value)
+    end
+    if valueType == "table" then
+        -- A secret table rejects iteration of its contents.
+        return not pcall(next, value)
+    end
+    return false
 end
 
---- Convert a value to a plain number, returning fallback (default nil) if it is a secret value.
+--- Convert a value to a plain number. The conversion runs inside one pcall and
+--  ends in math.max: the client blocks numeric conversion on a secret value and
+--  math.max is the exact operation that raises in-game, so a surviving call
+--  proves the number is plain. No caller ever receives a restricted number.
 --  @param value (any) Value to convert
 --  @param fallback (number|nil) Optional fallback value when nil or secret
 --  @return (number|nil) Plain number or fallback
+local function ToPlainNumber(value)
+    if value == nil then
+        return nil
+    end
+    local number = tonumber(value)
+    if number == nil then
+        return nil
+    end
+    return math.max(number, number)
+end
+
 function ns.SafeNumber(value, fallback)
-    if value == nil or ns.IsSecretValue(value) then
+    if ns.IsSecretValue(value) then
         return fallback
     end
-    local ok, num = pcall(tonumber, value)
-    if ok and type(num) == "number" then
-        return num
+    -- Documented sanitizer: replaces a secret value with nil without any
+    -- arithmetic. If it is unavailable the conversion guard below still runs.
+    local scrubbed = ns.Scrub(value)
+    if scrubbed == nil then
+        return fallback
     end
-    return fallback
+    local ok, num = pcall(ToPlainNumber, scrubbed)
+    if not ok or num == nil then
+        return fallback
+    end
+    return num
+end
+
+--- Return a plain string, or fallback when the value is secret or not a string.
+--  Secret strings cannot be compared, concatenated, or pattern-matched, so
+--  every event payload string must pass through here before addon logic.
+--  @param value (any) Value to inspect
+--  @param fallback (string|nil) Value returned when secret or non-string
+--  @return (string|nil) Plain string or fallback
+-- Convert a value to a plain string. Concatenation is blocked on a secret
+-- string, so the conversion runs inside pcall and a restricted value becomes
+-- nil instead of reaching a comparison.
+local function ToPlainString(value)
+    if type(value) ~= "string" then
+        return nil
+    end
+    return value .. ""
+end
+
+function ns.SafeString(value, fallback)
+    if ns.IsSecretValue(value) then
+        return fallback
+    end
+    local ok, str = pcall(ToPlainString, value)
+    if not ok or str == nil then
+        return fallback
+    end
+    return str
+end
+
+--- Strip secret values out of an event payload (`scrubsecretvalues`).
+--  If the scrubber is missing or raises, the values are probed individually
+--  and secrets are replaced with nil, so callers can always trust the result.
+--  @param ... (any) Payload values
+--  @return (any) Same values with secrets replaced by nil
+function ns.Scrub(...)
+    local scrubber = rawget(_G, "scrubsecretvalues")
+    if type(scrubber) == "function" then
+        local ok, a, b, c, d, e, f, g, h, i, j, k = pcall(scrubber, ...)
+        if ok then
+            return a, b, c, d, e, f, g, h, i, j, k
+        end
+    end
+    -- Fallback when the scrubber is unavailable: replace secrets with nil
+    -- individually. Fixed arity (11) covers every payload the addon scrubs;
+    -- extra arguments beyond that are not used by any caller.
+    local a, b, c, d, e, f, g, h, i, j, k = ...
+    local count = select("#", ...)
+    if count >= 1 and ns.IsSecretValue(a) then a = nil end
+    if count >= 2 and ns.IsSecretValue(b) then b = nil end
+    if count >= 3 and ns.IsSecretValue(c) then c = nil end
+    if count >= 4 and ns.IsSecretValue(d) then d = nil end
+    if count >= 5 and ns.IsSecretValue(e) then e = nil end
+    if count >= 6 and ns.IsSecretValue(f) then f = nil end
+    if count >= 7 and ns.IsSecretValue(g) then g = nil end
+    if count >= 8 and ns.IsSecretValue(h) then h = nil end
+    if count >= 9 and ns.IsSecretValue(i) then i = nil end
+    if count >= 10 and ns.IsSecretValue(j) then j = nil end
+    if count >= 11 and ns.IsSecretValue(k) then k = nil end
+    return a, b, c, d, e, f, g, h, i, j, k
 end
 
 --- Return true when the client exposes the native C_SwingTimer API (WoW Forever).
@@ -104,42 +210,65 @@ function ns.HasNativeSwingTimer()
 end
 
 --- Return true when COMBAT_LOG_EVENT_UNFILTERED is restricted on this client.
---  @return (boolean) true if CLEU is restricted or native C_SwingTimer is active
+--  Uses the authoritative C_CombatLog.IsCombatLogRestricted() query on clients
+--  that expose it (WoW Forever). A native C_SwingTimer is NOT proof that the
+--  combat log is restricted: that assumption silently disabled every CLEU
+--  feature (extra attacks, parry haste, enemy swing bar) on Forever.
+--  Classic Era, TBC Anniversary, and Titanforge expose the same query and
+--  report false, so their behaviour is unchanged.
+--  @return (boolean) true only when the client reports the combat log restricted
 function ns.IsRestrictedCombatLog()
-    if ns.HasNativeSwingTimer() then
-        return true
-    end
     local cCombatLog = rawget(_G, "C_CombatLog")
     if type(cCombatLog) == "table" and type(cCombatLog.IsCombatLogRestricted) == "function" then
         local ok, restricted = pcall(cCombatLog.IsCombatLogRestricted)
-        if ok and restricted == true then
-            return true
+        if ok then
+            return restricted == true
         end
+        -- Fail closed: an unreadable restriction query must not enable CLEU.
+        return true
     end
     return false
 end
 
 --- Toggle Blizzard's built-in WoW Forever swing timer bars ("showSwingTimer" CVar).
---  No-op on clients without native C_SwingTimer (Classic Era, TBC Anniversary, Titanforge).
+--  No-op on clients without native C_SwingTimer (Classic Era, TBC Anniversary,
+--  Titanforge), so their behaviour is untouched.
+--  The user's pre-addon value is captured once and restored when the toggle is
+--  switched off, instead of forcing Blizzard's bars to "1" unconditionally.
 --  @param hideBlizzard (boolean|nil) When true (default), disables Blizzard's default swing bars
 function ns.ApplyBlizzardSwingTimerVisibility(hideBlizzard)
     if not (ns.HasNativeSwingTimer and ns.HasNativeSwingTimer()) then
         return
     end
+    local cCVar = rawget(_G, "C_CVar")
+    local setCVar = (type(cCVar) == "table" and type(cCVar.SetCVar) == "function") and cCVar.SetCVar
+        or rawget(_G, "SetCVar")
+    if type(setCVar) ~= "function" then
+        return
+    end
+    local db = rawget(_G, "SuperSwingTimerDB")
     if hideBlizzard == nil then
-        local db = rawget(_G, "SuperSwingTimerDB")
         hideBlizzard = (not db) or (db.hideBlizzardSwingBars ~= false)
     end
-    local cvarVal = hideBlizzard and "0" or "1"
-    local cCVar = rawget(_G, "C_CVar")
-    if type(cCVar) == "table" and type(cCVar.SetCVar) == "function" then
-        pcall(cCVar.SetCVar, "showSwingTimer", cvarVal)
-    else
-        local legacySetCVar = rawget(_G, "SetCVar")
-        if type(legacySetCVar) == "function" then
-            pcall(legacySetCVar, "showSwingTimer", cvarVal)
+    if type(db) == "table" and db.blizzardSwingTimerOriginal == nil then
+        local getCVar = (type(cCVar) == "table" and type(cCVar.GetCVar) == "function") and cCVar.GetCVar
+            or rawget(_G, "GetCVar")
+        if type(getCVar) == "function" then
+            local ok, original = pcall(getCVar, "showSwingTimer")
+            if ok and not ns.IsSecretValue(original) and original ~= nil then
+                db.blizzardSwingTimerOriginal = tostring(original)
+            end
         end
     end
+    local cvarVal
+    if hideBlizzard then
+        cvarVal = "0"
+    elseif type(db) == "table" and db.blizzardSwingTimerOriginal ~= nil then
+        cvarVal = db.blizzardSwingTimerOriginal
+    else
+        cvarVal = "1"
+    end
+    pcall(setCVar, "showSwingTimer", cvarVal)
 end
 
 --- Authoritative GetSpellInfo wrapper for Classic/TBC Anniversary (1.15+).
@@ -230,6 +359,11 @@ function ns.GetUnitCastingSpellInfo(unit)
         castId = nil
         spellId = channelSpellId
     end
+    -- Restricted clients (WoW Forever) can return secret cast fields; scrub
+    -- before any comparison so the addon degrades to "no cast info" instead of
+    -- raising on a secret value.
+    spellName, startTimeMs, endTimeMs, castId, spellId =
+        ns.Scrub(spellName, startTimeMs, endTimeMs, castId, spellId)
     if not spellName then
         return nil, nil, nil, nil, nil, nil
     end
@@ -265,22 +399,33 @@ function ns.UnitAura(unit, index, filter)
     local cUnitAuras = rawget(_G, "C_UnitAuras")
     if cUnitAuras and cUnitAuras.GetAuraDataByIndex then
         local ok, aura = pcall(cUnitAuras.GetAuraDataByIndex, unit, index, filter)
-        if ok and aura then
-            if ns.IsSecretValue(aura.name) or ns.IsSecretValue(aura.spellId)
-                or ns.IsSecretValue(aura.duration) or ns.IsSecretValue(aura.expirationTime)
-                or ns.IsSecretValue(aura.sourceUnit) then
-                return nil
-            end
-            return aura.name, nil, aura.icon, ns.SafeNumber(aura.applications) or 0, aura.dispelName,
-                   ns.SafeNumber(aura.duration), ns.SafeNumber(aura.expirationTime), aura.sourceUnit,
-                   aura.isStealable, nil, ns.SafeNumber(aura.spellId)
+        if not ok then
+            return nil
         end
-        return nil
+        -- The AuraData table itself can be secret on restricted clients. Any
+        -- field access after this point would raise, so probe the table first.
+        if ns.IsSecretValue(aura) or type(aura) ~= "table" then
+            return nil
+        end
+        if ns.IsSecretValue(aura.name) or ns.IsSecretValue(aura.icon)
+            or ns.IsSecretValue(aura.spellId) or ns.IsSecretValue(aura.duration)
+            or ns.IsSecretValue(aura.expirationTime) or ns.IsSecretValue(aura.sourceUnit) then
+            return nil
+        end
+        return aura.name, nil, aura.icon, ns.SafeNumber(aura.applications) or 0,
+               ns.SafeString(aura.dispelName), ns.SafeNumber(aura.duration),
+               ns.SafeNumber(aura.expirationTime), ns.SafeString(aura.sourceUnit),
+               aura.isStealable, nil, ns.SafeNumber(aura.spellId)
     end
 
-    -- Fallback: Legacy UnitAura global
+    -- Fallback: legacy UnitAura global. It only exists while the deprecated-API
+    -- CVar is enabled on restricted clients, and its returns can be secret;
+    -- pcall + scrub keep the normalized tuple plain.
     if not UnitAura then return nil end
-    local r1, r2, r3, r4, r5, r6, r7, r8, r9, r10, r11 = UnitAura(unit, index, filter)
+    local ok, r1, r2, r3, r4, r5, r6, r7, r8, r9, r10, r11 = pcall(UnitAura, unit, index, filter)
+    if not ok then return nil end
+    r1, r2, r3, r4, r5, r6, r7, r8, r9, r10, r11 =
+        ns.Scrub(r1, r2, r3, r4, r5, r6, r7, r8, r9, r10, r11)
     if not r1 then return nil end
 
     -- Determine shape by examining return values positionally.

@@ -1,0 +1,164 @@
+[
+ {
+  "id": 12834,
+  "title": "Deep Wounds",
+  "desc": "Your critical strikes cause your opponent to Bleed, dealing 20% of your melee weapon's average damage over 12 sec. Requires a melee weapon. Data from the WoW Forever client, build 1.60.1.70862, extracted 2026-11-07.",
+  "same": false,
+  "rows": ""
+ },
+ {
+  "id": 772,
+  "title": "Rend Rank 1",
+  "desc": "Wounds the target causing them to bleed for 15 damage over 9 sec. Requires a melee weapon. Requires Battle Stance, Defensive Stance.",
+  "same": true,
+  "rows": "| Rank 1 | 4   | 15 over 9 sec | 15 over 9 sec | —   | —   | || | Rank 2 | 10  | 28 over 12 sec | 28 over 12 sec | —   | —   |"
+ },
+ {
+  "id": 99,
+  "title": "Demoralizing Roar Rank 1",
+  "desc": "The druid roars, decreasing nearby enemies' melee attack power by 46. Lasts 30 sec. Requires Bear Form, Dire Bear Form. Stronger effect (all 5 ranks).",
+  "same": false,
+  "rows": "| Rank 1 | 10  | **−46** | −30 | —   | —   | || | Rank 2 | 20  | **−74** | −50 | —   | —   |"
+ },
+ {
+  "id": 6807,
+  "title": "Maul Rank 1",
+  "desc": "Increases the druid's next attack by 18 damage. Requires Bear Form, Dire Bear Form. Learned from the quest [Body and Heart](https://foreverdb.net/quest/6001-body-and-heart) at level 10, not from the Druid trainer. Its reward also teaches [Bear Form](https://foreverdb.net/spell/5487), [Growl](https://foreverdb.net/spell/6795). The trainer sells the higher ranks. Speculation: this is Classic's class quest; its reward spell is in the Forever client, but nobody has confirmed the quest in Forever yet.",
+  "same": true,
+  "rows": "| Rank 1 | 10  | weapon damage + 18 | weapon damage + 18 | —   | —   | || | Rank 2 | 18  | weapon damage + 27 | weapon damage + 27 | —   | —   |"
+ },
+ {
+  "id": 779,
+  "title": "Swipe Rank 1",
+  "desc": "Swipe 3 nearby enemies, inflicting 18 damage. Requires Bear Form, Dire Bear Form. Every rank of Swipe has the same numbers as in Classic Era.",
+  "same": true,
+  "rows": "| Rank 1 | 16  | 18  | 18  | 1   | 1   | || | Rank 2 | 24  | 25  | 25  | 1   | 1   |"
+ },
+ {
+  "id": 33876,
+  "error": "HTTP 404 from foreverdb.net/spell/33876"
+ },
+ {
+  "id": 33878,
+  "error": "HTTP 404 from foreverdb.net/spell/33878"
+ },
+ {
+  "id": 5217,
+  "title": "Tiger's Fury",
+  "desc": "Requires Cat Form Increases Physical damage done by 15% for 6 sec. Data from the WoW Forever client, build 1.60.1.70862, extracted 2026-11-07. World of Warcraft Forever",
+  "same": false,
+  "rows": ""
+ },
+ {
+  "id": 5221,
+  "title": "Shred Rank 1",
+  "desc": "Shred the target, causing 200% damage plus 22 to the target. Must be behind the target. Awards 1 combo point. Requires Cat Form. Changed in the live client ([build 70790](https://foreverdb.net/changelog/1.60.1.70862)) since beta build 70450:",
+  "same": false,
+  "rows": "| Rank 1 | 20  | **200% weapon damage + 22** | 225% weapon damage + 24 | —   | —   | || | Rank 2 | 30  | **200% weapon damage + 32** | 225% weapon damage + 32 | —   | —   |"
+ },
+ {
+  "id": 1328618,
+  "title": "Ferocious Bite Rank 1",
+  "desc": "Finishing move that causes damage per combo point and converts each extra point of energy into 0.7 additional damage. Damage is increased by your Attack Power. 1 point : 40-54 damage 2 points: 70-84 damage 3 points: 100-114 damage 4 points: 130-144 damage 5 points: 160-174 damage Requires Cat Form. Changed in the live client ([build 70707](https://foreverdb.net/changelog/1.60.1.70862)) since beta build 70450:",
+  "same": false,
+  "rows": "| Rank 1 | 24  | 11–23 + 30 per combo point | new in Forever | 1   | —   | || | Rank 2 | 32  | **17–37 + 45 per combo point** | 14–30 + 36 per combo point (Classic Rank 1) | 1   | 1   |"
+ },
+ {
+  "id": 2973,
+  "title": "Raptor Strike Rank 1",
+  "desc": "A strong attack that deals melee weapon damage plus 5. Requires a melee weapon. Less damage (5 of 8 ranks); costs less mana (1 of 8 ranks).",
+  "same": false,
+  "rows": "| Rank 1 | 1   | weapon damage + 5 | weapon damage + 5 | —   | —   | **10 Mana** instead of 15 Mana | || | Rank 2 | 8   | weapon damage + 11 | weapon damage + 11 | —   | —   | 25 Mana |"
+ },
+ {
+  "id": 1495,
+  "title": "Mongoose Bite Rank 1",
+  "desc": "Counterattack the enemy for melee weapon damage plus 15. Can only be performed after you dodge. Requires a melee weapon. More damage (all 4 ranks); requires a melee weapon (3 of 4 ranks).",
+  "same": false,
+  "rows": "| Rank 1 | 16  | **weapon damage + 15** | 25  | —   | 1   | || | Rank 2 | 30  | **weapon damage + 22** | 45  | —   | 1   |"
+ },
+ {
+  "id": 13161,
+  "title": "Aspect of the Beast Rank 1",
+  "desc": "The hunter takes on the aspects of a beast, becoming untrackable and increasing Melee Attack Power by 50. Only one Aspect can be active at a time. 4 ranks instead of 1. - 4 ranks in Forever; Classic Era had 1.",
+  "same": false,
+  "rows": "| Rank 1 | 30  | 50  | —   | —   | —   | || | Rank 2 | 40  | 70  | new in Forever | —   | —   |"
+ },
+ {
+  "id": 20375,
+  "title": "Seal of Command Rank 1",
+  "desc": "Gives the Paladin a chance to deal additional Holy damage equal to 70% of normal weapon damage. Only one Seal can be active on the Paladin at any one time. Lasts 30 sec. Unleashing this Seal's energy will judge an enemy, instantly causing 48 Holy damage, 93 to 101 if the target is stunned or incapacitated. Every rank of Seal of Command has the same numbers as in Classic Era. See every [Paladin change vs Classic](https://foreverdb.net/class/Paladin/changes).",
+  "same": true,
+  "rows": "| Rank 1 | 20  | —   | —   | —   | —   | || | Rank 2 | 30  | —   | —   | —   | —   |"
+ },
+ {
+  "id": 20271,
+  "title": "Judgement",
+  "desc": "Unleash the energy of a Seal spell upon an enemy. Does not consume the Seal. Refer to individual Seals for Judgement effect. Tooltip changed. - Tooltip text changed on 1 rank; the numbers in both clients' spell data are the same.",
+  "same": false,
+  "rows": ""
+ },
+ {
+  "id": 21082,
+  "title": "Seal of the Crusader Rank 1",
+  "desc": "Fills the Paladin with the spirit of a crusader for 30 sec, granting 31 melee attack power. The Paladin also attacks 40% faster, but deals less damage with each attack. Only one Seal can be active on the Paladin at any one time. Unleashing this Seal's energy will judge an enemy for 40 sec, increasing Holy damage taken by up to 23. Your melee strikes will refresh the spell's duration. Only one Judgement per Paladin can be active at any one time. Tooltip changed. - Tooltip text changed on 6 ranks; the numbers in both clients' spell data are the same.",
+  "same": false,
+  "rows": "| Rank 1 | 6   | 31  | 31  | —   | —   | || | Rank 2 | 12  | 51  | 51  | —   | —   |"
+ },
+ {
+  "id": 20187,
+  "title": "Judgement of Righteousness Rank 1",
+  "desc": "No description in the client. No longer taught by a trainer; damage changed (1 of 8 ranks); coefficient changed (all 8 ranks). - No trainer teaches it in Forever: it comes from a quest, item, rune or talent, or is the effect of another ability.",
+  "same": false,
+  "rows": "| Rank 1 | 1   | **14–16** | 15  | **0.429** | 0.144 | || | Rank 2 | 10  | 25–27 | 25–27 | **0.429** | 0.312 |"
+ },
+ {
+  "id": 8232,
+  "title": "Windfury Weapon Rank 1",
+  "desc": "Imbue the Shaman's weapon with wind. Each hit has a 20% chance of granting you 2 extra attacks with 46 extra melee attack power. When applied to main hand, disables any benefit you personally receive from Windfury Totem. Lasts for 60 minutes. Use on: a melee weapon. Tooltip changed.",
+  "same": false,
+  "rows": "| Rank 1 | 30  | —   | —   | —   | —   | || | Rank 2 | 40  | —   | —   | —   | —   |"
+ },
+ {
+  "id": 8017,
+  "title": "Rockbiter Weapon Rank 1",
+  "desc": "Imbue the Shaman's weapon, increasing melee attack power by 29 and allowing melee attacks to cause additional threat when using that weapon. Lasts for 60 minutes. Use on: a melee weapon. Tooltip changed.",
+  "same": false,
+  "rows": "| Rank 1 | 1   | —   | —   | —   | —   | || | Rank 2 | 8   | —   | —   | —   | —   |"
+ },
+ {
+  "id": 8042,
+  "title": "Earth Shock Rank 1",
+  "desc": "Instantly shocks the target with concussive force, causing 19 to 21 Nature damage. It also interrupts spellcasting and prevents any spell in that school from being cast for 2 sec. Causes a high amount of threat. Changed in the live client ([build 70790](https://foreverdb.net/changelog/1.60.1.70862)) since beta build 70450: - Rank 1 tooltip: “Instantly shocks the target with concussive force, causing 17 to 19 Nature damage. It also interrupts spellcasting and prevents any spell in that school from being cast for 2 sec. Causes a high amount of threat.” → “Instantly shocks the target with concussive force, causing 19 to 21 Nature damage. It also interrupts spellcasting and prevents any spell",
+  "same": false,
+  "rows": "| Rank 1 | 4   | **19–21** | 17–19 | **0.386** | 0.154 | || | Rank 2 | 8   | **35–37** | 32–34 | **0.386** | 0.212 |"
+ },
+ {
+  "id": 8056,
+  "title": "Frost Shock Rank 1",
+  "desc": "Instantly shocks the target with frost, causing 95 to 101 Frost damage and slowing movement speed by 50%. Lasts 8 sec. Changed in the live client ([build 70790](https://foreverdb.net/changelog/1.60.1.70862)) since beta build 70450: - Rank 1 tooltip: “Instantly shocks the target with frost, causing 64 to 68 Frost damage and slowing movement speed by 50%. Lasts 8 sec.” → “Instantly shocks the target with frost, causing 95 to 101 Frost damage and slowing movement speed by 50%. Lasts 8 sec.”",
+  "same": false,
+  "rows": "| Rank 1 | 20  | **95–101** | 89–95 | 0.386 | 0.386 | || | Rank 2 | 34  | **215–229** | 206–220 | 0.386 | 0.386 |"
+ },
+ {
+  "id": 324,
+  "title": "Lightning Shield Rank 1",
+  "desc": "The caster is surrounded by 3 balls of lightning. When a spell, melee or ranged attack hits the caster, the attacker will be struck for 13 Nature damage. This expends one lightning ball. Only one ball will fire every few seconds. Lasts 10 min. - [Tablet of Lightning Shield](https://foreverdb.net/item/5698) - [Tablet of Earth Shock II](https://foreverdb.net/item/9044)",
+  "same": false,
+  "rows": "| Rank 1 | 8   | —   | —   | —   | —   | || | Rank 2 | 16  | —   | —   | —   | —   |"
+ },
+ {
+  "id": 8512,
+  "title": "Windfury Totem Rank 1",
+  "desc": "Summons a Windfury Totem with 5 health at the feet of the caster. The totem enhances the melee attacks of all party or raid members within 30 yards. Each main hand hit has a 20% chance of granting the attacker 1 extra attack with 95 extra melee attack power. Lasts 5 min. Duration 5 min instead of 2 min. - Duration: 5 min instead of 2 min (all 3 ranks).",
+  "same": false,
+  "rows": "| Rank 1 | 32  | —   | —   | —   | —   | **5 min** instead of 2 min | || | Rank 2 | 42  | —   | —   | —   | —   | **5 min** instead of 2 min |"
+ },
+ {
+  "id": 8835,
+  "title": "Grace of Air Totem Rank 1",
+  "desc": "Summons a Grace of Air Totem with 5 health at the feet of the caster. The totem increases the agility of party or raid members within 30 yards by 49. Lasts 5 min. Duration 5 min instead of 2 min. - Duration: 5 min instead of 2 min (all 3 ranks).",
+  "same": false,
+  "rows": "| Rank 1 | 42  | —   | —   | —   | —   | **5 min** instead of 2 min | || | Rank 2 | 56  | —   | —   | —   | —   | **5 min** instead of 2 min |"
+ }
+]

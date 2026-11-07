@@ -1219,8 +1219,14 @@ local function OnAddonLoaded()
     ns.ROGUE_ADRENALINE_RUSH_BAR_HEIGHT = SuperSwingTimerDB.rogueAdrenalineRushBarHeight or ns.ROGUE_ADRENALINE_RUSH_BAR_HEIGHT
         or ns.DB_DEFAULTS.rogueAdrenalineRushBarHeight or 4
 
-    -- Detect class once
+    -- Detect class once. UnitClass is identity-restricted on some clients, so
+    -- fall back to the class token when the returned class is secret.
     local _, class = UnitClass("player")
+    class = ns.SafeString(class)
+    local unitClassBase = rawget(_G, "UnitClassBase")
+    if class == nil and type(unitClassBase) == "function" then
+        class = ns.SafeString(unitClassBase("player"))
+    end
     ns.playerClass = class
     ns.classConfig = ns.CLASS_CONFIG[class] or { ranged = false, melee = false, dualWield = false }
     if ns.InitWeaving then

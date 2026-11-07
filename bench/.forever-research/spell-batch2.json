@@ -1,0 +1,167 @@
+[
+ {
+  "id": 7386,
+  "title": "Sunder Armor Rank 1",
+  "desc": "Sunders the target's armor, reducing it by 90 per Sunder Armor and causes a high amount of threat. Can be applied up to 5 times. Lasts 30 sec. Requires a melee weapon. Learned from the quest [Path of Defense](https://foreverdb.net/quest/1498-path-of-defense) at level 10, not from the Warrior trainer. Its reward also teaches [Defensive Stance](https://foreverdb.net/spell/71), [Taunt](https://foreverdb.net/spell/355). The trainer sells the higher ranks. Speculation: this is Classic's class quest; its reward spell is in the Forever client, but nobody has confirmed the quest in Forever yet. Every",
+  "sameAsClassic": true,
+  "tableRows": "| Rank 1 | 10  | −90 | −90 | —   | —   | || | Rank 2 | 22  | −180 | −180 | —   | —   | || | Rank 3 | 34  | −270 | −270 | —   | —   |"
+ },
+ {
+  "id": 6343,
+  "title": "Thunder Clap Rank 1",
+  "desc": "Blasts nearby enemies, increasing the time between their attacks by 20% for 10 sec and doing 10 damage to them. Will affect up to 4 targets. Requires Battle Stance, Defensive Stance. - [Tablet of Thunderclap](https://foreverdb.net/item/5703) - [Tablet of Thunderclap](https://foreverdb.net/item/5703)",
+  "sameAsClassic": false,
+  "tableRows": "| Rank 1 | 6   | 10  | 10  | —   | —   | **6 sec** instead of 4 sec | || | Rank 2 | 18  | 23  | 23  | —   | —   | **6 sec** instead of 4 sec | || | Rank 3 | 28  | 37  | 37  | —   | —   | **6 sec** instead of 4 sec |"
+ },
+ {
+  "id": 1160,
+  "title": "Demoralizing Shout Rank 1",
+  "desc": "Reduces the melee attack power of all enemies within 10 yards by 49 for 45 sec. Stronger effect (all 5 ranks); duration 45 sec instead of 30 sec. - Stronger effect (all 5 ranks). Rank 5: −196 instead of −140. - Duration: 45 sec instead of 30 sec (all 5 ranks).",
+  "sameAsClassic": false,
+  "tableRows": "| Rank 1 | 14  | **−49** | −35 | —   | —   | **45 sec** instead of 30 sec | || | Rank 2 | 24  | **−77** | −55 | —   | —   | **45 sec** instead of 30 sec | || | Rank 3 | 34  | **−98** | −70 | —   | —   | **45 sec** instead of 30 sec |"
+ },
+ {
+  "id": 1943,
+  "title": "Rupture Rank 1",
+  "desc": "Finishing move that causes damage over time, increased by your Attack Power. Lasts longer per combo point: 1 point : 24 damage over 8 secs 2 points: 36 damage over 10 secs 3 points: 51 damage over 12 secs 4 points: 68 damage over 14 secs 5 points: 87 damage over 16 secs Requires a melee weapon. Less damage (all 6 ranks). - Less damage (all 6 ranks). Rank 6: 105 over 6 sec instead of 180 over 6 sec.",
+  "sameAsClassic": false,
+  "tableRows": "| Rank 1 | 20  | **15 over 6 sec** | 24 over 6 sec | —   | —   | || | Rank 2 | 28  | **21 over 6 sec** | 36 over 6 sec | —   | —   | || | Rank 3 | 36  | **33 over 6 sec** | 54 over 6 sec | —   | —   |"
+ },
+ {
+  "id": 8647,
+  "title": "Expose Armor Rank 1",
+  "desc": "Finishing move that exposes the target for 30 sec, reducing Armor per combo point: 1 point : 90 Armor 2 points: 180 Armor 3 points: 270 Armor 4 points: 360 Armor 5 points: 450 Armor Requires a melee weapon. Stronger effect (all 5 ranks). - Stronger effect (all 5 ranks). Rank 5: −450 per combo point instead of −340 per combo point.",
+  "sameAsClassic": false,
+  "tableRows": "| Rank 1 | 14  | **−90 per combo point** | −80 per combo point | —   | —   | || | Rank 2 | 26  | **−180 per combo point** | −145 per combo point | —   | —   | || | Rank 3 | 36  | **−270 per combo point** | −210 per combo point | —   | —   |"
+ },
+ {
+  "id": 1978,
+  "title": "Serpent Sting Rank 1",
+  "desc": "Stings the target, causing 15 Nature damage over 15 sec. Only one Sting per Hunter can be active on any one target. Requires a ranged weapon (bow, gun or crossbow). Changed in the live client ([build 70790](https://foreverdb.net/changelog/1.60.1.70862)) since beta build 70450: - Rank 1 tooltip: “Stings the target, causing 10 Nature damage over 15 sec. Only one Sting per Hunter can be active on any one target.” → “Stings the target, causing 15 Nature damage over 15 sec. Only one Sting per Hunter can be active on any one target.”",
+  "sameAsClassic": false,
+  "tableRows": "| Rank 1 | 4   | **15 over 15 sec** | 20 over 15 sec | —   | 0.08 | || | Rank 2 | 10  | **35 over 15 sec** | 40 over 15 sec | —   | 0.125 | || | Rank 3 | 18  | **70 over 15 sec** | 80 over 15 sec | —   | 0.185 |"
+ },
+ {
+  "id": 1130,
+  "title": "Hunter's Mark Rank 1",
+  "desc": "Places the Hunter's Mark on the target, increasing the Ranged Attack Power of all attackers against that target by 26. In addition, the target of this ability can always be seen by the hunter whether it stealths or turns invisible. The target also appears on the mini-map. Lasts for 2 min. Changed in the live client ([build 70658](https://foreverdb.net/changelog/1.60.1.70862)) since beta build 70450: - Rank 4 tooltip: “Places the Hunter's Mark on the target, increasing the Ranged Attack Power of all attackers against that target by 71. In addition, the target of this ability can always be see",
+  "sameAsClassic": false,
+  "tableRows": "| Rank 1 | 6   | **26** | 20  | —   | —   | || | Rank 2 | 22  | **59** | 45  | —   | —   | || | Rank 3 | 40  | **98** | 75  | —   | —   |"
+ },
+ {
+  "id": 2974,
+  "title": "Wing Clip Rank 1",
+  "desc": "Inflicts 5 damage and reduces the enemy target's movement speed by 50% for 10 sec. Requires a melee weapon. Every rank of Wing Clip has the same numbers as in Classic Era. See every [Hunter change vs Classic](https://foreverdb.net/class/Hunter/changes).",
+  "sameAsClassic": true,
+  "tableRows": "| Rank 1 | 12  | 5   | 5   | 1   | 1   | || | Rank 2 | 38  | 25  | 25  | 1   | 1   | || | Rank 3 | 60  | 50  | 50  | 1   | 1   |"
+ },
+ {
+  "id": 1079,
+  "title": "Rip Rank 1",
+  "desc": "Finishing move that causes damage over time. Damage increases per combo point and by your Attack Power: 1 point : 57 damage over 12 sec. 2 points: 90 damage over 12 sec. 3 points: 123 damage over 12 sec. 4 points: 156 damage over 12 sec. 5 points: 189 damage over 12 sec. Requires Cat Form. Changed in the live client ([build 70790](https://foreverdb.net/changelog/1.60.1.70862)) since beta build 70450: - Rank 1 tooltip: “Finishing move that causes damage over time. Damage increases per combo point and by your Attack Power: 1 point : 44 damage over 12 sec. 2 points: 71 damage over 12 sec. 3 poi",
+  "sameAsClassic": false,
+  "tableRows": "| Rank 1 | 20  | **24 over 12 sec** | 18 over 12 sec | —   | —   | || | Rank 2 | 28  | **30 over 12 sec** | 24 over 12 sec | —   | —   | || | Rank 3 | 36  | **48 over 12 sec** | 36 over 12 sec | —   | —   |"
+ },
+ {
+  "id": 1822,
+  "title": "Rake Rank 1",
+  "desc": "Rake the target for 27 damage and an additional 60 damage over 9 sec. Awards 1 combo point. Requires Cat Form. Changed in the live client ([build 70790](https://foreverdb.net/changelog/1.60.1.70862)) since beta build 70450: - Rank 1 tooltip: “Rake the target for 23 damage and an additional 48 damage over 9 sec. Awards 1 combo point.” → “Rake the target for 27 damage and an additional 60 damage over 9 sec. Awards 1 combo point.”",
+  "sameAsClassic": false,
+  "tableRows": "| Rank 1 | 24  | **27 + 60 over 9 sec** | 19 + 39 over 9 sec | —   | —   | || | Rank 2 | 34  | **39 + 78 over 9 sec** | 28 + 57 over 9 sec | —   | —   | || | Rank 3 | 44  | **56 + 96 over 9 sec** | 43 + 75 over 9 sec | —   | —   |"
+ },
+ {
+  "id": 770,
+  "title": "Faerie Fire Rank 1",
+  "desc": "Decrease the armor of the target by 175 for 40 sec. While affected, the target cannot stealth or turn invisible. - [Book of Faerie Fire](https://foreverdb.net/item/1328) - [Book of Faerie Fire IV](https://foreverdb.net/item/8790) - [Book of Faerie Fire](https://foreverdb.net/item/1328)",
+  "sameAsClassic": false,
+  "tableRows": "| Rank 1 | 18  | −175 | −175 | —   | —   | || | Rank 2 | 30  | −285 | −285 | —   | —   | || | Rank 3 | 42  | −395 | −395 | —   | —   |"
+ },
+ {
+  "id": 17364,
+  "title": "Stormstrike",
+  "desc": "Instantly strike for 150% weapon damage and increase the damage you deal to the target with your next Lightning Bolt, Chain Lightning, or Earth Shock spell by 20% for 12 sec. Changed in the live client ([build 70790](https://foreverdb.net/changelog/1.60.1.70862)) since beta build 70450: - Tooltip: “Instantly strike for normal weapon damage and increase the damage you deal to the target with your next Lightning Bolt, Chain Lightning, or Earth Shock spell by 20% for 12 sec.” → “Instantly strike for 150% weapon damage and increase the damage you deal to the target with your next Lightning Bolt,",
+  "sameAsClassic": false,
+  "tableRows": ""
+ },
+ {
+  "id": 8050,
+  "title": "Flame Shock Rank 1",
+  "desc": "Instantly sears the target with fire, causing 25 Fire damage immediately and 28 Fire damage over 12 sec. Changed in the live client ([build 70790](https://foreverdb.net/changelog/1.60.1.70862)) since beta build 70450: - Rank 1 tooltip: “Instantly sears the target with fire, causing 20 Fire damage immediately and 28 Fire damage over 12 sec.” → “Instantly sears the target with fire, causing 25 Fire damage immediately and 28 Fire damage over 12 sec.” - Rank 1 effects: updated (3 effects ? 3 effects)",
+  "sameAsClassic": false,
+  "tableRows": "| Rank 1 | 10  | **25 + 28 over 12 sec** | 21 + 28 over 12 sec | **0.214** | 0.134 | || | Rank 2 | 18  | **51 + 48 over 12 sec** | 45 + 48 over 12 sec | **0.214** | 0.198 | || | Rank 3 | 28  | **95 + 96 over 12 sec** | 86 + 96 over 12 sec | 0.214 | 0.214 |"
+ },
+ {
+  "id": 20188,
+  "title": "Judgement of the Crusader Rank 2",
+  "desc": "Increases Holy damage taken by up to 35. Stronger effect (all 5 ranks); duration 40 sec instead of 10 sec. - Stronger effect (all 5 ranks). Rank 6: 161 instead of 140. - Duration: 40 sec instead of 10 sec (all 5 ranks).",
+  "sameAsClassic": false,
+  "tableRows": "| Rank 2 | 12  | **35** | 30  | —   | —   | **40 sec** instead of 10 sec | || | Rank 3 | 22  | **58** | 50  | —   | —   | **40 sec** instead of 10 sec | || | Rank 4 | 32  | **92** | 80  | —   | —   | **40 sec** instead of 10 sec |"
+ },
+ {
+  "id": 679,
+  "title": "Holy Strike Rank 1",
+  "desc": "An instant strike that causes 25% weapon damage plus an additional 11 to 14 as Holy damage. Requires a melee weapon. Data from the WoW Forever client, build 1.60.1.70862, extracted 2026-11-07. - **Corrected 6 Nov 2026:** Damage ranges with a half rounded the wrong way, and expression values rounded up (found by ForeverDB). What we changed: Range ends now round half up the way the game's own number storage does it, and worked-out values show their whole part as players recorded in game (Sweet Nectar restores 1,344 mana, not 1,345). Some numbers move by one, for example Frostbolt rank 5 now re",
+  "sameAsClassic": false,
+  "tableRows": ""
+ },
+ {
+  "id": 1311649,
+  "title": "Seal of Fury Rank 1",
+  "desc": "Fills you with divine fury for 30 sec, causing melee attacks to deal an additional 6 Holy damage. While a shield is equipped, each attack also grants an absorb shield equal to 50% of the Holy damage dealt. Only one Seal can be active on the Paladin at any one time. Unleashing this Seal's energy inflicts 22 to 24 Holy damage to an enemy and taunts the target to attack you for 3 sec. Changed in the live client ([build 70707](https://foreverdb.net/changelog/1.60.1.70862)) since beta build 70450: - Rank 1 tooltip: “Fills you with divine fury for 30 sec, causing melee attacks to deal an additiona",
+  "sameAsClassic": false,
+  "tableRows": ""
+ },
+ {
+  "id": 20183,
+  "title": "Judgement of Fury Rank 3",
+  "desc": "Judge the target, dealing Holy damage. Data from the WoW Forever client, build 1.60.1.70862, extracted 2026-11-07. World of Warcraft Forever [All pages](https://foreverdb.net/all-pages)[Server status](https://foreverdb.net/status) [About](https://foreverdb.net/about)[Contact](https://foreverdb.net/contact)[Report a problem](https://foreverdb.net/contact?topic=data)[Join our Discord](https://discord.gg/8rrqDnWHd \"ForeverDB's Discord server: questions, finds and news\")[Tooltips for your site](https://foreverdb.net/embed)[Discord bot](https://foreverdb.net/discord) [What's new on ForeverDB](https",
+  "sameAsClassic": false,
+  "tableRows": ""
+ },
+ {
+  "id": 23881,
+  "title": "Bloodthirst Rank 1",
+  "desc": "Instantly attack the target causing damage equal to 45% of your Attack Power plus 30 and increasing your movement speed by 10% for 10 sec. Changed in the live client ([build 70790](https://foreverdb.net/changelog/1.60.1.70862)) since beta build 70450: - Requires: nothing → Death Wish at 1/1 More damage on 1 rank, less on 3; duration 10 sec instead of none; top rank's effect changed.",
+  "sameAsClassic": false,
+  "tableRows": "| Rank 1 | 40  | **30** | 45  | 1   | 1   | **10 sec** instead of none | || | Rank 2 | 48  | **37** | 45  | 1   | 1   | **10 sec** instead of none | || | Rank 3 | 54  | **43** | 45  | 1   | 1   | **10 sec** instead of none |"
+ },
+ {
+  "id": 1240193,
+  "title": "Slam Rank 1",
+  "desc": "Slams the opponent, causing weapon damage plus 16. Requires a melee weapon. Changed in the live client ([build 70790](https://foreverdb.net/changelog/1.60.1.70862)) since beta build 70450: - Rank 1 cooldown: 18 sec → 15 sec",
+  "sameAsClassic": false,
+  "tableRows": "| Rank 1 | 20  | weapon damage + 16 | new in Forever | —   | —   | 15 sec | || | Rank 2 | 30  | weapon damage + 32 | weapon damage + 32 (Classic Rank 1) | —   | —   | **15 sec** instead of none | || | Rank 3 | 38  | weapon damage + 43 | weapon damage + 43 (Classic Rank 2) | —   | —   | **15 sec** instead of none |"
+ },
+ {
+  "id": 20230,
+  "title": "Retaliation",
+  "desc": "Instantly counterattack any enemy that strikes you in melee for 15 sec. Melee attacks made from behind cannot be counterattacked. A maximum of 30 attacks will cause retaliation. Requires Battle Stance. Cooldown 15 min instead of 30 min. - Cooldown: 15 min instead of 30 min.",
+  "sameAsClassic": false,
+  "tableRows": ""
+ },
+ {
+  "id": 1719,
+  "title": "Recklessness",
+  "desc": "The warrior will gain 100% increased critical strike chance and will be immune to Fear effects for the next 15 sec, but all damage taken is increased by 20%. Requires Berserker Stance. Tooltip changed. - Tooltip text changed on 1 rank; the numbers in both clients' spell data are the same.",
+  "sameAsClassic": false,
+  "tableRows": ""
+ },
+ {
+  "id": 16857,
+  "error": "HTTP 404 from foreverdb.net/spell/16857"
+ },
+ {
+  "id": 1328617,
+  "title": "Lacerate Rank 1",
+  "desc": "Lacerates the enemy target, making them bleed for 20 damage over 15 sec plus 10% weapon damage per existing application of Lacerate on the target. Causes a high amount of threat. This effect stacks up to 5 times on the same target. Requires Bear Form, Dire Bear Form. Changed in the live client ([build 70707](https://foreverdb.net/changelog/1.60.1.70862)) since beta build 70450: - Name: Primal Bite → Lacerate",
+  "sameAsClassic": false,
+  "tableRows": "| Rank 1 | 25  | 20 over 15 sec | new in Forever | —   | —   | 15 Rage | || | Rank 2 | 34  | 30 over 15 sec | new in Forever | —   | —   | 15 Rage | || | Rank 3 | 42  | **50 over 15 sec** | 100 over 15 sec (Season of Discovery) | —   | —   | **15 Rage** instead of 10 Rage |"
+ },
+ {
+  "id": 407995,
+  "title": "Primal Bite Rank 1",
+  "desc": "Bite the target, dealing 100% normal damage plus 42 and generating a high amount of threat. Requires Bear Form, Dire Bear Form. Changed in the live client ([build 70707](https://foreverdb.net/changelog/1.60.1.70862)) since beta build 70450: - Name: Berserk → Primal Bite",
+  "sameAsClassic": false,
+  "tableRows": ""
+ }
+]

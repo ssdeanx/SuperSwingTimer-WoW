@@ -29,6 +29,7 @@ jobs:
             SuperSwingTimer_Config.lua \
             SuperSwingTimer.lua \
             SuperSwingTimer_SoD.lua \
+            SuperSwingTimer_Forever.lua \
             SuperSwingTimer_Tests.lua \
             Media/SuperSwingTimer_Media.lua \
             run_tests.lua

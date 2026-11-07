@@ -1,0 +1,23 @@
+{
+  "signal_type": "execution",
+  "subtype": "done",
+  "timestamp": "2026-11-06T20:50:53.346Z",
+  "run_id": "sst-forever-0.3.0",
+  "agent_name": "sst-forever",
+  "self_assessment": {
+    "intent": 4,
+    "confidence": 4,
+    "accuracy": 4,
+    "completeness": 4
+  },
+  "patterns": {
+    "what_worked": "Every Forever hazard was derived from origin/forever API docs (secret markers, C_SwingTimer, C_CombatLog restriction) and matched to addon file:line before editing; all guards are capability-gated so classic clients execute the same code path.",
+    "what_was_hard": "Distinguishing a refused load from runtime secret-value errors: the load path itself has no unguarded absent API, so the fixes target the restricted-value call sites the operator described.",
+    "skill_gap": "The headless harness cannot reproduce the client's secret-value throw; regression tests assert the fallback path instead."
+  },
+  "escalation": {
+    "reason": null,
+    "blocked_on": null,
+    "recommendation": "In-game check on WoW Forever with /sst diag."
+  }
+}

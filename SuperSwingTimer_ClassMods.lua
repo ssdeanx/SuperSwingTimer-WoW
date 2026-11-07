@@ -234,14 +234,14 @@ local function QuerySpellCooldown(spellToken)
 
     if C_Spell and type(C_Spell.GetSpellCooldown) == "function" then
         local ok, cooldownInfo = pcall(C_Spell.GetSpellCooldown, spellToken)
-        if ok and type(cooldownInfo) == "table" then
+        if ok and type(cooldownInfo) == "table" and not ns.IsSecretValue(cooldownInfo) then
             startTime = ns.SafeNumber(cooldownInfo.startTime or cooldownInfo.start_time)
             duration = ns.SafeNumber(cooldownInfo.duration)
             enabled = cooldownInfo.isEnabled
             if enabled == nil then
                 enabled = cooldownInfo.enabled
             end
-            if ns.IsSecretValue and ns.IsSecretValue(enabled) then
+            if ns.IsSecretValue(enabled) then
                 enabled = nil
             end
         end
@@ -251,7 +251,10 @@ local function QuerySpellCooldown(spellToken)
         local rawStart, rawDuration, rawEnabled = GetSpellCooldown(spellToken)
         startTime = ns.SafeNumber(rawStart)
         duration = ns.SafeNumber(rawDuration)
-        enabled = (ns.IsSecretValue and ns.IsSecretValue(rawEnabled)) and nil or rawEnabled
+        enabled = rawEnabled
+        if ns.IsSecretValue(enabled) then
+            enabled = nil
+        end
     end
 
     local isEnabled = enabled == nil or enabled == 1 or enabled == true
@@ -672,8 +675,12 @@ local function SetupRetPaladin()
             duration = timer.duration
             lastSwing = timer.lastSwing
         else
-            local mainHandSpeed = type(UnitAttackSpeed) == "function" and UnitAttackSpeed("player") or nil
-            duration = (type(mainHandSpeed) == "number" and mainHandSpeed > 0) and mainHandSpeed or
+            local mainHandSpeed
+            if type(UnitAttackSpeed) == "function" then
+                mainHandSpeed = UnitAttackSpeed("player")
+            end
+            mainHandSpeed = ns.SafeNumber(mainHandSpeed)
+            duration = (mainHandSpeed and mainHandSpeed > 0) and mainHandSpeed or
             (timer and timer.duration
                 and timer.duration > 0 and timer.duration) or 2.0
             -- Simulate swing starting ~1s ago so the zone is positioned mid-swing
@@ -791,8 +798,12 @@ local function SetupRetPaladin()
             duration = timer.duration
             lastSwing = timer.lastSwing
         else
-            local mainHandSpeed = type(UnitAttackSpeed) == "function" and UnitAttackSpeed("player") or nil
-            duration = (type(mainHandSpeed) == "number" and mainHandSpeed > 0) and mainHandSpeed or
+            local mainHandSpeed
+            if type(UnitAttackSpeed) == "function" then
+                mainHandSpeed = UnitAttackSpeed("player")
+            end
+            mainHandSpeed = ns.SafeNumber(mainHandSpeed)
+            duration = (mainHandSpeed and mainHandSpeed > 0) and mainHandSpeed or
             (timer and timer.duration
                 and timer.duration > 0 and timer.duration) or 2.0
             lastSwing = now - 0.5
@@ -4587,7 +4598,9 @@ local function SetupDruid()
     local DRUID_QUEUE_POLL_INTERVAL = 0.05
 
     local function GetDruidFormLabel()
-        local powerType = type(UnitPowerType) == "function" and UnitPowerType("player") or nil
+        -- UnitPowerType's first return can be secret on restricted clients;
+        -- never compare it raw.
+        local powerType = type(UnitPowerType) == "function" and ns.SafeNumber(UnitPowerType("player")) or nil
         if powerType == 3 then
             return "Cat"
         elseif powerType == 1 then
@@ -4597,7 +4610,7 @@ local function SetupDruid()
     end
 
     local function IsDruidCatFormActive()
-        return type(UnitPowerType) == "function" and UnitPowerType("player") == 3
+        return type(UnitPowerType) == "function" and ns.SafeNumber(UnitPowerType("player")) == 3
     end
 
     local function IsLikelyNaturalDruidEnergyGain(delta)
@@ -4747,7 +4760,12 @@ local function SetupDruid()
             return
         end
 
-        local currentEnergy = (type(UnitPower) == "function" and ns.SafeNumber(UnitPower("player"))) or 0
+        local currentEnergy = type(UnitPower) == "function" and ns.SafeNumber(UnitPower("player")) or nil
+        if currentEnergy == nil then
+            -- Restricted power value: skip the tick estimate instead of
+            -- treating the pool as empty.
+            return
+        end
         local previousEnergy = ns.druidLastEnergy
         if IsDruidCatFormActive() and previousEnergy ~= nil then
             local delta = currentEnergy - previousEnergy
@@ -5627,7 +5645,12 @@ local function SetupHunter()
             local enum = rawget(_G, "Enum")
             local mhType = (enum and enum.PlayerSwingType and enum.PlayerSwingType.MainHand) or 0
             if cSwingTimer and type(cSwingTimer.IsTargetWithinSwingRange) == "function" then
-                inRange = cSwingTimer.IsTargetWithinSwingRange(mhType)
+                -- nil means "no range check could be made" (no target, dead
+                -- target, no weapon); never treat it as out of range.
+                local ok, ranged = pcall(cSwingTimer.IsTargetWithinSwingRange, mhType)
+                if ok and not ns.IsSecretValue(ranged) then
+                    inRange = ranged
+                end
             end
         end
         return inRange
@@ -5641,7 +5664,12 @@ local function SetupHunter()
             local enum = rawget(_G, "Enum")
             local rangedType = (enum and enum.PlayerSwingType and enum.PlayerSwingType.Ranged) or 2
             if cSwingTimer and type(cSwingTimer.IsTargetWithinSwingRange) == "function" then
-                inRange = cSwingTimer.IsTargetWithinSwingRange(rangedType)
+                -- nil means "no range check could be made" (no target, dead
+                -- target, no weapon); never treat it as out of range.
+                local ok, ranged = pcall(cSwingTimer.IsTargetWithinSwingRange, rangedType)
+                if ok and not ns.IsSecretValue(ranged) then
+                    inRange = ranged
+                end
             end
         end
         return inRange
@@ -7684,8 +7712,12 @@ local function SetupRogue()
     end
 
     local function GetPreviewMeleeDuration()
-        local mainHandSpeed = type(UnitAttackSpeed) == "function" and UnitAttackSpeed("player") or nil
-        if type(mainHandSpeed) == "number" and mainHandSpeed > 0 then
+        local mainHandSpeed
+        if type(UnitAttackSpeed) == "function" then
+            mainHandSpeed = UnitAttackSpeed("player")
+        end
+        mainHandSpeed = ns.SafeNumber(mainHandSpeed)
+        if mainHandSpeed and mainHandSpeed > 0 then
             return mainHandSpeed
         end
 
@@ -7826,8 +7858,11 @@ local function SetupRogue()
         local tickProgress = (elapsed % ROGUE_ENERGY_TICK_DURATION) / ROGUE_ENERGY_TICK_DURATION
         tickBar:SetValue(tickProgress)
 
-        local currentEnergy = (UnitPower and ns.SafeNumber(UnitPower("player"))) or 0
-        if currentEnergy >= 100 then
+        local currentEnergy = UnitPower and ns.SafeNumber(UnitPower("player")) or nil
+        if currentEnergy == nil then
+            -- Restricted power value: keep the existing colour.
+            ApplyRogueEnergyTickColor()
+        elseif currentEnergy >= 100 then
             tickBar:SetStatusBarColor(1.0, 0.2, 0.2, 1)
         elseif currentEnergy >= 90 then
             tickBar:SetStatusBarColor(1.0, 0.6, 0.2, 1)
@@ -7953,7 +7988,12 @@ local function SetupRogue()
             return
         end
 
-        local currentEnergy = (type(UnitPower) == "function" and ns.SafeNumber(UnitPower("player"))) or 0
+        local currentEnergy = type(UnitPower) == "function" and ns.SafeNumber(UnitPower("player")) or nil
+        if currentEnergy == nil then
+            -- Restricted power value: skip the tick estimate instead of
+            -- treating the pool as empty.
+            return
+        end
         local previousEnergy = ns.rogueLastEnergy
         if previousEnergy ~= nil then
             local delta = currentEnergy - previousEnergy
@@ -8923,7 +8963,11 @@ local function UpdatePlayerPowerBar()
         return
     end
 
-    local class = ns.playerClass or (UnitClass and select(2, UnitClass("player")))
+    local class = ns.playerClass
+    if class == nil and type(UnitClass) == "function" then
+        -- UnitClass can be identity-restricted; never use the raw token.
+        class = ns.SafeString(select(2, UnitClass("player")))
+    end
     if not class or not POWER_BAR_CLASSES[class] then
         bar:SetAlpha(0)
         bar:Hide()
@@ -8938,7 +8982,11 @@ local function UpdatePlayerPowerBar()
 
     local powerType, powerToken
     if type(UnitPowerType) == "function" then
-        powerType, powerToken = UnitPowerType("player")
+        -- Both returns can be secret; resolve them before any comparison and
+        -- before passing powerType back into UnitPower/UnitPowerMax.
+        local rawPowerType, rawPowerToken = UnitPowerType("player")
+        powerType = ns.SafeNumber(rawPowerType)
+        powerToken = ns.SafeString(rawPowerToken)
     end
 
     if powerType == nil then
@@ -8951,9 +8999,42 @@ local function UpdatePlayerPowerBar()
         end
     end
 
-    local curPower = (type(UnitPower) == "function" and ns.SafeNumber(UnitPower("player", powerType))) or 0
-    local maxPower = (type(UnitPowerMax) == "function" and ns.SafeNumber(UnitPowerMax("player", powerType))) or 100
-    if not maxPower or maxPower <= 0 then maxPower = 100 end
+    local rawCurPower, rawMaxPower
+    if type(UnitPower) == "function" then
+        rawCurPower = UnitPower("player", powerType)
+    end
+    if type(UnitPowerMax) == "function" then
+        rawMaxPower = UnitPowerMax("player", powerType)
+    end
+    local curPower = ns.SafeNumber(rawCurPower)
+    local maxPower = ns.SafeNumber(rawMaxPower)
+
+    -- Secret power is not dropped: status bars and font strings accept secret
+    -- arguments from tainted code (SecretArguments = AllowedWhenTainted), so the
+    -- raw values are handed straight to SetMinMaxValues/SetValue/SetText. Only
+    -- the numeric threshold and cache comparisons are skipped.
+    local powerIsSecret = ns.IsSecretValue(rawCurPower) or ns.IsSecretValue(rawMaxPower)
+    local displayCurPower, displayMaxPower
+    if powerIsSecret then
+        -- A plain nil current value cannot be displayed; a secret one can.
+        if not ns.IsSecretValue(rawCurPower) and rawCurPower == nil then
+            return
+        end
+        displayCurPower = rawCurPower
+        if ns.IsSecretValue(rawMaxPower) then
+            displayMaxPower = rawMaxPower
+        elseif maxPower and maxPower > 0 then
+            displayMaxPower = maxPower
+        else
+            displayMaxPower = 100
+        end
+    else
+        if curPower == nil then
+            return
+        end
+        displayCurPower = curPower
+        displayMaxPower = (maxPower and maxPower > 0) and maxPower or 100
+    end
 
     local customColor
     if powerType == 1 or powerToken == "RAGE" then
@@ -8974,14 +9055,25 @@ local function UpdatePlayerPowerBar()
 
     local finalColor = ResolvePowerBarColor(powerType, powerToken, customColor)
 
-    bar:SetMinMaxValues(0, maxPower)
-    bar:SetValue(curPower)
+    bar:SetMinMaxValues(0, displayMaxPower)
+    bar:SetValue(displayCurPower)
     bar:SetStatusBarColor(finalColor.r, finalColor.g, finalColor.b, finalColor.a or 0.85)
     bar:SetAlpha(1)
     bar:Show()
 
     if bar.label then
-        if bar._lastCurPower ~= curPower or bar._lastMaxPower ~= maxPower or bar._lastPowerType ~= powerType then
+        if powerIsSecret then
+            -- Pass the secret values through the text API; never format them
+            -- with concatenation or compare them with the cached numbers.
+            if powerType == 1 or powerType == 3 then
+                bar.label:SetText(displayCurPower)
+            else
+                bar.label:SetFormattedText("%s/%s", displayCurPower, displayMaxPower)
+            end
+            bar._lastCurPower = nil
+            bar._lastMaxPower = nil
+            bar._lastPowerType = powerType
+        elseif bar._lastCurPower ~= curPower or bar._lastMaxPower ~= maxPower or bar._lastPowerType ~= powerType then
             bar._lastCurPower = curPower
             bar._lastMaxPower = maxPower
             bar._lastPowerType = powerType
@@ -8994,9 +9086,13 @@ local function UpdatePlayerPowerBar()
     end
 
     if class == "WARRIOR" then
-        local targetHealth = (type(UnitHealth) == "function" and ns.SafeNumber(UnitHealth("target"))) or 0
-        local targetMaxHealth = (type(UnitHealthMax) == "function" and ns.SafeNumber(UnitHealthMax("target"))) or 0
-        local executeActive = targetHealth > 0 and targetMaxHealth > 0 and (targetHealth / targetMaxHealth) <= 0.20
+        local targetHealth = type(UnitHealth) == "function" and ns.SafeNumber(UnitHealth("target")) or nil
+        local targetMaxHealth = type(UnitHealthMax) == "function" and ns.SafeNumber(UnitHealthMax("target")) or nil
+        -- Restricted health values must not read as 0 (which would look like a
+        -- dead target); leave the Execute highlight off instead.
+        local executeActive = targetHealth ~= nil and targetMaxHealth ~= nil
+            and targetHealth > 0 and targetMaxHealth > 0
+            and (targetHealth / targetMaxHealth) <= 0.20
         if executeActive then
             if not bar.executeIcon then
                 local iconSize = 14

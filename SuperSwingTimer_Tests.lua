@@ -149,7 +149,7 @@ local function RegisterSSTTests()
         IsTrue(f ~= nil, "SuperSwingTimer.toc must exist")
         local content = f:read("*all")
         f:close()
-        IsTrue(content:find("## Version: v0.2.9", 1, true) ~= nil, "TOC Version must be v0.2.9")
+        IsTrue(content:find("## Version: v0.3.0", 1, true) ~= nil, "TOC Version must be v0.3.0")
 
         -- The settings panel reads its label from TOC metadata; keep the
         -- helper and the TOC in lockstep so a release bump cannot drift.
@@ -2678,7 +2678,15 @@ local function RegisterSSTTests()
         })
 
         IsTrue(ns.HasNativeSwingTimer(), 'HasNativeSwingTimer must be true when C_SwingTimer is present')
-        IsTrue(ns.IsRestrictedCombatLog(), 'IsRestrictedCombatLog must be true when C_SwingTimer is present')
+        -- A native swing timer is not proof that CLEU is restricted; only the
+        -- client's C_CombatLog.IsCombatLogRestricted() query may decide that.
+        IsFalse(ns.IsRestrictedCombatLog(), 'native C_SwingTimer alone must not disable the combat log')
+
+        local prevCombatLog = rawget(_G, 'C_CombatLog')
+        rawset(_G, 'C_CombatLog', { IsCombatLogRestricted = function() return true end })
+        IsTrue(ns.IsRestrictedCombatLog(), 'C_CombatLog.IsCombatLogRestricted() must gate CLEU on Forever')
+        rawset(_G, 'C_CombatLog', { IsCombatLogRestricted = function() return false end })
+        IsFalse(ns.IsRestrictedCombatLog(), 'a readable combat log must stay enabled on Forever')
 
         ns.HandlePlayerSwing(2.6, 0)
         AreEqual(ns.timers.mh.state, 'swinging', 'MainHand (0) PLAYER_SWING must start MH timer')
@@ -2691,9 +2699,14 @@ local function RegisterSSTTests()
         ns.HandlePlayerSwing(2.9, 2)
         AreEqual(ns.timers.ranged.state, 'swinging', 'Ranged (2) PLAYER_SWING must start Ranged timer')
         AreEqual(ns.timers.ranged.duration, 2.9, 'Ranged PLAYER_SWING must use explicit duration')
+        AreEqual(ns.timers.ranged.lastNativeStartAt, ns.timers.ranged.lastSwing,
+            'a native ranged start must be recorded so the CLEU fallback cannot double-start it')
 
+        -- Enemy tracking is suppressed only while the combat log is restricted.
+        rawset(_G, 'C_CombatLog', { IsCombatLogRestricted = function() return true end })
         ns.RefreshEnemyTarget()
         AreEqual(ns.enemyTargetGUID, nil, 'RefreshEnemyTarget must keep enemyTargetGUID nil under restricted combat log')
+        rawset(_G, 'C_CombatLog', prevCombatLog)
 
         local prevCVar = rawget(_G, 'C_CVar')
         local recordedCVarName, recordedCVarVal
@@ -2745,6 +2758,136 @@ local function RegisterSSTTests()
 
         rawset(_G, 'issecretvalue', prevIsSecret)
         rawset(_G, 'C_UnitAuras', prevCUnitAuras)
+    end
+
+    -- A secret UnitAttackSpeed value must never reach a comparison: StartSwing
+    -- has to fall back to the cached/2.0 speed instead of raising.
+    function Release028:ForeverGate_SecretAttackSpeed_DoesNotThrow()
+        local prevSecret = rawget(_G, 'issecretvalue')
+        local prevAttackSpeed = rawget(_G, 'UnitAttackSpeed')
+        -- Numeric string: the removed `or tonumber(x)` tail would re-parse it
+        -- and produce 9.9 instead of the real weapon speed (2.6 in the mock).
+        local secret = '9.9'
+        rawset(_G, 'issecretvalue', function(v) return v == secret end)
+
+        ns.playerClass = 'WARRIOR'
+        ns.classConfig = ns.CLASS_CONFIG.WARRIOR
+        ns.ResetTimer('mh')
+        local ok, err = pcall(ns.StartSwing, 'mh', nil, 1000, secret)
+        IsTrue(ok, 'StartSwing must not raise on a secret duration: ' .. tostring(err))
+        AreEqual(ns.timers.mh.state, 'swinging', 'MH timer must start with the fallback speed')
+        AreEqual(ns.timers.mh.duration, 2.6,
+            'secret duration must be ignored, never re-parsed outside the guard')
+
+        ns.ResetTimer('mh')
+        rawset(_G, 'UnitAttackSpeed', prevAttackSpeed)
+        rawset(_G, 'issecretvalue', prevSecret)
+    end
+
+    -- A restricted UNIT_SPELLCAST_* payload must degrade to "unknown spell"
+    -- instead of comparing secret values.
+    function Release028:ForeverGate_SecretSpellcastPayload_DoesNotThrow()
+        local prevSecret = rawget(_G, 'issecretvalue')
+        local prevScrub = rawget(_G, 'scrubsecretvalues')
+        local secret = {}
+        rawset(_G, 'issecretvalue', function(v) return v == secret end)
+        rawset(_G, 'scrubsecretvalues', function() return nil, nil, nil end)
+
+        ns.playerClass = 'WARRIOR'
+        ns.classConfig = ns.CLASS_CONFIG.WARRIOR
+        local ok, err = pcall(ns.HandleSpellcastSucceeded, 'player', secret, secret)
+        IsTrue(ok, 'HandleSpellcastSucceeded must not raise on a secret payload: ' .. tostring(err))
+        local ok2, err2 = pcall(ns.HandleSpellcastInterruptedOrFailed, 'player', secret, secret)
+        IsTrue(ok2, 'HandleSpellcastInterruptedOrFailed must not raise on a secret payload: ' .. tostring(err2))
+
+        rawset(_G, 'scrubsecretvalues', prevScrub)
+        rawset(_G, 'issecretvalue', prevSecret)
+    end
+
+    -- PLAYER_SWING hands the addon the real cycle duration; the throttled speed
+    -- sync must not overwrite it mid-swing.
+    function Release028:ForeverGate_NativeSwingDuration_SurvivesSpeedSync()
+        local prevAttackSpeed = rawget(_G, 'UnitAttackSpeed')
+        rawset(_G, 'UnitAttackSpeed', function() return 3.5, 1.5 end)
+
+        ns.playerClass = 'WARRIOR'
+        ns.classConfig = ns.CLASS_CONFIG.WARRIOR
+        ns.ResetTimer('mh')
+        local now = ns.GetAlignedTime()
+        ns.StartSwing('mh', nil, now, 2.0)
+        AreEqual(ns.timers.mh.duration, 2.0, 'native PLAYER_SWING duration must be applied')
+        ns.SyncMeleeTimerSpeed('mh', now + 0.2, true)
+        AreEqual(ns.timers.mh.duration, 2.0,
+            'speed sync must not overwrite the native swing duration mid-swing')
+
+        ns.ResetTimer('mh')
+        rawset(_G, 'UnitAttackSpeed', prevAttackSpeed)
+    end
+
+    -- Secret text must be handed to SetText (AllowedWhenTainted) instead of
+    -- being compared or dropped.
+    function Release028:ForeverGate_SecretLabelText_IsPassedThrough()
+        local prevSecret = rawget(_G, 'issecretvalue')
+        local secretText = {}
+        rawset(_G, 'issecretvalue', function(v) return v == secretText end)
+
+        local bar = { labelText = CreateFrame('Frame') }
+        local ok, err = pcall(ns.SetBarLabelText, bar, secretText, true)
+        IsTrue(ok, 'SetBarLabelText must accept secret text: ' .. tostring(err))
+        AreEqual(bar.labelText:GetText(), secretText,
+            'secret text must reach SetText unchanged (pass-through, not dropped)')
+
+        rawset(_G, 'issecretvalue', prevSecret)
+    end
+
+    -- Regression for the in-game failure "attempt to perform numeric conversion
+    -- on a secret number value": a probe that raises on a plain value must never
+    -- make the guard report "not secret" (the old capability self-test did).
+    function Release028:ForeverGate_ProbeFailure_DoesNotDisableGuard()
+        local prevSecret = rawget(_G, 'issecretvalue')
+        local sentinel = {}
+        rawset(_G, 'issecretvalue', function(v)
+            if v == 1 then
+                error('probe failed on a plain value')
+            end
+            return v == sentinel
+        end)
+
+        IsTrue(ns.IsSecretValue(sentinel),
+            'a raising probe must not make every value look plain')
+        AreEqual(ns.SafeNumber(sentinel, 7), 7,
+            'SafeNumber must still fall back for the secret value')
+
+        rawset(_G, 'issecretvalue', prevSecret)
+    end
+
+    -- The in-game failure mode: the client reports "not secret" for a value it
+    -- still refuses to convert. SafeNumber must catch the raising conversion
+    -- itself instead of trusting detection.
+    function Release028:ForeverGate_ConversionGuard_CatchesUndetectedSecret()
+        local prevSecret = rawget(_G, 'issecretvalue')
+        local prevIsSecretValue = ns.IsSecretValue
+        local prevMax = math.max
+        local sentinel = 7
+
+        rawset(_G, 'issecretvalue', function() return false end)
+        ns.IsSecretValue = function() return false end
+        rawset(math, 'max', function(a, b)
+            if a == sentinel or b == sentinel then
+                error('attempt to perform numeric conversion on a secret number value')
+            end
+            return prevMax(a, b)
+        end)
+
+        local ok, result = pcall(ns.SafeNumber, sentinel, 42)
+
+        rawset(math, 'max', prevMax)
+        ns.IsSecretValue = prevIsSecretValue
+        rawset(_G, 'issecretvalue', prevSecret)
+
+        IsTrue(ok, 'SafeNumber must not raise on a restricted conversion: ' .. tostring(result))
+        AreEqual(result, 42,
+            'SafeNumber must fall back when the numeric conversion raises')
     end
 
     local nGroups = 0

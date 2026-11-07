@@ -114,26 +114,37 @@ function ns.GetAutoShotCooldown()
 
     if C_Spell and type(C_Spell.GetSpellCooldown) == "function" then
         local ok, cooldownInfo = pcall(C_Spell.GetSpellCooldown, ns.AUTO_SHOT_ID)
-        if ok and type(cooldownInfo) == "table" then
-            startTime = ns.SafeNumber and ns.SafeNumber(cooldownInfo.startTime or cooldownInfo.start_time)
-                or tonumber(cooldownInfo.startTime or cooldownInfo.start_time)
-            duration = ns.SafeNumber and ns.SafeNumber(cooldownInfo.duration) or tonumber(cooldownInfo.duration)
+        if ok and type(cooldownInfo) == "table" and not ns.IsSecretValue(cooldownInfo) then
+            startTime = ns.SafeNumber(cooldownInfo.startTime or cooldownInfo.start_time)
+            duration = ns.SafeNumber(cooldownInfo.duration)
             enabled = cooldownInfo.isEnabled
             if enabled == nil then
                 enabled = cooldownInfo.enabled
             end
-            if ns.IsSecretValue and ns.IsSecretValue(enabled) then
+            if ns.IsSecretValue(enabled) then
                 enabled = nil
             end
         end
     end
 
     if (not duration or duration <= 0) and type(GetSpellCooldown) == "function" then
-        startTime, duration, enabled = GetSpellCooldown(ns.AUTO_SHOT_ID)
+        local rawStart, rawDuration, rawEnabled = GetSpellCooldown(ns.AUTO_SHOT_ID)
+        startTime = ns.SafeNumber(rawStart)
+        duration = ns.SafeNumber(rawDuration)
+        enabled = rawEnabled
+        if ns.IsSecretValue(enabled) then
+            enabled = nil
+        end
         if (not duration or duration <= 0) and ns.GetSpellInfo then
             local autoShotName = ns.GetSpellInfo(ns.AUTO_SHOT_ID)
             if autoShotName then
-                startTime, duration, enabled = GetSpellCooldown(autoShotName)
+                local rawStart2, rawDuration2, rawEnabled2 = GetSpellCooldown(autoShotName)
+                startTime = ns.SafeNumber(rawStart2)
+                duration = ns.SafeNumber(rawDuration2)
+                enabled = rawEnabled2
+                if ns.IsSecretValue(enabled) then
+                    enabled = nil
+                end
             end
         end
     end
@@ -225,11 +236,25 @@ function ns.IsHunterRangedPinnedByMovement(now)
 end
 
 local function GetPlayerRangedHastePercent()
-    if type(GetRangedHaste) == "function" then
-        return math.max(GetRangedHaste() or 0, 0)
+    if type(GetRangedHaste) ~= "function" then
+        return 0
     end
-
-    return 0
+    -- Ranged haste is a restricted stat on WoW Forever. The getter, the
+    -- conversion and the clamp all run inside pcall: any restricted value
+    -- means "unknown haste" and the addon must fall back to 0 rather than let
+    -- a secret reach arithmetic.
+    local ok, clamped = pcall(function()
+        local value = GetRangedHaste()
+        local number = tonumber(value)
+        if number == nil then
+            return 0
+        end
+        return math.max(number, 0)
+    end)
+    if not ok or type(clamped) ~= "number" then
+        return 0
+    end
+    return clamped
 end
 
 local function EstimateSpeedFromHaste(lastSpeed, lastHastePercent, currentHastePercent)
@@ -523,7 +548,17 @@ local function HasAttackableTarget()
     if type(UnitCanAttack) == "function" and not UnitCanAttack("player", "target") then
         return false
     end
-    return type(UnitGUID) == "function" and UnitGUID("target") ~= nil
+    if type(UnitGUID) ~= "function" then
+        return false
+    end
+    local targetGUID = UnitGUID("target")
+    -- A restricted GUID cannot be compared or tested against nil. The
+    -- existence and hostility checks above already proved an attackable
+    -- target, so a secret GUID still means "target present".
+    if ns.IsSecretValue(targetGUID) then
+        return true
+    end
+    return targetGUID ~= nil
 end
 
 local function GetEnemySwingSpeed()
@@ -531,11 +566,17 @@ local function GetEnemySwingSpeed()
         return nil
     end
 
-    if UnitGUID("target") ~= ns.enemyTargetGUID then
+    local targetGUID = UnitGUID("target")
+    -- Restricted identity values cannot be compared; without a comparable
+    -- GUID the enemy swing cannot be attributed safely, so skip it.
+    if ns.IsSecretValue(targetGUID) or ns.IsSecretValue(ns.enemyTargetGUID) then
+        return nil
+    end
+    if targetGUID ~= ns.enemyTargetGUID then
         return nil
     end
 
-    local enemySpeed = type(UnitAttackSpeed) == "function" and UnitAttackSpeed("target") or nil
+    local enemySpeed = type(UnitAttackSpeed) == "function" and ns.SafeNumber(UnitAttackSpeed("target")) or nil
     if enemySpeed and enemySpeed > 0 then
         return enemySpeed
     end
@@ -563,9 +604,22 @@ function ns.RefreshEnemyTarget()
     end
 
     local targetGUID = UnitGUID("target")
+    -- Restricted identity: keep the enemy bar alive without a comparable GUID.
+    if ns.IsSecretValue(targetGUID) then
+        targetGUID = nil
+    end
     local targetChanged = ns.enemyTargetGUID ~= targetGUID
     ns.enemyTargetGUID = targetGUID
-    ns.enemyTargetName = type(UnitName) == "function" and UnitName("target") or "Enemy"
+    -- Keep the raw name. A secret name can still be displayed by SetText
+    -- (AllowedWhenTainted); it must never be compared or concatenated.
+    local targetName
+    if type(UnitName) == "function" then
+        targetName = UnitName("target")
+    end
+    if not ns.IsSecretValue(targetName) and targetName == nil then
+        targetName = "Enemy"
+    end
+    ns.enemyTargetName = targetName
 
     if targetChanged then
         ns.ResetTimer("enemy")
@@ -580,10 +634,14 @@ function ns.RefreshEnemyTarget()
     end
 
     if ns.enemyBar and enemyTimer and enemyTimer.state ~= "swinging" and ns.enemyBar.labelText then
+        local enemyName = ns.enemyTargetName
+        if not ns.IsSecretValue(enemyName) and enemyName == nil then
+            enemyName = "Enemy"
+        end
         if ns.SetBarLabelText then
-            ns.SetBarLabelText(ns.enemyBar, ns.enemyTargetName or "Enemy", true)
+            ns.SetBarLabelText(ns.enemyBar, enemyName, true)
         else
-            ns.enemyBar.labelText:SetText(ns.enemyTargetName or "Enemy")
+            ns.enemyBar.labelText:SetText(enemyName)
         end
     end
 end
@@ -697,13 +755,19 @@ function ns.SyncMeleeTimerSpeed(slot, now, force)
     if not force and now < (t.nextSpeedCheckAt or 0) then return end
     t.nextSpeedCheckAt = now + SPEED_CHECK_INTERVAL
 
+    -- While a native PLAYER_SWING duration is authoritative for the current
+    -- cycle, do not overwrite it from UnitAttackSpeed mid-swing.
+    if t.nativeSwingUntil and now < t.nativeSwingUntil then
+        return
+    end
+
     local currentSpeed
     if slot == "enemy" then
         currentSpeed = GetEnemySwingSpeed()
     else
         local mhSpeed, ohSpeed = UnitAttackSpeed("player")
         currentSpeed = (slot == "oh") and ohSpeed or mhSpeed
-        currentSpeed = ns.SafeNumber and ns.SafeNumber(currentSpeed) or tonumber(currentSpeed)
+        currentSpeed = ns.SafeNumber(currentSpeed)
     end
     if currentSpeed and currentSpeed > 0 then
         ns.RescaleTimer(slot, currentSpeed)
@@ -720,6 +784,11 @@ function ns.SyncRangedTimerSpeed(now, force)
     end
     if not force and now < (t.nextSpeedCheckAt or 0) then return end
     t.nextSpeedCheckAt = now + SPEED_CHECK_INTERVAL
+
+    -- Native PLAYER_SWING duration wins for the current ranged cycle.
+    if t.nativeSwingUntil and now < t.nativeSwingUntil then
+        return
+    end
 
     local currentRangedHaste = GetPlayerRangedHastePercent()
     local autoShotStart, autoShotDuration = ns.GetAutoShotCooldown()
@@ -750,9 +819,12 @@ function ns.SyncRangedTimerSpeed(now, force)
     -- set from GetSpellCooldown(75), then the 3rd return of UnitAttackSpeed("player")
     -- on WoW Forever, and fall back to UnitRangedDamage only when no cached speed exists.
     local _, _, unitAttackRangedSpeed = UnitAttackSpeed("player")
-    unitAttackRangedSpeed = ns.SafeNumber and ns.SafeNumber(unitAttackRangedSpeed) or tonumber(unitAttackRangedSpeed)
-    local rangedDamageSpeed = type(UnitRangedDamage) == "function" and UnitRangedDamage("player") or nil
-    rangedDamageSpeed = ns.SafeNumber and ns.SafeNumber(rangedDamageSpeed) or tonumber(rangedDamageSpeed)
+    unitAttackRangedSpeed = ns.SafeNumber(unitAttackRangedSpeed)
+    local rangedDamageSpeed
+    if type(UnitRangedDamage) == "function" then
+        rangedDamageSpeed = UnitRangedDamage("player")
+    end
+    rangedDamageSpeed = ns.SafeNumber(rangedDamageSpeed)
     local rangedSpeedValue = (t.speed and t.speed > 0 and t.speed)
         or (unitAttackRangedSpeed and unitAttackRangedSpeed > 0 and unitAttackRangedSpeed)
         or rangedDamageSpeed
@@ -791,7 +863,7 @@ function ns.StartSwing(slot, _, startTime, explicitDuration)
     if not t then return end
 
     local now = startTime or ns.GetAlignedTime()
-    local explicitSpeed = ns.SafeNumber and ns.SafeNumber(explicitDuration) or tonumber(explicitDuration)
+    local explicitSpeed = ns.SafeNumber(explicitDuration)
     local speed
 
     if slot == "ranged" then
@@ -808,9 +880,12 @@ function ns.StartSwing(slot, _, startTime, explicitDuration)
         else
             -- Prefer cached speed; UnitRangedDamage may return min damage on TBC Classic 2.5.6
             local _, _, unitAttackRangedSpeed = UnitAttackSpeed("player")
-            unitAttackRangedSpeed = ns.SafeNumber and ns.SafeNumber(unitAttackRangedSpeed) or tonumber(unitAttackRangedSpeed)
-            local rangedDmgSpeed = type(UnitRangedDamage) == "function" and UnitRangedDamage("player") or nil
-            rangedDmgSpeed = ns.SafeNumber and ns.SafeNumber(rangedDmgSpeed) or tonumber(rangedDmgSpeed)
+            unitAttackRangedSpeed = ns.SafeNumber(unitAttackRangedSpeed)
+            local rangedDmgSpeed
+            if type(UnitRangedDamage) == "function" then
+                rangedDmgSpeed = UnitRangedDamage("player")
+            end
+            rangedDmgSpeed = ns.SafeNumber(rangedDmgSpeed)
             local s = (t.speed and t.speed > 0 and t.speed)
                 or (unitAttackRangedSpeed and unitAttackRangedSpeed > 0 and unitAttackRangedSpeed)
                 or rangedDmgSpeed
@@ -826,8 +901,8 @@ function ns.StartSwing(slot, _, startTime, explicitDuration)
         t.lastSwing = now
     else
         local mhSpeed, ohSpeed = UnitAttackSpeed("player")
-        mhSpeed = ns.SafeNumber and ns.SafeNumber(mhSpeed) or tonumber(mhSpeed)
-        ohSpeed = ns.SafeNumber and ns.SafeNumber(ohSpeed) or tonumber(ohSpeed)
+        mhSpeed = ns.SafeNumber(mhSpeed)
+        ohSpeed = ns.SafeNumber(ohSpeed)
         if slot == "mh" then
             speed = (explicitSpeed and explicitSpeed > 0 and explicitSpeed)
                 or ((mhSpeed and mhSpeed > 0) and mhSpeed)
@@ -847,8 +922,12 @@ function ns.StartSwing(slot, _, startTime, explicitDuration)
     t.speed = speed
     t.state = "swinging"
     t.nextSpeedCheckAt = now
+    -- PLAYER_SWING hands us the real cycle duration; keep it authoritative
+    -- until this swing ends instead of letting the throttled speed sync
+    -- overwrite it (Blizzard only re-derives speed on weapon change).
+    t.nativeSwingUntil = (explicitSpeed and explicitSpeed > 0) and (now + speed) or nil
 
-    if explicitSpeed and explicitSpeed > 0 then
+    if t.nativeSwingUntil then
         t.nextSpeedCheckAt = now + SPEED_CHECK_INTERVAL
     elseif slot == "ranged" then
         ns.SyncRangedTimerSpeed(now, true)
@@ -902,8 +981,8 @@ end
 --  @param swingType (number) Enum.PlayerSwingType value (0, 1, or 2)
 --  @return (nil)
 function ns.HandlePlayerSwing(swingDuration, swingType)
-    local duration = ns.SafeNumber and ns.SafeNumber(swingDuration) or tonumber(swingDuration)
-    local sType = ns.SafeNumber and ns.SafeNumber(swingType) or tonumber(swingType)
+    local duration = ns.SafeNumber(swingDuration)
+    local sType = ns.SafeNumber(swingType)
     if not sType then return end
 
     local enumTbl = rawget(_G, "Enum")
@@ -923,6 +1002,11 @@ function ns.HandlePlayerSwing(swingDuration, swingType)
         if ns.TriggerSwingLandingFlash then ns.TriggerSwingLandingFlash("oh") end
     elseif sType == rangedType then
         if ns.StartRangedSwing(now, duration) then
+            local rangedTimer = ns.timers and ns.timers.ranged
+            if rangedTimer then
+                rangedTimer.lastNativeStartAt = now
+            end
+            ns.lastPlayerSwingAt = now
             if ns.OnRangedSwing then ns.OnRangedSwing() end
             if ns.TriggerSwingLandingFlash then ns.TriggerSwingLandingFlash("ranged") end
         end
@@ -946,25 +1030,38 @@ function ns.AdjustSwingTimesAfterPause(now)
 end
 
 local function ResolveSpellcastEventSpell(primaryArg, spellId)
-    if spellId ~= nil then
-        return spellId
+    -- UNIT_SPELLCAST_* payload fields can be secret on restricted clients
+    -- (SecretWhenUnitSpellCastRestricted). Scrub first so none of the checks
+    -- below can ever compare or pattern-match a secret value.
+    local safeSpellId, safePrimary = ns.Scrub(spellId, primaryArg)
+    -- Defence in depth: if the scrubber was unavailable, never let a secret
+    -- reach the comparisons below.
+    if ns.IsSecretValue(safeSpellId) then
+        safeSpellId = nil
+    end
+    if ns.IsSecretValue(safePrimary) then
+        safePrimary = nil
     end
 
-    if type(primaryArg) == "number" then
-        return primaryArg
+    if safeSpellId ~= nil then
+        return safeSpellId
     end
 
-    if type(primaryArg) ~= "string" or primaryArg == "" then
+    if type(safePrimary) == "number" then
+        return safePrimary
+    end
+
+    if type(safePrimary) ~= "string" or safePrimary == "" then
         return nil
     end
 
     -- Modern/Anniversary UNIT_SPELLCAST_* payloads can provide castGUID as the
     -- primary argument when spellId is absent. Never treat castGUID as a spell token.
-    if primaryArg:match("^Cast%-%") then
+    if safePrimary:match("^Cast%-%") then
         return nil
     end
 
-    return primaryArg
+    return safePrimary
 end
 
 local HUNTER_FEIGN_DEATH_ID = 5384
@@ -975,15 +1072,14 @@ local GCD_QUERY_SPELL_ID = 61304
 local function QuerySpellCooldown(spellToken)
     if C_Spell and type(C_Spell.GetSpellCooldown) == "function" then
         local ok, cooldownInfo = pcall(C_Spell.GetSpellCooldown, spellToken)
-        if ok and type(cooldownInfo) == "table" then
-            local startTime = ns.SafeNumber and ns.SafeNumber(cooldownInfo.startTime or cooldownInfo.start_time)
-                or tonumber(cooldownInfo.startTime or cooldownInfo.start_time)
-            local duration = ns.SafeNumber and ns.SafeNumber(cooldownInfo.duration) or tonumber(cooldownInfo.duration)
+        if ok and type(cooldownInfo) == "table" and not ns.IsSecretValue(cooldownInfo) then
+            local startTime = ns.SafeNumber(cooldownInfo.startTime or cooldownInfo.start_time)
+            local duration = ns.SafeNumber(cooldownInfo.duration)
             local enabled = cooldownInfo.isEnabled
             if enabled == nil then
                 enabled = cooldownInfo.enabled
             end
-            if ns.IsSecretValue and ns.IsSecretValue(enabled) then
+            if ns.IsSecretValue(enabled) then
                 enabled = nil
             end
             if (enabled == nil or enabled == true or enabled == 1) and type(startTime) == "number"
@@ -994,7 +1090,13 @@ local function QuerySpellCooldown(spellToken)
     end
 
     if type(GetSpellCooldown) == "function" then
-        local startTime, duration, enabled = GetSpellCooldown(spellToken)
+        local rawStart, rawDuration, rawEnabled = GetSpellCooldown(spellToken)
+        local startTime = ns.SafeNumber(rawStart)
+        local duration = ns.SafeNumber(rawDuration)
+        local enabled = rawEnabled
+        if ns.IsSecretValue(enabled) then
+            enabled = nil
+        end
         if (enabled == nil or enabled == true or enabled == 1) and type(startTime) == "number"
             and type(duration) == "number" and duration > 0 then
             return startTime, duration
@@ -1303,6 +1405,8 @@ function ns.ResetTimer(slot)
     t.hiddenCastWindowStart = nil
     t.hiddenCastWindowDuration = nil
     t.lastRangedStartTime = 0.0
+    t.nativeSwingUntil = nil
+    t.lastNativeStartAt = nil
 
     ns.RefreshUpdateLoop()
     if slot == "ranged" then
@@ -1360,7 +1464,16 @@ end
 --  @usage Called automatically by the addon event frame; no manual calls needed
 --  @see ns.StartSwing, ns.ApplyParryHaste
 function ns.HandleCLEU()
+    -- The legacy global only exists while the deprecated-API CVar is enabled
+    -- (Blizzard_DeprecatedCombatLog on WoW Forever); prefer the C API when the
+    -- legacy name is absent so CLEU keeps working when the log is readable.
     local cleuFn = CombatLogGetCurrentEventInfo or _G.CombatLogGetCurrentEventInfo
+    if type(cleuFn) ~= "function" then
+        local cCombatLog = rawget(_G, "C_CombatLog")
+        if type(cCombatLog) == "table" and type(cCombatLog.GetCurrentEventInfo) == "function" then
+            cleuFn = cCombatLog.GetCurrentEventInfo
+        end
+    end
     if type(cleuFn) ~= "function" then
         return
     end
@@ -1371,6 +1484,16 @@ function ns.HandleCLEU()
 
     local _, subEvent, _, sourceGUID, _, _, _, targetGUID, _, _, _, cleuArg12, cleuArg13, _, cleuArg15, _, _, _, _, _, cleuArg21 =
     cleuFn()
+    -- C_CombatLog.GetCurrentEventInfo is marked SecretReturns on restricted
+    -- clients, so every field this dispatcher reads is scrubbed before use.
+    -- An unreadable payload is ignored instead of raising.
+    subEvent, sourceGUID, targetGUID, cleuArg12, cleuArg13, cleuArg15, cleuArg21 =
+        ns.Scrub(subEvent, sourceGUID, targetGUID, cleuArg12, cleuArg13, cleuArg15, cleuArg21)
+    if ns.IsSecretValue(subEvent) or ns.IsSecretValue(sourceGUID) or ns.IsSecretValue(targetGUID)
+        or ns.IsSecretValue(cleuArg12) or ns.IsSecretValue(cleuArg13)
+        or ns.IsSecretValue(cleuArg15) or ns.IsSecretValue(cleuArg21) then
+        return
+    end
     if not subEvent then
         return
     end
@@ -1385,6 +1508,11 @@ function ns.HandleCLEU()
     end
 
     local eventTime = ns.GetAlignedTime()
+
+    -- When the client exposes PLAYER_SWING, that event owns swing restarts and
+    -- landing flashes. The combat log still supplies extra attacks, parry haste
+    -- and queued-spell bookkeeping, but must not double-start the same swing.
+    local nativeSwingOwnsSwings = ns.HasNativeSwingTimer and ns.HasNativeSwingTimer()
 
     -- Expire a stale extra-attack credit. Without this, an extra attack whose
     -- own swing event never arrived left the counter positive, so the next real
@@ -1417,9 +1545,13 @@ function ns.HandleCLEU()
             if (ns.extraAttackPending or 0) > 0 then
                 ns.extraAttackPending = ns.extraAttackPending - 1
             else
-                ns.StartSwing(slot, nil, eventTime)
+                if not nativeSwingOwnsSwings then
+                    ns.StartSwing(slot, nil, eventTime)
+                end
                 if ns.OnMeleeSwing then ns.OnMeleeSwing(slot) end
-                if ns.TriggerSwingLandingFlash then ns.TriggerSwingLandingFlash(slot) end
+                if not nativeSwingOwnsSwings and ns.TriggerSwingLandingFlash then
+                    ns.TriggerSwingLandingFlash(slot)
+                end
             end
         elseif subEvent == "SWING_MISSED" then
             local missType = cleuArg12
@@ -1431,16 +1563,30 @@ function ns.HandleCLEU()
             if (ns.extraAttackPending or 0) > 0 then
                 ns.extraAttackPending = ns.extraAttackPending - 1
             else
-                ns.StartSwing(slot, nil, eventTime)
+                if not nativeSwingOwnsSwings then
+                    ns.StartSwing(slot, nil, eventTime)
+                end
                 if ns.OnMeleeSwing then ns.OnMeleeSwing(slot) end
-                if ns.TriggerSwingLandingFlash then ns.TriggerSwingLandingFlash(slot) end
+                if not nativeSwingOwnsSwings and ns.TriggerSwingLandingFlash then
+                    ns.TriggerSwingLandingFlash(slot)
+                end
             end
         elseif subEvent == "SPELL_CAST_SUCCESS" then
             local spellId = cleuArg12
             if ns.IsAutoShotSpell and ns.IsAutoShotSpell(spellId) then
-                if ns.StartRangedSwing(eventTime) and ns.OnRangedSwing then
-                    ns.OnRangedSwing()
-                    if ns.TriggerSwingLandingFlash then ns.TriggerSwingLandingFlash("ranged") end
+                -- PLAYER_SWING is authoritative when it fired for this cycle;
+                -- the combat-log signal is the fallback for clients where the
+                -- native ranged swing event is not delivered. The 1s window
+                -- keeps a cycle from being started twice.
+                local rangedTimer = ns.timers and ns.timers.ranged
+                local nativeStartedAt = rangedTimer and rangedTimer.lastNativeStartAt
+                local nativeOwnsCycle = nativeStartedAt and (eventTime - nativeStartedAt) < 1.0
+                if not nativeOwnsCycle then
+                    ns.lastAutoShotCLEUAt = eventTime
+                    if ns.StartRangedSwing(eventTime) and ns.OnRangedSwing then
+                        ns.OnRangedSwing()
+                        if ns.TriggerSwingLandingFlash then ns.TriggerSwingLandingFlash("ranged") end
+                    end
                 end
             end
         elseif subEvent == "SPELL_EXTRA_ATTACKS" then

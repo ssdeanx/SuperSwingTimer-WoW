@@ -255,6 +255,29 @@ SuperSwingTimer.lua (orchestrator — depends on everything)
   └──→ SuperSwingTimer_Config.lua       (depends on Constants, UI)
 ```
 
+## 7. WoW Forever aura module (SuperSwingTimer_Forever.lua)
+
+Loaded last, after `SuperSwingTimer_SoD.lua`. It is inert on every non-Forever
+client (`ns.isForever == false`): no frames are created and the classic icon
+groups run unchanged.
+
+- `ns.isForever` — `C_SwingTimer` + `Enum.PlayerSwingType` present.
+- `ns.hasAuraContainer` — `C_AuraContainerUtil` + the AuraContainer sort enums present.
+- `ns.IsAuraDataSecret()` — `C_Secrets.ShouldAurasBeSecret()`, fail closed on error.
+- `ns.GetSpellAuraSecrecy(id)` / `ns.IsSpellAuraReadable(id)` — per-spell secrecy.
+- `ns.InitForeverAuraIcons()` — creates one `AuraContainer` for player buffs
+  (`HELPFUL`) and one for target debuffs (`HARMFUL|PLAYER`), each with
+  `candidateFilters.includeSpellIDs` from `ns.FOREVER_BUFF_SPELLS` /
+  `ns.FOREVER_DEBUFF_SPELLS`. The client matches auras and fills the buttons;
+  no AuraData field is read by addon code.
+- `ns.UpdateForeverAuraIcons(elapsed)` — throttled (0.25 s) show/hide, icon-size
+  and anchor maintenance; never reads aura data.
+- On Forever the six `ns.Update*BuffIcons` functions are wrapped: they no-op
+  while `ns.foreverAuraPending` or `ns.foreverNativeAuraIcons` is set, and run
+  normally if container setup fails permanently.
+- `ns.debuffStackIconOffset` (written by ClassMods `RestackDebuffBars`) is the
+  shared anchor offset for both the classic and native icon rows.
+
 **Key architectural rules:**
 - Constants.lua has zero dependencies — every other file depends on it.
 - State.lua and UI.lua have no mutual dependency — both only read ns.* the other writes.
