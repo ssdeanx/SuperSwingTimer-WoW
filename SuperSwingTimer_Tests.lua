@@ -3154,6 +3154,28 @@ local function RegisterSSTTests()
         IsTrue(type(d.stanceSpells) == "number", "d.stanceSpells is a number")
     end
 
+    function ForeverAura:LegacyUpdaters_WrapWithoutError()
+        local prevNative = ns.foreverNativeAuraIcons
+        local prevHunter = ns.UpdateHunterBuffIcons
+        local called = 0
+
+        ns.UpdateHunterBuffIcons = function() called = called + 1 end
+        ns.foreverNativeAuraIcons = true
+
+        local ok = pcall(ns.WrapLegacyIconUpdaters)
+        IsTrue(ok, "wrapping legacy updaters must not raise")
+
+        ns.UpdateHunterBuffIcons()
+        AreEqual(called, 0, "wrapped updater must stand down while native rows are live")
+
+        ns.foreverNativeAuraIcons = false
+        ns.UpdateHunterBuffIcons()
+        AreEqual(called, 1, "wrapped updater must run when native rows are off")
+
+        ns.UpdateHunterBuffIcons = prevHunter
+        ns.foreverNativeAuraIcons = prevNative
+    end
+
     local nGroups = 0
     for _ in ipairs(WoWUnit.children) do nGroups = nGroups + 1 end
     print("|cff44ff44[SST] " .. nGroups .. " groups registered. Click WoWUnit toggle or type /ssttest.|r")

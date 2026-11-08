@@ -1,21 +1,34 @@
 # Super Swing Timer <span style="color:#00ccff">v0.3.2</span>
 
-A fast, customizable **Main Hand**, **Off Hand**, **Ranged**, and **Enemy** swing timer for World of Warcraft Classic clients, featuring class-specific rotation helpers, target debuff bars, and a unified player power bar.
+A fast, customizable **Main Hand**, **Off Hand**, **Ranged**, and **Enemy** swing timer for World of Warcraft Classic and WoW Forever clients — with class-specific rotation helpers, target debuff bars, and a unified player power bar.
+
+- Discord: [https://discord.gg/nnbN4Naad](https://discord.gg/nnbN4Naad)
 
 **<span style="color:#2ecc71">12,000+ downloads</span>** — thank you to everyone using the addon and reporting feedback!
 
 ---
 
+## What's New in v0.3.2
+
+- **WoW Forever native aura rows.** Player buffs and your own target debuffs now render through the client's native aura display — icons, stacks and duration bars — centered above the swing bar.
+- **Active stance / aspect / form / seal / shield slot.** One dedicated icon to the left of the bar shows your current state: Hunter aspects, Warrior stances, Druid forms, Paladin seals, Shaman shields, Rogue stealth. Hunters get a warning when entering combat without an aspect.
+- **Dynamic aura stack.** Target debuffs stay pinned above your player procs; when you have no procs, the gap collapses so nothing floats in mid-air.
+- **Forever Shaman weave.** Maelstrom Weapon is read through the Forever client API; only **Lightning Bolt** receives the cast-time reduction (Chain Lightning stays 2.5 s on Forever).
+- **Slam timing.** With **Improved Slam**, Slam no longer delays your melee swing; without the talent the cast still pushes the swing.
+- **Forever diagnostics.** `/sst diag` now shows `auraGroup`, `maelstrom` and `weave` lines so you can see exactly what the client is exposing.
+
+---
+
 ## Client Availability
 
-| Client Version | TOC Interface | Swing Bars (MH / OH / Ranged) | Enemy Swing Bar | Class Helpers, Auras & Debuffs | Status |
+| Client Version | TOC Interface | Swing Bars | Enemy Swing Bar | Class Helpers, Auras & Debuffs | Status |
 | :--- | :---: | :---: | :---: | :---: | :---: |
 | **Classic Era & Season of Discovery** | `11509` | <span style="color:#2ecc71">**Full Support**</span> | <span style="color:#2ecc71">**Supported**</span> | <span style="color:#2ecc71">**Full Support**</span> (incl. SoD Runes) | <span style="color:#2ecc71">**Ready**</span> |
 | **TBC Anniversary Edition** | `20506` | <span style="color:#2ecc71">**Full Support**</span> | <span style="color:#2ecc71">**Supported**</span> | <span style="color:#2ecc71">**Full Support**</span> | <span style="color:#2ecc71">**Ready**</span> |
 | **Titanforge (WotLK Classic)** | `38002` | <span style="color:#2ecc71">**Full Support**</span> | <span style="color:#2ecc71">**Supported**</span> | <span style="color:#2ecc71">**Full Support**</span> | <span style="color:#2ecc71">**Ready**</span> |
-| **WoW Forever** | `16001` | <span style="color:#2ecc71">**Supported**</span> (`C_SwingTimer`) | <span style="color:#e67e23">**Preview Only**</span> | <span style="color:#e67e23">**Unrestricted APIs Only**</span> | <span style="color:#00ccff">**Compatible**</span> |
+| **WoW Forever** | `16001` | <span style="color:#2ecc71">**Full Support**</span> (native timer) | <span style="color:#e67e23">**When combat log is readable**</span> | <span style="color:#2ecc71">**Supported**</span> (native aura rows) | <span style="color:#00ccff">**Ready**</span> |
 
-> **<span style="color:#e67e23">WoW Forever (`16001`) Note:</span>** WoW Forever exposes a native `C_SwingTimer` (`PLAYER_SWING`) API and can wrap combat values (unit stats, power, health, cooldowns, auras, cast payloads) in secret values. Super Swing Timer detects Forever, drives **Main Hand**, **Off Hand**, and **Ranged** bars from `PLAYER_SWING`, and gates every restricted read: `UnitAttackSpeed`, `UnitPower`, `UnitHealth`, `UnitCastingInfo`, cooldown tables, aura tables and event payloads are probed before use, so a restricted value degrades to "unknown" instead of raising. The combat log is gated by the client's own `C_CombatLog.IsCombatLogRestricted()` query, so CLEU features stay enabled whenever the log is readable. A **Hide Blizzard Swing Bars** toggle (enabled by default on Forever) turns off Blizzard's default swing bars (`showSwingTimer` CVar) and restores the user's original value when unchecked.
+> **WoW Forever:** Super Swing Timer uses the client's native swing timer for Main Hand, Off Hand and Ranged, and the client's native aura display for player buffs and your own target debuffs. Restricted combat values are displayed by the client where required; the addon never guesses a hidden value. A **Hide Blizzard Swing Bars** toggle (on by default on Forever) hides Blizzard's own swing bars and restores your original setting when unchecked.
 
 ---
 
@@ -52,13 +65,13 @@ Type `/sst` in chat to open the settings window. Bars stay hidden out of combat 
 | Class | Supported Bars & Visuals | Key Rotation Helpers |
 | :--- | :--- | :--- |
 | **<span style="color:#abd473">Hunter</span>** | Ranged + Linked MH + Cast Bar + Range Helper + Aspect Icon + CD Icons + 7 Debuff Bars | Auto Shot cooldown sync, **Steady Shot / Aimed Shot** no-clip coloring (with TBC 0.5s grace period & trailing latency slice), yellow **Raptor Strike** queue tint, **4-state Range Helper** (Melee / Sweet Spot / Ranged / Out of Range), missing-aspect combat warning, and 7 target debuff bars (Serpent Sting, Wing Clip, Concussive Shot, Traps). |
-| **<span style="color:#c79c6e">Warrior</span>** | MH + OH + Shield Block Bar + Rage Bar + CD Icons + Debuff Bars | **Heroic Strike** (yellow) and **Cleave** (green) queue tints on MH, **Slam** pause/extend timing with live cast bar, **Shield Block** duration bar, **Overpower** proc glow, `EXEC` badge in Execute range, plus **Deep Wounds** and **Sunder Armor** target debuff bars. |
+| **<span style="color:#c79c6e">Warrior</span>** | MH + OH + Shield Block Bar + Rage Bar + CD Icons + Debuff Bars | **Heroic Strike** (yellow) and **Cleave** (green) queue tints on MH, **Slam** pause/extend timing with live cast bar (Forever: no delay with Improved Slam), **Shield Block** duration bar, **Overpower** proc glow, `EXEC` badge in Execute range, plus **Deep Wounds** and **Sunder Armor** target debuff bars. |
 | **<span style="color:#fff569">Rogue</span>** | MH + OH + SnD Bar + Energy Tick + Energy Bar + CD Icons + Debuff Bar | Latency-adjusted red **Sinister Strike** landing window at the end of MH, slim **Slice and Dice** duration bar, vertical 4px **2s Energy Tick** bar with energy-cap warning tint, **Adrenaline Rush** bar, and **Rupture** target debuff bar. |
 | **<span style="color:#f58cba">Paladin</span>** | MH + Mana Bar + CD Icons + Debuff Bars | Aura-aware **Seal Twist Zone** (proportional red tail for `0.4s + latency` on Seal of Command / Blood / Martyr) with a GCD-aware reseal marker line, **Reckoning** stack badge, and **Judgement** / **Seal of Vengeance** target debuff bars. |
-| **<span style="color:#0070de">Shaman</span>** | MH + OH + Shield Charges + Mana Bar + CD Icons + Debuff Bar | **Weave Assist** for Lightning Bolt, Chain Lightning, Healing Wave, Lesser Healing Wave, and Chain Heal (auto-resolving highest known rank + SoD **Maelstrom Weapon** cast reduction), moving active-cast spark, **3-charge Lightning/Water Shield** tracker, **Windfury** ICD tracking, and **Flame Shock** debuff bar. |
-| **<span style="color:#ff7d0a">Druid</span>** | Feral MH + Form Power Bar + Energy Tick + CD Icons + Debuff Bars | Instant Cat/Bear form swing resets, bear-yellow **Maul** queue tint, Cat **2s Energy Tick** helper, **Clearcasting** proc tracking, dynamic form-switching power bar (Rage / Energy / Mana), and **Mangle**, **Rip**, and **Rake** target debuff bars. |
+| **<span style="color:#0070de">Shaman</span>** | MH + OH + Shield Charges + Mana Bar + CD Icons + Debuff Bar | **Weave Assist** for Lightning Bolt, Chain Lightning, Healing Wave, Lesser Healing Wave, and Chain Heal (auto-resolving highest known rank; **Forever: Maelstrom Weapon, Lightning Bolt only**), moving active-cast spark, **3-charge Lightning/Water Shield** tracker, **Windfury** ICD tracking, and **Flame Shock** debuff bar. |
+| **<span style="color:#ff7d0a">Druid</span>** | Feral MH + Form Power Bar + Energy Tick + CD Icons + Debuff Bars | Instant Cat/Bear form swing resets, bear-yellow **Maul** queue tint, Cat **2s Energy Tick** helper, **Clearcasting** proc tracking, dynamic form-switching power bar (Rage / Energy / Mana), and **Rip**, **Rake** and **Lacerate** target debuff bars. |
 
-* **<span style="color:#e74c3c">Enemy Swing Bar</span>** *(All Classes)*: Tracks your current hostile target's main-hand swing timer in red whenever `COMBAT_LOG_EVENT_UNFILTERED` is available.
+- **<span style="color:#e74c3c">Enemy Swing Bar</span>** *(All Classes)*: Tracks your current hostile target's main-hand swing timer in red whenever the combat log is available.
 
 ---
 
@@ -81,7 +94,7 @@ Type `/sst` in chat to open the settings window. Bars stay hidden out of combat 
 
 ```text
 +------------------------------------------------------------------+
-| Super Swing Timer v0.3.0            [ Unlock & Move Bars ]  [X]  |
+| Super Swing Timer v0.3.2            [ Unlock & Move Bars ]  [X]  |
 | Global Scale [=====slider (0.5x–3.0x)=====] [1.0]               |
 |------------------------------------------------------------------|
 | Quick Controls (Tabs: [ All ] [ Visibility ] [ Colors ] [ Class ])|
@@ -97,10 +110,11 @@ Type `/sst` in chat to open the settings window. Bars stay hidden out of combat 
 +------------------------------------------------------------------+
 ```
 
-- **Global Scale (`0.5x` – `3.0x`)**: Proportionally scales all bars, icons, sparks, borders, and fonts in real time with subpixel grid snapping (`ns.PixelSnap`).
+- **Global Scale (`0.5x` – `3.0x`)**: Proportionally scales all bars, icons, sparks, borders, and fonts in real time.
 - **Power Bar Height (`6px` – `30px`, default `14px`)**: Independently resize the unified Rage / Energy / Mana bar anchored below your swing stack.
-- **Built-in & SharedMedia Textures**: Ships with custom statusbar textures (`Wglass`, `MerfinMain`, `MerfinMainDark`, `MerfinFlatt`, `MerfinTexture`, `Flatt`) and auto-discovers any installed `LibSharedMedia` or `WeakAuras` textures.
+- **Built-in & SharedMedia Textures**: Ships with custom statusbar textures and auto-discovers installed `LibSharedMedia` or `WeakAuras` textures.
 - **Interactive Move Mode (`/sst move`)**: Left-click and drag any bar group while right-click preserves camera mouselook. Automatically locks if combat begins.
+- **Per-class toggles**: Show or hide buff rows, debuff rows, stance icons, and the class helper bars independently.
 
 ---
 
@@ -111,7 +125,7 @@ Type `/sst` in chat to open the settings window. Bars stay hidden out of combat 
 | Command | Description |
 | :--- | :--- |
 | `/stt diag` | Compact health report showing client, TOC, DB version, FPS/memory/CPU, and any warnings |
-| `/stt diag full` | Detailed status across all 13 subsystems (client, metadata, libs, DB, class, aura, timing, events, loop, perf, glow, SoD, slash) |
+| `/stt diag full` | Detailed status across all subsystems (client, metadata, libs, DB, class, aura, timing, events, loop, perf, glow, SoD, Forever) |
 | `/stt diag errors` | View captured error signatures, stack traces, and repeat counts |
 | `/stt diag export` | Open a copyable report window (`Ctrl+A`, `Ctrl+C`) for bug reports |
 | `/stt diag test` | Run live self-tests on clock, spell info, aura wrapper, metadata, and glow |
@@ -122,38 +136,23 @@ Type `/sst` in chat to open the settings window. Bars stay hidden out of combat 
 ## Recent Releases
 
 ### <span style="color:#00ccff">v0.3.2</span> (2026-11-08)
-- **<span style="color:#2ecc71">WoW Forever Dynamic Aura Stack</span>**: Target debuffs are permanently anchored to the top of the stack above the primary bar; player procs anchor directly below them. When no player procs are active, the gap cleanly collapses to 0px so debuffs never float disconnected in mid-air.
-- **<span style="color:#2ecc71">Left-Side Active Stance & Aspect Anchor</span>**: Stances, forms, aspects, seals, shields, and stealth are separated from combat procs and displayed in a dedicated slot to the left of the primary swing bar and class helper bars (Hunter range helper, Rogue/Druid energy tick, Shaman lightning tracker). Displays only the 1 active state, with an in-combat warning alert for Hunters missing an active aspect.
-- **<span style="color:#2ecc71">Aura Maintenance Throttling</span>**: Throttled maintenance loop (`MAINTAIN_INTERVAL = 0.15s`) using frame `elapsed` delta accumulation; immediate execution when called on events or configuration changes.
-- **<span style="color:#2ecc71">Test Suite</span>**: 184 headless tests, `0` luacheck warnings across 15 files.
+
+- **<span style="color:#2ecc71">WoW Forever Dynamic Aura Stack</span>**: Target debuffs are pinned to the top of the stack above the primary bar; player procs sit directly below them. When no procs are active, the gap collapses to 0px.
+- **<span style="color:#2ecc71">Active Stance & Aspect Slot</span>**: Stances, forms, aspects, seals, shields and stealth get one dedicated icon to the left of the bar, with an in-combat warning for Hunters missing an aspect.
+- **<span style="color:#2ecc71">Centered Aura Rows</span>**: Buff and debuff rows now center above the swing bar instead of growing to the right.
+- **<span style="color:#2ecc71">Forever Shaman Weave & Slam</span>**: Maelstrom Weapon reduces Lightning Bolt only; Slam no longer delays the swing when Improved Slam is known.
+- **<span style="color:#2ecc71">Stability</span>**: Fixed two Forever-only errors (legacy icon-updater wrapper and a secret stance-slot state read).
 
 ### <span style="color:#00ccff">v0.3.1</span> (2026-11-07)
-- **<span style="color:#2ecc71">WoW Forever Native Auras</span>**: Player buffs and target debuffs render through the client's `AuraContainer` API. Buffs use `HELPFUL`; debuffs use `HARMFUL|PLAYER`, so only your own Serpent Sting / Flame Shock / Rend is shown on a shared target.
-- **<span style="color:#2ecc71">Forever-Owned Maelstrom + Weave Ranks</span>**: Maelstrom reading, stack state and the Lightning-Bolt-only reduction live in `SuperSwingTimer_Forever.lua`; the Forever weave table carries the verified Forever ranks (LB 10, CL 4, HW 10, LHW 6, CH 3).
-- **<span style="color:#2ecc71">New Forever Abilities + Slam Rule</span>**: Every new Forever melee ability is tracked per class; Slam (1240193) pauses the swing only without Improved Slam (12862).
-- **<span style="color:#2ecc71">Forever Diagnostics</span>**: `/sst diag` adds `auraGroup`, `maelstrom` and `weave` lines for in-game verification.
-- **<span style="color:#2ecc71">No Cross-Client Logic on Forever</span>**: Every Forever branch is gated on `ns.isForever`; other clients keep their existing paths.
-- **<span style="color:#2ecc71">Test Suite</span>**: 181 headless tests, `0` luacheck warnings across 15 files.
+
+- **<span style="color:#2ecc71">WoW Forever Native Auras</span>**: Player buffs and target debuffs render through the client's native aura display; debuffs are own-caster only.
+- **<span style="color:#2ecc71">Forever-Owned Maelstrom + Weave Ranks</span>**: Verified Forever ranks for Lightning Bolt, Chain Lightning and the heal families.
+- **<span style="color:#2ecc71">New Forever Abilities</span>**: Victory Rush, Spearing Strike, Reckless Swings, Shank, Mutilate, Primal Bite, Lacerate, Holy Strike, Seal of Fury, Strider Kick, Lacerating Strikes and more.
+- **<span style="color:#2ecc71">Forever Diagnostics</span>**: `auraGroup`, `maelstrom` and `weave` lines in `/sst diag`.
 
 ### <span style="color:#00ccff">v0.3.0</span> (2026-11-06)
-- **<span style="color:#2ecc71">WoW Forever (`16001`) Gate Hardened</span>**: Native `C_SwingTimer` (`PLAYER_SWING`) drives Main Hand, Off Hand, and Ranged bars; the payload duration stays authoritative for its swing.
-- **<span style="color:#2ecc71">Secret-Value Gating Completed</span>**: Every restricted call site (`UnitAttackSpeed`, `UnitPower`, `UnitHealth`, `UnitPowerType`, `GetRangedHaste`, `UnitSpellHaste`, `UnitCastingInfo`, `UnitChannelInfo`, cooldown tables, aura tables, `UnitGUID`, `UnitName`, CLEU and spellcast payloads) is probed or scrubbed before use.
-- **<span style="color:#2ecc71">Secret Values Are Displayed, Not Dropped</span>**: Status bars and font strings accept secrets from tainted code, so restricted power values and enemy names are passed straight to `SetValue`/`SetText` and rendered; only the numeric comparisons are skipped.
-- **<span style="color:#2ecc71">Hunter Ranged Cycle</span>**: Auto Shot restarts no longer abort on the restricted-haste guard, and the combat-log Auto Shot signal remains a fallback when `PLAYER_SWING` does not deliver a ranged swing.
-- **<span style="color:#2ecc71">Fail-Safe Secret Detection</span>**: `ns.IsSecretValue` verifies restricted values behaviourally (arithmetic, string and table probes) after the client probe, so a "not secret" answer can never let a restricted value reach numeric conversion. `/sst diag` now shows a **secrets** line reporting whether the client is handing the addon secret values.
-- **<span style="color:#2ecc71">Combat-Log Gate Corrected</span>**: `C_CombatLog.IsCombatLogRestricted()` is the only authority; a native swing timer no longer disables CLEU features.
-- **<span style="color:#2ecc71">Hide Blizzard Swing Bars (Forever Only)</span>**: Restores the user's original `showSwingTimer` value when unchecked.
-- **<span style="color:#2ecc71">Hunter Range Helper Fallback</span>**: `C_SwingTimer.IsTargetWithinSwingRange` is pcall-guarded and `nil` is treated as "unknown".
-- **<span style="color:#2ecc71">Test Suite</span>**: Expanded headless verification to **171 tests** (`0` luacheck warnings across 14 files).
 
-### v0.2.8 (2026-10-27)
-- Synced settings panel version display directly with `.toc` metadata via `ns.GetDisplayVersion()`.
-- Narrowed the Hunter ranged-restart gate so melee/utility casts (such as Raptor Strike) never falsely start an Auto Shot cycle.
-- Hardened extra-attack credit expiration, localized Steady Shot red-zone detection, and GCD duration tracking.
-
-### v0.2.7 (2026-10-25)
-- Added `/stt diag` enterprise diagnostics, error ring buffer, export modal, and opt-in `OnUpdate` hook profiler.
-- Bundled `LibStub` + `LibCustomGlow-1.0` with `/sst glow` toggle for bar Autocast shine and expiring buff icon ButtonGlow.
+- **<span style="color:#2ecc71">WoW Forever Support</span>**: Native swing timer, secret-value gating, Hunter ranged cycle fixes, Hide Blizzard Swing Bars, and a `secrets` diagnostic line.
 
 *(See [CHANGELOG.md](CHANGELOG.md) for the complete version history.)*
 

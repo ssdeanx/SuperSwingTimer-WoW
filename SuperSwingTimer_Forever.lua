@@ -978,7 +978,11 @@ local function CreateAuraGroupContainer(groupKey, unitToken, filter, spellList, 
         end
 
         container:AddAuraGroup(groupKey, filter, groupOptions)
-        container:SetFlowLayoutAnchorPoint("BOTTOM")
+        -- Grow from the bottom-left, then anchor the container bottom-center
+        -- to the bar. The container width is the row width, so the row is
+        -- centered above the bar instead of starting at its center and
+        -- extending right.
+        container:SetFlowLayoutAnchorPoint("BOTTOMLEFT")
         container:SetEnabled(true)
         container:Show()
     end)
@@ -1235,12 +1239,19 @@ local function UpdateLeftStanceIcon(bar)
         end)
     end
 
-    -- Check if native stance slot is actively displaying an aura
+    -- Check if the native stance slot is displaying an aura. Its Shown state
+    -- carries a secret aspect on Forever, so it must never be boolean-tested:
+    -- a secret result means the native slot owns the display and the fallback
+    -- shapeshift icon must stay hidden.
     local slotActive = false
     if state.stanceSlot and state.stanceSlot.IsShown then
         local ok, isShown = pcall(state.stanceSlot.IsShown, state.stanceSlot)
-        if ok and isShown then
-            slotActive = true
+        if ok then
+            if ns.IsSecretValue(isShown) then
+                slotActive = true
+            elseif isShown == true then
+                slotActive = true
+            end
         end
     end
 
@@ -1365,8 +1376,11 @@ local function ApplyContainerAnchors()
     state.lastAnchorBar = bar
 end
 
---- Wrap classic icon updaters so they stand down while native Forever containers are live.
-local function WrapLegacyIconUpdaters()
+--- Wrap classic icon updaters so they stand down while native Forever containers
+-- are live. Functions cannot carry fields in Lua 5.1, so the "already wrapped"
+-- state lives in this name-keyed table instead of on the function itself.
+local wrappedLegacyUpdaters = {}
+function ns.WrapLegacyIconUpdaters()
     local legacyFns = {
         "UpdateHunterAspect",
         "UpdateHunterBuffIcons",
@@ -1378,7 +1392,7 @@ local function WrapLegacyIconUpdaters()
     }
     for _, fnName in ipairs(legacyFns) do
         local orig = ns[fnName]
-        if type(orig) == "function" and not orig._foreverWrapped then
+        if type(orig) == "function" and not wrappedLegacyUpdaters[fnName] then
             local wrapped
             wrapped = function(...)
                 if ns.foreverNativeAuraIcons then
@@ -1389,7 +1403,7 @@ local function WrapLegacyIconUpdaters()
                 end
                 return orig(...)
             end
-            wrapped._foreverWrapped = true
+            wrappedLegacyUpdaters[fnName] = true
             ns[fnName] = wrapped
         end
     end
@@ -1505,7 +1519,7 @@ function ns.InitForeverAuraIcons()
     end
 
     ns.foreverNativeAuraIcons = true
-    WrapLegacyIconUpdaters()
+    ns.WrapLegacyIconUpdaters()
     -- The native containers drive their own updates. Zero the classic counter
     -- so ns.HasActiveTimers does not keep the swing loop alive for icons that
     -- are no longer rendered by the legacy path.
@@ -1563,7 +1577,7 @@ function ns.UpdateForeverAuraIcons(elapsed)
         maintainTimer = 0
     end
 
-    WrapLegacyIconUpdaters()
+    ns.WrapLegacyIconUpdaters()
 
     local buffVisible = GetBuffToggle()
     local debuffVisible = GetDebuffToggle()

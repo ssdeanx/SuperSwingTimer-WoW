@@ -23,10 +23,17 @@
 - TOC `## Version: v0.3.2`; settings-panel and test fallbacks synchronized.
 - Permanent stances, aspects, seals, shields, and weapon imbues removed from `FOREVER_BUFF_SPELLS` so they never clutter the top proc row.
 
+### Fixed
+
+- **Legacy icon-updater wrapper crash.** The Forever wrapper stored its "already wrapped" flag on the function itself (`orig._foreverWrapped`); Lua 5.1 functions cannot be indexed, so the maintenance tick raised 574 times. Wrapped names now live in a name-keyed table, so the wrapper installs once and stands the classic updaters down without raising.
+- **Secret stance-slot state crash.** The native stance slot's `IsShown()` returns a secret boolean on Forever; `if ok and isShown` boolean-tested it and raised 171 times. The value is now probed with `ns.IsSecretValue`; a secret result is treated as "the native slot owns the display".
+- **Forever aura rows centered.** The flow layout now grows from the bottom-left (`BOTTOMLEFT`) while the container itself stays bottom-center on the bar, so buff, debuff and stance rows center instead of starting at the bar's center and extending right.
+- **Druid removed spells.** Mangle (33876/33878) and Faerie Fire (Feral) 16857 are no longer tracked on Forever; base Faerie Fire 770 remains.
+
 ### Notes
 
 - Changes strictly isolated to WoW Forever (`ns.isForever`).
-- Headless test suite: 184 tests passed, 0 failures; 0 luacheck warnings across 15 files.
+- Headless test suite: 187 tests passed, 0 failures; 0 luacheck warnings across 15 files.
 
 ## v0.3.1 - 2026-11-07
 
@@ -35,15 +42,12 @@
 - **WoW Forever native aura rows (Forever only).** `SuperSwingTimer_Forever.lua` is now loaded from the TOC. Player buffs render through a native `AuraContainer` (`HELPFUL` on `player`); target debuffs through a second container (`HARMFUL|PLAYER`, so only the player's own Serpent Sting, Flame Shock, Rend, etc. is shown). The client fills `SetIcon`, `SetDurationText`, `SetApplicationCount` and `SetDurationBar`; secret aura fields never enter addon code.
 - **New Forever abilities and the Slam swing rule.** All new Forever melee abilities are tracked per class (Victory Rush, Spearing Strike, Reckless Swings, Slam, Shank, Venom, Mutilate, Poised, Blood Splatter, Premeditation, Primal Bite, Lacerate, Rend and Tear, Natural Reaction, Blood Frenzy, Improved Stormstrike, Fire Nova, Holy Strike, Seal of Fury, Judgement of Fury, Unsealed Wrath, Holy Shock, Strider Kick, Lacerating Strikes, Counterattack, Deadly Aspects, Aspect of the Beast, Savage Rend). Forever Slam (1240193) pauses the swing only when Improved Slam (12862) is not known; the rule is gated so every other client keeps the existing pause list.
 - **Forever-owned Maelstrom Weapon and weave ranks.** `GetForeverPlayerAura` reads `C_UnitAuras.GetPlayerAuraBySpellID` with secrecy probes; `GetForeverMaelstromStacks`, `ForeverMaelstromMultiplier` and `ForeverMaelstromConsume` own the stack state. Weaving uses `FOREVER_WEAVE_SPELL_GROUPS` on Forever: LB 10 ranks (r1 1.5 s, r2 2.0 s, r3-r10 2.5 s), CL 4 ranks, HW 10, LHW 6, CH 3. Only Lightning Bolt receives the Maelstrom reduction.
+- **Forever diagnostics.** `/sst diag` gains three Forever-only lines: `auraGroup` (native rows, containers, frame counts, spell counts, aura-secrecy, init attempts/errors), `maelstrom` (408505/408498 readability, stacks, multiplier) and `weave` (active spell, cast time, marker fraction, safe flag). Non-Forever clients return `skip`.
 
 ### Changed
 
 - TOC `## Version: v0.3.1`; the settings-panel and test fallbacks move together.
 - Weaving gates the Forever branch on `ns.isForever`; every other client keeps its existing reader and family table unchanged.
-
-### Added
-
-- **Forever diagnostics.** `/sst diag` gains three Forever-only lines: `auraGroup` (native rows, containers, frame counts, spell counts, aura-secrecy, init attempts/errors), `maelstrom` (408505/408498 readability, stacks, multiplier) and `weave` (active spell, cast time, marker fraction, safe flag). Non-Forever clients return `skip`.
 
 ### Notes
 
