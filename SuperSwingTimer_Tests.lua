@@ -149,7 +149,7 @@ local function RegisterSSTTests()
         IsTrue(f ~= nil, "SuperSwingTimer.toc must exist")
         local content = f:read("*all")
         f:close()
-        IsTrue(content:find("## Version: v0.3.1", 1, true) ~= nil, "TOC Version must be v0.3.1")
+        IsTrue(content:find("## Version: v0.3.2", 1, true) ~= nil, "TOC Version must be v0.3.2")
 
         -- The settings panel reads its label from TOC metadata; keep the
         -- helper and the TOC in lockstep so a release bump cannot drift.
@@ -3044,6 +3044,9 @@ local function RegisterSSTTests()
             for _, list in pairs(ns.FOREVER_DEBUFF_SPELLS or {}) do
                 if has(list, id) then return true end
             end
+            for _, list in pairs(ns.FOREVER_STANCE_SPELLS or {}) do
+                if has(list, id) then return true end
+            end
             for _, list in pairs(ns.FOREVER_NEW_ABILITY_CANDIDATES or {}) do
                 if has(list, id) then return true end
             end
@@ -3062,6 +3065,67 @@ local function RegisterSSTTests()
         end
     end
 
+    function ForeverAura:StanceSpells_SegregatedFromProcBuffs()
+        local function has(list, id)
+            for _, value in ipairs(list or {}) do
+                if value == id then return true end
+            end
+            return false
+        end
+        -- Aspects must be in FOREVER_STANCE_SPELLS and not in FOREVER_BUFF_SPELLS
+        local hunterStances = ns.FOREVER_STANCE_SPELLS and ns.FOREVER_STANCE_SPELLS.HUNTER
+        local hunterBuffs = ns.FOREVER_BUFF_SPELLS and ns.FOREVER_BUFF_SPELLS.HUNTER
+        IsTrue(has(hunterStances, 13165), "Aspect of the Hawk rank 1 in stance spells")
+        IsTrue(has(hunterStances, 27044), "Aspect of the Hawk rank 8 in stance spells")
+        IsFalse(has(hunterBuffs, 13165), "Aspect of the Hawk rank 1 must not be in buff proc spells")
+        IsFalse(has(hunterBuffs, 27044), "Aspect of the Hawk rank 8 must not be in buff proc spells")
+
+        -- Warrior Stances
+        local warriorStances = ns.FOREVER_STANCE_SPELLS and ns.FOREVER_STANCE_SPELLS.WARRIOR
+        local warriorBuffs = ns.FOREVER_BUFF_SPELLS and ns.FOREVER_BUFF_SPELLS.WARRIOR
+        IsTrue(has(warriorStances, 2457), "Battle Stance in stance spells")
+        IsTrue(has(warriorStances, 71), "Defensive Stance in stance spells")
+        IsTrue(has(warriorStances, 2458), "Berserker Stance in stance spells")
+        IsFalse(has(warriorBuffs, 2457), "Battle Stance must not be in buff proc spells")
+
+        -- Paladin Seals
+        local paladinStances = ns.FOREVER_STANCE_SPELLS and ns.FOREVER_STANCE_SPELLS.PALADIN
+        local paladinBuffs = ns.FOREVER_BUFF_SPELLS and ns.FOREVER_BUFF_SPELLS.PALADIN
+        IsTrue(has(paladinStances, 20375), "Seal of Command in stance spells")
+        IsTrue(has(paladinStances, 1311649), "Seal of Fury in stance spells")
+        IsFalse(has(paladinBuffs, 20375), "Seal of Command must not be in buff proc spells")
+
+        -- Shaman Shields
+        local shamanStances = ns.FOREVER_STANCE_SPELLS and ns.FOREVER_STANCE_SPELLS.SHAMAN
+        local shamanBuffs = ns.FOREVER_BUFF_SPELLS and ns.FOREVER_BUFF_SPELLS.SHAMAN
+        IsTrue(has(shamanStances, 324), "Lightning Shield in stance spells")
+        IsTrue(has(shamanStances, 52127), "Water Shield in stance spells")
+        IsFalse(has(shamanBuffs, 324), "Lightning Shield must not be in buff proc spells")
+
+        -- Druid Forms
+        local druidStances = ns.FOREVER_STANCE_SPELLS and ns.FOREVER_STANCE_SPELLS.DRUID
+        local druidBuffs = ns.FOREVER_BUFF_SPELLS and ns.FOREVER_BUFF_SPELLS.DRUID
+        IsTrue(has(druidStances, 768), "Cat Form in stance spells")
+        IsTrue(has(druidStances, 9634), "Dire Bear Form in stance spells")
+        IsFalse(has(druidBuffs, 768), "Cat Form must not be in buff proc spells")
+
+        -- Rogue Stealth
+        local rogueStances = ns.FOREVER_STANCE_SPELLS and ns.FOREVER_STANCE_SPELLS.ROGUE
+        local rogueBuffs = ns.FOREVER_BUFF_SPELLS and ns.FOREVER_BUFF_SPELLS.ROGUE
+        IsTrue(has(rogueStances, 1784), "Stealth in stance spells")
+        IsFalse(has(rogueBuffs, 1784), "Stealth must not be in buff proc spells")
+    end
+
+    function ForeverAura:UpdateForeverAuraIcons_Throttling()
+        -- Calling with 0 or nil should be safe and execute without errors
+        local ok0, _ = pcall(ns.UpdateForeverAuraIcons, 0)
+        IsTrue(ok0, "calling UpdateForeverAuraIcons(0) is safe")
+        local okNil, _ = pcall(ns.UpdateForeverAuraIcons)
+        IsTrue(okNil, "calling UpdateForeverAuraIcons() is safe")
+        local okElapsed, _ = pcall(ns.UpdateForeverAuraIcons, 0.016)
+        IsTrue(okElapsed, "calling UpdateForeverAuraIcons(elapsed) is safe")
+    end
+
     function ForeverAura:DruidDebuffs_ExcludeRemovedSpells()
         local function has(list, id)
             for _, value in ipairs(list or {}) do
@@ -3074,6 +3138,20 @@ local function RegisterSSTTests()
         IsFalse(has(druid, 33876), "Mangle (cat) was removed from Forever")
         IsFalse(has(druid, 33878), "Mangle (bear) was removed from Forever")
         IsTrue(has(druid, 770), "base Faerie Fire must stay tracked")
+    end
+
+    function ForeverAura:DBDefaults_HasForeverAuraKeys()
+        IsTrue(ns.DB_DEFAULTS.showForeverDebuffIcons == true, "showForeverDebuffIcons default is true")
+        IsTrue(ns.DB_DEFAULTS.showForeverStanceIcon == true, "showForeverStanceIcon default is true")
+    end
+
+    function ForeverAura:Diagnostics_IncludesStanceFields()
+        local d = ns.GetForeverAuraDiagnostics()
+        IsTrue(type(d) == "table", "GetForeverAuraDiagnostics returns a table")
+        IsTrue(d.stanceContainer ~= nil, "d.stanceContainer is boolean")
+        IsTrue(d.stanceSlot ~= nil, "d.stanceSlot is boolean")
+        IsTrue(d.shapeshiftIcon ~= nil, "d.shapeshiftIcon is boolean")
+        IsTrue(type(d.stanceSpells) == "number", "d.stanceSpells is a number")
     end
 
     local nGroups = 0

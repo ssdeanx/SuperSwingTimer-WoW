@@ -2219,7 +2219,7 @@ local function CreateBlizzardOptionsCanvas()
 
     local title = f:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
     title:SetPoint("TOPLEFT", f, "TOPLEFT", 16, -16)
-    title:SetText("Super Swing Timer |cff00ccff" .. (ns.GetDisplayVersion and ns.GetDisplayVersion() or "v0.3.1") .. "|r")
+    title:SetText("Super Swing Timer |cff00ccff" .. (ns.GetDisplayVersion and ns.GetDisplayVersion() or "v0.3.2") .. "|r")
 
     local desc = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     desc:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -8)
@@ -2517,7 +2517,7 @@ local function CreatePanel()
     -- Title
     local title = f:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
     title:SetPoint("TOPLEFT", f, "TOPLEFT", 18, -14)
-    title:SetText("Super Swing Timer |cff00ccff" .. (ns.GetDisplayVersion and ns.GetDisplayVersion() or "v0.3.1") .. "|r")
+    title:SetText("Super Swing Timer |cff00ccff" .. (ns.GetDisplayVersion and ns.GetDisplayVersion() or "v0.3.2") .. "|r")
 
     -- Move/Unlock button in header — toggles move mode and saves positions
     local moveHeaderBtn = CreateFrame("Button", nil, f)

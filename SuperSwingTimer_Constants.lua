@@ -56,7 +56,7 @@ function ns.GetDisplayVersion()
         end
     end
 
-    return "v0.3.1"
+    return "v0.3.2"
 end
 
 -- Reused scratch table for the secret-string probe; no per-call allocation.
@@ -1234,6 +1234,8 @@ ns.DB_DEFAULTS = {
     showWarriorShieldBlockBar = true,
     showSwingFlash = true,
     hideBlizzardSwingBars = true,
+    showForeverDebuffIcons = true,
+    showForeverStanceIcon = true,
     showGcdTicker = true,
     showRogueEnergyCountdown = true,
     -- Phase 2 defaults (v39→v40)

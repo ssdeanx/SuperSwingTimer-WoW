@@ -1,4 +1,4 @@
-# Super Swing Timer <span style="color:#00ccff">v0.3.1</span>
+# Super Swing Timer <span style="color:#00ccff">v0.3.2</span>
 
 A fast, customizable **Main Hand**, **Off Hand**, **Ranged**, and **Enemy** swing timer for World of Warcraft Classic clients, featuring class-specific rotation helpers, target debuff bars, and a unified player power bar.
 
@@ -120,6 +120,12 @@ Type `/sst` in chat to open the settings window. Bars stay hidden out of combat 
 ---
 
 ## Recent Releases
+
+### <span style="color:#00ccff">v0.3.2</span> (2026-11-08)
+- **<span style="color:#2ecc71">WoW Forever Dynamic Aura Stack</span>**: Target debuffs are permanently anchored to the top of the stack above the primary bar; player procs anchor directly below them. When no player procs are active, the gap cleanly collapses to 0px so debuffs never float disconnected in mid-air.
+- **<span style="color:#2ecc71">Left-Side Active Stance & Aspect Anchor</span>**: Stances, forms, aspects, seals, shields, and stealth are separated from combat procs and displayed in a dedicated slot to the left of the primary swing bar and class helper bars (Hunter range helper, Rogue/Druid energy tick, Shaman lightning tracker). Displays only the 1 active state, with an in-combat warning alert for Hunters missing an active aspect.
+- **<span style="color:#2ecc71">Aura Maintenance Throttling</span>**: Throttled maintenance loop (`MAINTAIN_INTERVAL = 0.15s`) using frame `elapsed` delta accumulation; immediate execution when called on events or configuration changes.
+- **<span style="color:#2ecc71">Test Suite</span>**: 184 headless tests, `0` luacheck warnings across 15 files.
 
 ### <span style="color:#00ccff">v0.3.1</span> (2026-11-07)
 - **<span style="color:#2ecc71">WoW Forever Native Auras</span>**: Player buffs and target debuffs render through the client's `AuraContainer` API. Buffs use `HELPFUL`; debuffs use `HARMFUL|PLAYER`, so only your own Serpent Sting / Flame Shock / Rend is shown on a shared target.

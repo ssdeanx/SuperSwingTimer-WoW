@@ -308,20 +308,79 @@ ns.FOREVER_WEAVE_SPELL_GROUPS = {
 -- ============================================================
 -- 3. Forever tracked spell data
 -- ============================================================
--- Only melee-relevant buffs/debuffs are listed. The native container performs
--- the matching, so names/labels are diagnostic only. Spell IDs are the same
--- IDs already tracked by the classic modules plus the Forever additions in
--- section 4.
+-- Separated into three distinct visual tiers on WoW Forever:
+--   1. FOREVER_STANCE_SPELLS : Permanent/long-duration active states (Aspects,
+--      Stances, Forms, Seals, Shields, Stealth) anchored to the LEFT of the
+--      primary swing bar so only the 1 active state is shown.
+--   2. FOREVER_BUFF_SPELLS   : Temporary combat procs & short cooldown buffs
+--      rendered in the Dynamic Priority Stack above the bar (underneath target
+--      debuffs, collapsing to 0px when no procs are active).
+--   3. FOREVER_DEBUFF_SPELLS : Player-cast target debuffs (HARMFUL|PLAYER)
+--      rendered at the very TOP of the Dynamic Priority Stack with a 3px
+--      high-contrast duration bar underneath each icon.
 -- ============================================================
 
--- Buffs on the player (HELPFUL auras).
--- Forever values (build 1.60.1.70790, ForeverDB 1.60.1.70862) are called out
--- next to the spell; the client supplies the live duration, so only the ID
--- matters here. See bench/forever-melee-changes.md for sources.
+-- Active Stance / Aspect / Form / Seal / Shield spells (LEFT-side single slot).
+-- Ordered from highest to lowest priority so AddAuraSlot("forever_stance")
+-- always displays the primary active state without duration-text clutter.
+ns.FOREVER_STANCE_SPELLS = {
+    HUNTER = {
+        -- Aspect of the Hawk r1-r8
+        27044, 25296, 14322, 14321, 14320, 14319, 14318, 13165,
+        -- Aspect of the Viper
+        34074,
+        -- Aspect of the Monkey
+        13163,
+        -- Aspect of the Cheetah / Aspect of the Pack
+        5118, 13159,
+        -- Aspect of the Beast (Forever r1-r4 + Classic ID)
+        1299447, 1299446, 1299445, 13161, 13171,
+        -- Aspect of the Wild r1-r2
+        20190, 20043,
+    },
+    WARRIOR = {
+        2457,  -- Battle Stance
+        71,    -- Defensive Stance
+        2458,  -- Berserker Stance
+    },
+    PALADIN = {
+        -- Seal of Command r1-r5
+        20920, 20919, 20918, 20915, 20375,
+        -- Seal of Fury: ability + triggered buff ranks
+        1311649, 1311656, 1311647, 20423, 20422, 20421, 20419, 20163,
+        -- Seal of the Crusader r1-r6
+        20308, 20307, 20306, 20305, 20162, 21082,
+        -- Seal of Righteousness r1-r8
+        20293, 20292, 20291, 20290, 20289, 20288, 20287, 21084, 20154,
+        -- Seal of Wisdom r1-r3 / Seal of Light r1-r4 / Seal of Justice
+        20357, 20356, 20166, 20349, 20348, 20347, 20165, 20164,
+    },
+    SHAMAN = {
+        -- Lightning Shield r1-r7 (shows remaining orb charges in corner)
+        10432, 10431, 8134, 945, 905, 325, 324,
+        -- Water Shield
+        52127,
+    },
+    DRUID = {
+        9634,  -- Dire Bear Form
+        5487,  -- Bear Form
+        768,   -- Cat Form
+        24858, -- Moonkin Form
+        783,   -- Travel Form
+        1066,  -- Aquatic Form
+    },
+    ROGUE = {
+        -- Stealth r1-r4
+        1787, 1786, 1785, 1784,
+    },
+}
+
+-- Temporary combat procs & short cooldown buffs on the player (HELPFUL auras).
+-- Permanent/passive/stance buffs (Aspects, Trueshot Aura, Seals, Shields,
+-- Battle Shout, Totems, Weapon Imbues) are intentionally excluded so this row
+-- stays completely empty (0x0 size) until an actual combat proc or CD fires.
 ns.FOREVER_BUFF_SPELLS = {
     WARRIOR = {
-        -- Battle Shout r1-r7 (Forever: 180 s)
-        6673, 5242, 6192, 11549, 11550, 11551, 25289,
         -- Overpower r1-r4
         7384, 7887, 11584, 11585,
         2565,  -- Shield Block (Forever: 7 s)
@@ -347,33 +406,18 @@ ns.FOREVER_BUFF_SPELLS = {
         10278, 1022, 5599, -- Blessing of Protection r1-r3
         20925, 20927, 20928, 1239570, -- Holy Shield r1-r4 (r4 new in Forever)
         498, 5573, -- Divine Protection r1-r2
-        -- Seal of the Crusader r1-r6
-        21082, 20162, 20305, 20306, 20307, 20308,
-        -- Seal of Command r1-r5
-        20375, 20915, 20918, 20919, 20920,
-        -- Seal of Fury: ability + triggered buff ranks
-        1311649, 1311656, 1311647, 20163, 20419, 20421, 20422, 20423,
         20049, 20050, -- Vengeance talent + rank-1 buff aura
         1310735, -- Unsealed Wrath (Forever: new, 15 s / 3 stacks)
     },
     SHAMAN = {
-        -- Lightning Shield r1-r7
-        324, 325, 905, 945, 8134, 10431, 10432,
-        52127, -- Water Shield
-        -- Rockbiter Weapon r1-r7
-        8017, 8018, 8019, 10399, 16314, 16315, 16316,
         30823, -- Shamanistic Rage
         16280, -- Flurry (Classic rank)
         16256, -- Flurry (Forever talent; buff aura is server-side)
-        -- Windfury Weapon r1-r4
-        8232, 8235, 10486, 16362,
         29180, -- Elemental Devastation
         425336, -- Rage of the Farseer (Forever: new, +30% attack speed, 25 s)
         408505, -- Maelstrom Weapon aura (Instant, 30 s, -20% Lightning Bolt)
         408498, -- Maelstrom Weapon talent/buff record (passive; harmless if not an aura)
         1223031, -- Improved Stormstrike (Forever: 15 s mana-regen buff)
-        -- Windfury Totem r1-r3 / Grace of Air Totem r1-r3
-        8512, 10613, 10614, 8835, 10627, 25359,
     },
     DRUID = {
         16870, -- Clearcasting
@@ -385,9 +429,6 @@ ns.FOREVER_BUFF_SPELLS = {
         29166, -- Innervate
     },
     HUNTER = {
-        -- Aspect of the Hawk r1-r7
-        13165, 14318, 14319, 14320, 14321, 14322, 25296,
-        19506, -- Trueshot Aura
         19574, -- Bestial Wrath
         3045,  -- Rapid Fire
         34692, -- The Beast Within
@@ -395,8 +436,6 @@ ns.FOREVER_BUFF_SPELLS = {
         34949, -- Rapid Killing
         34477, -- Misdirection
         19552, -- Deadly Aspects (Forever: new, +30% melee haste, 12 s)
-        -- Aspect of the Beast r1-r4
-        13161, 1299445, 1299446, 1299447,
     },
     ROGUE = {
         5171, 6774, -- Slice and Dice r1-r2 (Forever: 9-21 s by CP)
@@ -641,9 +680,11 @@ local BUFF_SIZE_BY_CLASS = {
     ROGUE = "rogueBuffIconSize",
 }
 
-local BUFF_ROW_GAP = 4
-local DEBUFF_BAR_EXTRA = 10
 local AURA_FRAME_STRATA = "DIALOG"
+local PROC_MAX_DURATION = 180
+local LEFT_STANCE_MIN_SIZE = 18
+local LEFT_STANCE_MAX_SIZE = 24
+local QUESTION_MARK_ICON = "Interface\\Icons\\INV_Misc_QuestionMark"
 
 local function GetDB()
     return rawget(_G, "SuperSwingTimerDB") or ns.DB_DEFAULTS
@@ -788,15 +829,17 @@ local function StyleAuraButton(frame, options)
         end
     end)
 
-    -- Remaining-duration text above the icon.
-    pcall(function()
-        local durationText = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-        durationText:SetPoint("BOTTOM", frame, "TOP", 0, 2)
-        durationText:SetJustifyH("CENTER")
-        durationText:SetFont(GetFontPath(), 12, "OUTLINE")
-        durationText:SetTextColor(1, 1, 1, 0.95)
-        frame:SetDurationText(durationText, { textColor = GetLowTimeTextColor() })
-    end)
+    -- Remaining-duration text above the icon (suppressed for permanent stance slots).
+    if not options.hideDurationText then
+        pcall(function()
+            local durationText = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+            durationText:SetPoint("BOTTOM", frame, "TOP", 0, 2)
+            durationText:SetJustifyH("CENTER")
+            durationText:SetFont(GetFontPath(), 12, "OUTLINE")
+            durationText:SetTextColor(1, 1, 1, 0.95)
+            frame:SetDurationText(durationText, { textColor = GetLowTimeTextColor() })
+        end)
+    end
 
     -- Stack / application count in the bottom-right corner.
     pcall(function()
@@ -816,6 +859,14 @@ local function StyleAuraButton(frame, options)
             bar:SetPoint("TOPRIGHT", frame, "BOTTOMRIGHT", 0, -2)
             bar:SetHeight(3)
             bar:SetStatusBarTexture(GetBarTexture())
+            if bar.SetStatusBarColor then
+                bar:SetStatusBarColor(0.95, 0.25, 0.20, 0.95)
+            end
+            if bar.CreateTexture then
+                local bg = bar:CreateTexture(nil, "BACKGROUND")
+                bg:SetAllPoints()
+                bg:SetColorTexture(0, 0, 0, 0.65)
+            end
             bar:SetMinMaxValues(0, 1)
             bar:SetValue(0)
             bar:SetFrameLevel(frame:GetFrameLevel() + 1)
@@ -850,16 +901,33 @@ local function StyleAuraButton(frame, options)
     end
 end
 
+--- Create an AuraContainer frame, preferring DisableUntrustedLayoutScriptsTemplate.
+--  Frames anchored to a container with groups inherit untrusted script execution
+--  restrictions on WoW Forever.
+--  @return (Frame|nil) container frame
+local function CreateAuraContainerFrame()
+    local ok, container = pcall(CreateFrame, "AuraContainer", nil, UIParent,
+        "CustomAuraContainerTemplate, DisableUntrustedLayoutScriptsTemplate")
+    if ok and container then
+        return container
+    end
+    ok, container = pcall(CreateFrame, "AuraContainer", nil, UIParent, "CustomAuraContainerTemplate")
+    if ok and container then
+        return container
+    end
+    return nil
+end
+
 --- Create one native aura group container.
 --  @param groupKey (string) unique group key inside the container
 --  @param unitToken (string) "player" or "target"
 --  @param filter (string) "HELPFUL" or "HARMFUL"
 --  @param spellList (table) array of spell IDs to match
---  @param options (table) size / withBar / withCooldown
+--  @param options (table) size / withBar / withCooldown / maxDuration
 --  @return (Frame|nil) the container, or nil when creation failed
 local function CreateAuraGroupContainer(groupKey, unitToken, filter, spellList, options)
-    local ok, container = pcall(CreateFrame, "AuraContainer", nil, UIParent, "CustomAuraContainerTemplate")
-    if not ok or not container then
+    local container = CreateAuraContainerFrame()
+    if not container then
         return nil
     end
 
@@ -882,8 +950,13 @@ local function CreateAuraGroupContainer(groupKey, unitToken, filter, spellList, 
             maxFrames = 16
         end
 
+        local candidateFilters = { includeSpellIDs = spellMap }
+        if options.maxDuration then
+            candidateFilters.maxDuration = options.maxDuration
+        end
+
         local groupOptions = {
-            candidateFilters = { includeSpellIDs = spellMap },
+            candidateFilters = candidateFilters,
             maxFrameCount = maxFrames,
             layout = {
                 elementWidth = options.size,
@@ -922,11 +995,14 @@ end
 ns.foreverAura = {
     buffContainer = nil,
     debuffContainer = nil,
+    stanceSlot = nil,
+    shapeshiftIcon = nil,
     buffSize = 25,
     debuffSize = 22,
     lastYOffset = nil,
     lastBuffSize = nil,
     lastDebuffSize = nil,
+    lastBuffVisible = nil,
     lastAnchorBar = nil,
     initAttempts = 0,
     initError = nil,
@@ -966,6 +1042,14 @@ local function GetDebuffToggle()
         return true
     end
     return db.showForeverDebuffIcons ~= false
+end
+
+local function GetStanceToggle()
+    local db = GetDB()
+    if not db then
+        return true
+    end
+    return db.showForeverStanceIcon ~= false
 end
 
 --- Buffs for the player's own race only. UnitRace returns (localizedName,
@@ -1015,8 +1099,235 @@ local function GetDebuffSize()
     return size
 end
 
---- Reposition the two containers above the primary swing bar.
---  Called on init and whenever the bar or debuff-bar visibility changes.
+--- Stance icon size matching the primary swing bar height.
+local function GetStanceIconSize(bar)
+    local barH = bar and bar.GetHeight and bar:GetHeight() or 18
+    if type(barH) ~= "number" or barH <= 0 then barH = 18 end
+    if barH < LEFT_STANCE_MIN_SIZE then barH = LEFT_STANCE_MIN_SIZE end
+    if barH > LEFT_STANCE_MAX_SIZE then barH = LEFT_STANCE_MAX_SIZE end
+    return barH
+end
+
+--- Determine the left-hand anchor target frame and relative offset.
+--  Respects class helper bars on the left (Hunter range helper, Rogue/Druid
+--  energy tick, Shaman lightning tracker) so the stance icon never overlaps.
+--  @param bar (Frame) anchor bar
+--  @return targetFrame, relPoint, xOff, yOff
+local function GetLeftAnchorTarget(bar)
+    if ns.playerClass == "HUNTER" then
+        if ns.hunterRangeHelperBar and ns.hunterRangeHelperBar.IsShown and ns.hunterRangeHelperBar:IsShown()
+            and ns.hunterRangeHelperBar.GetAlpha and (ns.hunterRangeHelperBar:GetAlpha() or 0) > 0 then
+            return ns.hunterRangeHelperBar, "LEFT", -3, 0
+        end
+    elseif ns.playerClass == "ROGUE" then
+        if ns.rogueEnergyTickBar and ns.rogueEnergyTickBar.IsShown and ns.rogueEnergyTickBar:IsShown()
+            and ns.rogueEnergyTickBar.GetAlpha and (ns.rogueEnergyTickBar:GetAlpha() or 0) > 0 then
+            return ns.rogueEnergyTickBar, "LEFT", -3, 0
+        end
+    elseif ns.playerClass == "DRUID" then
+        if ns.druidEnergyTickBar and ns.druidEnergyTickBar.IsShown and ns.druidEnergyTickBar:IsShown()
+            and ns.druidEnergyTickBar.GetAlpha and (ns.druidEnergyTickBar:GetAlpha() or 0) > 0 then
+            return ns.druidEnergyTickBar, "LEFT", -3, 0
+        end
+    elseif ns.playerClass == "SHAMAN" then
+        if ns.shamanLightningContainer and ns.shamanLightningContainer.IsShown and ns.shamanLightningContainer:IsShown()
+            and ns.shamanLightningContainer.GetAlpha and (ns.shamanLightningContainer:GetAlpha() or 0) > 0 then
+            return ns.shamanLightningContainer, "LEFT", -3, 0
+        end
+    end
+    return bar, "LEFT", -4, 0
+end
+
+local function SetShapeshiftBorderColor(frame, r, g, b, a)
+    if not frame or not frame.edges then return end
+    for _, edge in ipairs(frame.edges) do
+        if edge and edge.SetColorTexture then
+            edge:SetColorTexture(r, g, b, a)
+        end
+    end
+end
+
+--- Create the fallback shapeshift/stance icon frame.
+--  Used for Warrior stances and Druid forms (from GetShapeshiftFormInfo)
+--  and Hunter in-combat missing-aspect alerts.
+local function EnsureShapeshiftIcon()
+    local state = ns.foreverAura
+    if state.shapeshiftIcon then
+        return state.shapeshiftIcon
+    end
+    local ok, frame = pcall(CreateFrame, "Frame", nil, UIParent)
+    if not ok or not frame then
+        return nil
+    end
+    pcall(function()
+        frame:SetFrameStrata(AURA_FRAME_STRATA)
+        frame:EnableMouse(false)
+        local icon = frame:CreateTexture(nil, "BACKGROUND")
+        icon:SetAllPoints()
+        icon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
+        frame.icon = icon
+
+        local edges = {
+            { "TOPLEFT", -1, 1, "TOPRIGHT", 1, 1, "HEIGHT" },
+            { "BOTTOMLEFT", -1, -1, "BOTTOMRIGHT", 1, -1, "HEIGHT" },
+            { "TOPLEFT", -1, 1, "BOTTOMLEFT", -1, -1, "WIDTH" },
+            { "TOPRIGHT", 1, 1, "BOTTOMRIGHT", 1, -1, "WIDTH" },
+        }
+        frame.edges = {}
+        for _, edge in ipairs(edges) do
+            local texture = frame:CreateTexture(nil, "OVERLAY", nil, -1)
+            texture:SetPoint(edge[1], edge[2], edge[3])
+            texture:SetPoint(edge[4], edge[5], edge[6])
+            if edge[7] == "HEIGHT" then
+                texture:SetHeight(1)
+            else
+                texture:SetWidth(1)
+            end
+            texture:SetColorTexture(0, 0, 0, 0.65)
+            table.insert(frame.edges, texture)
+        end
+        frame:Hide()
+    end)
+    state.shapeshiftIcon = frame
+    return frame
+end
+
+--- Update the left-side stance icon (native aura slot or shapeshift fallback).
+--  @param bar (Frame) anchor bar
+local function UpdateLeftStanceIcon(bar)
+    local state = ns.foreverAura
+    if not bar then
+        return
+    end
+
+    local stanceVisible = GetStanceToggle()
+    if not stanceVisible then
+        if state.stanceContainer and state.stanceContainer.Hide then
+            pcall(state.stanceContainer.Hide, state.stanceContainer)
+        end
+        if state.shapeshiftIcon and state.shapeshiftIcon.Hide then
+            state.shapeshiftIcon:Hide()
+        end
+        return
+    end
+
+    local stanceSize = GetStanceIconSize(bar)
+    local targetFrame, relPoint, xOff, yOff = GetLeftAnchorTarget(bar)
+
+    -- Reposition native stance container/slot if present
+    if state.stanceContainer then
+        pcall(function()
+            state.stanceContainer:ClearAllPoints()
+            state.stanceContainer:SetPoint("RIGHT", targetFrame, relPoint, xOff, yOff)
+            state.stanceContainer:SetSize(stanceSize, stanceSize)
+            state.stanceContainer:Show()
+        end)
+    end
+    if state.stanceSlot then
+        pcall(function()
+            state.stanceSlot:ClearAllPoints()
+            if state.stanceContainer then
+                state.stanceSlot:SetAllPoints(state.stanceContainer)
+            else
+                state.stanceSlot:SetPoint("RIGHT", targetFrame, relPoint, xOff, yOff)
+            end
+            state.stanceSlot:SetSize(stanceSize, stanceSize)
+        end)
+    end
+
+    -- Check if native stance slot is actively displaying an aura
+    local slotActive = false
+    if state.stanceSlot and state.stanceSlot.IsShown then
+        local ok, isShown = pcall(state.stanceSlot.IsShown, state.stanceSlot)
+        if ok and isShown then
+            slotActive = true
+        end
+    end
+
+    if slotActive then
+        if state.shapeshiftIcon and state.shapeshiftIcon.Hide then
+            state.shapeshiftIcon:Hide()
+        end
+        return
+    end
+
+    -- Check shapeshift forms for Warrior stances and Druid forms
+    local activeTexture = nil
+    local getNumForms = GetGlobal("GetNumShapeshiftForms")
+    local getFormInfo = GetGlobal("GetShapeshiftFormInfo")
+    if type(getNumForms) == "function" and type(getFormInfo) == "function" then
+        local okNum, numForms = pcall(getNumForms)
+        if okNum and type(numForms) == "number" and numForms > 0 then
+            for i = 1, numForms do
+                local ok, texture, isActive = pcall(getFormInfo, i)
+                if ok and isActive and texture then
+                    activeTexture = texture
+                    break
+                end
+            end
+        end
+    end
+
+    if activeTexture then
+        local iconFrame = EnsureShapeshiftIcon()
+        if iconFrame then
+            pcall(function()
+                iconFrame:ClearAllPoints()
+                iconFrame:SetPoint("RIGHT", targetFrame, relPoint, xOff, yOff)
+                iconFrame:SetSize(stanceSize, stanceSize)
+                if iconFrame.icon and iconFrame.icon.SetTexture then
+                    iconFrame.icon:SetTexture(activeTexture)
+                end
+                SetShapeshiftBorderColor(iconFrame, 0, 0, 0, 0.65)
+                iconFrame:Show()
+            end)
+        end
+        return
+    end
+
+    -- For Hunter: missing aspect in combat alert
+    if ns.playerClass == "HUNTER" then
+        local inCombat = (ns.playerInCombat == true)
+        if not inCombat then
+            local unitAffectingCombat = GetGlobal("UnitAffectingCombat")
+            if type(unitAffectingCombat) == "function" then
+                local ok, res = pcall(unitAffectingCombat, "player")
+                if ok and res then
+                    inCombat = true
+                end
+            end
+        end
+
+        if inCombat then
+            local iconFrame = EnsureShapeshiftIcon()
+            if iconFrame then
+                pcall(function()
+                    iconFrame:ClearAllPoints()
+                    iconFrame:SetPoint("RIGHT", targetFrame, relPoint, xOff, yOff)
+                    iconFrame:SetSize(stanceSize, stanceSize)
+                    if iconFrame.icon and iconFrame.icon.SetTexture then
+                        iconFrame.icon:SetTexture(QUESTION_MARK_ICON)
+                    end
+                    SetShapeshiftBorderColor(iconFrame, 0.95, 0.15, 0.15, 0.95)
+                    iconFrame:Show()
+                end)
+            end
+            return
+        end
+    end
+
+    if state.shapeshiftIcon and state.shapeshiftIcon.Hide then
+        state.shapeshiftIcon:Hide()
+    end
+end
+
+--- Reposition the containers above the primary swing bar and stance icon on the left.
+--  Dynamic Priority Stack:
+--    buffContainer (player procs) sits directly above the bar.
+--    debuffContainer (target debuffs) sits directly on top of buffContainer.
+--    When 0 procs are active, buffContainer height is 0, collapsing the gap to 0px!
+--    When procs activate, buffContainer expands to buffSize, pushing debuffs upward.
+--    Target debuffs are ALWAYS on top of the stack.
 local function ApplyContainerAnchors()
     local state = ns.foreverAura
     local bar = GetAnchorBar()
@@ -1026,6 +1337,7 @@ local function ApplyContainerAnchors()
     local yOffset = ComputeIconYOffset()
     local buffSize = state.buffSize
     local debuffSize = state.debuffSize
+    local buffVisible = GetBuffToggle()
 
     if state.buffContainer then
         pcall(function()
@@ -1036,14 +1348,51 @@ local function ApplyContainerAnchors()
     if state.debuffContainer then
         pcall(function()
             state.debuffContainer:ClearAllPoints()
-            state.debuffContainer:SetPoint("BOTTOM", bar, "TOP", 0,
-                yOffset + buffSize + BUFF_ROW_GAP + DEBUFF_BAR_EXTRA)
+            if state.buffContainer and buffVisible then
+                state.debuffContainer:SetPoint("BOTTOM", state.buffContainer, "TOP", 0, 2)
+            else
+                state.debuffContainer:SetPoint("BOTTOM", bar, "TOP", 0, yOffset)
+            end
         end)
     end
+
+    UpdateLeftStanceIcon(bar)
+
     state.lastYOffset = yOffset
     state.lastBuffSize = buffSize
     state.lastDebuffSize = debuffSize
+    state.lastBuffVisible = buffVisible
     state.lastAnchorBar = bar
+end
+
+--- Wrap classic icon updaters so they stand down while native Forever containers are live.
+local function WrapLegacyIconUpdaters()
+    local legacyFns = {
+        "UpdateHunterAspect",
+        "UpdateHunterBuffIcons",
+        "UpdateWarriorBuffIcons",
+        "UpdatePaladinBuffIcons",
+        "UpdateShamanBuffIcons",
+        "UpdateDruidBuffIcons",
+        "UpdateRogueBuffIcons",
+    }
+    for _, fnName in ipairs(legacyFns) do
+        local orig = ns[fnName]
+        if type(orig) == "function" and not orig._foreverWrapped then
+            local wrapped
+            wrapped = function(...)
+                if ns.foreverNativeAuraIcons then
+                    if fnName == "UpdateHunterAspect" and ns.hunterAspectIcon and ns.hunterAspectIcon.Hide then
+                        ns.hunterAspectIcon:Hide()
+                    end
+                    return
+                end
+                return orig(...)
+            end
+            wrapped._foreverWrapped = true
+            ns[fnName] = wrapped
+        end
+    end
 end
 
 --- Create the native groups once the bars and class are known.
@@ -1063,7 +1412,8 @@ function ns.InitForeverAuraIcons()
     state.initAttempts = state.initAttempts + 1
     local buffList = ns.FOREVER_BUFF_SPELLS[ns.playerClass]
     local debuffList = ns.FOREVER_DEBUFF_SPELLS[ns.playerClass]
-    if not buffList and not debuffList then
+    local stanceList = ns.FOREVER_STANCE_SPELLS and ns.FOREVER_STANCE_SPELLS[ns.playerClass]
+    if not buffList and not debuffList and not stanceList then
         return false
     end
 
@@ -1087,12 +1437,47 @@ function ns.InitForeverAuraIcons()
         local container = CreateAuraGroupContainer("forever_buffs", "player", "HELPFUL", containerBuffList, {
             size = state.buffSize,
             withBar = false,
-            withCooldown = false,
+            withCooldown = true,
+            maxDuration = PROC_MAX_DURATION,
         })
         if container then
             state.buffContainer = container
         else
             state.initError = "buff container creation failed"
+        end
+    end
+
+    -- Add native single-slot stance icon in its own container if available
+    if stanceList and #stanceList > 0 then
+        local stanceContainer = CreateAuraContainerFrame()
+        if stanceContainer then
+            local stanceSize = GetStanceIconSize(GetAnchorBar())
+            pcall(function()
+                stanceContainer:SetSize(stanceSize, stanceSize)
+                stanceContainer:SetFrameStrata(AURA_FRAME_STRATA)
+                stanceContainer:SetUnit("player")
+                stanceContainer:SetEnabled(true)
+                stanceContainer:Show()
+            end)
+            state.stanceContainer = stanceContainer
+
+            if stanceContainer.AddAuraSlot then
+                local stanceMap = ns.BuildAuraSpellIDMap(stanceList)
+                local slotOk, slotFrame = pcall(stanceContainer.AddAuraSlot, stanceContainer, "forever_stance", "HELPFUL", {
+                    candidateFilters = { includeSpellIDs = stanceMap },
+                    initializeFrame = function(frame)
+                        StyleAuraButton(frame, {
+                            size = stanceSize,
+                            withBar = false,
+                            withCooldown = false,
+                            hideDurationText = true,
+                        })
+                    end,
+                })
+                if slotOk and slotFrame then
+                    state.stanceSlot = slotFrame
+                end
+            end
         end
     end
 
@@ -1115,11 +1500,12 @@ function ns.InitForeverAuraIcons()
         end
     end
 
-    if not state.buffContainer and not state.debuffContainer then
+    if not state.buffContainer and not state.debuffContainer and not state.stanceContainer then
         return false
     end
 
     ns.foreverNativeAuraIcons = true
+    WrapLegacyIconUpdaters()
     -- The native containers drive their own updates. Zero the classic counter
     -- so ns.HasActiveTimers does not keep the swing loop alive for icons that
     -- are no longer rendered by the legacy path.
@@ -1154,26 +1540,37 @@ local function ResizeGroupFrames(container, groupKey, size)
     end
 end
 
---- Per-frame maintenance for the native groups.
---  Re-anchors when the primary bar moves, the debuff-bar stack changes, or
---  the configured icon size changes. No aura data is read here.
---  @param elapsed (number) seconds since the previous frame
+local maintainTimer = 0
+local MAINTAIN_INTERVAL = 0.15
+
+--- Per-frame maintenance for the native groups and left stance slot.
+--  Accumulates elapsed time to throttle periodic maintenance passes.
+--  Pass 0 or nil to force an immediate un-throttled update.
+--  @param elapsed (number|nil) seconds since the previous frame
 function ns.UpdateForeverAuraIcons(elapsed)
     local state = ns.foreverAura
     if not ns.foreverNativeAuraIcons then
         return
     end
 
+    if type(elapsed) == "number" and elapsed > 0 then
+        maintainTimer = maintainTimer + elapsed
+        if maintainTimer < MAINTAIN_INTERVAL then
+            return
+        end
+        maintainTimer = 0
+    else
+        maintainTimer = 0
+    end
+
+    WrapLegacyIconUpdaters()
+
     local buffVisible = GetBuffToggle()
     local debuffVisible = GetDebuffToggle()
-    -- While auras are readable the classic groups already render the buffs
-    -- (including cooldown-only icons); the native buff row only takes over
-    -- when reading an AuraData field would be illegal.
-    local nativeBuffVisible = buffVisible and ns.IsAuraDataSecret()
 
     if state.buffContainer then
         pcall(function()
-            if nativeBuffVisible then state.buffContainer:Show() else state.buffContainer:Hide() end
+            if buffVisible then state.buffContainer:Show() else state.buffContainer:Hide() end
         end)
     end
     if state.debuffContainer then
@@ -1218,8 +1615,11 @@ function ns.UpdateForeverAuraIcons(elapsed)
     if anchorBar and (anchorBar ~= state.lastAnchorBar
             or yOffset ~= state.lastYOffset
             or buffSize ~= state.lastBuffSize
-            or debuffSize ~= state.lastDebuffSize) then
+            or debuffSize ~= state.lastDebuffSize
+            or buffVisible ~= state.lastBuffVisible) then
         ApplyContainerAnchors()
+    else
+        UpdateLeftStanceIcon(anchorBar)
     end
 end
 
@@ -1255,14 +1655,9 @@ if ns.isForever and ns.hasAuraContainer then
     end)
 
     local elapsedSinceRetry = 0
-    local elapsedSinceMaintain = 0
     initFrame:SetScript("OnUpdate", function(_, elapsed)
         if ns.foreverNativeAuraIcons then
-            elapsedSinceMaintain = elapsedSinceMaintain + (elapsed or 0)
-            if elapsedSinceMaintain >= 0.25 then
-                elapsedSinceMaintain = 0
-                ns.UpdateForeverAuraIcons(elapsed)
-            end
+            ns.UpdateForeverAuraIcons(elapsed)
             return
         end
         elapsedSinceRetry = elapsedSinceRetry + (elapsed or 0)
@@ -1305,11 +1700,14 @@ function ns.GetForeverAuraDiagnostics()
     end
     local buffSpells = 0
     local debuffSpells = 0
+    local stanceSpells = 0
     if ns.playerClass then
         local buffList = ns.FOREVER_BUFF_SPELLS[ns.playerClass]
         local debuffList = ns.FOREVER_DEBUFF_SPELLS[ns.playerClass]
+        local stanceList = ns.FOREVER_STANCE_SPELLS and ns.FOREVER_STANCE_SPELLS[ns.playerClass]
         buffSpells = buffList and #buffList or 0
         debuffSpells = debuffList and #debuffList or 0
+        stanceSpells = stanceList and #stanceList or 0
     end
     return {
         isForever = ns.isForever,
@@ -1317,10 +1715,14 @@ function ns.GetForeverAuraDiagnostics()
         nativeActive = ns.foreverNativeAuraIcons,
         buffContainer = state.buffContainer ~= nil,
         debuffContainer = state.debuffContainer ~= nil,
+        stanceContainer = state.stanceContainer ~= nil,
+        stanceSlot = state.stanceSlot ~= nil,
+        shapeshiftIcon = state.shapeshiftIcon ~= nil,
         buffFrames = buffCount,
         debuffFrames = debuffCount,
         buffSpells = buffSpells,
         debuffSpells = debuffSpells,
+        stanceSpells = stanceSpells,
         auraSecret = ns.IsAuraDataSecret(),
         initAttempts = state.initAttempts,
         initError = state.initError,

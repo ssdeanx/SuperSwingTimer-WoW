@@ -438,10 +438,12 @@ addCheck("auraGroup", "aura groups", function()
         "native=" .. tostring(d.nativeActive),
         "buffContainer=" .. tostring(d.buffContainer),
         "debuffContainer=" .. tostring(d.debuffContainer),
+        "stanceContainer=" .. tostring(d.stanceContainer),
         "buffFrames=" .. tostring(d.buffFrames),
         "debuffFrames=" .. tostring(d.debuffFrames),
         "buffSpells=" .. tostring(d.buffSpells),
         "debuffSpells=" .. tostring(d.debuffSpells),
+        "stanceSpells=" .. tostring(d.stanceSpells),
         "auraSecret=" .. tostring(d.auraSecret),
         "attempts=" .. tostring(d.initAttempts),
     }

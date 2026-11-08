@@ -4,6 +4,30 @@
 > Sections: **Added** / **Changed** / **Fixed** / **Removed** / **Performance** / **Security** / **Docs** / **Internal** / **Notes**
 > DB schema migrations are listed under **Notes** per version.
 
+## v0.3.2 - 2026-11-08
+
+### Added
+
+- **Dynamic Priority Aura Stack (WoW Forever only).** Target debuffs (such as Serpent Sting, Flame Shock, Rend) are anchored to the top of the stack. Player buff procs sit underneath the debuffs directly above the primary swing bar. When no procs are active, the gap between debuffs and the swing bar dynamically collapses to 0px (no floating icons or dead space). Target debuffs are styled with high-contrast duration bars.
+- **Left-Side Active Stance / Aspect / Form / Seal / Shield Slot (WoW Forever only).** Stance-like abilities are segregated from combat procs and placed to the left of the swing bar (respecting the Hunter range helper, Rogue/Druid energy tick bar, and Shaman lightning container):
+  - **Hunter**: Active Aspect (Hawk, Viper, Monkey, Cheetah, Beast, Wild, Pack) or a red-bordered `?` warning when entering combat without an active aspect.
+  - **Warrior**: Active Stance (Battle, Defensive, Berserker) via native slot or `GetShapeshiftFormInfo()`.
+  - **Druid**: Active Form (Cat, Bear, Dire Bear, Moonkin, Travel, Aquatic).
+  - **Paladin**: Active Seal (Command, Fury, Righteousness, Crusader, Justice, Light, Wisdom).
+  - **Shaman**: Active Shield (Lightning Shield, Water Shield).
+  - **Rogue**: Active Stealth.
+- **Throttled Frame Maintenance Loop.** `ns.UpdateForeverAuraIcons(elapsed)` accumulates frame `elapsed` time to throttle layout and stance synchronization to 0.15s intervals, while preserving immediate un-throttled execution when called on event triggers or settings changes.
+
+### Changed
+
+- TOC `## Version: v0.3.2`; settings-panel and test fallbacks synchronized.
+- Permanent stances, aspects, seals, shields, and weapon imbues removed from `FOREVER_BUFF_SPELLS` so they never clutter the top proc row.
+
+### Notes
+
+- Changes strictly isolated to WoW Forever (`ns.isForever`).
+- Headless test suite: 184 tests passed, 0 failures; 0 luacheck warnings across 15 files.
+
 ## v0.3.1 - 2026-11-07
 
 ### Added

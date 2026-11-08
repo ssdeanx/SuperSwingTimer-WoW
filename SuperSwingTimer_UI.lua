@@ -2821,6 +2821,9 @@ function ns.ApplyVisibility()
     if ns.UpdatePlayerPowerBar then
         ns.UpdatePlayerPowerBar()
     end
+    if ns.UpdateForeverAuraIcons then
+        ns.UpdateForeverAuraIcons(0)
+    end
     ns.ApplyLockBars()
 end
 
