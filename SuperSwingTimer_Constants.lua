@@ -56,7 +56,7 @@ function ns.GetDisplayVersion()
         end
     end
 
-    return "v0.3.2"
+    return "v0.3.3"
 end
 
 -- Reused scratch table for the secret-string probe; no per-call allocation.
@@ -1216,6 +1216,7 @@ ns.DB_DEFAULTS = {
     showGlowEffects = true,
     showRanged = true,
     showHunterRangeHelper = true,
+    showHunterDistanceBar = true,
     showEnemy = true,
     showRogueSinisterAssist = true,
     showRogueEnergyTick = true,

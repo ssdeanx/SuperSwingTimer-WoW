@@ -441,6 +441,9 @@ addCheck("auraGroup", "aura groups", function()
         "stanceContainer=" .. tostring(d.stanceContainer),
         "buffFrames=" .. tostring(d.buffFrames),
         "debuffFrames=" .. tostring(d.debuffFrames),
+        "buffIcon=" .. tostring(d.buffWidth) .. "x" .. tostring(d.buffHeight),
+        "debuffRow=" .. tostring(d.debuffRow),
+        "stanceIcon=" .. tostring(d.stanceIconSize),
         "buffSpells=" .. tostring(d.buffSpells),
         "debuffSpells=" .. tostring(d.debuffSpells),
         "stanceSpells=" .. tostring(d.stanceSpells),
@@ -454,6 +457,54 @@ addCheck("auraGroup", "aura groups", function()
         return "ok", table_concat(parts, " ")
     end
     return "warn", table_concat(parts, " ")
+end)
+
+addCheck("distance", "hunter distance", function()
+    if not (ns.isForever and ns.playerClass == "HUNTER") then
+        return "skip", "not a Forever Hunter"
+    end
+    local apiCreature = type(rawget(_G, "UnitCreatureID")) == "function"
+        and type(rawget(_G, "ClosestUnitPosition")) == "function"
+    local apiUnit = type(rawget(_G, "UnitDistanceSquared")) == "function"
+    local band = nil
+    if type(ns.GetHunterRangeState) == "function" then
+        local ok, value = pcall(ns.GetHunterRangeState, false)
+        if ok then
+            band = value
+        end
+    end
+    local db = rawget(_G, "SuperSwingTimerDB")
+    local enabled = not (db and db.showHunterDistanceBar == false)
+    local bar = ns.foreverHunterDistanceBar
+    local shown = false
+    if bar and bar.IsShown then
+        local ok, value = pcall(bar.IsShown, bar)
+        if ok and not ns.IsSecretValue(value) then
+            shown = value == true
+        end
+    end
+
+    -- Raw source readout: which distance API is usable for this target and
+    -- whether its value is secret (secret values are never inspected).
+    local rawValue, _, rawSecret, rawSource = ns.ReadForeverTargetDistance()
+    local distanceText = "nil"
+    if rawSecret then
+        distanceText = "secret"
+    elseif type(rawValue) == "number" then
+        local yards = rawValue
+        if rawSource == "unit" and yards >= 0 then
+            yards = math.sqrt(yards)
+        end
+        distanceText = string_format("%.1fyd", yards)
+    end
+
+    local detail = string_format("apiCreature=%s apiUnit=%s enabled=%s band=%s bar=%s src=%s dist=%s",
+        tostring(apiCreature), tostring(apiUnit), tostring(enabled), tostring(band),
+        tostring(shown), tostring(rawSource), distanceText)
+    if (apiCreature or apiUnit) and enabled and band and shown then
+        return "ok", detail
+    end
+    return "warn", detail
 end)
 
 addCheck("maelstrom", "maelstrom", function()

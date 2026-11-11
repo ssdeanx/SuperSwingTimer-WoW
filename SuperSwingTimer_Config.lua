@@ -2219,7 +2219,7 @@ local function CreateBlizzardOptionsCanvas()
 
     local title = f:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
     title:SetPoint("TOPLEFT", f, "TOPLEFT", 16, -16)
-    title:SetText("Super Swing Timer |cff00ccff" .. (ns.GetDisplayVersion and ns.GetDisplayVersion() or "v0.3.2") .. "|r")
+    title:SetText("Super Swing Timer |cff00ccff" .. (ns.GetDisplayVersion and ns.GetDisplayVersion() or "v0.3.3") .. "|r")
 
     local desc = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     desc:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -8)
@@ -2517,7 +2517,7 @@ local function CreatePanel()
     -- Title
     local title = f:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
     title:SetPoint("TOPLEFT", f, "TOPLEFT", 18, -14)
-    title:SetText("Super Swing Timer |cff00ccff" .. (ns.GetDisplayVersion and ns.GetDisplayVersion() or "v0.3.2") .. "|r")
+    title:SetText("Super Swing Timer |cff00ccff" .. (ns.GetDisplayVersion and ns.GetDisplayVersion() or "v0.3.3") .. "|r")
 
     -- Move/Unlock button in header — toggles move mode and saves positions
     local moveHeaderBtn = CreateFrame("Button", nil, f)
@@ -3126,6 +3126,23 @@ local function CreatePanel()
             },
             "class"
         )
+        -- WoW Forever: thin target-distance bar under the power bar
+        if ns.isForever then
+            AddQuickToggle(
+                "Distance Bar", function() return SuperSwingTimerDB.showHunterDistanceBar ~= false end,
+                function(enabled)
+                    SuperSwingTimerDB.showHunterDistanceBar = enabled
+                    if ns.UpdateForeverHunterDistanceBar then
+                        ns.UpdateForeverHunterDistanceBar(0)
+                    end
+                end,
+                {
+                    tooltipText =
+                    "Show a thin 5px target-distance bar under the power bar (WoW Forever only). Full at melee, empty and grey out of range; the colour follows the Hunter range bands."
+                },
+                "class"
+            )
+        end
     end
 
     local showWeaveRow = nil

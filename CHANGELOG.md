@@ -4,6 +4,31 @@
 > Sections: **Added** / **Changed** / **Fixed** / **Removed** / **Performance** / **Security** / **Docs** / **Internal** / **Notes**
 > DB schema migrations are listed under **Notes** per version.
 
+## v0.3.3 - 2026-11-08
+
+### Added
+
+- **Hunter target-distance bar (WoW Forever only).** A thin 5 px bar under the player power bar tracks the current target's distance. It is **full at melee and empties as the target moves away**, and turns **grey and empty when the target is out of range**. The bar is coloured by the four existing Hunter range bands (green melee, gold sweet spot, blue ranged, grey out of range) and follows the global UI scale. The settings panel gains a **Distance Bar** toggle in the Class tab.
+  - **Secret-safe by construction.** Two sanctioned sources are tried: `ClosestUnitPosition(UnitCreatureID("target"))` — the only distance API with `SecretReturns = true`, giving linear yards to the closest creature with the target's ID — and `UnitDistanceSquared("target")` (plain squared yards, group targets only) as the fallback. A secret reading is handed straight to `StatusBar:SetValue` (a secret-argument API) and the client interpolates it; nothing is compared, clamped, formatted or used in arithmetic. The out-of-range band is a plain boolean and pins the bar empty without touching the distance.
+  - The creature source uses a linear 41 yd scale (35 yd Auto Shot maximum + 6 yd Hawk Eye, Forever spell 19498); the group fallback uses the squared scale. The out-of-range band still pins the bar empty at the real range boundary.
+  - `/sst diag` gains a `distance` line (`apiCreature`, `apiUnit`, `enabled`, `band`, `bar`, `src`, `dist`) reporting which source is live and whether its reading is secret, so target-distance support can be verified in-game.
+
+### Changed
+
+- **WoW Forever aura stack order (Forever only).** Player buff procs now render **above** the target-debuff row instead of underneath it. Target debuffs stay pinned directly above the swing bar; their icons, duration text and 3 px duration bars are unchanged. The proc row clears the debuff duration text with a 16 px gap, so a proc icon never overlaps the `12 s`-style text above the top debuff icon.
+- **Buff proc icons are slightly wider than tall (Forever only).** The proc row trims 2 px from the configured buff icon width and 7 px from its height (default 25 px setting → 23×18 px). The shorter row keeps the stack compact above the debuff text without changing the debuff icons.
+- **Left-side stance icon is one size larger (Forever only).** The aspect / stance / form / seal / shield icon beside the swing bar now renders 2 px larger (default 15 px bar → 20×20 px) so the active state is easier to read. Both the native stance slot and the shapeshift fallback use the new size.
+- **Diagnostics.** `/sst diag` `auraGroup` now prints `buffIcon=<width>x<height>`, `debuffRow=<height|secret>` and `stanceIcon=<px>` so the new layout can be verified in-game.
+
+### Fixed
+
+- **Secret debuff-row height crash (Forever only).** The native debuff container's `GetHeight()` returns a **secret number** while the row is populated. The proc-row anchor compared it (`height <= 1`) and raised `attempt to compare a secret number` on every maintenance tick (437 errors in one session). The anchor now probes secrecy first and uses a plain populated/empty flag, anchoring the proc row directly to the debuff container instead of computing a pixel offset. The same audit removed the secret frame-count loop bound in `ResizeGroupFrames` and the secret height read in `/sst diag`.
+
+### Notes
+
+- Changes strictly isolated to WoW Forever (`ns.isForever`); Classic Era, TBC Anniversary and Titanforge keep their existing icon rows unchanged.
+- Headless test suite: 195 tests passed, 0 failures; 0 luacheck warnings across 15 files.
+
 ## v0.3.2 - 2026-11-08
 
 ### Added

@@ -5855,6 +5855,12 @@ local function SetupHunter()
         ApplyHunterRangeHelperColor(rangeState or GetHunterRangeState(ns.barTestActive == true) or "ranged")
     end
     ns.UpdateHunterRangeHelperVisual = UpdateHunterRangeHelperVisual
+    --- Current Hunter range band for consumers outside this setup closure.
+    --  @param previewActive (boolean|nil) true while test bars are previewed
+    --  @return (string|nil) melee / sweetSpot / ranged / outOfRange
+    ns.GetHunterRangeState = function(previewActive)
+        return GetHunterRangeState(previewActive == true)
+    end
 
     local function ApplyHunterQueueTint(spellValue)
         if not ns.mhBar then

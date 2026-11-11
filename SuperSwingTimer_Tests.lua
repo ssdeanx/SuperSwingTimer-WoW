@@ -149,7 +149,7 @@ local function RegisterSSTTests()
         IsTrue(f ~= nil, "SuperSwingTimer.toc must exist")
         local content = f:read("*all")
         f:close()
-        IsTrue(content:find("## Version: v0.3.2", 1, true) ~= nil, "TOC Version must be v0.3.2")
+        IsTrue(content:find("## Version: v0.3.3", 1, true) ~= nil, "TOC Version must be v0.3.3")
 
         -- The settings panel reads its label from TOC metadata; keep the
         -- helper and the TOC in lockstep so a release bump cannot drift.
@@ -3140,9 +3140,178 @@ local function RegisterSSTTests()
         IsTrue(has(druid, 770), "base Faerie Fire must stay tracked")
     end
 
+    function ForeverAura:BuffIcons_AreSlightlyWiderThanTall()
+        local width, height = ns.GetForeverBuffIconDimensions(25)
+        AreEqual(width, 23, "25 px buff icons lose 2 px of width")
+        AreEqual(height, 18, "25 px buff icons lose 7 px of height")
+        IsTrue(width > height, "buff icons must be wider than tall")
+
+        local minWidth, minHeight = ns.GetForeverBuffIconDimensions(12)
+        AreEqual(minWidth, 10, "small buff icons keep the 2 px width trim")
+        AreEqual(minHeight, 8, "buff icon height clamps at 8 px")
+    end
+
+    function ForeverAura:DebuffRowPopulation_HandlesSecretHeight()
+        local prevProbe = _G.issecretvalue
+        local sentinel = 987654.25
+        _G.issecretvalue = function(value) return value == sentinel end
+
+        -- A secret height must be classified without comparing it: the client
+        -- hands back a secret number while the debuff row holds frames, which
+        -- is exactly the value that raised "attempt to compare a secret number".
+        IsTrue(ns.IsForeverDebuffRowPopulated(true, sentinel),
+            "a secret height means the debuff row is populated")
+        IsTrue(ns.IsForeverDebuffRowPopulated(true, 47),
+            "a plain populated height reserves space")
+        IsFalse(ns.IsForeverDebuffRowPopulated(true, 1),
+            "an empty 1x1 container collapses the proc row to the bar")
+        IsFalse(ns.IsForeverDebuffRowPopulated(false, nil),
+            "an unreadable container falls back to the bar")
+
+        _G.issecretvalue = prevProbe
+    end
+
+    function ForeverAura:StanceIcon_OneSizeBiggerThanBar()
+        local function sizeAt(barHeight)
+            return ns.GetForeverStanceIconSize({ GetHeight = function() return barHeight end })
+        end
+        AreEqual(sizeAt(15), 20, "default 15 px bar gives an 18 + 2 px stance icon")
+        AreEqual(sizeAt(21), 23, "mid-range bars add the 2 px bonus")
+        AreEqual(sizeAt(30), 26, "tall bars clamp at 24 + 2 px")
+        AreEqual(ns.GetForeverStanceIconSize(nil), 20, "missing bar falls back to 18 + 2 px")
+    end
+
+    function ForeverAura:DistanceBar_ColorBandsMatchRangeHelper()
+        AreEqual(ns.GetForeverDistanceBarColorKey("melee"), "hunterRangeMelee", "melee band colour")
+        AreEqual(ns.GetForeverDistanceBarColorKey("sweetSpot"), "hunterRangeSweetSpot", "sweet spot band colour")
+        AreEqual(ns.GetForeverDistanceBarColorKey("ranged"), "hunterRangeRanged", "ranged band colour")
+        AreEqual(ns.GetForeverDistanceBarColorKey("outOfRange"), "hunterRangeOutOfRange", "out of range band colour")
+        AreEqual(ns.GetForeverDistanceBarColorKey(nil), nil, "unknown band has no colour")
+        AreEqual(ns.GetForeverDistanceBarColorKey("bogus"), nil, "bogus band has no colour")
+    end
+
+    function ForeverAura:DistanceBar_ValuePassesThroughAndClamps()
+        local linearMax = ns.FOREVER_DISTANCE_MAX_RANGE
+        local squaredMax = linearMax * linearMax
+        AreEqual(ns.GetForeverDistanceBarValue(20, linearMax, false, "ranged"), 20,
+            "plain linear yards pass through")
+        AreEqual(ns.GetForeverDistanceBarValue(400, squaredMax, false, "ranged"), 400,
+            "plain squared value passes through")
+        AreEqual(ns.GetForeverDistanceBarValue(squaredMax + 9999, squaredMax, false, "ranged"), squaredMax,
+            "plain value clamps to the scale")
+        AreEqual(ns.GetForeverDistanceBarValue(9999, linearMax, true, "ranged"), 9999,
+            "a secret reading is returned untouched")
+        AreEqual(ns.GetForeverDistanceBarValue(nil, linearMax, false, "outOfRange"), linearMax,
+            "out of range band pins the bar empty")
+        AreEqual(ns.GetForeverDistanceBarValue(nil, linearMax, false, "melee"), 0,
+            "melee band pins the bar full")
+        AreEqual(ns.GetForeverDistanceBarValue(nil, linearMax, false, "ranged"), nil,
+            "no reading hides the bar")
+        AreEqual(ns.GetForeverDistanceBarValue(400, nil, false, "ranged"), nil,
+            "missing scale hides the bar")
+        AreEqual(ns.GetForeverDistanceBarValue(400, linearMax, false, nil), nil,
+            "missing band hides the bar")
+    end
+
+    function ForeverAura:DistanceBar_ReadsCreatureDistanceFirst()
+        local prevCreatureID = _G.UnitCreatureID
+        local prevClosest = _G.ClosestUnitPosition
+        local prevUnitDistance = _G.UnitDistanceSquared
+
+        _G.UnitCreatureID = function() return 1234 end
+        _G.ClosestUnitPosition = function() return 10, 20, 17.5 end
+        _G.UnitDistanceSquared = function() return 9999, true end
+        local value, maxValue, secret, source = ns.ReadForeverTargetDistance()
+        AreEqual(value, 17.5, "linear creature distance is used first")
+        AreEqual(maxValue, ns.FOREVER_DISTANCE_MAX_RANGE, "creature distance uses the linear scale")
+        IsFalse(secret, "a plain test reading is not secret")
+        AreEqual(source, "closest", "creature source wins")
+
+        _G.UnitCreatureID = function() return nil end
+        _G.ClosestUnitPosition = nil
+        local fallbackValue, fallbackMax, _, fallbackSource = ns.ReadForeverTargetDistance()
+        AreEqual(fallbackValue, 9999, "group squared distance is the fallback")
+        AreEqual(fallbackMax, ns.FOREVER_DISTANCE_MAX_RANGE * ns.FOREVER_DISTANCE_MAX_RANGE,
+            "group distance uses the squared scale")
+        AreEqual(fallbackSource, "unit", "unit source is reported")
+
+        _G.UnitDistanceSquared = function() return nil, false end
+        local noneValue, _, _, noneSource = ns.ReadForeverTargetDistance()
+        AreEqual(noneValue, nil, "no source yields no reading")
+        AreEqual(noneSource, nil, "no source is reported")
+
+        _G.UnitCreatureID = prevCreatureID
+        _G.ClosestUnitPosition = prevClosest
+        _G.UnitDistanceSquared = prevUnitDistance
+    end
+
+    function ForeverAura:DistanceBar_UpdatesFromDistanceApi()
+        local prevBar = ns.foreverHunterDistanceBar
+        local prevForever = ns.isForever
+        local prevClass = ns.playerClass
+        local prevStateFn = ns.GetHunterRangeState
+        local prevPowerBar = ns.playerPowerBar
+        local prevApi = _G.UnitDistanceSquared
+
+        local recorded = {}
+        local mockBar = {
+            bandTexture = {
+                SetColorTexture = function(_, r, g, b, a) recorded.band = { r, g, b, a } end,
+            },
+            SetMinMaxValues = function(_, minValue, maxValue) recorded.min, recorded.max = minValue, maxValue end,
+            SetValue = function(_, value) recorded.value = value end,
+            SetStatusBarColor = function(_, r, g, b, a) recorded.color = { r, g, b, a } end,
+            SetAlpha = function() end,
+            Show = function() recorded.shown = true end,
+            Hide = function() recorded.shown = false end,
+            GetPoint = function() return nil end,
+            ClearAllPoints = function() end,
+            SetPoint = function() end,
+            GetHeight = function() return 5 end,
+            SetHeight = function() end,
+        }
+
+        ns.isForever = true
+        ns.playerClass = "HUNTER"
+        ns.playerPowerBar = nil -- keep the layout helper out of this mock
+        ns.foreverHunterDistanceBar = mockBar
+        ns.GetHunterRangeState = function() return "ranged" end
+        _G.UnitDistanceSquared = function() return 400, true end
+
+        ns.UpdateForeverHunterDistanceBar(0)
+
+        AreEqual(recorded.value, 400, "plain squared distance is passed to the bar")
+        AreEqual(recorded.min, 0, "bar minimum is 0")
+        AreEqual(recorded.max, ns.FOREVER_DISTANCE_MAX_RANGE * ns.FOREVER_DISTANCE_MAX_RANGE,
+            "bar maximum is the full scale")
+        IsTrue(recorded.shown == true, "bar is shown with a target")
+        IsTrue(recorded.band ~= nil, "band colour is applied")
+        AreEqual(recorded.color and recorded.color[4], 1, "empty cover stays opaque")
+
+        ns.foreverHunterDistanceBar = prevBar
+        ns.isForever = prevForever
+        ns.playerClass = prevClass
+        ns.GetHunterRangeState = prevStateFn
+        ns.playerPowerBar = prevPowerBar
+        _G.UnitDistanceSquared = prevApi
+    end
+
+    function ForeverAura:DistanceBar_GatedToForeverHunter()
+        local previousBar = ns.foreverHunterDistanceBar
+        local previousForever = ns.isForever
+        ns.foreverHunterDistanceBar = nil
+        ns.isForever = false
+        local ok = pcall(ns.UpdateForeverHunterDistanceBar, 0)
+        IsTrue(ok, "distance bar update is safe off Forever")
+        AreEqual(ns.foreverHunterDistanceBar, nil, "no distance bar is created off Forever")
+        ns.foreverHunterDistanceBar = previousBar
+        ns.isForever = previousForever
+    end
+
     function ForeverAura:DBDefaults_HasForeverAuraKeys()
         IsTrue(ns.DB_DEFAULTS.showForeverDebuffIcons == true, "showForeverDebuffIcons default is true")
         IsTrue(ns.DB_DEFAULTS.showForeverStanceIcon == true, "showForeverStanceIcon default is true")
+        IsTrue(ns.DB_DEFAULTS.showHunterDistanceBar == true, "showHunterDistanceBar default is true")
     end
 
     function ForeverAura:Diagnostics_IncludesStanceFields()

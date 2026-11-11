@@ -1,4 +1,4 @@
-# Super Swing Timer <span style="color:#00ccff">v0.3.2</span>
+# Super Swing Timer <span style="color:#00ccff">v0.3.3</span>
 
 A fast, customizable **Main Hand**, **Off Hand**, **Ranged**, and **Enemy** swing timer for World of Warcraft Classic and WoW Forever clients — with class-specific rotation helpers, target debuff bars, and a unified player power bar.
 
@@ -8,14 +8,15 @@ A fast, customizable **Main Hand**, **Off Hand**, **Ranged**, and **Enemy** swin
 
 ---
 
-## What's New in v0.3.2
+## What's New in v0.3.3
 
-- **WoW Forever native aura rows.** Player buffs and your own target debuffs now render through the client's native aura display — icons, stacks and duration bars — centered above the swing bar.
-- **Active stance / aspect / form / seal / shield slot.** One dedicated icon to the left of the bar shows your current state: Hunter aspects, Warrior stances, Druid forms, Paladin seals, Shaman shields, Rogue stealth. Hunters get a warning when entering combat without an aspect.
-- **Dynamic aura stack.** Target debuffs stay pinned above your player procs; when you have no procs, the gap collapses so nothing floats in mid-air.
-- **Forever Shaman weave.** Maelstrom Weapon is read through the Forever client API; only **Lightning Bolt** receives the cast-time reduction (Chain Lightning stays 2.5 s on Forever).
-- **Slam timing.** With **Improved Slam**, Slam no longer delays your melee swing; without the talent the cast still pushes the swing.
-- **Forever diagnostics.** `/sst diag` now shows `auraGroup`, `maelstrom` and `weave` lines so you can see exactly what the client is exposing.
+- **WoW Forever aura stack reordered.** Player buff procs now appear **above** your target debuffs — just clear of the debuff duration text — while the target-debuff icons and their duration bars stay pinned above the swing bar exactly as before.
+- **Slimmer buff proc icons.** The proc row is trimmed 2 px in width and 7 px in height at the default 25 px setting (25 px → 23×18), so buff icons are a little wider than tall and the stack stays compact.
+- **Larger stance / aspect icon.** The active aspect, stance, form, seal or shield icon to the left of the bar is now one size larger (default 20×20 instead of 18×18), so it is easier to read at a glance.
+- **Hunter target-distance bar (Forever only).** A thin 5 px bar under the power bar fills at melee, empties as the target moves away, and turns grey when the target is out of range. Its colour follows the Hunter range bands. It reads the client's secret creature distance (`ClosestUnitPosition`) with `UnitDistanceSquared` as a fallback; secret values are passed straight to the bar API, never read by the addon.
+- **Verifiable in `/sst diag`.** The `auraGroup` line now prints `buffIcon=<width>x<height>`, `debuffRow=<height|secret>` and `stanceIcon=<px>`.
+- **Secret-height crash fixed (Forever only).** The proc row no longer compares the debuff container's secret height; it anchors to the debuff row and collapses to the bar when the row is empty.
+- **Everything else from v0.3.2 remains:** native Forever aura rows, the stance/aspect/form/seal/shield slot, Forever Shaman weave, Slam timing, and the `auraGroup` / `maelstrom` / `weave` diagnostics.
 
 ---
 
@@ -94,7 +95,7 @@ Type `/sst` in chat to open the settings window. Bars stay hidden out of combat 
 
 ```text
 +------------------------------------------------------------------+
-| Super Swing Timer v0.3.2            [ Unlock & Move Bars ]  [X]  |
+| Super Swing Timer v0.3.3            [ Unlock & Move Bars ]  [X]  |
 | Global Scale [=====slider (0.5x–3.0x)=====] [1.0]               |
 |------------------------------------------------------------------|
 | Quick Controls (Tabs: [ All ] [ Visibility ] [ Colors ] [ Class ])|
@@ -134,6 +135,14 @@ Type `/sst` in chat to open the settings window. Bars stay hidden out of combat 
 ---
 
 ## Recent Releases
+
+### <span style="color:#00ccff">v0.3.3</span> (2026-11-08)
+
+- **<span style="color:#2ecc71">Forever Aura Stack Reordered</span>**: Player buff procs now render above the target-debuff duration text; the debuff icons and duration bars stay pinned above the swing bar.
+- **<span style="color:#2ecc71">Slimmer Proc Icons</span>**: Buff icons are trimmed 2 px in width and 7 px in height (25 px default → 23×18), making them slightly wider than tall.
+- **<span style="color:#2ecc71">Larger Stance Icon</span>**: The left-side aspect/stance/form/seal/shield icon is one size larger (default 20×20 instead of 18×18).
+- **<span style="color:#2ecc71">Forever Hunter Distance Bar</span>**: A 5 px bar under the power bar fills at melee and empties as the target moves away, turning grey out of range; colour follows the Hunter range bands. Reads the client's secret creature distance first, with the group squared-distance API as fallback.
+- **<span style="color:#2ecc71">Diagnostics</span>**: `/sst diag` reports `buffIcon=<w>x<h>`, `debuffRow=<h|secret>` and `stanceIcon=<px>`.
 
 ### <span style="color:#00ccff">v0.3.2</span> (2026-11-08)
 

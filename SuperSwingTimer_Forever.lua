@@ -313,11 +313,11 @@ ns.FOREVER_WEAVE_SPELL_GROUPS = {
 --      Stances, Forms, Seals, Shields, Stealth) anchored to the LEFT of the
 --      primary swing bar so only the 1 active state is shown.
 --   2. FOREVER_BUFF_SPELLS   : Temporary combat procs & short cooldown buffs
---      rendered in the Dynamic Priority Stack above the bar (underneath target
---      debuffs, collapsing to 0px when no procs are active).
+--      rendered in the Dynamic Priority Stack ABOVE the target debuffs, just
+--      clear of their duration text, collapsing to 0px when no procs are active.
 --   3. FOREVER_DEBUFF_SPELLS : Player-cast target debuffs (HARMFUL|PLAYER)
---      rendered at the very TOP of the Dynamic Priority Stack with a 3px
---      high-contrast duration bar underneath each icon.
+--      pinned directly above the bar with a 3px high-contrast duration bar
+--      underneath each icon.
 -- ============================================================
 
 -- Active Stance / Aspect / Form / Seal / Shield spells (LEFT-side single slot).
@@ -684,6 +684,19 @@ local AURA_FRAME_STRATA = "DIALOG"
 local PROC_MAX_DURATION = 180
 local LEFT_STANCE_MIN_SIZE = 18
 local LEFT_STANCE_MAX_SIZE = 24
+-- One icon-size step larger than the bar-derived stance size so the aspect /
+-- stance / form slot beside the bar stays easy to read.
+local LEFT_STANCE_SIZE_BONUS = 2
+-- Buff proc icons are intentionally a little wider than tall. The configured
+-- buff icon size is the square reference; the proc row trims 2 px from the
+-- width and 7 px from the height so it clears the target-debuff duration text
+-- without pushing the stack far above the bar.
+local BUFF_ICON_WIDTH_TRIM = 2
+local BUFF_ICON_HEIGHT_TRIM = 7
+local MIN_BUFF_ICON_SIZE = 8
+-- Gap between the top of the debuff row and the bottom of the buff row:
+-- 2 px duration-text offset + ~12 px font height + 2 px breathing room.
+local DEBUFF_TEXT_CLEARANCE = 16
 local QUESTION_MARK_ICON = "Interface\\Icons\\INV_Misc_QuestionMark"
 
 local function GetDB()
@@ -792,9 +805,10 @@ end
 --  @param frame (Frame) AuraButton created by the container
 --  @param options (table) size / withBar / withCooldown flags
 local function StyleAuraButton(frame, options)
-    local size = options.size
+    local width = options.width or options.size
+    local height = options.height or options.size
     local ok = pcall(function()
-        frame:SetSize(size, size)
+        frame:SetSize(width, height)
     end)
     if not ok then
         return
@@ -959,8 +973,8 @@ local function CreateAuraGroupContainer(groupKey, unitToken, filter, spellList, 
             candidateFilters = candidateFilters,
             maxFrameCount = maxFrames,
             layout = {
-                elementWidth = options.size,
-                elementHeight = options.size,
+                elementWidth = options.width or options.size,
+                elementHeight = options.height or options.size,
                 elementSpacing = 3,
             },
             initializeFrame = function(frame)
@@ -1002,10 +1016,14 @@ ns.foreverAura = {
     stanceSlot = nil,
     shapeshiftIcon = nil,
     buffSize = 25,
+    buffWidth = 23,
+    buffHeight = 18,
     debuffSize = 22,
     lastYOffset = nil,
-    lastBuffSize = nil,
+    lastBuffWidth = nil,
+    lastBuffHeight = nil,
     lastDebuffSize = nil,
+    lastDebuffPopulated = nil,
     lastBuffVisible = nil,
     lastAnchorBar = nil,
     initAttempts = 0,
@@ -1094,6 +1112,28 @@ local function GetBuffSize()
     return size
 end
 
+--- Buff proc icon width and height.
+--  The proc row is a slightly wide rectangle: the configured square size
+--  minus BUFF_ICON_WIDTH_TRIM in width and BUFF_ICON_HEIGHT_TRIM in height,
+--  clamped so tiny slider values stay readable.
+--  @param baseSize (number|nil) configured square buff icon size
+--  @return (number) icon width, (number) icon height
+function ns.GetForeverBuffIconDimensions(baseSize)
+    local base = baseSize
+    if type(base) ~= "number" or base <= 0 then
+        base = GetBuffSize()
+    end
+    local width = base - BUFF_ICON_WIDTH_TRIM
+    local height = base - BUFF_ICON_HEIGHT_TRIM
+    if width < MIN_BUFF_ICON_SIZE then
+        width = MIN_BUFF_ICON_SIZE
+    end
+    if height < MIN_BUFF_ICON_SIZE then
+        height = MIN_BUFF_ICON_SIZE
+    end
+    return width, height
+end
+
 local function GetDebuffSize()
     local db = GetDB()
     local size = db and db.foreverDebuffIconSize or nil
@@ -1103,13 +1143,18 @@ local function GetDebuffSize()
     return size
 end
 
---- Stance icon size matching the primary swing bar height.
-local function GetStanceIconSize(bar)
+--- Size of the left-side aspect / stance / form / seal / shield slot.
+--  Tracks the primary swing bar height, clamped to the stance icon range,
+--  plus one icon step (LEFT_STANCE_SIZE_BONUS) so the active state is easy to
+--  read next to the bar.
+--  @param bar (Frame|nil) anchor bar
+--  @return (number) square icon size in pixels
+function ns.GetForeverStanceIconSize(bar)
     local barH = bar and bar.GetHeight and bar:GetHeight() or 18
     if type(barH) ~= "number" or barH <= 0 then barH = 18 end
     if barH < LEFT_STANCE_MIN_SIZE then barH = LEFT_STANCE_MIN_SIZE end
     if barH > LEFT_STANCE_MAX_SIZE then barH = LEFT_STANCE_MAX_SIZE end
-    return barH
+    return barH + LEFT_STANCE_SIZE_BONUS
 end
 
 --- Determine the left-hand anchor target frame and relative offset.
@@ -1215,7 +1260,7 @@ local function UpdateLeftStanceIcon(bar)
         return
     end
 
-    local stanceSize = GetStanceIconSize(bar)
+    local stanceSize = ns.GetForeverStanceIconSize(bar)
     local targetFrame, relPoint, xOff, yOff = GetLeftAnchorTarget(bar)
 
     -- Reposition native stance container/slot if present
@@ -1332,13 +1377,41 @@ local function UpdateLeftStanceIcon(bar)
     end
 end
 
---- Reposition the containers above the primary swing bar and stance icon on the left.
---  Dynamic Priority Stack:
---    buffContainer (player procs) sits directly above the bar.
---    debuffContainer (target debuffs) sits directly on top of buffContainer.
---    When 0 procs are active, buffContainer height is 0, collapsing the gap to 0px!
---    When procs activate, buffContainer expands to buffSize, pushing debuffs upward.
---    Target debuffs are ALWAYS on top of the stack.
+--- True when the debuff row currently holds frames.
+--  The container's height is derived from its aura frames, so the client hands
+--  it back as a SECRET number while the row is populated; an empty flow layout
+--  collapses to a plain 1. Comparing that height raises ("attempt to compare a
+--  secret number"), so the secrecy probe must always run first. A secret height
+--  therefore means "populated" and the buff row anchors to the container
+--  instead of computing a pixel offset.
+--  @param probeOk (boolean) whether GetHeight answered
+--  @param height (number|nil) raw GetHeight result, possibly secret
+--  @return (boolean) true when the debuff row reserves space
+function ns.IsForeverDebuffRowPopulated(probeOk, height)
+    if not probeOk then
+        return false
+    end
+    if ns.IsSecretValue(height) then
+        return true
+    end
+    return type(height) == "number" and height > 1
+end
+
+--- Probe the native debuff container for a populated row.
+--  @param container (Frame|nil) debuff container
+--  @return (boolean) true when the debuff row is populated
+local function IsDebuffRowPopulated(container)
+    if not container then
+        return false
+    end
+    local ok, height = pcall(container.GetHeight, container)
+    return ns.IsForeverDebuffRowPopulated(ok, height)
+end
+
+--- Reposition the native aura rows and the stance icon.
+--  Stack order (bottom to top): bar -> target debuffs -> debuff duration text
+--  -> player buff procs. Debuffs never move when procs appear; the proc row
+--  appears above their text instead of pushing them up.
 local function ApplyContainerAnchors()
     local state = ns.foreverAura
     local bar = GetAnchorBar()
@@ -1346,32 +1419,34 @@ local function ApplyContainerAnchors()
         return
     end
     local yOffset = ComputeIconYOffset()
-    local buffSize = state.buffSize
-    local debuffSize = state.debuffSize
     local buffVisible = GetBuffToggle()
+    local debuffPopulated = GetDebuffToggle() and IsDebuffRowPopulated(state.debuffContainer) or false
 
-    if state.buffContainer then
-        pcall(function()
-            state.buffContainer:ClearAllPoints()
-            state.buffContainer:SetPoint("BOTTOM", bar, "TOP", 0, yOffset)
-        end)
-    end
+    -- Target debuffs stay pinned to the bar; the proc row clears their
+    -- duration text by anchoring to the debuff container itself. An empty
+    -- debuff row collapses the proc row back onto the bar.
     if state.debuffContainer then
         pcall(function()
             state.debuffContainer:ClearAllPoints()
-            if state.buffContainer and buffVisible then
-                state.debuffContainer:SetPoint("BOTTOM", state.buffContainer, "TOP", 0, 2)
-            else
-                state.debuffContainer:SetPoint("BOTTOM", bar, "TOP", 0, yOffset)
-            end
+            state.debuffContainer:SetPoint("BOTTOM", bar, "TOP", 0, yOffset)
+        end)
+    end
+    if state.buffContainer then
+        local anchorTarget = debuffPopulated and state.debuffContainer or bar
+        local anchorOffset = debuffPopulated and DEBUFF_TEXT_CLEARANCE or yOffset
+        pcall(function()
+            state.buffContainer:ClearAllPoints()
+            state.buffContainer:SetPoint("BOTTOM", anchorTarget, "TOP", 0, anchorOffset)
         end)
     end
 
     UpdateLeftStanceIcon(bar)
 
     state.lastYOffset = yOffset
-    state.lastBuffSize = buffSize
-    state.lastDebuffSize = debuffSize
+    state.lastBuffWidth = state.buffWidth
+    state.lastBuffHeight = state.buffHeight
+    state.lastDebuffSize = state.debuffSize
+    state.lastDebuffPopulated = debuffPopulated
     state.lastBuffVisible = buffVisible
     state.lastAnchorBar = bar
 end
@@ -1432,6 +1507,7 @@ function ns.InitForeverAuraIcons()
     end
 
     state.buffSize = GetBuffSize()
+    state.buffWidth, state.buffHeight = ns.GetForeverBuffIconDimensions(state.buffSize)
     state.debuffSize = GetDebuffSize()
 
     -- Class list + shared buffs + the player's own racials. The class list
@@ -1450,6 +1526,8 @@ function ns.InitForeverAuraIcons()
     if containerBuffList and #containerBuffList > 0 then
         local container = CreateAuraGroupContainer("forever_buffs", "player", "HELPFUL", containerBuffList, {
             size = state.buffSize,
+            width = state.buffWidth,
+            height = state.buffHeight,
             withBar = false,
             withCooldown = true,
             maxDuration = PROC_MAX_DURATION,
@@ -1465,7 +1543,7 @@ function ns.InitForeverAuraIcons()
     if stanceList and #stanceList > 0 then
         local stanceContainer = CreateAuraContainerFrame()
         if stanceContainer then
-            local stanceSize = GetStanceIconSize(GetAnchorBar())
+            local stanceSize = ns.GetForeverStanceIconSize(GetAnchorBar())
             pcall(function()
                 stanceContainer:SetSize(stanceSize, stanceSize)
                 stanceContainer:SetFrameStrata(AURA_FRAME_STRATA)
@@ -1536,20 +1614,27 @@ end
 --  secret, and the next unrestricted tick picks the new size up.
 --  @param container (Frame) aura container
 --  @param groupKey (string) registered group key
---  @param size (number) new square icon size
-local function ResizeGroupFrames(container, groupKey, size)
+--  @param width (number) new icon width
+--  @param height (number) new icon height
+local function ResizeGroupFrames(container, groupKey, width, height)
     if not container or not container.GetAuraGroupFrameCount
         or not container.GetAuraGroupFrame then
         return
     end
     local ok, count = pcall(container.GetAuraGroupFrameCount, container, groupKey)
-    if not ok or type(count) ~= "number" then
+    if not ok then
         return
     end
-    for index = 1, count do
+    -- The count is derived from aura frames and can be secret; a numeric for
+    -- limit would raise, so scrub it before the loop.
+    local frameCount = ns.SafeNumber and ns.SafeNumber(count) or nil
+    if type(frameCount) ~= "number" then
+        return
+    end
+    for index = 1, frameCount do
         local frameOk, frame = pcall(container.GetAuraGroupFrame, container, groupKey, index)
         if frameOk and frame and frame.SetSize then
-            pcall(frame.SetSize, frame, size, size)
+            pcall(frame.SetSize, frame, width, height)
         end
     end
 end
@@ -1593,20 +1678,25 @@ function ns.UpdateForeverAuraIcons(elapsed)
         end)
     end
 
-    -- Size changes require a fresh layout definition.
+    -- Size changes require a fresh layout definition. Buff icons use the
+    -- trimmed width/height; debuff icons stay square.
     local buffSize = GetBuffSize()
+    local buffWidth, buffHeight = ns.GetForeverBuffIconDimensions(buffSize)
     local debuffSize = GetDebuffSize()
-    if buffSize ~= state.buffSize and state.buffContainer then
+    if (buffWidth ~= state.buffWidth or buffHeight ~= state.buffHeight)
+            and state.buffContainer then
         local ok = pcall(function()
             state.buffContainer:SetAuraGroupLayout("forever_buffs", {
-                elementWidth = buffSize,
-                elementHeight = buffSize,
+                elementWidth = buffWidth,
+                elementHeight = buffHeight,
                 elementSpacing = 3,
             })
-            ResizeGroupFrames(state.buffContainer, "forever_buffs", buffSize)
+            ResizeGroupFrames(state.buffContainer, "forever_buffs", buffWidth, buffHeight)
         end)
         if ok then
             state.buffSize = buffSize
+            state.buffWidth = buffWidth
+            state.buffHeight = buffHeight
         end
     end
     if debuffSize ~= state.debuffSize and state.debuffContainer then
@@ -1616,20 +1706,24 @@ function ns.UpdateForeverAuraIcons(elapsed)
                 elementHeight = debuffSize,
                 elementSpacing = 3,
             })
-            ResizeGroupFrames(state.debuffContainer, "forever_debuffs", debuffSize)
+            ResizeGroupFrames(state.debuffContainer, "forever_debuffs", debuffSize, debuffSize)
         end)
         if ok then
             state.debuffSize = debuffSize
         end
     end
 
-    -- Re-anchor only when something that affects the offset changed.
+    -- Re-anchor only when something that affects the layout changed. The
+    -- debuff row contributes a populated flag, never a secret height.
     local yOffset = ComputeIconYOffset()
     local anchorBar = GetAnchorBar()
+    local debuffPopulated = GetDebuffToggle() and IsDebuffRowPopulated(state.debuffContainer) or false
     if anchorBar and (anchorBar ~= state.lastAnchorBar
             or yOffset ~= state.lastYOffset
-            or buffSize ~= state.lastBuffSize
+            or buffWidth ~= state.lastBuffWidth
+            or buffHeight ~= state.lastBuffHeight
             or debuffSize ~= state.lastDebuffSize
+            or debuffPopulated ~= state.lastDebuffPopulated
             or buffVisible ~= state.lastBuffVisible) then
         ApplyContainerAnchors()
     else
@@ -1692,6 +1786,25 @@ end
 -- ============================================================
 -- 9. Diagnostics
 -- ============================================================
+--- Safe display value for the debuff container height.
+--  Never compares a secret number: the probe is classified first.
+--  @return (number|string) plain height in pixels, or "secret"/"none"/"unreadable"
+local function GetDebuffRowProbe()
+    local state = ns.foreverAura
+    local container = state.debuffContainer
+    if not container then
+        return "none"
+    end
+    local ok, height = pcall(container.GetHeight, container)
+    if not ok then
+        return "unreadable"
+    end
+    if ns.IsSecretValue(height) then
+        return "secret"
+    end
+    return type(height) == "number" and height or "nil"
+end
+
 --- Snapshot of the Forever aura subsystem for /sst diag.
 --  @return (table) plain diagnostic values
 function ns.GetForeverAuraDiagnostics()
@@ -1734,6 +1847,10 @@ function ns.GetForeverAuraDiagnostics()
         shapeshiftIcon = state.shapeshiftIcon ~= nil,
         buffFrames = buffCount,
         debuffFrames = debuffCount,
+        buffWidth = state.buffWidth,
+        buffHeight = state.buffHeight,
+        debuffRow = GetDebuffRowProbe(),
+        stanceIconSize = ns.GetForeverStanceIconSize(GetAnchorBar()),
         buffSpells = buffSpells,
         debuffSpells = debuffSpells,
         stanceSpells = stanceSpells,
@@ -1741,4 +1858,299 @@ function ns.GetForeverAuraDiagnostics()
         initAttempts = state.initAttempts,
         initError = state.initError,
     }
+end
+
+-- ============================================================
+-- 10. Hunter target-distance bar (Forever only)
+-- ============================================================
+-- A thin bar under the player power bar that tracks the distance to the
+-- current target. UnitDistanceSquared returns squared yards on Forever
+-- (Auto Shot is 8-35 yd; Hawk Eye 19498 adds 6 yd, so the scale covers 41).
+-- The bar is FULL at melee and empties as the target moves away, and the
+-- four Hunter range bands colour it.
+--
+-- Secret values: UnitDistanceSquared is not annotated SecretReturns, but the
+-- client may still hand back a restricted number while distance is hidden.
+-- The raw squared value is therefore handed straight to StatusBar:SetValue
+-- (SecretArguments = AllowedWhenTainted) and the client interpolates it; no
+-- secret is compared, clamped, formatted or used in arithmetic.
+--
+-- Inverted fill: a StatusBar fills in proportion to its value, so a value that
+-- grows with distance would fill the bar as the target moves away. The status
+-- bar texture is therefore the grey EMPTY part and the band colour lives in
+-- the background; reverse fill keeps the coloured part on the left, like a
+-- normal depleting bar.
+local DISTANCE_BAR_HEIGHT = 5
+local DISTANCE_BAR_GAP = 2
+local DISTANCE_BAR_UPDATE_INTERVAL = 0.1
+local DISTANCE_BAR_TEXTURE = "Interface\\Buttons\\WHITE8X8"
+local DISTANCE_BAR_FALLBACK_COLOR = { r = 0.5, g = 0.5, b = 0.5 }
+
+--- Furthest Hunter ranged reach covered by the bar's scale.
+--  41 yd = 35 yd Auto Shot maximum + 6 yd Hawk Eye (Forever spell 19498).
+ns.FOREVER_DISTANCE_MAX_RANGE = 41
+local DISTANCE_MAX_SQUARED = ns.FOREVER_DISTANCE_MAX_RANGE * ns.FOREVER_DISTANCE_MAX_RANGE
+
+--- Colour key for a Hunter range band, matching the range helper exactly.
+--  @param rangeState (string|nil) melee / sweetSpot / ranged / outOfRange
+--  @return (string|nil) bar colour key
+function ns.GetForeverDistanceBarColorKey(rangeState)
+    if rangeState == "melee" then
+        return "hunterRangeMelee"
+    elseif rangeState == "sweetSpot" then
+        return "hunterRangeSweetSpot"
+    elseif rangeState == "ranged" then
+        return "hunterRangeRanged"
+    elseif rangeState == "outOfRange" then
+        return "hunterRangeOutOfRange"
+    end
+    return nil
+end
+
+--- Read the best available distance to the current target.
+--  Two sanctioned sources are tried in order:
+--    * ClosestUnitPosition(UnitCreatureID("target")) — the only distance API
+--      that returns SECRET values (SecretReturns = true); it yields linear
+--      yards to the closest creature with the target's creature ID.
+--    * UnitDistanceSquared("target") — plain squared yards, but Blizzard only
+--      documents it for group members, so it is the fallback.
+--  Values are never compared while secret; the secrecy probe routes them.
+--  @return (number|nil) raw value, (number|nil) scale, (boolean) secret,
+--          (string|nil) "closest" or "unit"
+function ns.ReadForeverTargetDistance()
+    local unitCreatureID = rawget(_G, "UnitCreatureID")
+    local closestUnitPosition = rawget(_G, "ClosestUnitPosition")
+    if type(unitCreatureID) == "function" and type(closestUnitPosition) == "function" then
+        local idOk, creatureID = pcall(unitCreatureID, "target")
+        if idOk and not ns.IsSecretValue(creatureID) and type(creatureID) == "number" then
+            -- ClosestUnitPosition returns (xPos, yPos, distance); only the
+            -- distance is needed, selected without inspecting its value.
+            local posOk, distance = pcall(function()
+                return select(3, closestUnitPosition(creatureID))
+            end)
+            if posOk then
+                if ns.IsSecretValue(distance) then
+                    return distance, ns.FOREVER_DISTANCE_MAX_RANGE, true, "closest"
+                end
+                if type(distance) == "number" then
+                    return distance, ns.FOREVER_DISTANCE_MAX_RANGE, false, "closest"
+                end
+            end
+        end
+    end
+
+    local unitDistanceSquared = rawget(_G, "UnitDistanceSquared")
+    if type(unitDistanceSquared) == "function" then
+        local ok, distanceSquared, checked = pcall(unitDistanceSquared, "target")
+        if ok then
+            local checkedSecret = ns.IsSecretValue(checked)
+            if ns.IsSecretValue(distanceSquared) then
+                return distanceSquared, DISTANCE_MAX_SQUARED, true, "unit"
+            end
+            if type(distanceSquared) == "number" and (checkedSecret or checked ~= false) then
+                return distanceSquared, DISTANCE_MAX_SQUARED, false, "unit"
+            end
+        end
+    end
+
+    return nil, nil, false, nil
+end
+
+--- Resolve the value handed to the distance bar's SetValue.
+--  A secret reading is returned untouched; a plain one is clamped to the
+--  source's scale. An out-of-range band pins the bar to its empty state.
+--  @param value (number|nil) raw distance (linear yards or squared yards)
+--  @param maxValue (number|nil) scale for that raw value
+--  @param valueSecret (boolean) whether the raw value is secret
+--  @param rangeState (string|nil) Hunter range band
+--  @return (number|nil) SetValue argument, or nil to hide the bar
+function ns.GetForeverDistanceBarValue(value, maxValue, valueSecret, rangeState)
+    if not rangeState or type(maxValue) ~= "number" or maxValue <= 0 then
+        return nil
+    end
+    if rangeState == "outOfRange" then
+        return maxValue
+    end
+    -- Melee is pinned full so the "closest" reading is exactly 100% and does
+    -- not depend on the distance API at all.
+    if rangeState == "melee" then
+        return 0
+    end
+    if valueSecret then
+        return value
+    end
+    if type(value) ~= "number" then
+        return nil
+    end
+    if value < 0 then
+        value = 0
+    elseif value > maxValue then
+        value = maxValue
+    end
+    return value
+end
+
+--- Out-of-range grey used for the empty part of the distance bar.
+--  The cover must stay opaque so the band colour cannot show through it.
+--  @return (table) {r, g, b}
+local function GetDistanceBarEmptyColor()
+    local color = ns.GetBarColor and ns.GetBarColor("hunterRangeOutOfRange") or nil
+    if color and color.r then
+        return color
+    end
+    return DISTANCE_BAR_FALLBACK_COLOR
+end
+
+--- Create the distance bar once the power bar exists.
+--  @return (Frame|nil) the bar, or nil while the power bar is not ready
+local function EnsureHunterDistanceBar()
+    local bar = ns.foreverHunterDistanceBar
+    if bar then
+        return bar
+    end
+    if not ns.isForever or ns.playerClass ~= "HUNTER" then
+        return nil
+    end
+    local powerBar = ns.playerPowerBar
+    if not powerBar then
+        return nil
+    end
+
+    local ok, created = pcall(CreateFrame, "StatusBar", "SuperSwingTimerHunterDistanceBar", UIParent)
+    if not ok or not created then
+        return nil
+    end
+
+    pcall(function()
+        created:SetStatusBarTexture(DISTANCE_BAR_TEXTURE)
+        created:SetMinMaxValues(0, DISTANCE_MAX_SQUARED)
+        created:SetValue(0)
+        created:SetHeight(ns.Scale(DISTANCE_BAR_HEIGHT))
+        created:SetFrameStrata(powerBar:GetFrameStrata())
+        created:SetFrameLevel(powerBar:GetFrameLevel() + 1)
+        created:EnableMouse(false)
+        if created.SetReverseFill then
+            pcall(created.SetReverseFill, created, true)
+        end
+        local bandTexture = created:CreateTexture(nil, "BACKGROUND")
+        bandTexture:SetAllPoints(true)
+        bandTexture:SetColorTexture(
+            DISTANCE_BAR_FALLBACK_COLOR.r,
+            DISTANCE_BAR_FALLBACK_COLOR.g,
+            DISTANCE_BAR_FALLBACK_COLOR.b,
+            1
+        )
+        created.bandTexture = bandTexture
+        created:Hide()
+    end)
+
+    ns.foreverHunterDistanceBar = created
+    return created
+end
+
+--- Anchor the bar under the power bar and keep its height global-scale aware.
+--  @param bar (Frame) distance bar
+local function ApplyHunterDistanceBarLayout(bar)
+    local powerBar = ns.playerPowerBar
+    if not powerBar then
+        return
+    end
+    if bar.distanceOwner ~= powerBar or not bar:GetPoint(1) then
+        bar:ClearAllPoints()
+        bar:SetPoint("TOPLEFT", powerBar, "BOTTOMLEFT", 0, -DISTANCE_BAR_GAP)
+        bar:SetPoint("TOPRIGHT", powerBar, "BOTTOMRIGHT", 0, -DISTANCE_BAR_GAP)
+        bar.distanceOwner = powerBar
+    end
+    local height = ns.Scale(DISTANCE_BAR_HEIGHT)
+    if bar:GetHeight() ~= height then
+        bar:SetHeight(height)
+    end
+end
+
+local distanceTimer = 0
+
+--- Update the Hunter target-distance bar (Forever only).
+--  @param elapsed (number|nil) seconds since the previous frame; 0 forces a pass
+function ns.UpdateForeverHunterDistanceBar(elapsed)
+    local bar = ns.foreverHunterDistanceBar
+
+    if not ns.isForever or ns.playerClass ~= "HUNTER" then
+        if bar then
+            bar:Hide()
+        end
+        return
+    end
+
+    local db = GetDB()
+    if db and db.showHunterDistanceBar == false then
+        if bar then
+            bar:Hide()
+        end
+        return
+    end
+
+    if type(elapsed) == "number" and elapsed > 0 then
+        distanceTimer = distanceTimer + elapsed
+        if distanceTimer < DISTANCE_BAR_UPDATE_INTERVAL then
+            return
+        end
+        distanceTimer = 0
+    else
+        distanceTimer = 0
+    end
+
+    bar = bar or EnsureHunterDistanceBar()
+    if not bar then
+        return
+    end
+
+    local rangeState = nil
+    if type(ns.GetHunterRangeState) == "function" then
+        rangeState = ns.GetHunterRangeState(false)
+    end
+    if not rangeState then
+        bar:Hide()
+        return
+    end
+
+    local distanceValue, distanceMax, distanceSecret = ns.ReadForeverTargetDistance()
+    local maxValue = distanceMax or ns.FOREVER_DISTANCE_MAX_RANGE
+    local value = ns.GetForeverDistanceBarValue(distanceValue, maxValue, distanceSecret, rangeState)
+    if not ns.IsSecretValue(value) and value == nil then
+        bar:Hide()
+        return
+    end
+
+    ApplyHunterDistanceBarLayout(bar)
+
+    -- Band colour is the visible "filled" part of the inverted bar; the status
+    -- bar texture is the empty grey cover.
+    local colorKey = ns.GetForeverDistanceBarColorKey(rangeState)
+    local bandColor = colorKey and ns.GetBarColor and ns.GetBarColor(colorKey) or nil
+    if bandColor and bandColor.r and bar.bandTexture then
+        bar.bandTexture:SetColorTexture(bandColor.r, bandColor.g, bandColor.b, 1)
+    end
+    local emptyColor = GetDistanceBarEmptyColor()
+    bar:SetStatusBarColor(emptyColor.r, emptyColor.g, emptyColor.b, 1)
+
+    bar:SetMinMaxValues(0, maxValue)
+    bar:SetValue(value)
+    bar:SetAlpha(1)
+    bar:Show()
+end
+
+-- Drive the bar from its own throttled frame so it exists independently of the
+-- native aura containers. The updater is a no-op on every non-Forever client.
+if ns.isForever then
+    local distanceFrame = CreateFrame("Frame")
+    distanceFrame:RegisterEvent("PLAYER_LOGIN")
+    distanceFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
+    distanceFrame:RegisterEvent("PLAYER_TARGET_CHANGED")
+    distanceFrame:SetScript("OnEvent", function()
+        ns.UpdateForeverHunterDistanceBar(0)
+    end)
+    distanceFrame:SetScript("OnUpdate", function(_, elapsed)
+        ns.UpdateForeverHunterDistanceBar(elapsed)
+    end)
+    ns.foreverHunterDistanceFrame = distanceFrame
 end
