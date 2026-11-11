@@ -764,6 +764,7 @@ local function CreateLowTimeTextColor()
     local curveUtil = GetGlobal("C_CurveUtil")
     local enumTable = GetGlobal("Enum")
     local propertyEnum = enumTable and enumTable.DurationTextBindingProperty
+    ---@cast propertyEnum table
     if type(curveUtil) ~= "table" or type(curveUtil.CreateColorCurve) ~= "function"
         or type(propertyEnum) ~= "table" or propertyEnum.RemainingDuration == nil then
         return nil
@@ -1506,9 +1507,9 @@ function ns.InitForeverAuraIcons()
         return false
     end
 
-    state.buffSize = GetBuffSize()
+    state.buffSize = GetBuffSize() --[[@as number]]
     state.buffWidth, state.buffHeight = ns.GetForeverBuffIconDimensions(state.buffSize)
-    state.debuffSize = GetDebuffSize()
+    state.debuffSize = GetDebuffSize() --[[@as number]]
 
     -- Class list + shared buffs + the player's own racials. The class list
     -- itself stays pure; nothing from another class is merged into it.
@@ -1694,7 +1695,7 @@ function ns.UpdateForeverAuraIcons(elapsed)
             ResizeGroupFrames(state.buffContainer, "forever_buffs", buffWidth, buffHeight)
         end)
         if ok then
-            state.buffSize = buffSize
+            state.buffSize = buffSize --[[@as number]]
             state.buffWidth = buffWidth
             state.buffHeight = buffHeight
         end
@@ -1709,7 +1710,7 @@ function ns.UpdateForeverAuraIcons(elapsed)
             ResizeGroupFrames(state.debuffContainer, "forever_debuffs", debuffSize, debuffSize)
         end)
         if ok then
-            state.debuffSize = debuffSize
+            state.debuffSize = debuffSize --[[@as number]]
         end
     end
 
@@ -2033,7 +2034,7 @@ local function EnsureHunterDistanceBar()
             pcall(created.SetReverseFill, created, true)
         end
         local bandTexture = created:CreateTexture(nil, "BACKGROUND")
-        bandTexture:SetAllPoints(true)
+        bandTexture:SetAllPoints(created)
         bandTexture:SetColorTexture(
             DISTANCE_BAR_FALLBACK_COLOR.r,
             DISTANCE_BAR_FALLBACK_COLOR.g,

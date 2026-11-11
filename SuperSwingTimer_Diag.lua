@@ -627,22 +627,24 @@ addCheck("render", "render", function()
 end)
 
 addCheck("perf", "perf", function()
+    -- pcall's second result is typed as the error message (string), so every
+    -- value read out of it must be coerced with tonumber before arithmetic.
     local fps = nil
     if type(GetFramerate) == "function" then
         local ok, value = pcall(GetFramerate)
-        if ok then fps = value end
+        if ok then fps = tonumber(value) end
     end
     local memKb = nil
     if type(UpdateAddOnMemoryUsage) == "function" and type(GetAddOnMemoryUsage) == "function" then
         pcall(UpdateAddOnMemoryUsage)
         local ok, value = pcall(GetAddOnMemoryUsage, D.addonName)
-        if ok then memKb = value end
+        if ok then memKb = tonumber(value) end
     end
     local cpuMs = nil
     if type(UpdateAddOnCPUUsage) == "function" and type(GetAddOnCPUUsage) == "function" then
         pcall(UpdateAddOnCPUUsage)
         local ok, value = pcall(GetAddOnCPUUsage, D.addonName)
-        if ok then cpuMs = value end
+        if ok then cpuMs = tonumber(value) end
     end
     local parts = {}
     if fps then parts[#parts + 1] = string_format("fps %d", math_floor(fps + 0.5)) end

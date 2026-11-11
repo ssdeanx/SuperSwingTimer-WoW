@@ -1795,7 +1795,7 @@ end
 local function UpdateMeleeBar(slot, frame)
     local t = ns.timers[slot]
     if not frame then return end
-    if t.state ~= "swinging" then
+    if not t or t.state ~= "swinging" then
         if not frame._sstResetDone then ResetBarDisplay(frame) end
         return
     end

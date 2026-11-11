@@ -62,7 +62,7 @@ local ranged_swing = nil
 local reset_ranged_swing = nil
 
 local Unit = {
-	id = nil,
+	id = "",
 	GUID = nil,
 	class = nil,
 
@@ -434,6 +434,9 @@ function lib:COMBAT_LOG_EVENT_UNFILTERED(_, ts, subEvent, _, sourceGUID, _, _, _
 		end
 	elseif subEvent == "SWING_MISSED" and amount ~= nil and amount == "PARRY" and lib:getUnit(destGUID) then
 		unit = lib:getUnit(destGUID)
+		if not unit or not unit.mainExpirationTime or not unit.mainSpeed then
+			return
+		end
 		if unit.mainTimer then
 			unit.mainTimer:Cancel()
 		end
@@ -452,16 +455,16 @@ function lib:COMBAT_LOG_EVENT_UNFILTERED(_, ts, subEvent, _, sourceGUID, _, _, _
 		end
 	elseif (subEvent == "SPELL_AURA_APPLIED" or subEvent == "SPELL_AURA_REMOVED") and unit then
 		local spell = amount
-		if spell and prevent_swing_speed_update[spell] and (GetTime() < unit.mainExpirationTime) then
+		if spell and prevent_swing_speed_update and prevent_swing_speed_update[spell] and unit.mainExpirationTime and (GetTime() < unit.mainExpirationTime) then
 			unit.skipNextAttackSpeedUpdate = now
 			unit.skipNextAttackSpeedUpdateCount = 2
 		end
-		if spell and prevent_reset_swing_auras[spell] then
+		if spell and prevent_reset_swing_auras and prevent_reset_swing_auras[spell] then
 			unit.auraPreventSwingReset = subEvent == "SPELL_AURA_APPLIED"
 		end
 	elseif (subEvent == "SPELL_DAMAGE" or subEvent == "SPELL_MISSED") and unit then
 		local spell = amount
-		if reset_ranged_swing[spell] then
+		if spell and reset_ranged_swing and reset_ranged_swing[spell] then
 			if (isRetail or isMists) then
 				unit:SwingStart("mainhand", GetTime(), true)
 			else
@@ -470,7 +473,7 @@ function lib:COMBAT_LOG_EVENT_UNFILTERED(_, ts, subEvent, _, sourceGUID, _, _, _
 		end
 	elseif subEvent == "SPELL_CAST_START" and unit then
 		local spell = amount
-		if isClassic and spell and ranged_swing[spell] and GetTime() > (unit.rangedExpirationTime - unit.autoShotCastTime) then
+		if isClassic and spell and ranged_swing and ranged_swing[spell] and unit.rangedExpirationTime and unit.autoShotCastTime and GetTime() > (unit.rangedExpirationTime - unit.autoShotCastTime) then
 			unit.rangedExpirationTime = now + unit.autoShotCastTime
 			unit.callbacks:Fire("UNIT_SWING_TIMER_UPDATE", unit.id, unit.rangedSpeed, unit.rangedExpirationTime, "ranged")
 			if unit.rangedExpirationTime - now > 0 then
@@ -606,13 +609,13 @@ function lib:UNIT_SPELLCAST_SUCCEEDED(_, unitType, _, spell)
 		return
 	end
 	local now = GetTime()
-	if spell ~= nil and next_melee_spells[spell] then
+	if spell ~= nil and next_melee_spells and next_melee_spells[spell] then
 		unit:SwingStart("mainhand", now, false)
 		if isWrath or isCata then
 			unit:SwingStart("ranged", now, true)
 		end
 	end
-	if (spell and reset_swing_spells[spell]) or (unit.casting and not unit.preventSwingReset) then
+	if (reset_swing_spells and spell and reset_swing_spells[spell]) or (unit.casting and not unit.preventSwingReset) then
 		if isRetail then
 			unit:SwingStart("mainhand", now, true)
 		else
@@ -622,15 +625,14 @@ function lib:UNIT_SPELLCAST_SUCCEEDED(_, unitType, _, spell)
 			unit:SwingStart("offhand", now, true)
 		end
 	end
-	if spell and ranged_swing[spell] then
+	if spell and ranged_swing and ranged_swing[spell] then
 		if (isRetail or isMists) then
 			unit:SwingStart("mainhand", now, false)
 		else
 			unit:SwingStart("ranged", now, false)
 		end
 	end
-	if spell and pause_swing_spells[spell] and unit.pauseSwingTime then
-		local offset = now - unit.pauseSwingTime
+	if spell and pause_swing_spells and pause_swing_spells[spell] and unit.pauseSwingTime then
 		unit.pauseSwingTime = nil
 		if unit.mainSpeed > 0 then
 			unit.mainExpirationTime = unit.mainExpirationTime + offset

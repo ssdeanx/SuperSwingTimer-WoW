@@ -712,7 +712,7 @@ local function SetupRetPaladin()
         end
 
         local gcdStart, gcdDuration = QuerySpellCooldown(GCD_SPELL_ID)
-        if type(gcdStart) ~= "number" or type(gcdDuration) ~= "number" or gcdDuration <= 0 then
+        if type(gcdStart) ~= "number" or type(gcdDuration) ~= "number" or (gcdDuration or 0) <= 0 then
             sealResealLine:Hide()
             return
         end
@@ -1088,7 +1088,7 @@ local function SetupRetPaladin()
         for index = 1, 40 do
             local auraName, duration, expirationTime, auraSpellId, count = GetHelpfulAuraData("player", index)
             if not auraName then break end
-            if auraSpellId == info.spellId or (info.altSpellIds and info.altSpellIds[auraSpellId]) or auraName == info.name then
+            if auraSpellId == info.spellId or (info.altSpellIds and auraSpellId and info.altSpellIds[auraSpellId]) or auraName == info.name then
                 if type(expirationTime) == "number" and expirationTime > 0 then
                     return math.max(expirationTime - GetCurrentTime(), 0), math.max(duration or 1, 1), count or 0
                 end
@@ -1103,7 +1103,7 @@ local function SetupRetPaladin()
                     local debuffName, debuffCount, debuffDuration, debuffExpiration, caster, debuffSpellId = GetHarmfulAuraData(
                     "target", index)
                     if not debuffName then break end
-                    if caster == "player" and (debuffSpellId == info.spellId or (info.altSpellIds and info.altSpellIds[debuffSpellId]) or debuffName == info.name) then
+                    if caster == "player" and (debuffSpellId == info.spellId or (info.altSpellIds and debuffSpellId and info.altSpellIds[debuffSpellId]) or debuffName == info.name) then
                         if type(debuffExpiration) == "number" and debuffExpiration > 0 then
                             return math.max(debuffExpiration - GetCurrentTime(), 0), math.max(debuffDuration or 1, 1), debuffCount or 0
                         end
@@ -1113,7 +1113,7 @@ local function SetupRetPaladin()
             end
             -- Step 3: Fall back to cooldown tracking
             local startTime, cdDuration = QuerySpellCooldown(info.spellId)
-            if type(startTime) ~= "number" or type(cdDuration) ~= "number" or cdDuration <= 0 then
+            if type(startTime) ~= "number" or type(cdDuration) ~= "number" or (cdDuration or 0) <= 0 then
                 return nil, nil, nil
             end
             -- Filter out the global cooldown (1.5s) from real spell cooldowns
@@ -1426,7 +1426,7 @@ local function SetupRetPaladin()
             local name, _, duration, expirationTime, caster, spellId = GetHarmfulAuraData("target", i, "HARMFUL")
             if not name then break end
             if caster == "player" then
-                local isMatch = (ns.PALADIN_JUDGEMENT_CRUSADER_IDS and ns.PALADIN_JUDGEMENT_CRUSADER_IDS[spellId])
+                local isMatch = (spellId and ns.PALADIN_JUDGEMENT_CRUSADER_IDS and ns.PALADIN_JUDGEMENT_CRUSADER_IDS[spellId])
                     or (ns.PALADIN_JUDGEMENT_CRUSADER_NAME and name == ns.PALADIN_JUDGEMENT_CRUSADER_NAME)
                 if isMatch then
                     if type(expirationTime) == "number" and expirationTime > 0 then
@@ -1624,8 +1624,13 @@ local function SetupRetPaladin()
             local name, _, duration, expirationTime, caster, spellId = GetHarmfulAuraData("target", i, "HARMFUL")
             if not name then break end
             if caster == "player" then
-                local isMatch = (ns.PALADIN_SEAL_VENGEANCE_IDS and ns.PALADIN_SEAL_VENGEANCE_IDS[spellId])
-                    or (ns.PALADIN_SEAL_VENGEANCE_NAME and name == ns.PALADIN_SEAL_VENGEANCE_NAME)
+                local isMatch = false
+                if spellId and ns.PALADIN_SEAL_VENGEANCE_IDS then
+                    isMatch = ns.PALADIN_SEAL_VENGEANCE_IDS[spellId] and true or false
+                end
+                if not isMatch and ns.PALADIN_SEAL_VENGEANCE_NAME and name == ns.PALADIN_SEAL_VENGEANCE_NAME then
+                    isMatch = true
+                end
                 if isMatch then
                     if type(expirationTime) == "number" and expirationTime > 0 then
                         return math.max(expirationTime - GetCurrentTime(), 0), math.max(duration or 1, 1)
@@ -3170,7 +3175,7 @@ local function SetupWarrior()
         for index = 1, 40 do
             local auraName, duration, expirationTime, auraSpellId, count = GetHelpfulAuraData("player", index)
             if not auraName then break end
-            if auraSpellId == info.spellId or (info.altSpellIds and info.altSpellIds[auraSpellId]) or auraName == info.name then
+            if auraSpellId == info.spellId or (info.altSpellIds and auraSpellId ~= nil and info.altSpellIds[auraSpellId]) or auraName == info.name then
                 if type(expirationTime) == "number" and expirationTime > 0 then
                     return math.max(expirationTime - GetCurrentTime(), 0), math.max(duration or 1, 1), count or 0
                 end
@@ -3185,7 +3190,7 @@ local function SetupWarrior()
                     local debuffName, debuffCount, debuffDuration, debuffExpiration, caster, debuffSpellId = GetHarmfulAuraData(
                     "target", index)
                     if not debuffName then break end
-                    if caster == "player" and (debuffSpellId == info.spellId or (info.altSpellIds and info.altSpellIds[debuffSpellId]) or debuffName == info.name) then
+                    if caster == "player" and (debuffSpellId == info.spellId or (info.altSpellIds and debuffSpellId ~= nil and info.altSpellIds[debuffSpellId]) or debuffName == info.name) then
                         if type(debuffExpiration) == "number" and debuffExpiration > 0 then
                             return math.max(debuffExpiration - GetCurrentTime(), 0), math.max(debuffDuration or 1, 1), debuffCount or 0
                         end
@@ -3195,7 +3200,7 @@ local function SetupWarrior()
             end
             -- Step 3: Fall back to cooldown tracking
             local startTime, cdDuration = QuerySpellCooldown(info.spellId)
-            if type(startTime) ~= "number" or type(cdDuration) ~= "number" or cdDuration <= 0 then
+            if type(startTime) ~= "number" or type(cdDuration) ~= "number" or (cdDuration or 0) <= 0 then
                 return nil, nil, nil
             end
             -- Filter out GCD (1.5s) from real cooldowns
@@ -3745,7 +3750,7 @@ local function SetupEnhShaman()
     -- Phase 3: Shaman CD/Buff Duration Icon Group
     local function GetShamanCooldownRemaining(spellId)
         local startTime, duration = QuerySpellCooldown(spellId)
-        if type(startTime) ~= "number" or type(duration) ~= "number" or duration <= 0 then
+        if type(startTime) ~= "number" or type(duration) ~= "number" or (duration or 0) <= 0 then
             return nil
         end
 
@@ -4320,7 +4325,7 @@ local function SetupEnhShaman()
         for index = 1, 40 do
             local auraName, duration, expirationTime, auraSpellId, count = GetHelpfulAuraData("player", index)
             if not auraName then break end
-            if auraSpellId == info.spellId or (info.altSpellIds and info.altSpellIds[auraSpellId]) or auraName == info.name then
+            if auraSpellId == info.spellId or (info.altSpellIds and auraSpellId and info.altSpellIds[auraSpellId]) or auraName == info.name then
                 if type(expirationTime) == "number" and expirationTime > 0 then
                     return math.max(expirationTime - GetCurrentTime(), 0), math.max(duration or 1, 1), count or 0
                 end
@@ -4335,7 +4340,7 @@ local function SetupEnhShaman()
                     local debuffName, debuffCount, debuffDuration, debuffExpiration, caster, debuffSpellId = GetHarmfulAuraData(
                     "target", index)
                     if not debuffName then break end
-                    if caster == "player" and (debuffSpellId == info.spellId or (info.altSpellIds and info.altSpellIds[debuffSpellId]) or debuffName == info.name) then
+                    if caster == "player" and (debuffSpellId == info.spellId or (info.altSpellIds and debuffSpellId and info.altSpellIds[debuffSpellId]) or debuffName == info.name) then
                         if type(debuffExpiration) == "number" and debuffExpiration > 0 then
                             return math.max(debuffExpiration - GetCurrentTime(), 0), math.max(debuffDuration or 1, 1), debuffCount or 0
                         end
@@ -4345,7 +4350,7 @@ local function SetupEnhShaman()
             end
             -- Step 3: Fall back to cooldown tracking
             local startTime, cdDuration = QuerySpellCooldown(info.spellId)
-            if type(startTime) ~= "number" or type(cdDuration) ~= "number" or cdDuration <= 0 then
+            if type(startTime) ~= "number" or type(cdDuration) ~= "number" or (cdDuration or 0) <= 0 then
                 return nil, nil, nil
             end
             -- Filter out GCD (1.5s) from real cooldowns
@@ -5315,7 +5320,7 @@ local function SetupDruid()
         for index = 1, 40 do
             local auraName, duration, expirationTime, auraSpellId, count = GetHelpfulAuraData("player", index)
             if not auraName then break end
-            if auraSpellId == info.spellId or (info.altSpellIds and info.altSpellIds[auraSpellId]) or auraName == info.name then
+            if auraSpellId == info.spellId or (info.altSpellIds and auraSpellId and info.altSpellIds[auraSpellId]) or auraName == info.name then
                 if type(expirationTime) == "number" and expirationTime > 0 then
                     return math.max(expirationTime - GetCurrentTime(), 0), math.max(duration or 1, 1), count or 0
                 end
@@ -5330,7 +5335,7 @@ local function SetupDruid()
                     local debuffName, debuffCount, debuffDuration, debuffExpiration, caster, debuffSpellId = GetHarmfulAuraData(
                     "target", index)
                     if not debuffName then break end
-                    if caster == "player" and (debuffSpellId == info.spellId or (info.altSpellIds and info.altSpellIds[debuffSpellId]) or debuffName == info.name) then
+                    if caster == "player" and (debuffSpellId == info.spellId or (info.altSpellIds and debuffSpellId and info.altSpellIds[debuffSpellId]) or debuffName == info.name) then
                         if type(debuffExpiration) == "number" and debuffExpiration > 0 then
                             return math.max(debuffExpiration - GetCurrentTime(), 0), math.max(debuffDuration or 1, 1), debuffCount or 0
                         end
@@ -5340,7 +5345,7 @@ local function SetupDruid()
             end
             -- Step 3: Fall back to cooldown tracking
             local startTime, cdDuration = QuerySpellCooldown(info.spellId)
-            if type(startTime) ~= "number" or type(cdDuration) ~= "number" or cdDuration <= 0 then
+            if type(startTime) ~= "number" or type(cdDuration) ~= "number" or (cdDuration or 0) <= 0 then
                 return nil, nil, nil
             end
             if cdDuration <= 2.5 then
@@ -6302,7 +6307,7 @@ local function SetupHunter()
         for index = 1, 40 do
             local auraName, duration, expirationTime, auraSpellId, count = GetHelpfulAuraData("player", index)
             if not auraName then break end
-            if auraSpellId == info.spellId or (info.altSpellIds and info.altSpellIds[auraSpellId]) or auraName == info.name then
+            if auraSpellId == info.spellId or (info.altSpellIds and auraSpellId and info.altSpellIds[auraSpellId]) or auraName == info.name then
                 if type(expirationTime) == "number" and expirationTime > 0 then
                     return math.max(expirationTime - GetCurrentTime(), 0), math.max(duration or 1, 1), count or 0
                 end
@@ -6317,7 +6322,7 @@ local function SetupHunter()
                     local debuffName, debuffCount, debuffDuration, debuffExpiration, caster, debuffSpellId = GetHarmfulAuraData(
                     "target", index)
                     if not debuffName then break end
-                    if caster == "player" and (debuffSpellId == info.spellId or (info.altSpellIds and info.altSpellIds[debuffSpellId]) or debuffName == info.name) then
+                    if caster == "player" and (debuffSpellId == info.spellId or (info.altSpellIds and debuffSpellId and info.altSpellIds[debuffSpellId]) or debuffName == info.name) then
                         if type(debuffExpiration) == "number" and debuffExpiration > 0 then
                             return math.max(debuffExpiration - GetCurrentTime(), 0), math.max(debuffDuration or 1, 1), debuffCount or 0
                         end
@@ -6327,7 +6332,7 @@ local function SetupHunter()
             end
             -- Step 3: Fall back to cooldown tracking
             local startTime, cdDuration = QuerySpellCooldown(info.spellId)
-            if type(startTime) ~= "number" or type(cdDuration) ~= "number" or cdDuration <= 0 then
+            if type(startTime) ~= "number" or type(cdDuration) ~= "number" or (cdDuration or 0) <= 0 then
                 return nil, nil, nil
             end
             -- Filter out GCD (1.5s) from real cooldowns
@@ -8690,7 +8695,7 @@ local function SetupRogue()
         for index = 1, 40 do
             local auraName, duration, expirationTime, auraSpellId, count = GetHelpfulAuraData("player", index)
             if not auraName then break end
-            if auraSpellId == info.spellId or (info.altSpellIds and info.altSpellIds[auraSpellId]) or auraName == info.name then
+            if auraSpellId == info.spellId or (info.altSpellIds and auraSpellId and info.altSpellIds[auraSpellId]) or auraName == info.name then
                 if type(expirationTime) == "number" and expirationTime > 0 then
                     return math.max(expirationTime - GetCurrentTime(), 0), math.max(duration or 1, 1), count or 0
                 end
@@ -8705,7 +8710,7 @@ local function SetupRogue()
                     local debuffName, debuffCount, debuffDuration, debuffExpiration, caster, debuffSpellId = GetHarmfulAuraData(
                     "target", index)
                     if not debuffName then break end
-                    if caster == "player" and (debuffSpellId == info.spellId or (info.altSpellIds and info.altSpellIds[debuffSpellId]) or debuffName == info.name) then
+                    if caster == "player" and (debuffSpellId == info.spellId or (info.altSpellIds and debuffSpellId and info.altSpellIds[debuffSpellId]) or debuffName == info.name) then
                         if type(debuffExpiration) == "number" and debuffExpiration > 0 then
                             return math.max(debuffExpiration - GetCurrentTime(), 0), math.max(debuffDuration or 1, 1), debuffCount or 0
                         end
@@ -8715,7 +8720,7 @@ local function SetupRogue()
             end
             -- Step 3: Fall back to cooldown tracking
             local startTime, cdDuration = QuerySpellCooldown(info.spellId)
-            if type(startTime) ~= "number" or type(cdDuration) ~= "number" or cdDuration <= 0 then
+            if type(startTime) ~= "number" or type(cdDuration) ~= "number" or (cdDuration or 0) <= 0 then
                 return nil, nil, nil
             end
             -- Filter out GCD (1.5s) from real cooldowns

@@ -302,19 +302,30 @@ local function CopyColor(color, fallback)
 end
 
 local function SavePreClassColorState()
-    if not SuperSwingTimerDB then
+    local db = SuperSwingTimerDB
+    if not db then
         return
     end
 
-    SuperSwingTimerDB.colors = SuperSwingTimerDB.colors or {}
-    SuperSwingTimerDB.preClassColors = {}
+    db.colors = db.colors or {}
+    db.preClassColors = db.preClassColors or {}
     for _, key in ipairs(BAR_COLOR_KEYS) do
-        local current = SuperSwingTimerDB.colors[key] or (ns.DB_DEFAULTS.colors and ns.DB_DEFAULTS.colors[key])
-        SuperSwingTimerDB.preClassColors[key] = CopyColor(current, ns.DB_DEFAULTS.colors and ns.DB_DEFAULTS.colors[key])
+        local defaultColor = nil
+        if ns and ns.DB_DEFAULTS and ns.DB_DEFAULTS.colors then
+            defaultColor = ns.DB_DEFAULTS.colors[key]
+        end
+        local current = db.colors[key] or defaultColor
+        db.preClassColors[key] = CopyColor(current, defaultColor)
     end
 
-    local sparkColor = SuperSwingTimerDB.sparkColor or ns.GetSparkColor() or ns.DB_DEFAULTS.sparkColor
-    SuperSwingTimerDB.preClassSparkColor = CopyColor(sparkColor, ns.DB_DEFAULTS.sparkColor)
+    local sparkColor = db.sparkColor
+    if ns and type(ns.GetSparkColor) == "function" then
+        sparkColor = sparkColor or ns.GetSparkColor()
+    end
+    if ns and ns.DB_DEFAULTS then
+        sparkColor = sparkColor or ns.DB_DEFAULTS.sparkColor
+    end
+    db.preClassSparkColor = CopyColor(sparkColor, ns and ns.DB_DEFAULTS and ns.DB_DEFAULTS.sparkColor)
 end
 
 local function RestoreColorsAfterClassToggleDisabled()
@@ -2074,7 +2085,7 @@ local function CreateSectionHeader(parent, label, yOffset, options)
 
         -- Deferred callback: call this after all controls are created
         row.setResetCallback = function(callback)
-            options.onReset = callback
+            row.options.onReset = callback
             local hasCallback = callback ~= nil
             resetBtn:SetShown(hasCallback)
             if hasCallback then

@@ -792,7 +792,7 @@ local function RegisterSSTTests()
 
         ns.playerClass = "HUNTER"
         ns.classConfig = { ranged = true, melee = true }
-        ns.hunterCastBar = nil
+        ns.hunterCastBar = nil --[[@as StatusBar]]
         ns.cachedLatency = 0
         -- Cycle runs 100.0 -> 103.0. The cast ended early at 101.5, so the
         -- cast-anchored 1.0s red-zone window has already expired by cycle end.
@@ -831,7 +831,7 @@ local function RegisterSSTTests()
 
         ns.playerClass = "HUNTER"
         ns.classConfig = { ranged = true, melee = true }
-        ns.hunterCastBar = nil
+        ns.hunterCastBar = nil --[[@as StatusBar]]
         ns.cachedLatency = 0
         -- ResetTimer leaves state="idle" and lastSwing=0; a stale lastSwing must
         -- never keep the bar alive forever.
@@ -1275,7 +1275,7 @@ local function RegisterSSTTests()
         Exists(fn, 'UpdateGcdTicker reachable')
 
         ns.playerClass = "WARRIOR"
-        ns.gcdTickerBar = CreateFrame("Frame")
+        ns.gcdTickerBar = CreateFrame("Frame") --[[@as StatusBar]]
         QuietAllGates()
 
         StartExpiredGcd()

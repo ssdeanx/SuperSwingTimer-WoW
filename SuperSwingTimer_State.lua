@@ -1231,7 +1231,7 @@ function ns.HandleSpellcastStart(unit, castGUIDOrSpellName, spellId)
     end
     ns.preventSwingReset = ns.preventSwingReset
         or (ns.NO_RESET_SWING_SPELLS
-            and (ns.NO_RESET_SWING_SPELLS[spellToken] or (spellIdNumber and ns.NO_RESET_SWING_SPELLS[spellIdNumber])))
+            and ((spellToken and ns.NO_RESET_SWING_SPELLS[spellToken]) or (spellIdNumber and ns.NO_RESET_SWING_SPELLS[spellIdNumber])))
     if ShouldPauseSwingForSpell(spellToken, spellIdNumber) and not ns.pauseSwingTime then
         ns.pauseSwingTime = ns.GetAlignedTime()
     end
@@ -1264,7 +1264,7 @@ function ns.HandleSpellcastChannelStart(unit, castGUIDOrSpellName, spellId)
         ns.hunterCastSpellId = spellToken
     end
     ns.preventSwingReset = ns.NO_RESET_SWING_SPELLS
-        and (ns.NO_RESET_SWING_SPELLS[spellToken] or (spellIdNumber and ns.NO_RESET_SWING_SPELLS[spellIdNumber]))
+        and ((spellToken and ns.NO_RESET_SWING_SPELLS[spellToken]) or (spellIdNumber and ns.NO_RESET_SWING_SPELLS[spellIdNumber]))
     ns.RefreshUpdateLoop()
 end
 
@@ -1719,7 +1719,7 @@ function ns.HandleSpellcastSucceeded(unit, castGUIDOrSpellName, spellId)
         ns.hunterAutoRepeatActive = false
         ns.ResetTimer("ranged")
     elseif ns.RESET_SWING_SPELLS
-        and (ns.RESET_SWING_SPELLS[spellToken] or (spellIdNumber and ns.RESET_SWING_SPELLS[spellIdNumber])) then
+        and ((spellToken and ns.RESET_SWING_SPELLS[spellToken]) or (spellIdNumber and ns.RESET_SWING_SPELLS[spellIdNumber])) then
         ns.StartSwing("mh", nil, now)
         ns.StartSwing("oh", nil, now)
         -- Only a class with a ranged slot may start the ranged timer; see the

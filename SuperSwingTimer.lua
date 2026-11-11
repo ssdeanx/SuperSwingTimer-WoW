@@ -627,8 +627,12 @@ local function MigrateDB(targetDb)
                     { "hunterRangeMelee", "hunterRangeSweetSpot", "hunterRangeRanged", "hunterRangeOutOfRange" }
                 ) do
                     if not db.colors[colorKey] then
-                        local def = ns.DB_DEFAULTS.colors[colorKey]
-                        db.colors[colorKey] = { r = def.r, g = def.g, b = def.b, a = def.a }
+                        local def = ns.DB_DEFAULTS and ns.DB_DEFAULTS.colors and ns.DB_DEFAULTS.colors[colorKey]
+                        if def then
+                            db.colors[colorKey] = { r = def.r, g = def.g, b = def.b, a = def.a }
+                        else
+                            db.colors[colorKey] = { r = 1, g = 1, b = 1, a = 1 }
+                        end
                     end
                 end
             end
@@ -1398,7 +1402,7 @@ local function RegisterEvents()
         frame:RegisterEvent("SPELLS_CHANGED")
     end
 
-    if POWER_CLASSES[ns.playerClass] then
+    if ns.playerClass and POWER_CLASSES[ns.playerClass] then
         RegisterUnitEventSafe(frame, "UNIT_POWER_UPDATE", "player")
         RegisterUnitEventSafe(frame, "UNIT_POWER_FREQUENT", "player")
         RegisterUnitEventSafe(frame, "UNIT_DISPLAYPOWER", "player")

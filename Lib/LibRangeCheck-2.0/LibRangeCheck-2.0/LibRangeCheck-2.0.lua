@@ -419,7 +419,8 @@ local GetInventoryItemLink = GetInventoryItemLink
 local GetSpecialization = GetSpecialization
 local GetSpecializationInfo = GetSpecializationInfo
 local GetTime = GetTime
-local HandSlotId = GetInventorySlotInfo("HandsSlot")
+local GetInventorySlotInfo = rawget(_G, "GetInventorySlotInfo")
+local HandSlotId = GetInventorySlotInfo and GetInventorySlotInfo("HandsSlot") or 10
 local math_floor = math.floor
 local UnitIsVisible = UnitIsVisible
 
@@ -987,7 +988,7 @@ function lib:processItemRequests(itemRequests)
       elseif self.failedItemRequests[item] then
         -- print("### processItemRequests: failed: " .. tostring(item))
         tremove(items, i)
-      elseif item == pendingItemRequest and GetTime() < itemRequestTimeoutAt then
+      elseif item == pendingItemRequest and GetTime() < (itemRequestTimeoutAt or 0) then
         return true; -- still waiting for server response
       elseif GetItemInfo(item) then
         -- print("### processItemRequests: found: " .. tostring(item))
