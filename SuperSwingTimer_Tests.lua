@@ -24,7 +24,7 @@ local function RegisterSSTTests()
     -- ============================================================
     -- SST-Core: addon loaded, constants sane, DB migrates, nil-safe
     -- ============================================================
-    local Core = WoWUnit('SST-Core', 'PLAYER_ENTERING_WORLD')
+    local Core = WoWUnit:New('SST-Core', 'PLAYER_ENTERING_WORLD')
 
     function Core:DBDefaults_HasKeys()
         local db = ns.DB_DEFAULTS
@@ -326,7 +326,7 @@ local function RegisterSSTTests()
     -- ============================================================
     -- SST-Auras: aura wrapper parsing for all API shapes
     -- ============================================================
-    local Auras = WoWUnit('SST-Auras', 'PLAYER_ENTERING_WORLD')
+    local Auras = WoWUnit:New('SST-Auras', 'PLAYER_ENTERING_WORLD')
 
     function Auras:HelpfulSpellID_AtPos10()
         if not T or not T.GetHelpfulAuraData then return end
@@ -399,7 +399,7 @@ local function RegisterSSTTests()
     -- ============================================================
     -- SST-UnitAuraNorm: ns.UnitAura normalizer across API shapes
     -- ============================================================
-    local UANorm = WoWUnit('SST-UnitAuraNorm', 'PLAYER_ENTERING_WORLD')
+    local UANorm = WoWUnit:New('SST-UnitAuraNorm', 'PLAYER_ENTERING_WORLD')
 
     function UANorm:ShapeA_Classic113()
         -- r3=count(num), r4=debuffType, r9=spellID
@@ -519,7 +519,7 @@ local function RegisterSSTTests()
     -- ============================================================
     -- SST-Combat: timers, CLEU, debuff stacking, state machine
     -- ============================================================
-    local Combat = WoWUnit('SST-Combat', 'PLAYER_ENTERING_WORLD')
+    local Combat = WoWUnit:New('SST-Combat', 'PLAYER_ENTERING_WORLD')
 
     function Combat:StackOffset_SingleBar()
         if not T or not T.RestackDebuffBars or not T.GetDebuffStackOffset then return end
@@ -591,7 +591,7 @@ local function RegisterSSTTests()
     -- ============================================================
     -- SST-Hunter: Hunter-specific features
     -- ============================================================
-    local Hunter = WoWUnit('SST-Hunter', 'PLAYER_ENTERING_WORLD')
+    local Hunter = WoWUnit:New('SST-Hunter', 'PLAYER_ENTERING_WORLD')
 
     function Hunter:CastDetection_Steady() IsTrue(ns.IsHunterCastSpell(ns.STEADY_SHOT_ID)) end
 
@@ -991,7 +991,7 @@ local function RegisterSSTTests()
     -- ============================================================
     -- SST-SoD: SoD rune spell registration & aura filters
     -- ============================================================
-    local SoD = WoWUnit('SST-SoD', 'PLAYER_ENTERING_WORLD')
+    local SoD = WoWUnit:New('SST-SoD', 'PLAYER_ENTERING_WORLD')
 
     function SoD:MaelstromMultiplier_Bounds()
         if ns.maelstromCastTimeMultiplier ~= nil then
@@ -1010,7 +1010,7 @@ local function RegisterSSTTests()
     -- ============================================================
     -- SST-ClassMods: per-class power bars & setups
     -- ============================================================
-    local ClassMods = WoWUnit('SST-ClassMods', 'PLAYER_ENTERING_WORLD')
+    local ClassMods = WoWUnit:New('SST-ClassMods', 'PLAYER_ENTERING_WORLD')
 
     function ClassMods:UpdateWarriorRageBar_Exists()
         IsTrue(type(ns.UpdateWarriorRageBar) == "function" or type(ns.UpdatePlayerPowerBar) == "function",
@@ -1078,7 +1078,7 @@ local function RegisterSSTTests()
     --      and left every later bar unstacked.
     -- Plus an allocation pin: the per-frame restack lists are pre-allocated and
     -- reused, never rebuilt as a fresh literal each frame.
-    local Reg = WoWUnit('SST-Regressions', 'PLAYER_ENTERING_WORLD')
+    local Reg = WoWUnit:New('SST-Regressions', 'PLAYER_ENTERING_WORLD')
 
     -- Resolve a file-local function captured as an upvalue of a closure the
     -- addon already registered (the OnUpdate hooks close over them). This lets
@@ -1630,7 +1630,7 @@ local function RegisterSSTTests()
     -- ============================================================
     -- SST-Weaving: Real-time spell cast time, Maelstrom, spark colors
     -- ============================================================
-    local Weaving = WoWUnit('SST-Weaving', 'PLAYER_ENTERING_WORLD')
+    local Weaving = WoWUnit:New('SST-Weaving', 'PLAYER_ENTERING_WORLD')
 
     function Weaving:EffectiveCastTime_FunctionExists()
         IsTrue(type(ns.GetEffectiveSpellCastTime) == "function", 'ns.GetEffectiveSpellCastTime is a function')
@@ -1749,7 +1749,7 @@ local function RegisterSSTTests()
     -- ============================================================
     -- SST-MoveMode: Interactive Move Mode, slash commands, HUD
     -- ============================================================
-    local MoveMode = WoWUnit('SST-MoveMode', 'PLAYER_ENTERING_WORLD')
+    local MoveMode = WoWUnit:New('SST-MoveMode', 'PLAYER_ENTERING_WORLD')
 
     function MoveMode:MoveMode_StateTransitions()
         IsTrue(type(ns.StartMoveMode) == "function", "ns.StartMoveMode must be a function")
@@ -1772,6 +1772,7 @@ local function RegisterSSTTests()
     function MoveMode:SlashCommands_RecognizeMoveAndLock()
         local cmdHandler = SlashCmdList["SUPERSWINGTIMER"]
         IsTrue(type(cmdHandler) == "function", "SUPERSWINGTIMER slash handler must exist")
+        assert(type(cmdHandler) == "function", "SUPERSWINGTIMER slash handler must exist")
 
         -- Call /sst move
         cmdHandler("move")
@@ -1863,6 +1864,7 @@ local function RegisterSSTTests()
     function MoveMode:TestPreview_SlashCommand()
         local cmdHandler = SlashCmdList["SUPERSWINGTIMER"]
         IsTrue(type(cmdHandler) == "function", "SUPERSWINGTIMER slash handler must exist")
+        cmdHandler = assert(cmdHandler, "SUPERSWINGTIMER slash handler must exist")
         IsTrue(type(ns.StartBarTestPreview) == "function", "StartBarTestPreview must be exported")
 
         cmdHandler("test")
@@ -1877,7 +1879,7 @@ local function RegisterSSTTests()
     -- ============================================================
     -- Config: Decoupled Blizzard Settings & Responsive Layout
     -- ============================================================
-    local Config = WoWUnit("SST-Config")
+    local Config = WoWUnit:New("SST-Config")
 
     function Config:DecoupledBlizzardCanvas()
         if not ns.panel and ns.InitConfig then ns.InitConfig() end
@@ -2043,7 +2045,7 @@ local function RegisterSSTTests()
     -- ============================================================
     -- SST-Diag: /sst diag capture, report, and glow adapter fallback
     -- ============================================================
-    local Diag = WoWUnit('SST-Diag', 'PLAYER_ENTERING_WORLD')
+    local Diag = WoWUnit:New('SST-Diag', 'PLAYER_ENTERING_WORLD')
 
     function Diag:API_Exists()
         local d = ns.Diag
@@ -2237,9 +2239,9 @@ local function RegisterSSTTests()
         SuperSwingTimerDB.showGlowEffects = true
         local handler = SlashCmdList["SUPERSWINGTIMER"]
         IsTrue(type(handler) == 'function', 'slash handler registered')
-        handler('glow')
+        if handler then handler('glow') end
         IsFalse(SuperSwingTimerDB.showGlowEffects, 'glow toggles off')
-        handler('glow')
+        if handler then handler('glow') end
         IsTrue(SuperSwingTimerDB.showGlowEffects, 'glow toggles on')
         SuperSwingTimerDB.showGlowEffects = saved
     end
@@ -2273,9 +2275,9 @@ local function RegisterSSTTests()
         d.StartProfile(5)
         d.RecordHookTime(1, 0.5, 'core')
         d.RecordHookTime(1, 1.5, 'core')
-        IsTrue(d.profile.active, 'profile active')
+        IsTrue(d.profile and d.profile.active, 'profile active')
         d.StopProfile()
-        IsFalse(d.profile.active, 'profile stopped')
+        IsFalse(d.profile and d.profile.active, 'profile stopped')
     end
 
     function Diag:RunTests_NoError()
@@ -2292,7 +2294,7 @@ local function RegisterSSTTests()
     -- SST-Release-0.2.8: regression tests for this release's fixes.
     -- Every case in this group failed before its fix; keep them paired.
     -- ============================================================
-    local Release028 = WoWUnit('SST-Release-0.2.8', 'PLAYER_ENTERING_WORLD')
+    local Release028 = WoWUnit:New('SST-Release-0.2.8', 'PLAYER_ENTERING_WORLD')
 
     -- The mock clock lives on the harness globals; guard it the same way the
     -- existing regression helpers guard AdvanceMockTime.
@@ -2753,7 +2755,7 @@ local function RegisterSSTTests()
         local secretSentinel = {}
         rawset(_G, 'issecretvalue', function(v) return v == secretSentinel or v == 999999 end)
 
-        IsTrue(ns.IsSecretValue(secretSentinel), 'IsSecretValue must detect secret values')
+        AreEqual(ns.IsSecretValue(secretSentinel), true, 'IsSecretValue must detect secret values')
         AreEqual(ns.SafeNumber(999999, 42), 42, 'SafeNumber must return fallback for secret number')
         AreEqual(ns.SafeNumber(2.5, 42), 2.5, 'SafeNumber must return numeric value when not secret')
 
@@ -2908,7 +2910,7 @@ local function RegisterSSTTests()
             'SafeNumber must fall back when the numeric conversion raises')
     end
 
-    local ForeverAura = WoWUnit('SST-ForeverAura', 'PLAYER_ENTERING_WORLD')
+    local ForeverAura = WoWUnit:New('SST-ForeverAura', 'PLAYER_ENTERING_WORLD')
 
     function ForeverAura:TOC_LoadsForeverModule()
         local f = io.open("SuperSwingTimer.toc", "r")
@@ -3034,10 +3036,11 @@ local function RegisterSSTTests()
         local prevIsPlayerSpell = _G.IsPlayerSpell
 
         ns.isForever = true
-        _G.IsPlayerSpell = function(id) return id == 12862 end
+        local hasImprovedSlam = true
+        _G.IsPlayerSpell = function(id) return hasImprovedSlam and id == 12862 end
         IsFalse(ns.ForeverSlamPausesSwing(1240193), "Improved Slam removes the swing delay")
 
-        _G.IsPlayerSpell = function() return false end
+        hasImprovedSlam = false
         IsTrue(ns.ForeverSlamPausesSwing(1240193), "without Improved Slam the cast delays the swing")
         IsFalse(ns.ForeverSlamPausesSwing(1464), "other Slam ranks are not the Forever rule")
 
@@ -3272,9 +3275,16 @@ local function RegisterSSTTests()
         local prevUnitDistance = _G.UnitDistanceSquared
         local prevUnitPosition = _G.UnitPosition
 
-        _G.UnitCreatureID = function() return 1234 end
-        _G.ClosestUnitPosition = function() return 10, 20, 17.5 end
-        _G.UnitDistanceSquared = function() return 9999, true end
+        local creatureScenario = 1
+        local distanceSquaredScenario = 1
+        _G.UnitCreatureID = function(unit) if unit ~= "target" then return nil end if creatureScenario == 1 then return 1234 end return nil end
+        _G.ClosestUnitPosition = function(unit) if unit ~= "target" then return nil end return 10, 20, 17.5 end
+        _G.UnitDistanceSquared = function(unit)
+            if unit ~= "target" then return nil, false end
+            if distanceSquaredScenario == 1 then return 9999, true end
+            if distanceSquaredScenario == 2 then return 400, false end
+            return nil, false
+        end
         local value, maxValue, secret, source = ns.ReadForeverTargetDistance()
         AreEqual(value, 17.5, "linear creature distance is used first")
         AreEqual(maxValue, ns.FOREVER_DISTANCE_MAX_RANGE, "creature distance uses the linear scale")
@@ -3284,19 +3294,23 @@ local function RegisterSSTTests()
         -- UnitDistanceSquared answers squared yards. checkedDistance=false means
         -- "the client did not range-check this unit", not "this is not a
         -- distance", so an unchecked enemy reading is still used and converted.
-        _G.UnitCreatureID = function() return nil end
+        creatureScenario = 2
+        distanceSquaredScenario = 2
         _G.ClosestUnitPosition = nil
-        _G.UnitDistanceSquared = function() return 400, false end
         local fallbackValue, fallbackMax, _, fallbackSource = ns.ReadForeverTargetDistance()
         AreEqual(fallbackValue, 20, "unchecked squared distance converts to yards")
         AreEqual(fallbackMax, ns.FOREVER_DISTANCE_MAX_RANGE, "plain readings use the linear scale")
         AreEqual(fallbackSource, "unit", "unit source is reported")
 
         -- Exact map-coordinate fallback for when the client hides both APIs.
-        _G.UnitDistanceSquared = function() return nil, false end
+        distanceSquaredScenario = 3
+        local unitPositionScenario = 1
         _G.UnitPosition = function(unit)
             if unit == "player" then return 0, 0, 0, 1 end
-            return 30, 40, 0, 1
+            if unit ~= "target" then return nil, nil, nil, nil end
+            if unitPositionScenario == 1 then return 30, 40, 0, 1 end
+            if unitPositionScenario == 2 then return 30, 40, 0, 2 end
+            return nil, nil, nil, 1
         end
         local posValue, posMax, posSecret, posSource = ns.ReadForeverTargetDistance()
         AreEqual(posValue, 50, "UnitPosition gives exact yards (30-40-50 triangle)")
@@ -3304,16 +3318,10 @@ local function RegisterSSTTests()
         IsFalse(posSecret, "map coordinates are plain numbers")
         AreEqual(posSource, "position", "position source is reported")
 
-        _G.UnitPosition = function(unit)
-            if unit == "player" then return 0, 0, 0, 1 end
-            return 30, 40, 0, 2
-        end
+        unitPositionScenario = 2
         AreEqual(select(1, ns.ReadForeverTargetDistance()), nil, "a different map yields no reading")
 
-        _G.UnitPosition = function(unit)
-            if unit == "player" then return 0, 0, 0, 1 end
-            return nil, nil, nil, 1
-        end
+        unitPositionScenario = 3
         AreEqual(select(1, ns.ReadForeverTargetDistance()), nil, "missing coordinates yield no reading")
 
         _G.UnitCreatureID = prevCreatureID
@@ -3352,7 +3360,8 @@ local function RegisterSSTTests()
         ns.playerClass = "HUNTER"
         ns.playerPowerBar = nil -- keep the layout helper out of this mock
         ns.foreverHunterDistanceBar = mockBar
-        ns.GetHunterRangeState = function() return "ranged" end
+        local rangeState = "ranged"
+        ns.GetHunterRangeState = function() return rangeState end
         _G.UnitDistanceSquared = function() return 400, true end
 
         ns.UpdateForeverHunterDistanceBar(0)
@@ -3370,12 +3379,12 @@ local function RegisterSSTTests()
         -- The exact reading owns the colour too: a client band that fell back to
         -- "outOfRange" (the range checks could not answer) must not paint a
         -- 20 yd target grey.
-        ns.GetHunterRangeState = function() return "outOfRange" end
+        rangeState = "outOfRange"
         recorded.band = nil
         ns.UpdateForeverHunterDistanceBar(0)
         local rangedColor = ns.GetBarColor("hunterRangeRanged")
         IsTrue(recorded.band ~= nil, "a colour is still applied")
-        IsTrue(rangedColor ~= nil and recorded.band[1] == rangedColor.r,
+        IsTrue(rangedColor ~= nil and recorded.band ~= nil and recorded.band[1] == rangedColor.r,
             "exact yards win over a fallback out-of-range band")
 
         ns.foreverHunterDistanceBar = prevBar
