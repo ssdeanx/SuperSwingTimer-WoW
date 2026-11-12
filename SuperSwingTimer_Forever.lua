@@ -1902,10 +1902,10 @@ end
 -- Distance sources, in order:
 --   1. ClosestUnitPosition(UnitCreatureID) - linear yards, SecretReturns, so a
 --      secret reading is passed straight through and never inspected.
---   2. UnitDistanceSquared - squared yards; its checkedDistance flag only
---      reports whether the client performed a RANGE CHECK (Blizzard reads the
---      distance unconditionally at CompactUnitFrame.lua:1069), so an unchecked
---      enemy reading is still a real distance and is converted to yards here.
+--   2. UnitDistanceSquared - squared yards, used ONLY when the client reports
+--      checkedDistance = true. An unchecked reading is not a distance: a live
+--      Forever target answers 0 + false, and Blizzard gates its own use of the
+--      number on that flag (CompactUnitFrame.lua:1069).
 --   3. UnitPosition(player) vs UnitPosition(target) - exact ground-plane yards.
 --      UnitPosition is not SecretReturns and Blizzard's own tutorial code
 --      subtracts the two the same way (Blizzard_TutorialTutorials.lua:985-986).
@@ -2052,17 +2052,23 @@ function ns.ReadForeverTargetDistance()
         end
     end
 
-    -- 2. Unit distance: squared yards. checkedDistance only reports whether the
-    --    client range-CHECKED the unit, not whether the number is real, so an
-    --    unchecked enemy reading is accepted here and converted to yards.
+    -- 2. Unit distance: squared yards, but ONLY when the client actually
+    --    range-checked the unit. An unchecked reading is not a distance: on a
+    --    live Forever target it comes back as 0 with checkedDistance = false
+    --    (/sst diag showed dist=0.0yd while the client band said outOfRange),
+    --    and Blizzard gates its own use of the number on that flag
+    --    (Blizzard_UnitFrame/Shared/CompactUnitFrame.lua:1069). Rejecting it
+    --    lets the exact coordinate reader below answer instead.
     local unitDistanceSquared = rawget(_G, "UnitDistanceSquared")
     if type(unitDistanceSquared) == "function" then
-        local ok, distanceSquared = pcall(unitDistanceSquared, "target")
+        local ok, distanceSquared, checkedDistance = pcall(unitDistanceSquared, "target")
         if ok then
             if ns.IsSecretValue(distanceSquared) then
                 return distanceSquared, DISTANCE_MAX_SQUARED, true, "unit"
             end
-            if type(distanceSquared) == "number" and distanceSquared >= 0 then
+            local checkedSecret = ns.IsSecretValue(checkedDistance)
+            if type(distanceSquared) == "number" and distanceSquared > 0
+                and (checkedSecret or checkedDistance == true) then
                 return math.sqrt(distanceSquared), ns.FOREVER_DISTANCE_MAX_RANGE, false, "unit"
             end
         end

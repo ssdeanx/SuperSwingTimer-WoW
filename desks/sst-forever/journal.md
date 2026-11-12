@@ -222,3 +222,26 @@ Interface version is correct and out of scope.
   needs to eyeball it after reload.
 - **Next step:** operator checks icons in-game; stance `?` still needs the
   `auraGroup` readout (`stanceSlot=`) from a restricted encounter.
+
+## 2026-11-12 — distance bar 0.0 yd regression + 0-test harness
+
+- **Symptom:** operator reported the bar stuck green. His `/sst diag` line proved
+  it: `band=outOfRange exactBand=melee src=unit dist=0.0yd` — `UnitDistanceSquared`
+  answers **0 + checkedDistance=false** for a live hostile target on Forever.
+- **Cause:** my v0.3.4 change accepted unchecked `UnitDistanceSquared` readings, so
+  the bar read 0.0 yd → full + melee-green permanently. Blizzard gates on the same
+  flag (`CompactUnitFrame.lua:1069`).
+- **Fix:** the reader now requires `checkedDistance == true` (or a secret flag) for the
+  squared source and otherwise falls through to exact `UnitPosition` math. Tests
+  updated (checked converts; unchecked 0 and unchecked 400 both rejected). Mutation:
+  re-accepting unchecked readings fails `DistanceBar_ReadsCreatureDistanceFirst`.
+- **Harness regression found:** operator commit `8f3a094` switched groups to
+  `WoWUnit:New(...)` but `run_tests.lua` only implemented `__call`, so the suite
+  discovered **0 groups** while still printing "ALL TESTS PASSED". Added
+  `WoWUnitMock:New`; also fixed the test's `ClosestUnitPosition` mock (it guarded on
+  `unit ~= "target"` but the API takes a creature ID). Now 14 groups / 198 tests.
+- **Still ambiguous:** if "ranged bar" means the Auto Shot swing bar, green is
+  `useClassColors` (default true) returning the Hunter class colour for `ranged` — not
+  a bug. Asked the operator to confirm which bar before touching colour logic.
+- **Next step:** new `/sst diag` should show `src=position` (or a real `dist`), and the
+  stance `?` still needs a restricted-encounter `auraGroup` readout.

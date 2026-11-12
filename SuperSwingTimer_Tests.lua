@@ -3278,11 +3278,17 @@ local function RegisterSSTTests()
         local creatureScenario = 1
         local distanceSquaredScenario = 1
         _G.UnitCreatureID = function(unit) if unit ~= "target" then return nil end if creatureScenario == 1 then return 1234 end return nil end
-        _G.ClosestUnitPosition = function(unit) if unit ~= "target" then return nil end return 10, 20, 17.5 end
+        -- ClosestUnitPosition takes a CREATURE ID, not a unit token.
+        _G.ClosestUnitPosition = function(creatureID)
+            if creatureID ~= 1234 then return nil end
+            return 10, 20, 17.5
+        end
         _G.UnitDistanceSquared = function(unit)
             if unit ~= "target" then return nil, false end
             if distanceSquaredScenario == 1 then return 9999, true end
-            if distanceSquaredScenario == 2 then return 400, false end
+            if distanceSquaredScenario == 2 then return 400, true end
+            if distanceSquaredScenario == 4 then return 400, false end
+            if distanceSquaredScenario == 5 then return 0, false end
             return nil, false
         end
         local value, maxValue, secret, source = ns.ReadForeverTargetDistance()
@@ -3291,14 +3297,13 @@ local function RegisterSSTTests()
         IsFalse(secret, "a plain test reading is not secret")
         AreEqual(source, "closest", "creature source wins")
 
-        -- UnitDistanceSquared answers squared yards. checkedDistance=false means
-        -- "the client did not range-check this unit", not "this is not a
-        -- distance", so an unchecked enemy reading is still used and converted.
+        -- UnitDistanceSquared answers squared yards, and only a CHECKED reading
+        -- is a distance at all (see the unchecked cases below).
         creatureScenario = 2
         distanceSquaredScenario = 2
         _G.ClosestUnitPosition = nil
         local fallbackValue, fallbackMax, _, fallbackSource = ns.ReadForeverTargetDistance()
-        AreEqual(fallbackValue, 20, "unchecked squared distance converts to yards")
+        AreEqual(fallbackValue, 20, "a checked squared distance converts to yards")
         AreEqual(fallbackMax, ns.FOREVER_DISTANCE_MAX_RANGE, "plain readings use the linear scale")
         AreEqual(fallbackSource, "unit", "unit source is reported")
 
@@ -3323,6 +3328,15 @@ local function RegisterSSTTests()
 
         unitPositionScenario = 3
         AreEqual(select(1, ns.ReadForeverTargetDistance()), nil, "missing coordinates yield no reading")
+
+        -- checkedDistance=false is not a distance: Forever answers 0 + false for
+        -- a live target, which must not read as "standing on top of it".
+        distanceSquaredScenario = 4
+        AreEqual(select(1, ns.ReadForeverTargetDistance()), nil,
+            "an unchecked non-zero reading is rejected")
+        distanceSquaredScenario = 5
+        AreEqual(select(1, ns.ReadForeverTargetDistance()), nil,
+            "an unchecked zero reading is rejected, not read as 0 yards")
 
         _G.UnitCreatureID = prevCreatureID
         _G.ClosestUnitPosition = prevClosest

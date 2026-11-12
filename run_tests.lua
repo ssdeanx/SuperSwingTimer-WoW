@@ -467,6 +467,14 @@ setmetatable(WoWUnitMock, {
     end
 })
 
+--- Group factory, addressed the way the suite calls it: `WoWUnit:New(name, event)`.
+--  The `__call` metamethod above implements the same factory, so both spellings
+--  register a group. Without this method every registration raised
+--  "attempt to call method 'New' (a nil value)" and the run discovered 0 tests.
+function WoWUnitMock:New(name, event)
+    return WoWUnitMock(name, event)
+end
+
 function WoWUnitMock.IsTrue(cond, msg)
     countAssertion()
     assert(cond, msg or "Expected true, got " .. tostring(cond))
