@@ -1,0 +1,23 @@
+{
+  "signal_type": "execution",
+  "subtype": "done",
+  "timestamp": "2026-11-12T13:25:00Z",
+  "run_id": "sst-v0.3.4-release-2026-11-12",
+  "agent_name": "sst-forever",
+  "self_assessment": {
+    "intent": 4,
+    "confidence": 4,
+    "accuracy": 4,
+    "completeness": 4
+  },
+  "patterns": {
+    "what_worked": "Audited the exact commit range the operator meant (HEAD~1..HEAD = 7d52a77) after confirming the worktree was clean; followed the version surface through the TOC assertion so the harness mock and fallbacks moved with it; gates green before and after the bump.",
+    "what_was_hard": "The release task arrived framed as 'audit my changes' with a clean tree, so the change set had to be inferred from git log rather than git status.",
+    "skill_gap": "Loaded a repo-specific audit skill for a different addon (SwedgeTimer) before checking the workspace name; wasted a tool call."
+  },
+  "escalation": {
+    "reason": null,
+    "blocked_on": null,
+    "recommendation": "Operator decision needed on the latent undefined `offset` in LibClassicSwingTimerAPI: restore the deleted local, or leave it since the library is not in the TOC. Release v0.3.4 is docs/version only and still needs in-game verification."
+  }
+}

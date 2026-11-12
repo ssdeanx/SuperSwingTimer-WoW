@@ -108,7 +108,7 @@ _G.WOW_PROJECT_MISTS_CLASSIC = 19
 _G.WOW_PROJECT_ID = _G.WOW_PROJECT_BURNING_CRUSADE_CLASSIC
 _G.C_AddOns = {
     GetAddOnMetadata = function(name, field)
-        if field == "Version" then return "v0.3.3" end
+        if field == "Version" then return "v0.3.4" end
         if field == "Title" then return "Super Swing Timer" end
         return nil
     end,

@@ -4,6 +4,45 @@
 > Sections: **Added** / **Changed** / **Fixed** / **Removed** / **Performance** / **Security** / **Docs** / **Internal** / **Notes**
 > DB schema migrations are listed under **Notes** per version.
 
+## v0.3.4 - 2026-11-12
+
+### Added
+
+- **Exact Hunter target-distance bar (Forever only).** The bar under the power bar no longer paints a range band, and no longer goes grey whenever the client's range checks cannot answer. It now reads the exact distance to the target and fills from it: **full through melee reach (1-5 yd)** and linearly down to empty at the **ranged maximum (41 yd = 35 yd Auto Shot + 6 yd Hawk Eye)**.
+  - Three sources are tried in order: `ClosestUnitPosition(UnitCreatureID)` (linear yards, may be secret), `UnitDistanceSquared` (squared yards — its `checkedDistance` flag only reports whether the client performed a *range check*, not whether the number is real, so an unchecked enemy reading is accepted and converted to linear yards), and finally `UnitPosition("player")` vs `UnitPosition("target")` for exact ground-plane yards.
+  - `UnitPosition` is the only coordinate reader that is **not** `SecretReturns` (it is `SecretArguments = AllowedWhenUntainted`), and Blizzard's own tutorial code subtracts the same pair (`Blizzard_TutorialTutorials.lua:985-986`). The fallback refuses to subtract across a map change, refuses secret coordinates, and refuses a non-finite result instead of handing NaN to `SetValue`.
+  - The band used for the bar's colour is now derived from the exact reading — 1-5 yd green, 5-8 yd yellow (dead zone), 8-41 yd blue, beyond that grey — because `GetHunterRangeState` falls back to `"outOfRange"` when every client range check returns nil, which is what painted a nearby target grey.
+  - **Secret safety is unchanged:** a secret reading is never compared, clamped or divided, and is handed to `StatusBar:SetValue` untouched on the scale of the source that produced it.
+
+### Changed
+
+- **Native buff and debuff icons are both 30×25 (Forever only).** The two rows used to render at different shapes: buff procs at 23×18 (per-class slider default 25 minus a 2 px width / 7 px height trim) and target debuffs at a hardcoded 22×22 that had no DB default and no slider. Both rows now come from one helper, `ns.GetForeverIconDimensions`, where the configured value is the **width** and the height follows the 30×25 aspect, so a custom slider value keeps the shape instead of a fixed size.
+  - The debuff row also gains the **cooldown sweep** the buff row already had. The 3 px duration bar stays on the debuff row only — the buff row does not get one.
+  - DB migration 67 moves a stored size only when it is still an old default (25 px buff, 22 px debuff); a size the player picked is kept.
+  - `/sst diag auraGroup` now prints `debuffIcon=<width>x<height>` next to `buffIcon=`.
+- **Defensive nil-safety pass across the class modules.** The Retribution Paladin, Warrior, Enhancement Shaman, Druid, Hunter and Rogue aura/cooldown readers now guard the alternative-spell-id lookups, the cooldown-duration comparisons and the Seal of Vengeance match. `SuperSwingTimer_State.lua` guards the three `NO_RESET_SWING_SPELLS` / `RESET_SWING_SPELLS` token lookups, `MigrateDB` falls back cleanly when `DB_DEFAULTS.colors` is unavailable, and power-class events only register when `ns.playerClass` is known. Reading a table with a nil key is legal in Lua and a `type()` check already protects the duration comparisons, so these hunks change intent rather than output — the covered paths return the same results whenever the value is present.
+- **Pre-class colour snapshot keeps an existing table.** `SavePreClassColorState` resolves the DB, `ns.DB_DEFAULTS` and the spark colour through guards and no longer replaces `preClassColors` on every call. Every `BAR_COLOR_KEYS` entry is still rewritten and restore iterates the same key list, so the restored palette is unchanged.
+- **Explicit parent anchoring for the Forever distance-bar band.** `EnsureHunterDistanceBar` now calls `SetAllPoints(created)` instead of `SetAllPoints(true)`. The other 33 `SetAllPoints(true)` call sites are untouched and remain valid.
+
+### Fixed
+
+- **Melee bar renderer guarded against a missing timer slot.** `UpdateMeleeBar` short-circuits when `ns.timers[slot]` is absent, so a slot without a timer can no longer raise `attempt to index a nil value` on a render tick.
+- **`/sst diag` perf block coerces pcall results.** The `fps`, addon-memory and addon-CPU readings pass through `tonumber` before `math_floor` / `string_format("%d")`, so a non-number return can no longer raise inside the `perf` check.
+- **LuaLS annotations no longer widen runtime treatment.** `---@cast propertyEnum table` and the `--[[@as number]]` casts on buff/debuff sizes keep the annotation layer in step with the existing nil-checks in `SuperSwingTimer_Forever.lua`.
+
+### Internal
+
+- Nil-guards added to the vendored `LibClassicSwingTimerAPI` CLEU handlers and to `LibRangeCheck-2.0`; the latter resolves `GetInventorySlotInfo` through `rawget` with a hands-slot fallback of `10`.
+- `.luarc.json` globals and the `.wowluarc.json` diagnostics list were updated to match the new annotations.
+- **Known issue (latent, not fixed in this release).** The `LibClassicSwingTimerAPI` pause-swing branch in `UNIT_SPELLCAST_SUCCEEDED` lost its `local offset = now - unit.pauseSwingTime` while both `unit.mainExpirationTime` and `unit.offExpirationTime` still add `offset`. `SuperSwingTimer.toc` does not load that library and no file outside `Lib/` LibStub-loads it, so the addon cannot reach the branch today; the local must be restored before the library is ever wired in.
+
+### Notes
+
+- TOC `## Version: v0.3.4`; the TOC-metadata helper, settings-panel fallbacks, harness mock and TOC test assertion move together.
+- Headless test suite: 198 tests passed, 0 failures; 0 luacheck warnings / 0 errors across 15 files.
+- `/sst diag distance` gains `apiPos` and `exactBand`, and reports the reading in linear yards for every source.
+- The class-helper output is identical when the guarded values are present; the only intended behaviour change is the exact distance bar.
+
 ## v0.3.3 - 2026-11-08
 
 ### Added

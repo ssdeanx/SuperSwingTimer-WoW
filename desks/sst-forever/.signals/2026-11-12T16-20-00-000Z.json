@@ -1,0 +1,18 @@
+{
+  "signal_type": "execution",
+  "subtype": "checkpoint",
+  "timestamp": "2026-11-12T16:20:00Z",
+  "run_id": "sst-distance-bar-exact-2026-11-12",
+  "agent_name": "sst-forever",
+  "self_assessment": { "intent": 4, "confidence": 4, "accuracy": 4, "completeness": 3 },
+  "patterns": {
+    "what_worked": "Traced the grey bar to two independent causes: GetHunterRangeState's outOfRange fallback, and the checkedDistance==false rejection; fixed both from client source evidence (CompactUnitFrame.lua:1069, Blizzard_TutorialTutorials.lua:985-986) and proved the new guards with mutation tests.",
+    "what_was_hard": "In-game secret behaviour under the encounters CVar cannot be reproduced headlessly; the stance '?' branch has three candidate causes that only a diag readout can separate.",
+    "skill_gap": "Spent a tool call loading a different addon's audit skill before checking the workspace name."
+  },
+  "escalation": {
+    "reason": null,
+    "blocked_on": null,
+    "recommendation": "Operator: run /sst diag on Forever with the CVar on and share the auraGroup and distance lines; also confirm whether the bar should stay full from 1-5 yd or taper from 5 yd."
+  }
+}

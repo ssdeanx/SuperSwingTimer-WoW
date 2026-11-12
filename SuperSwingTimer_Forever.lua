@@ -687,13 +687,13 @@ local LEFT_STANCE_MAX_SIZE = 24
 -- One icon-size step larger than the bar-derived stance size so the aspect /
 -- stance / form slot beside the bar stays easy to read.
 local LEFT_STANCE_SIZE_BONUS = 2
--- Buff proc icons are intentionally a little wider than tall. The configured
--- buff icon size is the square reference; the proc row trims 2 px from the
--- width and 7 px from the height so it clears the target-debuff duration text
--- without pushing the stack far above the bar.
-local BUFF_ICON_WIDTH_TRIM = 2
-local BUFF_ICON_HEIGHT_TRIM = 7
+-- Native buff and debuff rows share one icon shape: the configured size is the
+-- WIDTH and the height follows at a 30x25 default ratio, so both rows stay
+-- identical whatever the per-class slider says.
+local ICON_DEFAULT_WIDTH = 30
+local ICON_HEIGHT_PER_WIDTH = 25 / 30
 local MIN_BUFF_ICON_SIZE = 8
+
 -- Gap between the top of the debuff row and the bottom of the buff row:
 -- 2 px duration-text offset + ~12 px font height + 2 px breathing room.
 local DEBUFF_TEXT_CLEARANCE = 16
@@ -1016,13 +1016,17 @@ ns.foreverAura = {
     debuffContainer = nil,
     stanceSlot = nil,
     shapeshiftIcon = nil,
-    buffSize = 25,
-    buffWidth = 23,
-    buffHeight = 18,
-    debuffSize = 22,
+    buffSize = 30,
+    buffWidth = 30,
+    buffHeight = 25,
+    debuffSize = 30,
+    debuffWidth = 30,
+    debuffHeight = 25,
     lastYOffset = nil,
     lastBuffWidth = nil,
     lastBuffHeight = nil,
+    lastDebuffWidth = nil,
+    lastDebuffHeight = nil,
     lastDebuffSize = nil,
     lastDebuffPopulated = nil,
     lastBuffVisible = nil,
@@ -1108,24 +1112,25 @@ local function GetBuffSize()
     local key = BUFF_SIZE_BY_CLASS[ns.playerClass]
     local size = key and db and db[key] or nil
     if type(size) ~= "number" or size <= 0 then
-        size = 25
+        size = ICON_DEFAULT_WIDTH
     end
     return size
 end
 
---- Buff proc icon width and height.
---  The proc row is a slightly wide rectangle: the configured square size
---  minus BUFF_ICON_WIDTH_TRIM in width and BUFF_ICON_HEIGHT_TRIM in height,
---  clamped so tiny slider values stay readable.
---  @param baseSize (number|nil) configured square buff icon size
+--- Width and height for a native icon row.
+--  The configured value is the WIDTH; the height follows the 30x25 default
+--  aspect so the buff and debuff rows always match. Tiny configured values
+--  clamp so the icons stay readable.
+--  @param iconWidth (number|nil) configured icon width
 --  @return (number) icon width, (number) icon height
-function ns.GetForeverBuffIconDimensions(baseSize)
-    local base = baseSize
-    if type(base) ~= "number" or base <= 0 then
-        base = GetBuffSize()
+function ns.GetForeverIconDimensions(iconWidth)
+    local width = iconWidth
+    if type(width) ~= "number" or width <= 0 then
+        width = ICON_DEFAULT_WIDTH
     end
-    local width = base - BUFF_ICON_WIDTH_TRIM
-    local height = base - BUFF_ICON_HEIGHT_TRIM
+    local height = width * ICON_HEIGHT_PER_WIDTH
+    width = math.floor(width + 0.5)
+    height = math.floor(height + 0.5)
     if width < MIN_BUFF_ICON_SIZE then
         width = MIN_BUFF_ICON_SIZE
     end
@@ -1135,11 +1140,22 @@ function ns.GetForeverBuffIconDimensions(baseSize)
     return width, height
 end
 
+--- Buff proc icon width and height.
+--  @param baseSize (number|nil) configured icon width
+--  @return (number) icon width, (number) icon height
+function ns.GetForeverBuffIconDimensions(baseSize)
+    local base = baseSize
+    if type(base) ~= "number" or base <= 0 then
+        base = GetBuffSize()
+    end
+    return ns.GetForeverIconDimensions(base)
+end
+
 local function GetDebuffSize()
     local db = GetDB()
     local size = db and db.foreverDebuffIconSize or nil
     if type(size) ~= "number" or size <= 0 then
-        size = 22
+        size = ICON_DEFAULT_WIDTH
     end
     return size
 end
@@ -1510,6 +1526,7 @@ function ns.InitForeverAuraIcons()
     state.buffSize = GetBuffSize() --[[@as number]]
     state.buffWidth, state.buffHeight = ns.GetForeverBuffIconDimensions(state.buffSize)
     state.debuffSize = GetDebuffSize() --[[@as number]]
+    state.debuffWidth, state.debuffHeight = ns.GetForeverIconDimensions(state.debuffSize)
 
     -- Class list + shared buffs + the player's own racials. The class list
     -- itself stays pure; nothing from another class is merged into it.
@@ -1582,8 +1599,10 @@ function ns.InitForeverAuraIcons()
         -- same mob.
         local container = CreateAuraGroupContainer("forever_debuffs", "target", "HARMFUL|PLAYER", debuffList, {
             size = state.debuffSize,
+            width = state.debuffWidth,
+            height = state.debuffHeight,
             withBar = true,
-            withCooldown = false,
+            withCooldown = true,
         })
         if container then
             state.debuffContainer = container
@@ -1679,11 +1698,12 @@ function ns.UpdateForeverAuraIcons(elapsed)
         end)
     end
 
-    -- Size changes require a fresh layout definition. Buff icons use the
-    -- trimmed width/height; debuff icons stay square.
+    -- Size changes require a fresh layout definition. Both rows share the same
+    -- 30x25 icon shape, so each row resizes with its own width/height pair.
     local buffSize = GetBuffSize()
     local buffWidth, buffHeight = ns.GetForeverBuffIconDimensions(buffSize)
     local debuffSize = GetDebuffSize()
+    local debuffWidth, debuffHeight = ns.GetForeverIconDimensions(debuffSize)
     if (buffWidth ~= state.buffWidth or buffHeight ~= state.buffHeight)
             and state.buffContainer then
         local ok = pcall(function()
@@ -1700,17 +1720,20 @@ function ns.UpdateForeverAuraIcons(elapsed)
             state.buffHeight = buffHeight
         end
     end
-    if debuffSize ~= state.debuffSize and state.debuffContainer then
+    if (debuffWidth ~= state.debuffWidth or debuffHeight ~= state.debuffHeight)
+            and state.debuffContainer then
         local ok = pcall(function()
             state.debuffContainer:SetAuraGroupLayout("forever_debuffs", {
-                elementWidth = debuffSize,
-                elementHeight = debuffSize,
+                elementWidth = debuffWidth,
+                elementHeight = debuffHeight,
                 elementSpacing = 3,
             })
-            ResizeGroupFrames(state.debuffContainer, "forever_debuffs", debuffSize, debuffSize)
+            ResizeGroupFrames(state.debuffContainer, "forever_debuffs", debuffWidth, debuffHeight)
         end)
         if ok then
             state.debuffSize = debuffSize --[[@as number]]
+            state.debuffWidth = debuffWidth
+            state.debuffHeight = debuffHeight
         end
     end
 
@@ -1850,6 +1873,8 @@ function ns.GetForeverAuraDiagnostics()
         debuffFrames = debuffCount,
         buffWidth = state.buffWidth,
         buffHeight = state.buffHeight,
+        debuffWidth = state.debuffWidth,
+        debuffHeight = state.debuffHeight,
         debuffRow = GetDebuffRowProbe(),
         stanceIconSize = ns.GetForeverStanceIconSize(GetAnchorBar()),
         buffSpells = buffSpells,
@@ -1864,17 +1889,31 @@ end
 -- ============================================================
 -- 10. Hunter target-distance bar (Forever only)
 -- ============================================================
--- A thin bar under the player power bar that tracks the distance to the
--- current target. UnitDistanceSquared returns squared yards on Forever
--- (Auto Shot is 8-35 yd; Hawk Eye 19498 adds 6 yd, so the scale covers 41).
--- The bar is FULL at melee and empties as the target moves away, and the
--- four Hunter range bands colour it.
+-- A thin bar under the player power bar that tracks the EXACT distance to the
+-- current target. The bar is full while the target is in melee reach and
+-- empties as it leaves the ranged maximum, so the fill is a direct readout of
+-- yards rather than a range band.
 --
--- Secret values: UnitDistanceSquared is not annotated SecretReturns, but the
--- client may still hand back a restricted number while distance is hidden.
--- The raw squared value is therefore handed straight to StatusBar:SetValue
+-- Yard bands (operator-confirmed on Forever): 1-5 yd melee (green), 5-8 yd
+-- dead zone / "sweet spot" (yellow), 8 yd out to the ranged maximum (blue),
+-- beyond that out of range (grey). 41 yd = 35 yd Auto Shot maximum + 6 yd
+-- Hawk Eye (Forever spell 19498).
+--
+-- Distance sources, in order:
+--   1. ClosestUnitPosition(UnitCreatureID) - linear yards, SecretReturns, so a
+--      secret reading is passed straight through and never inspected.
+--   2. UnitDistanceSquared - squared yards; its checkedDistance flag only
+--      reports whether the client performed a RANGE CHECK (Blizzard reads the
+--      distance unconditionally at CompactUnitFrame.lua:1069), so an unchecked
+--      enemy reading is still a real distance and is converted to yards here.
+--   3. UnitPosition(player) vs UnitPosition(target) - exact ground-plane yards.
+--      UnitPosition is not SecretReturns and Blizzard's own tutorial code
+--      subtracts the two the same way (Blizzard_TutorialTutorials.lua:985-986).
+--
+-- Secret values: a secret reading is handed straight to StatusBar:SetValue
 -- (SecretArguments = AllowedWhenTainted) and the client interpolates it; no
--- secret is compared, clamped, formatted or used in arithmetic.
+-- secret is compared, clamped, formatted or used in arithmetic. Secret values
+-- keep the scale of the source that produced them.
 --
 -- Inverted fill: a StatusBar fills in proportion to its value, so a value that
 -- grows with distance would fill the bar as the target moves away. The status
@@ -1886,6 +1925,14 @@ local DISTANCE_BAR_GAP = 2
 local DISTANCE_BAR_UPDATE_INTERVAL = 0.1
 local DISTANCE_BAR_TEXTURE = "Interface\\Buttons\\WHITE8X8"
 local DISTANCE_BAR_FALLBACK_COLOR = { r = 0.5, g = 0.5, b = 0.5 }
+
+--- Melee reach: the bar reads full inside this many yards.
+local DISTANCE_BAR_MELEE_MAX = 5
+
+--- Dead zone / "sweet spot" edge: 8 yd is Auto Shot's minimum range, so a
+--  target closer than this cannot be shot at all.
+local DISTANCE_BAR_DEADZONE_MAX = 8
+
 
 --- Furthest Hunter ranged reach covered by the bar's scale.
 --  41 yd = 35 yd Auto Shot maximum + 6 yd Hawk Eye (Forever spell 19498).
@@ -1908,17 +1955,82 @@ function ns.GetForeverDistanceBarColorKey(rangeState)
     return nil
 end
 
+--- Range band for an EXACT yard reading.
+--  Used because the client's own range checks return nil while restricted,
+--  which made GetHunterRangeState fall through to "outOfRange" for a target
+--  standing right next to the player. The bar therefore derives the band from
+--  the distance it already displays instead of trusting a band it cannot read.
+--  @param yards (number|nil) exact ground-plane yards
+--  @return (string|nil) melee / sweetSpot / ranged / outOfRange
+function ns.GetForeverDistanceBandFromYards(yards)
+    if type(yards) ~= "number" or yards ~= yards then
+        return nil
+    end
+    if yards <= DISTANCE_BAR_MELEE_MAX then
+        return "melee"
+    end
+    if yards <= DISTANCE_BAR_DEADZONE_MAX then
+        return "sweetSpot"
+    end
+    if yards <= ns.FOREVER_DISTANCE_MAX_RANGE then
+        return "ranged"
+    end
+    return "outOfRange"
+end
+
+--- Exact ground-plane yards between the player and the current target.
+--  UnitPosition is not SecretReturns (only SecretArguments =
+--  AllowedWhenUntainted) and answers (x, y, z, mapID) for both units, which is
+--  the same pair Blizzard subtracts in its own tutorial code
+--  (Blizzard_TutorialTutorials.lua:985-986). Every unreadable case returns nil
+--  instead of 0 or a guess: a secret coordinate, a different map (zones,
+--  instances, phases), or a non-finite result.
+--  @return (number|nil) exact yards, or nil when the pair cannot be trusted
+local function ReadUnitPositionDistance()
+    local unitPosition = rawget(_G, "UnitPosition")
+    if type(unitPosition) ~= "function" then
+        return nil
+    end
+
+    local playerOk, playerX, playerY, _, playerMap = pcall(unitPosition, "player")
+    if not playerOk or type(playerX) ~= "number" or type(playerY) ~= "number" then
+        return nil
+    end
+    if ns.IsSecretValue(playerX) or ns.IsSecretValue(playerY) or ns.IsSecretValue(playerMap) then
+        return nil
+    end
+
+    local targetOk, targetX, targetY, _, targetMap = pcall(unitPosition, "target")
+    if not targetOk or type(targetX) ~= "number" or type(targetY) ~= "number" then
+        return nil
+    end
+    if ns.IsSecretValue(targetX) or ns.IsSecretValue(targetY) or ns.IsSecretValue(targetMap) then
+        return nil
+    end
+
+    -- Coordinates are only comparable on the same map.
+    if playerMap ~= targetMap then
+        return nil
+    end
+
+    local dx = targetX - playerX
+    local dy = targetY - playerY
+    local yards = math.sqrt(dx * dx + dy * dy)
+    -- Never hand a NaN or infinity to the bar's SetValue.
+    if yards ~= yards or yards == math.huge then
+        return nil
+    end
+    return yards
+end
+
 --- Read the best available distance to the current target.
---  Two sanctioned sources are tried in order:
---    * ClosestUnitPosition(UnitCreatureID("target")) — the only distance API
---      that returns SECRET values (SecretReturns = true); it yields linear
---      yards to the closest creature with the target's creature ID.
---    * UnitDistanceSquared("target") — plain squared yards, but Blizzard only
---      documents it for group members, so it is the fallback.
---  Values are never compared while secret; the secrecy probe routes them.
---  @return (number|nil) raw value, (number|nil) scale, (boolean) secret,
---          (string|nil) "closest" or "unit"
+--  Plain readings are always converted to LINEAR YARDS so the caller works in
+--  one unit; a secret reading is returned raw, with the scale of its source.
+--  Sources are tried most accurate first, and every secret stays untouched.
+--  @return (number|nil) yards (or the raw secret), (number|nil) scale,
+--          (boolean) secret, (string|nil) "closest" / "unit" / "position"
 function ns.ReadForeverTargetDistance()
+    -- 1. Closest creature distance: linear yards, possibly secret.
     local unitCreatureID = rawget(_G, "UnitCreatureID")
     local closestUnitPosition = rawget(_G, "ClosestUnitPosition")
     if type(unitCreatureID) == "function" and type(closestUnitPosition) == "function" then
@@ -1940,55 +2052,76 @@ function ns.ReadForeverTargetDistance()
         end
     end
 
+    -- 2. Unit distance: squared yards. checkedDistance only reports whether the
+    --    client range-CHECKED the unit, not whether the number is real, so an
+    --    unchecked enemy reading is accepted here and converted to yards.
     local unitDistanceSquared = rawget(_G, "UnitDistanceSquared")
     if type(unitDistanceSquared) == "function" then
-        local ok, distanceSquared, checked = pcall(unitDistanceSquared, "target")
+        local ok, distanceSquared = pcall(unitDistanceSquared, "target")
         if ok then
-            local checkedSecret = ns.IsSecretValue(checked)
             if ns.IsSecretValue(distanceSquared) then
                 return distanceSquared, DISTANCE_MAX_SQUARED, true, "unit"
             end
-            if type(distanceSquared) == "number" and (checkedSecret or checked ~= false) then
-                return distanceSquared, DISTANCE_MAX_SQUARED, false, "unit"
+            if type(distanceSquared) == "number" and distanceSquared >= 0 then
+                return math.sqrt(distanceSquared), ns.FOREVER_DISTANCE_MAX_RANGE, false, "unit"
             end
         end
+    end
+
+    -- 3. Exact map-coordinate distance, for when the client hides the rest.
+    local positionYards = ReadUnitPositionDistance()
+    if positionYards then
+        return positionYards, ns.FOREVER_DISTANCE_MAX_RANGE, false, "position"
     end
 
     return nil, nil, false, nil
 end
 
 --- Resolve the value handed to the distance bar's SetValue.
---  A secret reading is returned untouched; a plain one is clamped to the
---  source's scale. An out-of-range band pins the bar to its empty state.
---  @param value (number|nil) raw distance (linear yards or squared yards)
---  @param maxValue (number|nil) scale for that raw value
---  @param valueSecret (boolean) whether the raw value is secret
---  @param rangeState (string|nil) Hunter range band
+--  The fill is a direct readout of exact yards: full (0) from melee reach out
+--  to DISTANCE_BAR_MELEE_MAX, then linear to the empty end (maxValue) at the
+--  ranged maximum. A secret reading is returned untouched on its own scale; a
+--  band is only consulted when no distance could be read at all.
+--  @param value (number|nil) distance in yards (or the raw secret)
+--  @param maxValue (number|nil) scale for that value
+--  @param valueSecret (boolean) whether the value is secret
+--  @param rangeState (string|nil) fallback Hunter range band
 --  @return (number|nil) SetValue argument, or nil to hide the bar
 function ns.GetForeverDistanceBarValue(value, maxValue, valueSecret, rangeState)
-    if not rangeState or type(maxValue) ~= "number" or maxValue <= 0 then
+    if type(maxValue) ~= "number" or maxValue <= 0 then
         return nil
     end
-    if rangeState == "outOfRange" then
-        return maxValue
-    end
-    -- Melee is pinned full so the "closest" reading is exactly 100% and does
-    -- not depend on the distance API at all.
-    if rangeState == "melee" then
-        return 0
-    end
+    -- A secret number is never compared, clamped or divided: hand it to the
+    -- client untouched, on the scale of the source that produced it.
     if valueSecret then
         return value
     end
     if type(value) ~= "number" then
+        -- No distance at all: keep the band-only fallbacks so the bar still
+        -- reads as full in melee and empty out of range.
+        if rangeState == "melee" then
+            return 0
+        end
+        if rangeState == "outOfRange" then
+            return maxValue
+        end
         return nil
     end
-    if value < 0 then
-        value = 0
-    elseif value > maxValue then
-        value = maxValue
+
+    -- Exact yards: full across melee reach, then linear to empty.
+    local span = maxValue - DISTANCE_BAR_MELEE_MAX
+    local filled
+    if span > 0 then
+        filled = (value - DISTANCE_BAR_MELEE_MAX) / span * maxValue
+    else
+        filled = value
     end
-    return value
+    if filled < 0 then
+        filled = 0
+    elseif filled > maxValue then
+        filled = maxValue
+    end
+    return filled
 end
 
 --- Out-of-range grey used for the empty part of the distance bar.
@@ -2109,10 +2242,6 @@ function ns.UpdateForeverHunterDistanceBar(elapsed)
     if type(ns.GetHunterRangeState) == "function" then
         rangeState = ns.GetHunterRangeState(false)
     end
-    if not rangeState then
-        bar:Hide()
-        return
-    end
 
     local distanceValue, distanceMax, distanceSecret = ns.ReadForeverTargetDistance()
     local maxValue = distanceMax or ns.FOREVER_DISTANCE_MAX_RANGE
@@ -2122,11 +2251,21 @@ function ns.UpdateForeverHunterDistanceBar(elapsed)
         return
     end
 
+    -- The exact reading owns the band. While values are restricted the client's
+    -- own range checks answer nil and GetHunterRangeState falls back to
+    -- "outOfRange", which would paint a nearby target grey; the distance the
+    -- bar is already showing is the better answer. A secret reading is never
+    -- inspected, so it keeps the client band.
+    local band = rangeState
+    if not distanceSecret and type(distanceValue) == "number" then
+        band = ns.GetForeverDistanceBandFromYards(distanceValue) or rangeState
+    end
+
     ApplyHunterDistanceBarLayout(bar)
 
     -- Band colour is the visible "filled" part of the inverted bar; the status
     -- bar texture is the empty grey cover.
-    local colorKey = ns.GetForeverDistanceBarColorKey(rangeState)
+    local colorKey = ns.GetForeverDistanceBarColorKey(band)
     local bandColor = colorKey and ns.GetBarColor and ns.GetBarColor(colorKey) or nil
     if bandColor and bandColor.r and bar.bandTexture then
         bar.bandTexture:SetColorTexture(bandColor.r, bandColor.g, bandColor.b, 1)

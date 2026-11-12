@@ -1,4 +1,4 @@
-# Super Swing Timer <span style="color:#00ccff">v0.3.3</span>
+# Super Swing Timer <span style="color:#00ccff">v0.3.4</span>
 
 A fast, customizable **Main Hand**, **Off Hand**, **Ranged**, and **Enemy** swing timer for World of Warcraft Classic and WoW Forever clients — with class-specific rotation helpers, target debuff bars, and a unified player power bar.
 
@@ -8,15 +8,16 @@ A fast, customizable **Main Hand**, **Off Hand**, **Ranged**, and **Enemy** swin
 
 ---
 
-## What's New in v0.3.3
+## What's New in v0.3.4
 
-- **WoW Forever aura stack reordered.** Player buff procs now appear **above** your target debuffs — just clear of the debuff duration text — while the target-debuff icons and their duration bars stay pinned above the swing bar exactly as before.
-- **Slimmer buff proc icons.** The proc row is trimmed 2 px in width and 7 px in height at the default 25 px setting (25 px → 23×18), so buff icons are a little wider than tall and the stack stays compact.
-- **Larger stance / aspect icon.** The active aspect, stance, form, seal or shield icon to the left of the bar is now one size larger (default 20×20 instead of 18×18), so it is easier to read at a glance.
-- **Hunter target-distance bar (Forever only).** A thin 5 px bar under the power bar fills at melee, empties as the target moves away, and turns grey when the target is out of range. Its colour follows the Hunter range bands. It reads the client's secret creature distance (`ClosestUnitPosition`) with `UnitDistanceSquared` as a fallback; secret values are passed straight to the bar API, never read by the addon.
-- **Verifiable in `/sst diag`.** The `auraGroup` line now prints `buffIcon=<width>x<height>`, `debuffRow=<height|secret>` and `stanceIcon=<px>`.
-- **Secret-height crash fixed (Forever only).** The proc row no longer compares the debuff container's secret height; it anchors to the debuff row and collapses to the bar when the row is empty.
-- **Everything else from v0.3.2 remains:** native Forever aura rows, the stance/aspect/form/seal/shield slot, Forever Shaman weave, Slam timing, and the `auraGroup` / `maelstrom` / `weave` diagnostics.
+- **Exact Hunter target-distance bar (Forever only).** The bar under the power bar now reads the **exact distance** to your target instead of a range band. It is **full through melee reach (1–5 yd)** and empties linearly out to **41 yd** (35 yd Auto Shot + 6 yd Hawk Eye). Distance comes from the creature distance API when available, then `UnitDistanceSquared` (including readings the client has not range-checked), then exact `UnitPosition` map coordinates as a last resort. Colours follow the distance: green 1–5 yd, yellow 5–8 yd dead zone, blue 8–41 yd, grey beyond.
+- **The distance bar no longer sticks grey.** When every client range check returns nil in restricted encounters, the bar used to fall back to "out of range" and paint a nearby target grey; the exact reading now decides the colour and the fill.
+- **Buff and debuff icons are both 30×25 (Forever only).** The proc row used to render 23×18 and the target-debuff row a hardcoded 22×22; both now share one 30×25 shape driven by the configured width, so a custom slider value keeps the aspect. The debuff row also gains the cooldown sweep the buff row already had, while keeping its 3 px duration bar.
+- **Stability pass, no behaviour change intended.** The class modules (Retribution Paladin, Warrior, Enhancement Shaman, Druid, Hunter, Rogue) now guard their alternative-spell-id lookups, cooldown-duration comparisons and the Seal of Vengeance match. When the values are present the results are identical to v0.3.3.
+- **Melee bar renderer guarded.** A slot without a timer can no longer raise on a render tick; the bar simply resets its display.
+- **`/sst diag` perf block hardened.** Frame rate, addon memory and addon CPU readings are coerced with `tonumber` before formatting, so an unexpected return type can no longer raise inside the `perf` check.
+- **DB migration and event registration guarded.** Colour migration falls back cleanly if the default palette is unavailable, and power-class events only register once the player class is known.
+- **Everything else from v0.3.3 remains:** the reordered Forever aura stack, slimmer buff proc icons, the larger stance/aspect icon, and the `auraGroup` / `maelstrom` / `weave` diagnostics.
 
 ---
 
@@ -95,7 +96,7 @@ Type `/sst` in chat to open the settings window. Bars stay hidden out of combat 
 
 ```text
 +------------------------------------------------------------------+
-| Super Swing Timer v0.3.3            [ Unlock & Move Bars ]  [X]  |
+| Super Swing Timer v0.3.4            [ Unlock & Move Bars ]  [X]  |
 | Global Scale [=====slider (0.5x–3.0x)=====] [1.0]               |
 |------------------------------------------------------------------|
 | Quick Controls (Tabs: [ All ] [ Visibility ] [ Colors ] [ Class ])|
@@ -135,6 +136,15 @@ Type `/sst` in chat to open the settings window. Bars stay hidden out of combat 
 ---
 
 ## Recent Releases
+
+### <span style="color:#00ccff">v0.3.4</span> (2026-11-12)
+
+- **<span style="color:#2ecc71">Exact Distance Bar</span>**: The Forever Hunter distance bar now reads exact yards — full through melee reach (1–5 yd), empty at 41 yd — from the creature distance API, then `UnitDistanceSquared`, then exact `UnitPosition` coordinates. Colours follow the distance, so it no longer sticks grey when restricted values blank the client's range checks.
+- **<span style="color:#2ecc71">30×25 Aura Icons</span>**: Buff proc icons and target debuff icons now share one 30×25 shape (was 23×18 and 22×22), with the debuff row also gaining the cooldown sweep.
+- **<span style="color:#2ecc71">Nil-Safety Hardening</span>**: Guarded alternative-spell-id lookups, cooldown comparisons and the Seal of Vengeance match across the class modules; covered paths return the same results when the values are present.
+- **<span style="color:#2ecc71">Render & Diagnostic Guards</span>**: The melee bar renderer survives a missing timer slot, and `/sst diag`'s perf block coerces pcall results before formatting.
+- **<span style="color:#2ecc71">Migration & Registration Guards</span>**: Colour migration falls back cleanly without the default palette; power-class events register only when the class is known.
+- **<span style="color:#2ecc71">Better Distance Diagnostics</span>**: `/sst diag` reports `apiPos` and `exactBand` alongside the distance source and linear-yard reading.
 
 ### <span style="color:#00ccff">v0.3.3</span> (2026-11-08)
 

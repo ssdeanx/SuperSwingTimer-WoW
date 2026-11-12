@@ -1175,6 +1175,25 @@ local function MigrateDB(targetDb)
                     db.powerBarHeight = 14
                 end
             end
+        },
+        {
+            version = 67,
+            apply = function (db)
+                -- v0.3.4: the native buff and debuff rows render 30x25. Only move
+                -- a stored value that is still an old default; a size the player
+                -- chose is left alone.
+                for _, key in ipairs({
+                    "warriorBuffIconSize", "paladinBuffIconSize", "shamanBuffIconSize",
+                    "druidBuffIconSize", "hunterBuffIconSize", "rogueBuffIconSize",
+                }) do
+                    if db[key] == nil or db[key] == 25 then
+                        db[key] = 30
+                    end
+                end
+                if db.foreverDebuffIconSize == nil or db.foreverDebuffIconSize == 22 then
+                    db.foreverDebuffIconSize = 30
+                end
+            end
         }
     }
 
@@ -1191,7 +1210,7 @@ end
 -- Highest migration version currently defined. Tests assert against this
 -- instead of a hard-coded number so they don't go stale when the
 -- migration ladder grows.
-ns.DB_CURRENT_VERSION = 66
+ns.DB_CURRENT_VERSION = 67
 
 -- ============================================================
 -- Initialization

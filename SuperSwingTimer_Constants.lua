@@ -56,7 +56,7 @@ function ns.GetDisplayVersion()
         end
     end
 
-    return "v0.3.3"
+    return "v0.3.4"
 end
 
 -- Reused scratch table for the secret-string probe; no per-call allocation.
@@ -1248,7 +1248,7 @@ ns.DB_DEFAULTS = {
     showDruidRipBar = true,
     showDruidRakeBar = true,
     showDruidBuffIcons = true,
-    druidBuffIconSize = 25,
+    druidBuffIconSize = 30,
     showRogueRuptureBar = true,
     showHunterSerpentStingBar = true,
     showPaladinJudgementBar = true,
@@ -1288,11 +1288,12 @@ ns.DB_DEFAULTS = {
     warriorShieldBlockBarHeight = 4,
     hunterRapidFireBarHeight = 4,
     hunterRangeHelperWidth = 7,
-    hunterBuffIconSize = 25,
-    shamanBuffIconSize = 25,
-    warriorBuffIconSize = 25,
-    rogueBuffIconSize = 25,
-    paladinBuffIconSize = 25,
+    hunterBuffIconSize = 30,
+    shamanBuffIconSize = 30,
+    warriorBuffIconSize = 30,
+    rogueBuffIconSize = 30,
+    paladinBuffIconSize = 30,
+    foreverDebuffIconSize = 30,
     rogueAdrenalineRushBarHeight = 4,
     shamanLightningTrackerGap = 6,
     -- Global scale multiplier (0.5x–3.0x): proportionally scales all bars, icons, and fonts

@@ -439,9 +439,12 @@ addCheck("auraGroup", "aura groups", function()
         "buffContainer=" .. tostring(d.buffContainer),
         "debuffContainer=" .. tostring(d.debuffContainer),
         "stanceContainer=" .. tostring(d.stanceContainer),
+        "stanceSlot=" .. tostring(d.stanceSlot),
+        "shapeshiftIcon=" .. tostring(d.shapeshiftIcon),
         "buffFrames=" .. tostring(d.buffFrames),
         "debuffFrames=" .. tostring(d.debuffFrames),
         "buffIcon=" .. tostring(d.buffWidth) .. "x" .. tostring(d.buffHeight),
+        "debuffIcon=" .. tostring(d.debuffWidth) .. "x" .. tostring(d.debuffHeight),
         "debuffRow=" .. tostring(d.debuffRow),
         "stanceIcon=" .. tostring(d.stanceIconSize),
         "buffSpells=" .. tostring(d.buffSpells),
@@ -466,6 +469,7 @@ addCheck("distance", "hunter distance", function()
     local apiCreature = type(rawget(_G, "UnitCreatureID")) == "function"
         and type(rawget(_G, "ClosestUnitPosition")) == "function"
     local apiUnit = type(rawget(_G, "UnitDistanceSquared")) == "function"
+    local apiPos = type(rawget(_G, "UnitPosition")) == "function"
     local band = nil
     if type(ns.GetHunterRangeState) == "function" then
         local ok, value = pcall(ns.GetHunterRangeState, false)
@@ -484,24 +488,27 @@ addCheck("distance", "hunter distance", function()
         end
     end
 
-    -- Raw source readout: which distance API is usable for this target and
-    -- whether its value is secret (secret values are never inspected).
+    -- Raw source readout: which distance API answered for this target, the
+    -- band that exact reading resolves to, and whether the value is secret
+    -- (secret values are never inspected).
     local rawValue, _, rawSecret, rawSource = ns.ReadForeverTargetDistance()
     local distanceText = "nil"
+    local exactBand = "nil"
     if rawSecret then
         distanceText = "secret"
     elseif type(rawValue) == "number" then
-        local yards = rawValue
-        if rawSource == "unit" and yards >= 0 then
-            yards = math.sqrt(yards)
+        -- Every plain reading is already linear yards.
+        distanceText = string_format("%.1fyd", rawValue)
+        if type(ns.GetForeverDistanceBandFromYards) == "function" then
+            exactBand = tostring(ns.GetForeverDistanceBandFromYards(rawValue))
         end
-        distanceText = string_format("%.1fyd", yards)
     end
 
-    local detail = string_format("apiCreature=%s apiUnit=%s enabled=%s band=%s bar=%s src=%s dist=%s",
-        tostring(apiCreature), tostring(apiUnit), tostring(enabled), tostring(band),
-        tostring(shown), tostring(rawSource), distanceText)
-    if (apiCreature or apiUnit) and enabled and band and shown then
+    local detail = string_format(
+        "apiCreature=%s apiUnit=%s apiPos=%s enabled=%s band=%s exactBand=%s bar=%s src=%s dist=%s",
+        tostring(apiCreature), tostring(apiUnit), tostring(apiPos), tostring(enabled),
+        tostring(band), exactBand, tostring(shown), tostring(rawSource), distanceText)
+    if enabled and shown and rawSource then
         return "ok", detail
     end
     return "warn", detail
