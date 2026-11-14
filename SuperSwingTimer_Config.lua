@@ -13,6 +13,13 @@ local ToggleDropDownMenu = rawget(_G, "ToggleDropDownMenu") or function(...) end
 local strtrim = rawget(_G, "strtrim")
 local BackdropTemplateMixin = rawget(_G, "BackdropTemplateMixin")
 
+-- Expiring-glow window for the tracked icon rows, read on demand from the
+-- module that owns it so the icon tooltips cannot advertise a window the
+-- renderer no longer uses (it was a hardcoded "last 4 seconds").
+local function IconGlowWindowSeconds()
+    return ns.ICON_EXPIRING_GLOW_SECONDS or 5
+end
+
 -- ============================================================
 -- Config panel: /sst opens this frame.
 -- Dropdowns for layer / mode selectors, checkboxes for toggles,
@@ -2230,7 +2237,7 @@ local function CreateBlizzardOptionsCanvas()
 
     local title = f:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
     title:SetPoint("TOPLEFT", f, "TOPLEFT", 16, -16)
-    title:SetText("Super Swing Timer |cff00ccff" .. (ns.GetDisplayVersion and ns.GetDisplayVersion() or "v0.3.4") .. "|r")
+    title:SetText("Super Swing Timer |cff00ccff" .. (ns.GetDisplayVersion and ns.GetDisplayVersion() or "v0.3.6") .. "|r")
 
     local desc = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     desc:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -8)
@@ -2528,7 +2535,7 @@ local function CreatePanel()
     -- Title
     local title = f:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
     title:SetPoint("TOPLEFT", f, "TOPLEFT", 18, -14)
-    title:SetText("Super Swing Timer |cff00ccff" .. (ns.GetDisplayVersion and ns.GetDisplayVersion() or "v0.3.4") .. "|r")
+    title:SetText("Super Swing Timer |cff00ccff" .. (ns.GetDisplayVersion and ns.GetDisplayVersion() or "v0.3.6") .. "|r")
 
     -- Move/Unlock button in header — toggles move mode and saves positions
     local moveHeaderBtn = CreateFrame("Button", nil, f)
@@ -3081,6 +3088,26 @@ local function CreatePanel()
         },
         "visibility"
     )
+    if ns.isForever then
+        -- Label and tooltip read the window from the module that owns it, so a
+        -- future window change cannot leave a stale "(4s)" in the settings list.
+        local auraGlowSeconds = (ns.GetForeverAuraGlowSeconds and ns.GetForeverAuraGlowSeconds()) or 5
+        AddQuickToggle(
+            "Aura Expiring Glow (" .. auraGlowSeconds .. "s)", function() return SuperSwingTimerDB.showForeverAuraGlow ~= false end,
+            function(enabled)
+                SuperSwingTimerDB.showForeverAuraGlow = enabled
+                if ns.RefreshForeverAuraGlows then
+                    ns.RefreshForeverAuraGlows()
+                end
+            end,
+            {
+                tooltipText =
+                "Glow Forever buff/proc and target debuff aura icons gold during their final "
+                .. auraGlowSeconds .. " seconds."
+            },
+            "visibility"
+        )
+    end
 
     if ns.playerClass ~= "HUNTER" and cfg.melee then
         AddQuickToggle(
@@ -3133,27 +3160,10 @@ local function CreatePanel()
             end,
             {
                 tooltipText =
-                "Show 25x25 buff/duration icons above the ranged bar for hunter abilities and racials. Icons glow gold in the last 4 seconds."
+                "Show 25x25 buff/duration icons above the ranged bar for hunter abilities and racials. Icons glow gold in the last " .. IconGlowWindowSeconds() .. " seconds."
             },
             "class"
         )
-        -- WoW Forever: thin target-distance bar under the power bar
-        if ns.isForever then
-            AddQuickToggle(
-                "Distance Bar", function() return SuperSwingTimerDB.showHunterDistanceBar ~= false end,
-                function(enabled)
-                    SuperSwingTimerDB.showHunterDistanceBar = enabled
-                    if ns.UpdateForeverHunterDistanceBar then
-                        ns.UpdateForeverHunterDistanceBar(0)
-                    end
-                end,
-                {
-                    tooltipText =
-                    "Show a thin 5px target-distance bar under the power bar (WoW Forever only). Full at melee, empty and grey out of range; the colour follows the Hunter range bands."
-                },
-                "class"
-            )
-        end
     end
 
     local showWeaveRow = nil
@@ -3311,7 +3321,7 @@ local function CreatePanel()
             end,
             {
                 tooltipText =
-                "Show icons above the MH bar for active Warrior buffs and CDs (Death Wish, Recklessness, Sweeping Strikes, Retaliation, Shield Wall, Last Stand, racials). Icons glow gold in the last 4 seconds."
+                "Show icons above the MH bar for active Warrior buffs and CDs (Death Wish, Recklessness, Sweeping Strikes, Retaliation, Shield Wall, Last Stand, racials). Icons glow gold in the last " .. IconGlowWindowSeconds() .. " seconds."
             },
             "class"
         )
@@ -3556,6 +3566,42 @@ local function CreatePanel()
             "class"
         )
         AddQuickToggle(
+            "Don't Twist Warning", function() return SuperSwingTimerDB.showPaladinImpossibleTwist ~= false end,
+            function(enabled)
+                SuperSwingTimerDB.showPaladinImpossibleTwist = enabled
+                ns.ApplyBarColors()
+            end,
+            {
+                tooltipText =
+                "Highlight the twist zone when your running GCD plus calibrated latency cannot clear before the current swing lands."
+            },
+            "class"
+        )
+        AddQuickToggle(
+            "Twist Bar Glow", function() return SuperSwingTimerDB.showPaladinTwistGlow ~= false end,
+            function(enabled)
+                SuperSwingTimerDB.showPaladinTwistGlow = enabled
+                ns.ApplyBarColors()
+            end,
+            {
+                tooltipText = "Briefly glow the main-hand bar when a multi-seal twist swing lands."
+            },
+            "class"
+        )
+        AddQuickToggle(
+            "Dynamic Twist Padding",
+            function() return (SuperSwingTimerDB.paladinTwistPaddingMode or "Dynamic") == "Dynamic" end,
+            function(enabled)
+                SuperSwingTimerDB.paladinTwistPaddingMode = enabled and "Dynamic" or "None"
+                ns.ApplyBarColors()
+            end,
+            {
+                tooltipText =
+                "Automatically widen the 0.4s twist window by 70% of your world latency (off = fixed 0.4s baseline)."
+            },
+            "class"
+        )
+        AddQuickToggle(
             "Judgement Bar", function() return SuperSwingTimerDB.showPaladinJudgementBar ~= false end,
             function(enabled)
                 SuperSwingTimerDB.showPaladinJudgementBar = enabled
@@ -3590,7 +3636,7 @@ local function CreatePanel()
             end,
             {
                 tooltipText =
-                "Show icons above the MH bar for active Paladin buffs and CDs (Avenging Wrath, Divine Shield, Hammer of Justice, Blessing of Protection, Holy Wrath, Lay on Hands, racials). Icons glow gold in the last 4 seconds."
+                "Show icons above the MH bar for active Paladin buffs and CDs (Avenging Wrath, Divine Shield, Hammer of Justice, Blessing of Protection, Holy Wrath, Lay on Hands, racials). Icons glow gold in the last " .. IconGlowWindowSeconds() .. " seconds."
             },
             "class"
         )
@@ -3647,7 +3693,7 @@ local function CreatePanel()
             end,
             {
                 tooltipText =
-                "Show icons above the MH bar for active Shaman buffs and CDs (Shamanistic Rage, Heroism, Flurry, Windfury Weapon, Stormstrike, racials). Icons glow gold in the last 4 seconds."
+                "Show icons above the MH bar for active Shaman buffs and CDs (Shamanistic Rage, Heroism, Flurry, Windfury Weapon, Stormstrike, racials). Icons glow gold in the last " .. IconGlowWindowSeconds() .. " seconds."
             },
             "class"
         )
@@ -3728,7 +3774,7 @@ local function CreatePanel()
             end,
             {
                 tooltipText =
-                "Show icons above the MH bar for active Druid buffs and CDs (Tiger's Fury, Barkskin, Enrage, Dash, Frenzied Regeneration, Innervate, racials). Icons glow gold in the last 4 seconds."
+                "Show icons above the MH bar for active Druid buffs and CDs (Tiger's Fury, Barkskin, Enrage, Dash, Frenzied Regeneration, Innervate, racials). Icons glow gold in the last " .. IconGlowWindowSeconds() .. " seconds."
             },
             "class"
         )
@@ -4034,7 +4080,7 @@ local function CreatePanel()
     if ns.playerClass == "HUNTER" then
         hunterBuffIconSlider = CreateSlider(content, "Buff Icon Size", 12, 48, 2, PostQuickY(ShiftY(-180)), {
             tooltipText =
-            "Size of the buff/CD icon group above the ranged bar. Icons show active buffs and cooldowns with countdown text and a gold glow in the last 4 seconds."
+            "Size of the buff/CD icon group above the ranged bar. Icons show active buffs and cooldowns with countdown text and a gold glow in the last " .. IconGlowWindowSeconds() .. " seconds."
         })
         SetRowClassRequirement(hunterBuffIconSlider, "HUNTER")
         hunterBuffIconSlider:SetValue(SuperSwingTimerDB.hunterBuffIconSize or ns.DB_DEFAULTS.hunterBuffIconSize or 25)

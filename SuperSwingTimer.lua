@@ -1277,8 +1277,6 @@ local function OnAddonLoaded()
     if ns.ApplyBlizzardSwingTimerVisibility then
         ns.ApplyBlizzardSwingTimerVisibility()
     end
-
-    RegisterSlashCommands()
 end
 
 RegisterSlashCommands = function ()
@@ -1305,6 +1303,7 @@ RegisterSlashCommands = function ()
             end
             SuperSwingTimerDB.showGlowEffects = enable
             if ns.Glow and ns.Glow.Refresh then ns.Glow.Refresh() end
+            if ns.RefreshForeverAuraGlows then ns.RefreshForeverAuraGlows() end
             print("|cff00ccffSuper Swing Timer:|r Glow effects " .. (enable and "enabled." or "disabled."))
         elseif msg == "reset" then
             local ok, err = pcall(ns.ResetConfigDefaults)
@@ -1393,11 +1392,14 @@ local function RegisterEvents()
     -- Core events for all classes (gate CLEU vs native C_SwingTimer PLAYER_SWING)
     if ns.HasNativeSwingTimer and ns.HasNativeSwingTimer() then
         frame:RegisterEvent("PLAYER_SWING")
+        frame:RegisterEvent("PLAYER_SWING_RANGE_UPDATE")
+        if ns.EnsureSwingRangeTracking then
+            ns.EnsureSwingRangeTracking()
+        end
     end
     if not (ns.IsRestrictedCombatLog and ns.IsRestrictedCombatLog()) then
         frame:RegisterEvent("COMBAT_LOG_EVENT_UNFILTERED")
     end
-    frame:RegisterEvent("ADDON_LOADED")
     RegisterUnitEventSafe(frame, "UNIT_ATTACK_SPEED", "player", "target")
     frame:RegisterEvent("PLAYER_TARGET_CHANGED")
     frame:RegisterEvent("PLAYER_REGEN_DISABLED")
@@ -1455,8 +1457,15 @@ local function UpdateFrameOnUpdate(self, elapsed)
     ns.OnUpdate(elapsed)
 end
 
+local isUpdateLoopEnabled = nil
+
 function ns.SetUpdateEnabled(enabled)
-    if enabled then
+    local desired = enabled == true
+    if desired == isUpdateLoopEnabled then
+        return
+    end
+    isUpdateLoopEnabled = desired
+    if desired then
         if ns.RefreshLatencyCache then
             ns.RefreshLatencyCache()
         end
@@ -1490,7 +1499,7 @@ frame:SetScript("OnEvent", function (self, event, ...)
                 if handler then
                     handler(string.format("SuperSwingTimer init: %s", tostring(initErr)))
                 end
-                print("|cffff4444SuperSwingTimer failed to initialize.|r Type |cffffffff/stt diag|r for details.")
+                print("|cffff4444SuperSwingTimer failed to initialize.|r Type |cffffffff/sst diag|r for details.")
             else
                 RegisterEvents()
             end
@@ -1498,6 +1507,19 @@ frame:SetScript("OnEvent", function (self, event, ...)
     elseif event == "PLAYER_SWING" then
         if ns.HandlePlayerSwing then
             ns.HandlePlayerSwing(...)
+        end
+    elseif event == "PLAYER_SWING_RANGE_UPDATE" then
+        local swingType, isInRange, checksRange = ...
+        if not ns.IsSecretValue(swingType) and swingType ~= nil then
+            ns.swingRangeCache = ns.swingRangeCache or {}
+            if not ns.IsSecretValue(checksRange) and not ns.IsSecretValue(isInRange) and checksRange then
+                ns.swingRangeCache[swingType] = (isInRange == true)
+            else
+                ns.swingRangeCache[swingType] = nil
+            end
+        end
+        if ns.playerClass == "HUNTER" and ns.UpdateHunterRangeHelperVisual then
+            ns.UpdateHunterRangeHelperVisual()
         end
     elseif event == "COMBAT_LOG_EVENT_UNFILTERED" then
         ns.HandleCLEU()
@@ -1553,6 +1575,9 @@ frame:SetScript("OnEvent", function (self, event, ...)
         if ns.UpdateCastZoneVisual then
             ns.UpdateCastZoneVisual()
         end
+        if ns.playerClass == "HUNTER" and ns.UpdateHunterRangeHelperVisual then
+            ns.UpdateHunterRangeHelperVisual()
+        end
     elseif event == "PLAYER_STOPPED_MOVING" then
         ns.isMoving = false
         if ns.RefreshLatencyCache then
@@ -1562,9 +1587,16 @@ frame:SetScript("OnEvent", function (self, event, ...)
         if ns.UpdateCastZoneVisual then
             ns.UpdateCastZoneVisual()
         end
+        if ns.playerClass == "HUNTER" and ns.UpdateHunterRangeHelperVisual then
+            ns.UpdateHunterRangeHelperVisual()
+        end
     elseif event == "PLAYER_TARGET_CHANGED" then
+        ns.swingRangeCache = nil
         if ns.RefreshEnemyTarget then
             ns.RefreshEnemyTarget()
+        end
+        if ns.playerClass == "HUNTER" and ns.UpdateHunterRangeHelperVisual then
+            ns.UpdateHunterRangeHelperVisual()
         end
         if ns.playerClass == "SHAMAN" and ns.UpdateShamanFlameShockBar then
             ns.UpdateShamanFlameShockBar(true)
@@ -1768,8 +1800,12 @@ frame:SetScript("OnEvent", function (self, event, ...)
         if ns.playerClass == "HUNTER" and ns.IsHunterAutoRepeatActive then
             ns.hunterAutoRepeatActive = ns.IsHunterAutoRepeatActive()
         end
+        ns.swingRangeCache = nil
         if ns.RefreshEnemyTarget then
             ns.RefreshEnemyTarget()
+        end
+        if ns.playerClass == "HUNTER" and ns.UpdateHunterRangeHelperVisual then
+            ns.UpdateHunterRangeHelperVisual()
         end
         if ns.playerClass == "ROGUE" and ns.HandleRogueEnergyPowerUpdate then
             ns.HandleRogueEnergyPowerUpdate("player", "ENERGY")

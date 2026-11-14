@@ -332,6 +332,9 @@ local function GetNextSwingExpiration()
 	return nil
 end
 
+local weaveDisplayColor = { r = 0.8, g = 0.8, b = 0.8, a = 1 }
+local weaveDisplayResult = {}
+
 local function GetSpellFamilyColor(spellInfo, safe)
 	local baseColor
 	if spellInfo and spellInfo.abbrev and ns.WEAVE_SPELL_FAMILY_COLORS then
@@ -339,18 +342,12 @@ local function GetSpellFamilyColor(spellInfo, safe)
 	end
 	baseColor = baseColor or { r = 0.8, g = 0.8, b = 0.8, a = 1 }
 
-	local color = {
-		r = baseColor.r or 0.8,
-		g = baseColor.g or 0.8,
-		b = baseColor.b or 0.8,
-		a = baseColor.a or 1,
-	}
+	weaveDisplayColor.r = baseColor.r or 0.8
+	weaveDisplayColor.g = baseColor.g or 0.8
+	weaveDisplayColor.b = baseColor.b or 0.8
+	weaveDisplayColor.a = safe == false and 0.65 or (baseColor.a or 1)
 
-	if safe == false then
-		color.a = 0.65
-	end
-
-	return color
+	return weaveDisplayColor
 end
 
 ns.weaveState = ns.weaveState or {
@@ -550,10 +547,10 @@ local function BuildDisplayInfo(spellInfo)
 	local castStartTime = type(state.castStartTime) == "number" and state.castStartTime or nil
 	local castElapsed = castStartTime and math_max(now - castStartTime, 0) or 0
 	local castRemaining = effectiveCastTime
-	local liveCastStart, liveCastEnd = GetLivePlayerCastTiming()
 	local liveCastDuration = nil
 
 	if isCasting then
+		local liveCastStart, liveCastEnd = GetLivePlayerCastTiming()
 		if liveCastStart and liveCastEnd and liveCastEnd > liveCastStart then
 			castStartTime = liveCastStart
 			state.castStartTime = castStartTime
@@ -562,9 +559,7 @@ local function BuildDisplayInfo(spellInfo)
 			liveCastDuration = math_max(liveCastEnd - liveCastStart, 0)
 			effectiveCastTime = liveCastDuration
 		elseif type(state.baseSpellCastTime) == "number" and state.baseSpellCastTime > 0 then
-			local baseEffective = GetEffectiveSpellCastTime(spellInfo)
-			castRemaining = math_max(baseEffective - castElapsed, 0)
-			effectiveCastTime = baseEffective
+			castRemaining = math_max(effectiveCastTime - castElapsed, 0)
 		elseif type(state.spellExpirationTime) == "number" then
 			castRemaining = math_max(0, state.spellExpirationTime - now)
 		end
@@ -606,30 +601,29 @@ local function BuildDisplayInfo(spellInfo)
 	local redColor = { r = 1.0, g = 0.15, b = 0.15, a = 1.0 }
 	local sparkColor = isClipped and redColor or shamanClassColor
 
-	return {
-		spellId = spellInfo.spellId,
-		spellName = spellInfo.spellName,
-		iconTexture = spellInfo.iconTexture,
-		spellAbbrev = spellInfo.abbrev,
-		castTime = effectiveCastTime,
-		baseSpellCastTime = state.baseSpellCastTime,
-		castRemaining = castRemaining,
-		castProgress = castProgress,
-		castElapsed = castElapsed,
-		latency = latency,
-		nextSwingExpiration = nextSwingExpiration,
-		safeStartIn = safeStartIn,
-		clipAmount = clipAmount,
-		safe = safe,
-		isCasting = isCasting,
-		markerFraction = markerFraction,
-		currentSwingFraction = currentSwingFraction,
-		castStartSwingFraction = castStartSwingFraction,
-		projectedImpactFraction = projectedImpactFraction,
-		sparkFraction = sparkFraction,
-		color = color,
-		sparkColor = sparkColor,
-	}
+	weaveDisplayResult.spellId = spellInfo.spellId
+	weaveDisplayResult.spellName = spellInfo.spellName
+	weaveDisplayResult.iconTexture = spellInfo.iconTexture
+	weaveDisplayResult.spellAbbrev = spellInfo.abbrev
+	weaveDisplayResult.castTime = effectiveCastTime
+	weaveDisplayResult.baseSpellCastTime = state.baseSpellCastTime
+	weaveDisplayResult.castRemaining = castRemaining
+	weaveDisplayResult.castProgress = castProgress
+	weaveDisplayResult.castElapsed = castElapsed
+	weaveDisplayResult.latency = latency
+	weaveDisplayResult.nextSwingExpiration = nextSwingExpiration
+	weaveDisplayResult.safeStartIn = safeStartIn
+	weaveDisplayResult.clipAmount = clipAmount
+	weaveDisplayResult.safe = safe
+	weaveDisplayResult.isCasting = isCasting
+	weaveDisplayResult.markerFraction = markerFraction
+	weaveDisplayResult.currentSwingFraction = currentSwingFraction
+	weaveDisplayResult.castStartSwingFraction = castStartSwingFraction
+	weaveDisplayResult.projectedImpactFraction = projectedImpactFraction
+	weaveDisplayResult.sparkFraction = sparkFraction
+	weaveDisplayResult.color = color
+	weaveDisplayResult.sparkColor = sparkColor
+	return weaveDisplayResult
 end
 
 --- Get the current weave display info for Shaman class.

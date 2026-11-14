@@ -4,6 +4,68 @@
 > Sections: **Added** / **Changed** / **Fixed** / **Removed** / **Performance** / **Security** / **Docs** / **Internal** / **Notes**
 > DB schema migrations are listed under **Notes** per version.
 
+## v0.3.6 - 2026-11-14
+
+### Changed
+
+- **One 5-second expiring glow across every buff and debuff icon row.** The tracked class icon rows (Paladin, Warrior, Shaman, Druid, Hunter, Rogue — the shared `RenderTrackedBuffIcons` helper serves player buffs and target-debuff entries alike) used to run two different windows: the gold pulse overlay covered the final 4 seconds, but the `LibCustomGlow` `ButtonGlow` animation only covered the final 2, so the animation stopped two seconds before the pulse did. Both cues now run over one `ICON_EXPIRING_GLOW_SECONDS = 5` window, and a respawned icon cannot inherit a stale glow because the hidden-icon path clears both cues.
+- **Native Forever aura rows widened from 4 seconds to 5.** `FOREVER_AURA_GLOW_SECONDS` is the single value behind the buff/proc row (`forever_buffs`) and the target-debuff row (`forever_debuffs`); the `C_CurveUtil` step curve is built from that constant (`AddPoint(0, 0)`, `AddPoint(0.01, 1)`, `AddPoint(5.01, 0)`), so the alpha window and the toggle label cannot drift apart.
+- **The settings text follows the modules instead of a literal.** The Visibility setting is now **Aura Expiring Glow (5s)** and both its label and tooltip read `ns.GetForeverAuraGlowSeconds()`. The six class icon tooltips (Hunter, Warrior, Paladin, Shaman, Druid, Rogue) likewise read `ns.ICON_EXPIRING_GLOW_SECONDS` instead of the hardcoded "last 4 seconds" they shipped with, which is exactly the stale copy a window change would otherwise leave behind.
+
+### Fixed
+
+- **A restricted AuraButton level could leave a glow overlay with no rim at all.** `CreateForeverGlowOverlay` read `AuraButton:GetFrameLevel()` and ran `math.max(level + 8, 12)` in the middle of the same `pcall` that builds the rim. On Forever `GetFrameLevel` is `SecretReturnsForAspect = { Enum.SecretAspect.FrameLevel }`, so a restricted button can answer with a secret number: the arithmetic raised, the `pcall` swallowed it, and the overlay was still registered — but with alpha and no rim, which looks exactly like an icon that simply does not glow while the rows whose buttons answered plainly did. The old `type(level) == "number"` guard was not a secrecy test (a secret number reports `"number"`), so it let the value through.
+  - Overlay setup is now three isolated steps: the frame, then the draw-order level, then the rim and its pulse, so a restricted read can no longer suppress the rim.
+  - The level goes through `ns.SafeNumber`, which probes behaviourally (a raising `math.max` means secret), and falls back to a constant when the button will not answer plainly.
+- **One failing overlay no longer stops the rows behind it.** Every entry now updates inside its own `pcall`. Buff entries are registered before target-debuff entries, so an exception on an earlier entry used to end the update pass and leave the later rows unglowing.
+- **Secret alpha handling made explicit.** The update pass no longer compares the evaluated alpha to `nil` before deciding what to do. It asks `ns.IsSecretValue` first and hands a secret alpha straight to `Frame:SetAlpha`, whose `SecretArguments` is `AllowedWhenTainted` for the Alpha aspect; a secret alpha is never compared, formatted or cached, so it is re-passed on every tick.
+
+### Diagnostics
+
+- **`/sst diag auraGroup` reports glow overlay failures.** The line gains `glowFail=<rim>/<update>` when an overlay's rim could not be built or an update pass threw, which separates "the glow is disabled" from "the rim never got built on this client".
+
+### Notes
+
+- TOC `## Version: v0.3.6`; the `ns.GetDisplayVersion()` fallback in `SuperSwingTimer_Constants.lua` and the harness TOC mock in `run_tests.lua` are bumped with it.
+- Headless test suite: 210 tests passed, 0 failures; 0 luacheck warnings / 0 errors across 15 files.
+- New regression test `AuraIconExpiringGlowWindowIsShared` pins one window for both icon families. `ForeverAura_ExpiringGlowCurveContract` now asserts `1` inside the window and `0` above `5s` instead of the retired `4s` boundary.
+- New glow overlay pins: `GlowOverlayRimSurvivesRestrictedButtonLevel` (a button whose level raises on arithmetic still builds the rim, at the fallback level), `GlowSecretAlphaIsPassedThroughEveryTick` (a secret alpha reaches `SetAlpha` unchanged on every tick instead of being cached), and `GlowEntryFailureDoesNotStopFollowingRows` (a raising entry leaves the next row glowing). Reverting the overlay structure or the loop isolation fails the rim and isolation pins respectively; the suite reported 210 tests.
+
+## v0.3.5 - 2026-11-12
+
+### Added
+
+- **Forever Aura 4-second expiring glow.** Native Forever buff/proc (`forever_buffs`) and target debuff (`forever_debuffs`) aura rows now glow gold during their final 4 seconds using a secret-safe `C_CurveUtil.CreateCurve()` step curve evaluated against the persistent `LuaDurationObject` exposed by `StatusBar:GetTimerDuration()` (`durationBar` on debuffs and an invisible `1×1` proxy `StatusBar` attached via `frame:SetDurationBar()` on buff buttons), rendered on an external `UIParent`-owned overlay frame (`foreverGlowHost`) so Blizzard `CustomAuraButton` security/layout boundaries remain untouched. Toggled via **Aura Expiring Glow (4s)** (`showForeverAuraGlow`) in Visibility settings and `/sst glow`.
+- **Paladin Seal-Twist Bar Mechanics (`SwedgeTimer` parity).**
+  - Added pure, client-agnostic helpers `ns.GetPaladinTwistWindowSeconds` (`None` / `Fixed` / `Dynamic` latency padding, `0.2s` SoD vs `0.4s` baseline, `0.8s` cap), `ns.IsPaladinTwistImpossible`, and `ns.GetPaladinResealMarkerFraction`.
+  - `UpdateSealBreakpointLine` now renders a dynamic twist-zone state machine: success flash → impossible-twist ("Don't Twist") warning when GCD + calibrated lag cannot clear before the swing lands → attempt flash → 2-seal armed pulse (`sin(now * 8)`) → inside-window highlight → idle.
+  - Multi-seal swings trigger a brief `LibCustomGlow` main-hand bar glow (`showPaladinTwistGlow`).
+  - Added **Don't Twist Warning**, **Twist Bar Glow**, and **Dynamic Twist Padding** toggles to Paladin Class settings.
+
+### Changed
+
+- **Event-driven Hunter range helper (`hunterRangeHelperBar`).** Registers `PLAYER_SWING_RANGE_UPDATE` on native swing clients, keeps `C_SwingTimer.EnableRangeCheck` active even when Blizzard's default swing bars are hidden via CVar (`showSwingTimer = "0"`), updates immediately on movement (`PLAYER_STARTED_MOVING` / `PLAYER_STOPPED_MOVING`), target changes, and swing-range events, adds `C_Spell.IsSpellInRange` + spell ID fallbacks (`2974` Wing Clip, `2973` Raptor Strike, `75` Auto Shot, `3044` Arcane Shot), and skips `CheckInteractDistance` during restricted Forever combat lockdown.
+
+### Fixed
+
+- **Hunter `IsSpellTokenInRange` on 12.0+ / Forever clients.** Added `C_Spell.IsSpellInRange` (boolean return) support alongside legacy global `IsSpellInRange` (`== 1`) and `ns.IsSecretValue` guards in `SuperSwingTimer_ClassMods.lua`, preventing melee/ranged spell checks from returning `nil` or touching secret values on Forever.
+- **Paladin reseal & Judgement marker wrap-around.** Removed the `while > 1` modulo wrap in `UpdateSealBreakpointLine` and `UpdateJudgementMarker` — GCDs or Judgement cooldowns that clear after the current swing lands now hide cleanly instead of wrapping onto the current swing bar.
+
+### Removed
+
+- **Removed Forever bottom Hunter target-distance bar** (`showHunterDistanceBar` / `foreverHunterDistanceBar`) from `SuperSwingTimer_Forever.lua`, `SuperSwingTimer_Constants.lua`, `SuperSwingTimer_Config.lua`, `SuperSwingTimer_Diag.lua`, and the test suite in favor of the left-side `hunterRangeHelperBar`.
+
+### Performance
+
+- **Consolidated all 6 class buff-icon updaters** (`Paladin`, `Warrior`, `Shaman`, `Druid`, `Hunter`, `Rogue`) into a shared zero-allocation `RenderTrackedBuffIcons` helper with pre-allocated scratch tables, scalar icon metadata, and geometry/text/glow caches.
+- **Added per-frame frame/layout caching and throttling** across hot render paths: debounced `ns.SetUpdateEnabled` transitions, transition-cached `SetBarLabelShown`, `UpdateRangedBar` / `UpdateMeleeBar` (`SetMinMaxValues`, scalar RGBA, `0.1s` channel countdown), `UpdateGcdTicker`, `UpdatePlayerPowerBar` (while preserving secret pass-through), `UpdateHunterRangeHelperVisual` (`0.05s` polling + anchor/width/RGBA caches), and paused `foreverGlowHost` when disabled or empty.
+- **0.5 px geometry caching** on `sealTwistBreakpoint`, `sealTwistResealBreakpoint`, and `paladinJudgementMarker` in `SuperSwingTimer_ClassMods.lua` to skip redundant `ClearAllPoints` / `SetPoint` / `SetWidth` layout churn on unchanged frames.
+
+### Notes
+
+- TOC `## Version: v0.3.5`; the TOC-metadata helper, settings-panel fallbacks, harness mock, and TOC test assertion move together.
+- Headless test suite: 206 tests passed, 0 failures; 0 luacheck warnings / 0 errors across 15 files.
+
 ## v0.3.4 - 2026-11-12
 
 ### Added

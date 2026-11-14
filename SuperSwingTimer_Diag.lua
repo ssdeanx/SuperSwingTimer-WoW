@@ -456,20 +456,37 @@ addCheck("auraGroup", "aura groups", function()
     if d.initError then
         parts[#parts + 1] = "err=" .. tostring(d.initError)
     end
+    if type(ns.GetForeverAuraGlowCount) == "function" then
+        parts[#parts + 1] = "glowCount=" .. tostring(ns.GetForeverAuraGlowCount())
+    end
+    -- Separate "glow is off" from "the rim never got built": a bare overlay
+    -- frame carries alpha but no rim, which looks identical to a dead glow.
+    if type(ns.GetForeverAuraGlowFailures) == "function" then
+        local artFailures, updateFailures = ns.GetForeverAuraGlowFailures()
+        if (artFailures or 0) > 0 or (updateFailures or 0) > 0 then
+            parts[#parts + 1] = "glowFail=" .. tostring(artFailures) .. "/" .. tostring(updateFailures)
+        end
+    end
     if d.nativeActive then
         return "ok", table_concat(parts, " ")
     end
     return "warn", table_concat(parts, " ")
 end)
 
-addCheck("distance", "hunter distance", function()
-    if not (ns.isForever and ns.playerClass == "HUNTER") then
-        return "skip", "not a Forever Hunter"
+addCheck("distance", "hunter range", function()
+    if ns.playerClass ~= "HUNTER" then
+        return "skip", "not a Hunter"
     end
-    local apiCreature = type(rawget(_G, "UnitCreatureID")) == "function"
-        and type(rawget(_G, "ClosestUnitPosition")) == "function"
-    local apiUnit = type(rawget(_G, "UnitDistanceSquared")) == "function"
-    local apiPos = type(rawget(_G, "UnitPosition")) == "function"
+    local db = rawget(_G, "SuperSwingTimerDB")
+    local enabled = not (db and db.showHunterRangeHelper == false)
+    local bar = ns.hunterRangeHelperBar
+    local visible = false
+    if bar and bar.GetAlpha then
+        local ok, alpha = pcall(bar.GetAlpha, bar)
+        if ok and not ns.IsSecretValue(alpha) and type(alpha) == "number" then
+            visible = alpha > 0
+        end
+    end
     local band = nil
     if type(ns.GetHunterRangeState) == "function" then
         local ok, value = pcall(ns.GetHunterRangeState, false)
@@ -477,38 +494,12 @@ addCheck("distance", "hunter distance", function()
             band = value
         end
     end
-    local db = rawget(_G, "SuperSwingTimerDB")
-    local enabled = not (db and db.showHunterDistanceBar == false)
-    local bar = ns.foreverHunterDistanceBar
-    local shown = false
-    if bar and bar.IsShown then
-        local ok, value = pcall(bar.IsShown, bar)
-        if ok and not ns.IsSecretValue(value) then
-            shown = value == true
-        end
-    end
-
-    -- Raw source readout: which distance API answered for this target, the
-    -- band that exact reading resolves to, and whether the value is secret
-    -- (secret values are never inspected).
-    local rawValue, _, rawSecret, rawSource = ns.ReadForeverTargetDistance()
-    local distanceText = "nil"
-    local exactBand = "nil"
-    if rawSecret then
-        distanceText = "secret"
-    elseif type(rawValue) == "number" then
-        -- Every plain reading is already linear yards.
-        distanceText = string_format("%.1fyd", rawValue)
-        if type(ns.GetForeverDistanceBandFromYards) == "function" then
-            exactBand = tostring(ns.GetForeverDistanceBandFromYards(rawValue))
-        end
-    end
-
+    local cSwingTimer = rawget(_G, "C_SwingTimer")
+    local swingRangeApi = type(cSwingTimer) == "table" and type(cSwingTimer.IsTargetWithinSwingRange) == "function"
     local detail = string_format(
-        "apiCreature=%s apiUnit=%s apiPos=%s enabled=%s band=%s exactBand=%s bar=%s src=%s dist=%s",
-        tostring(apiCreature), tostring(apiUnit), tostring(apiPos), tostring(enabled),
-        tostring(band), exactBand, tostring(shown), tostring(rawSource), distanceText)
-    if enabled and shown and rawSource then
+        "enabled=%s visible=%s band=%s swingRangeApi=%s",
+        tostring(enabled), tostring(visible), tostring(band), tostring(swingRangeApi))
+    if not enabled or visible then
         return "ok", detail
     end
     return "warn", detail

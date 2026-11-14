@@ -327,6 +327,8 @@ ns.FOREVER_STANCE_SPELLS = {
     HUNTER = {
         -- Aspect of the Hawk r1-r8
         27044, 25296, 14322, 14321, 14320, 14319, 14318, 13165,
+        -- Aspect of the Dragonhawk r1-r2 / Aspect of the Fox
+        61847, 61846, 82661,
         -- Aspect of the Viper
         34074,
         -- Aspect of the Monkey
@@ -335,8 +337,8 @@ ns.FOREVER_STANCE_SPELLS = {
         5118, 13159,
         -- Aspect of the Beast (Forever r1-r4 + Classic ID)
         1299447, 1299446, 1299445, 13161, 13171,
-        -- Aspect of the Wild r1-r2
-        20190, 20043,
+        -- Aspect of the Wild r1-r4
+        49071, 27045, 20190, 20043,
     },
     WARRIOR = {
         2457,  -- Battle Stance
@@ -776,11 +778,14 @@ local function CreateLowTimeTextColor()
     end
 
     -- RemainingDuration is expressed in seconds. Red at 0-4s, white above.
+    local createColor = GetGlobal("CreateColor")
     local pointsOk = pcall(function()
-        curve:AddPoint(0, { r = 1, g = 0.25, b = 0.25, a = 1 })
-        curve:AddPoint(4, { r = 1, g = 0.25, b = 0.25, a = 1 })
-        curve:AddPoint(4.01, { r = 1, g = 1, b = 1, a = 0.95 })
-        curve:AddPoint(3600, { r = 1, g = 1, b = 1, a = 0.95 })
+        local red = createColor and createColor(1, 0.25, 0.25, 1) or { r = 1, g = 0.25, b = 0.25, a = 1 }
+        local white = createColor and createColor(1, 1, 1, 0.95) or { r = 1, g = 1, b = 1, a = 0.95 }
+        curve:AddPoint(0, red)
+        curve:AddPoint(4, red)
+        curve:AddPoint(4.01, white)
+        curve:AddPoint(3600, white)
     end)
     if not pointsOk then
         return nil
@@ -799,17 +804,427 @@ local function GetLowTimeTextColor()
     return LOW_TIME_TEXT_COLOR
 end
 
+-- Final-seconds window in which the native buff/proc and target-debuff rows
+-- glow gold. Matches the tracked-icon glow window in SuperSwingTimer_ClassMods.lua
+-- so every aura icon row on every client expires with the same 5-second cue.
+local FOREVER_AURA_GLOW_SECONDS = 5.0
+local FOREVER_AURA_GLOW_INTERVAL = 0.05
+local FOREVER_GLOW_TEXTURE = "Interface\\Buttons\\WHITE8X8"
+local expiringGlowCurve = nil
+local foreverGlowHost = nil
+local foreverGlowEntries = {}
+local glowUpdateTimer = 0
+
+-- Draw order used when the anchored AuraButton's level cannot be read as a
+-- plain number. Our own aura containers sit at the default level inside the
+-- AURA_FRAME_STRATA band, so this keeps the rim above them.
+local FOREVER_GLOW_FALLBACK_LEVEL = 100
+
+-- Counts overlays whose rim could not be built, and update passes that threw.
+-- /sst diag auraGroup reports both, because a bare overlay frame has alpha but
+-- no rim, which looks exactly like "the icon just doesn't glow".
+local glowArtFailures = 0
+local glowUpdateFailures = 0
+
+local function IsForeverAuraGlowEnabled()
+    local db = GetDB()
+    if db and db.showForeverAuraGlow == false then
+        return false
+    end
+    if db and db.showGlowEffects == false then
+        return false
+    end
+    return true
+end
+
+local function IsForeverGlowGroupVisible(groupKey)
+    local db = GetDB()
+    if not db then
+        return true
+    end
+    if groupKey == "forever_debuffs" then
+        return db.showForeverDebuffIcons ~= false
+    end
+    if groupKey == "forever_buffs" then
+        local key = BUFF_TOGGLE_BY_CLASS[ns.playerClass]
+        if key then
+            return db[key] ~= false
+        end
+    end
+    return true
+end
+
+--- Step curve returning 0 for empty/cleared/permanent auras (0s) and above
+--  FOREVER_AURA_GLOW_SECONDS, and 1 during that final window before expiry.
+--  Uses CreateCurve (LuaCurveObject) so LuaDurationObject:EvaluateRemainingDuration
+--  outputs an AllowedWhenTainted scalar suitable for Frame:SetAlpha without Lua branching.
+local function GetForeverExpiringGlowCurve()
+    if expiringGlowCurve then
+        return expiringGlowCurve
+    end
+    local curveUtil = GetGlobal("C_CurveUtil")
+    if type(curveUtil) ~= "table" or type(curveUtil.CreateCurve) ~= "function" then
+        return nil
+    end
+    local ok, curve = pcall(curveUtil.CreateCurve)
+    if not ok or not curve then
+        return nil
+    end
+    local enumTbl = GetGlobal("Enum")
+    local stepType = enumTbl and enumTbl.LuaCurveType and enumTbl.LuaCurveType.Step
+    if stepType ~= nil and type(curve.SetType) == "function" then
+        pcall(curve.SetType, curve, stepType)
+    end
+    local addOk = pcall(function()
+        curve:AddPoint(0, 0)
+        curve:AddPoint(0.01, 1)
+        curve:AddPoint(FOREVER_AURA_GLOW_SECONDS + 0.01, 0)
+    end)
+    if not addOk then
+        return nil
+    end
+    expiringGlowCurve = curve
+    return curve
+end
+
+local function ResolveEntryDurationObj(entry)
+    local dur = entry and entry.durationObj or nil
+    if dur then
+        return dur
+    end
+    local durBar = entry and entry.durationBar or nil
+    if durBar and type(durBar.GetTimerDuration) == "function" then
+        local ok, fetched = pcall(durBar.GetTimerDuration, durBar)
+        if ok and fetched then
+            entry.durationObj = fetched
+            return fetched
+        end
+    end
+    return nil
+end
+
+local function ApplyForeverGlowHostState()
+    if not foreverGlowHost then
+        return
+    end
+    local shouldRun = IsForeverAuraGlowEnabled()
+        and #foreverGlowEntries > 0
+        and (IsForeverGlowGroupVisible("forever_buffs") or IsForeverGlowGroupVisible("forever_debuffs"))
+    if shouldRun then
+        pcall(foreverGlowHost.Show, foreverGlowHost)
+    else
+        pcall(foreverGlowHost.Hide, foreverGlowHost)
+    end
+end
+
+local function SetEntryOverlayAlpha(entry, alpha, isPlain)
+    local overlay = entry.overlay
+    if not overlay or not overlay.SetAlpha then
+        return
+    end
+    if isPlain then
+        if entry.lastPlainAlpha == alpha then
+            return
+        end
+        entry.lastPlainAlpha = alpha
+    else
+        entry.lastPlainAlpha = nil
+    end
+    pcall(overlay.SetAlpha, overlay, alpha)
+end
+
+--- Refresh one overlay from its duration object.
+--  Kept as a named function (not a per-tick closure) so the isolated call below
+--  allocates nothing. A secret alpha is handed straight to SetAlpha, which is
+--  SecretArguments = AllowedWhenTainted for the Alpha aspect; it is never
+--  compared, formatted or cached.
+--  @param entry (table) Registered glow entry
+--  @param curve (LuaCurveObject|nil) Step curve, nil when the client has none
+--  @param buffVisible (boolean) Player buff row toggle state
+--  @param debuffVisible (boolean) Target debuff row toggle state
+local function UpdateGlowEntry(entry, curve, buffVisible, debuffVisible)
+    local dur = ResolveEntryDurationObj(entry)
+    local groupVisible = true
+    if entry.groupKey == "forever_buffs" then
+        groupVisible = buffVisible
+    elseif entry.groupKey == "forever_debuffs" then
+        groupVisible = debuffVisible
+    end
+    if not groupVisible or not curve or not dur
+        or type(dur.EvaluateRemainingDuration) ~= "function" then
+        SetEntryOverlayAlpha(entry, 0, true)
+        return
+    end
+    local evalOk, alpha = pcall(dur.EvaluateRemainingDuration, dur, curve)
+    if not evalOk then
+        SetEntryOverlayAlpha(entry, 0, true)
+    elseif ns.IsSecretValue(alpha) then
+        SetEntryOverlayAlpha(entry, alpha, false)
+    elseif type(alpha) == "number" then
+        SetEntryOverlayAlpha(entry, alpha, true)
+    else
+        SetEntryOverlayAlpha(entry, 0, true)
+    end
+end
+
+local function UpdateForeverGlowEntries()
+    if #foreverGlowEntries == 0 then
+        return
+    end
+    if not IsForeverAuraGlowEnabled() then
+        for i = 1, #foreverGlowEntries do
+            SetEntryOverlayAlpha(foreverGlowEntries[i], 0, true)
+        end
+        return
+    end
+
+    local curve = GetForeverExpiringGlowCurve()
+    local buffVisible = IsForeverGlowGroupVisible("forever_buffs")
+    local debuffVisible = IsForeverGlowGroupVisible("forever_debuffs")
+
+    for i = 1, #foreverGlowEntries do
+        -- Per-entry isolation: one restricted overlay must not stop the rows
+        -- behind it from updating. Buff entries are registered first, so a
+        -- raise here used to leave the whole target-debuff row unglowing.
+        if not pcall(UpdateGlowEntry, foreverGlowEntries[i], curve, buffVisible, debuffVisible) then
+            glowUpdateFailures = glowUpdateFailures + 1
+            SetEntryOverlayAlpha(foreverGlowEntries[i], 0, true)
+        end
+    end
+end
+
+local function OnForeverGlowHostUpdate(_, elapsed)
+    if #foreverGlowEntries == 0 then
+        return
+    end
+    glowUpdateTimer = glowUpdateTimer + (elapsed or 0)
+    if glowUpdateTimer < FOREVER_AURA_GLOW_INTERVAL then
+        return
+    end
+    glowUpdateTimer = 0
+    UpdateForeverGlowEntries()
+end
+
+local function EnsureForeverGlowHost()
+    if foreverGlowHost then
+        return foreverGlowHost
+    end
+    local ok, host = pcall(CreateFrame, "Frame", nil, UIParent)
+    if not ok or not host then
+        return nil
+    end
+    pcall(function()
+        host:SetSize(1, 1)
+        host:SetPoint("CENTER")
+        host:SetFrameStrata(AURA_FRAME_STRATA)
+        host:EnableMouse(false)
+        host:SetScript("OnUpdate", OnForeverGlowHostUpdate)
+        host:Hide()
+    end)
+    foreverGlowHost = host
+    return host
+end
+
+local function AddGlowRimEdges(parent, padOuter, thickness, r, g, b, a)
+    local top = parent:CreateTexture(nil, "OVERLAY", nil, 6)
+    top:SetColorTexture(r, g, b, a)
+    top:SetBlendMode("ADD")
+    top:SetPoint("TOPLEFT", parent, "TOPLEFT", -padOuter, padOuter)
+    top:SetPoint("TOPRIGHT", parent, "TOPRIGHT", padOuter, padOuter)
+    top:SetHeight(thickness)
+
+    local bottom = parent:CreateTexture(nil, "OVERLAY", nil, 6)
+    bottom:SetColorTexture(r, g, b, a)
+    bottom:SetBlendMode("ADD")
+    bottom:SetPoint("BOTTOMLEFT", parent, "BOTTOMLEFT", -padOuter, -padOuter)
+    bottom:SetPoint("BOTTOMRIGHT", parent, "BOTTOMRIGHT", padOuter, -padOuter)
+    bottom:SetHeight(thickness)
+
+    local left = parent:CreateTexture(nil, "OVERLAY", nil, 6)
+    left:SetColorTexture(r, g, b, a)
+    left:SetBlendMode("ADD")
+    left:SetPoint("TOPLEFT", parent, "TOPLEFT", -padOuter, padOuter - thickness)
+    left:SetPoint("BOTTOMLEFT", parent, "BOTTOMLEFT", -padOuter, -padOuter + thickness)
+    left:SetWidth(thickness)
+
+    local right = parent:CreateTexture(nil, "OVERLAY", nil, 6)
+    right:SetColorTexture(r, g, b, a)
+    right:SetBlendMode("ADD")
+    right:SetPoint("TOPRIGHT", parent, "TOPRIGHT", padOuter, padOuter - thickness)
+    right:SetPoint("BOTTOMRIGHT", parent, "BOTTOMRIGHT", padOuter, -padOuter + thickness)
+    right:SetWidth(thickness)
+end
+
+--- Resolve the draw-order level for a glow overlay.
+--  An AuraButton's frame level is SecretReturnsForAspect FrameLevel on Forever
+--  (SimpleFrameAPIDocumentation), so it can come back as a restricted number
+--  that raises on math.max. ns.SafeNumber probes the value behaviourally and
+--  answers nil, and the caller then uses a constant instead of guessing.
+--  @param auraFrame (Frame|nil) Anchored AuraButton
+--  @return (number) Plain frame level for the overlay
+local function ResolveGlowOverlayLevel(auraFrame)
+    if not (auraFrame and auraFrame.GetFrameLevel) then
+        return FOREVER_GLOW_FALLBACK_LEVEL
+    end
+    local ok, level = pcall(auraFrame.GetFrameLevel, auraFrame)
+    if not ok then
+        return FOREVER_GLOW_FALLBACK_LEVEL
+    end
+    local plainLevel = ns.SafeNumber(level, nil)
+    if type(plainLevel) ~= "number" then
+        return FOREVER_GLOW_FALLBACK_LEVEL
+    end
+    return math.max(plainLevel + 8, 12)
+end
+
+--- Create an addon-owned expiring glow overlay anchored to an AuraButton.
+--  IMPORTANT (anti-taint): this frame is parented to EnsureForeverGlowHost()
+--  (UIParent), NEVER to Blizzard's AuraButton, and owns zero Lua scripts on the
+--  anchored frame so ForbiddenAspect.UntrustedScriptExecution and
+--  UntrustedLayoutScriptExecution cannot break or taint the AuraContainer.
+local function CreateForeverGlowOverlay(auraFrame, width, height, groupKey, durationObj, durationBar)
+    local host = EnsureForeverGlowHost()
+    if not host or not auraFrame or (not durationObj and not durationBar) then
+        return nil
+    end
+    local ok, overlay = pcall(CreateFrame, "Frame", nil, host, "DisableUntrustedLayoutScriptsTemplate")
+    if not ok or not overlay then
+        ok, overlay = pcall(CreateFrame, "Frame", nil, host)
+    end
+    if not ok or not overlay then
+        return nil
+    end
+    ---@cast overlay Frame
+
+    -- Step 1: the container frame. Its own operations cannot raise on secret
+    -- aura data, so they stay out of the rim's pcall.
+    pcall(function()
+        overlay:SetSize(width, height)
+        overlay:SetPoint("CENTER", auraFrame, "CENTER", 0, 0)
+        overlay:SetFrameStrata(AURA_FRAME_STRATA)
+        overlay:EnableMouse(false)
+        overlay:SetAlpha(0)
+    end)
+
+    -- Step 2: draw order, on its own. This used to sit in the middle of the
+    -- single setup pcall with math.max on the button's level, so a restricted
+    -- level aborted the rim and left a bare, invisible overlay.
+    local overlayLevel = ResolveGlowOverlayLevel(auraFrame)
+    pcall(overlay.SetFrameLevel, overlay, overlayLevel)
+
+    -- Step 3: the visible rim and its pulse. This is what makes the icon look
+    -- like it glows, so it gets its own pcall and a counter: a bare overlay
+    -- with alpha but no rim is indistinguishable from a missing glow.
+    local artOk = pcall(function()
+        local frameOk, artFrame = pcall(CreateFrame, "Frame", nil, overlay)
+        local texTarget = (frameOk and artFrame) or overlay
+        ---@cast texTarget Frame
+        if frameOk and artFrame then
+            ---@cast artFrame Frame
+            artFrame:SetAllPoints(overlay)
+            artFrame:EnableMouse(false)
+            if artFrame.SetFrameLevel then
+                artFrame:SetFrameLevel(overlayLevel)
+            end
+        end
+
+        if texTarget.CreateTexture then
+            -- Outer warm gold halo + crisp bright additive gold rim.
+            AddGlowRimEdges(texTarget, 3, 2, 1.0, 0.72, 0.12, 0.55)
+            AddGlowRimEdges(texTarget, 1, 2, 1.0, 0.92, 0.35, 1.0)
+            local cornerWash = texTarget:CreateTexture(nil, "OVERLAY", nil, 5)
+            if cornerWash and cornerWash.SetTexture then
+                cornerWash:SetAllPoints(texTarget)
+                cornerWash:SetColorTexture(1.0, 0.85, 0.25, 0.18)
+                cornerWash:SetBlendMode("ADD")
+            end
+        end
+
+        if frameOk and artFrame and type(artFrame.CreateAnimationGroup) == "function" then
+            local agOk, ag = pcall(artFrame.CreateAnimationGroup, artFrame)
+            if agOk and ag and type(ag.CreateAnimation) == "function" then
+                local animOk, anim = pcall(ag.CreateAnimation, ag, "Alpha")
+                if animOk and anim then
+                    if anim.SetFromAlpha then anim:SetFromAlpha(1.0) end
+                    if anim.SetToAlpha then anim:SetToAlpha(0.35) end
+                    if anim.SetDuration then anim:SetDuration(0.4) end
+                    if anim.SetOrder then anim:SetOrder(1) end
+                    if ag.SetLooping then ag:SetLooping("BOUNCE") end
+                    if ag.Play then ag:Play() end
+                end
+            end
+        end
+    end)
+    if not artOk then
+        glowArtFailures = glowArtFailures + 1
+    end
+
+    foreverGlowEntries[#foreverGlowEntries + 1] = {
+        overlay = overlay,
+        durationObj = durationObj,
+        durationBar = durationBar,
+        groupKey = groupKey,
+        lastPlainAlpha = 0,
+    }
+    ApplyForeverGlowHostState()
+    return overlay
+end
+
+local function ResizeForeverGlowOverlays(groupKey, width, height)
+    for i = 1, #foreverGlowEntries do
+        local entry = foreverGlowEntries[i]
+        if entry.groupKey == groupKey and entry.overlay and entry.overlay.SetSize then
+            pcall(entry.overlay.SetSize, entry.overlay, width, height)
+        end
+    end
+end
+
+function ns.RefreshForeverAuraGlows()
+    ApplyForeverGlowHostState()
+    UpdateForeverGlowEntries()
+end
+
+function ns.GetForeverAuraGlowCount()
+    return #foreverGlowEntries
+end
+
+--- Report glow overlay failures: rim builds that threw, then update passes that
+--  threw. /sst diag uses this to tell "the glow is disabled" apart from "the
+--  rim never got built on this client".
+function ns.GetForeverAuraGlowFailures()
+    return glowArtFailures, glowUpdateFailures
+end
+ns.GetForeverExpiringGlowCurve = GetForeverExpiringGlowCurve
+ns.FOREVER_GLOW_TEXTURE = FOREVER_GLOW_TEXTURE
+
+--- Read the expiring-glow window so the settings label and the headless suite
+--  report the value the curve actually uses.
+function ns.GetForeverAuraGlowSeconds()
+    return FOREVER_AURA_GLOW_SECONDS
+end
+
 --- Create and register one styled aura button.
---  Runs inside securecallfunction from the frame provider, so every widget
---  call is pcall-protected: a failure leaves the frame without that element
---  instead of aborting the whole container.
+--  Runs inside securecallfunction from the frame provider BEFORE
+--  ApplyAccessRestrictions locks the button; every setup call must happen here.
 --  @param frame (Frame) AuraButton created by the container
---  @param options (table) size / withBar / withCooldown flags
+--  @param options (table) size / withBar / withCooldown / withGlow / isSlot flags
 local function StyleAuraButton(frame, options)
     local width = options.width or options.size
     local height = options.height or options.size
     local ok = pcall(function()
         frame:SetSize(width, height)
+        if options.isSlot then
+            -- Anchor the single-slot indicator to its container BEFORE
+            -- ApplyAccessRestrictions locks it, and hide until an aura assigns.
+            local parent = frame.GetParent and frame:GetParent() or nil
+            if parent then
+                frame:ClearAllPoints()
+                frame:SetAllPoints(parent)
+            end
+            if frame.Hide then
+                frame:Hide()
+            end
+        end
     end)
     if not ok then
         return
@@ -852,7 +1267,9 @@ local function StyleAuraButton(frame, options)
             durationText:SetJustifyH("CENTER")
             durationText:SetFont(GetFontPath(), 12, "OUTLINE")
             durationText:SetTextColor(1, 1, 1, 0.95)
-            frame:SetDurationText(durationText, { textColor = GetLowTimeTextColor() })
+            local lowTimeColor = GetLowTimeTextColor()
+            local textOpts = lowTimeColor and { textColor = lowTimeColor } or nil
+            frame:SetDurationText(durationText, textOpts)
         end)
     end
 
@@ -866,6 +1283,7 @@ local function StyleAuraButton(frame, options)
         frame:SetApplicationCount(countText)
     end)
 
+    local durationBar = nil
     -- Optional thin duration bar under the icon (debuff group).
     if options.withBar then
         pcall(function()
@@ -892,10 +1310,11 @@ local function StyleAuraButton(frame, options)
                 opts = { direction = direction.RemainingTime }
             end
             frame:SetDurationBar(bar, opts)
+            durationBar = bar
         end)
     end
 
-    -- Optional cooldown sweep (buff group), matching the classic urgency cue.
+    -- Optional cooldown sweep (buff/debuff groups), matching the classic urgency cue.
     if options.withCooldown then
         pcall(function()
             local cooldown
@@ -913,6 +1332,45 @@ local function StyleAuraButton(frame, options)
             cooldown:SetAllPoints()
             frame:SetDurationCooldown(cooldown)
         end)
+    end
+
+    -- Secret-safe expiring glow via external UIParent-owned overlay (never
+    -- for permanent stance/aspect slots). CustomAuraButtonInboundMixin does NOT
+    -- expose private GetAuraDuration(), so read the persistent LuaDurationObject
+    -- from a StatusBar attached via SetDurationBar() (creating an invisible 1x1
+    -- proxy bar on buff rows that omit the visible duration strip).
+    if options.withGlow and not options.isSlot then
+        local durationObj = nil
+        if type(frame.GetAuraDuration) == "function" then
+            local durOk, dur = pcall(frame.GetAuraDuration, frame)
+            if durOk and dur then
+                durationObj = dur
+            end
+        end
+        if not durationObj and not durationBar and type(frame.SetDurationBar) == "function" then
+            pcall(function()
+                local proxy = CreateFrame("StatusBar", nil, frame)
+                proxy:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, 0)
+                proxy:SetSize(1, 1)
+                proxy:SetAlpha(0)
+                if proxy.EnableMouse then
+                    proxy:EnableMouse(false)
+                end
+                proxy:SetMinMaxValues(0, 1)
+                proxy:SetValue(0)
+                frame:SetDurationBar(proxy)
+                durationBar = proxy
+            end)
+        end
+        if not durationObj and durationBar and type(durationBar.GetTimerDuration) == "function" then
+            local timerOk, dur = pcall(durationBar.GetTimerDuration, durationBar)
+            if timerOk and dur then
+                durationObj = dur
+            end
+        end
+        if durationObj or (durationBar and type(durationBar.GetTimerDuration) == "function") then
+            CreateForeverGlowOverlay(frame, width, height, options.glowGroupKey, durationObj, durationBar)
+        end
     end
 end
 
@@ -1258,7 +1716,148 @@ local function EnsureShapeshiftIcon()
     return frame
 end
 
+local STANCE_SPELL_PATTERNS_BY_CLASS = {
+    HUNTER = { "^Aspect of " },
+    PALADIN = { "^Seal of " },
+    WARRIOR = { " Stance$" },
+    DRUID = { " Form$", "^Tree of Life" },
+    ROGUE = { "^Stealth" },
+}
+
+local function MatchesAnyPattern(name, patterns)
+    if type(name) ~= "string" or not patterns then
+        return false
+    end
+    for _, pat in ipairs(patterns) do
+        if string.find(name, pat) then
+            return true
+        end
+    end
+    return false
+end
+
+--- Merge static class stance/aspect IDs with dynamically discovered spellbook and
+--  shapeshift-bar IDs so custom WoW Forever ranks/aspects are always included.
+local function DiscoverPlayerStanceSpells(className, baseList)
+    local merged = {}
+    if type(baseList) == "table" then
+        AppendUnique(merged, baseList)
+    end
+
+    local getNumForms = GetGlobal("GetNumShapeshiftForms")
+    local getFormInfo = GetGlobal("GetShapeshiftFormInfo")
+    if type(getNumForms) == "function" and type(getFormInfo) == "function" then
+        local okNum, numForms = pcall(getNumForms)
+        if okNum and not ns.IsSecretValue(numForms) and type(numForms) == "number" and numForms > 0 then
+            for i = 1, numForms do
+                local ok, _, _, _, spellID = pcall(getFormInfo, i)
+                local safeID = ok and ns.SafeNumber and ns.SafeNumber(spellID) or nil
+                if type(safeID) == "number" and safeID > 0 then
+                    AppendUnique(merged, { safeID })
+                end
+            end
+        end
+    end
+
+    local patterns = STANCE_SPELL_PATTERNS_BY_CLASS[className]
+    if not patterns then
+        return merged
+    end
+
+    local cSpellBook = GetGlobal("C_SpellBook")
+    if type(cSpellBook) == "table" and type(cSpellBook.GetNumSpellBookSkillLines) == "function"
+        and type(cSpellBook.GetSpellBookSkillLineInfo) == "function"
+        and type(cSpellBook.GetSpellBookItemInfo) == "function" then
+        local bankEnum = GetGlobal("Enum")
+        local playerBank = bankEnum and bankEnum.SpellBookSpellBank and bankEnum.SpellBookSpellBank.Player or 0
+        local okLines, numLines = pcall(cSpellBook.GetNumSpellBookSkillLines)
+        if okLines and type(numLines) == "number" then
+            for lineIdx = 1, numLines do
+                local okLine, lineInfo = pcall(cSpellBook.GetSpellBookSkillLineInfo, lineIdx)
+                if okLine and type(lineInfo) == "table" and not lineInfo.isGuild and not lineInfo.offSpecID then
+                    local offset = lineInfo.itemIndexOffset or 0
+                    local count = lineInfo.numSpellBookItems or 0
+                    for slot = offset + 1, offset + count do
+                        local okItem, itemInfo = pcall(cSpellBook.GetSpellBookItemInfo, slot, playerBank)
+                        if okItem and type(itemInfo) == "table" and not itemInfo.isPassive then
+                            local sID = ns.SafeNumber and ns.SafeNumber(itemInfo.spellID or itemInfo.actionID) or nil
+                            local sName = ns.SafeString and ns.SafeString(itemInfo.name) or nil
+                            if not sName and sID and ns.GetSpellInfo then
+                                sName = ns.GetSpellInfo(sID)
+                            end
+                            if type(sID) == "number" and sID > 0 and MatchesAnyPattern(sName, patterns) then
+                                AppendUnique(merged, { sID })
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    else
+        local getNumTabs = GetGlobal("GetNumSpellTabs")
+        local getTabInfo = GetGlobal("GetSpellTabInfo")
+        local getItemInfo = GetGlobal("GetSpellBookItemInfo")
+        local getItemName = GetGlobal("GetSpellBookItemName")
+        if type(getNumTabs) == "function" and type(getTabInfo) == "function"
+            and type(getItemInfo) == "function" then
+            local bookSpell = GetGlobal("BOOKTYPE_SPELL") or "spell"
+            local okTabs, numTabs = pcall(getNumTabs)
+            if okTabs and type(numTabs) == "number" then
+                for tabIdx = 1, numTabs do
+                    local okTab, _, _, offset, count = pcall(getTabInfo, tabIdx)
+                    if okTab and type(offset) == "number" and type(count) == "number" then
+                        for slot = offset + 1, offset + count do
+                            local okItem, _, sID = pcall(getItemInfo, slot, bookSpell)
+                            local safeID = okItem and ns.SafeNumber and ns.SafeNumber(sID) or nil
+                            if type(safeID) == "number" and safeID > 0 then
+                                local sName = nil
+                                if type(getItemName) == "function" then
+                                    local okName, rawName = pcall(getItemName, slot, bookSpell)
+                                    if okName then
+                                        sName = rawName
+                                    end
+                                end
+                                sName = ns.SafeString and ns.SafeString(sName) or sName
+                                if not sName and ns.GetSpellInfo then
+                                    sName = ns.GetSpellInfo(safeID)
+                                end
+                                if MatchesAnyPattern(sName, patterns) then
+                                    AppendUnique(merged, { safeID })
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    return merged
+end
+
+local function GetActiveShapeshiftTexture()
+    local getNumForms = GetGlobal("GetNumShapeshiftForms")
+    local getFormInfo = GetGlobal("GetShapeshiftFormInfo")
+    if type(getNumForms) ~= "function" or type(getFormInfo) ~= "function" then
+        return nil
+    end
+    local okNum, numForms = pcall(getNumForms)
+    if not okNum or ns.IsSecretValue(numForms) or type(numForms) ~= "number" or numForms <= 0 then
+        return nil
+    end
+    for i = 1, numForms do
+        local ok, texture, isActive = pcall(getFormInfo, i)
+        if ok and not ns.IsSecretValue(isActive) and isActive == true
+            and not ns.IsSecretValue(texture) and texture and texture ~= QUESTION_MARK_ICON then
+            return texture
+        end
+    end
+    return nil
+end
+
 --- Update the left-side stance icon (native aura slot or shapeshift fallback).
+--  Never touches restricted stanceSlot post-creation, never paints a '?'
+--  icon in combat, and never adds a glow to the stance/aspect icon.
 --  @param bar (Frame) anchor bar
 local function UpdateLeftStanceIcon(bar)
     local state = ns.foreverAura
@@ -1280,7 +1879,8 @@ local function UpdateLeftStanceIcon(bar)
     local stanceSize = ns.GetForeverStanceIconSize(bar)
     local targetFrame, relPoint, xOff, yOff = GetLeftAnchorTarget(bar)
 
-    -- Reposition native stance container/slot if present
+    -- Reposition and resize ONLY our container frame; the slot child was
+    -- anchored via SetAllPoints(stanceContainer) before access restrictions.
     if state.stanceContainer then
         pcall(function()
             state.stanceContainer:ClearAllPoints()
@@ -1289,58 +1889,30 @@ local function UpdateLeftStanceIcon(bar)
             state.stanceContainer:Show()
         end)
     end
-    if state.stanceSlot then
-        pcall(function()
-            state.stanceSlot:ClearAllPoints()
-            if state.stanceContainer then
-                state.stanceSlot:SetAllPoints(state.stanceContainer)
-            else
-                state.stanceSlot:SetPoint("RIGHT", targetFrame, relPoint, xOff, yOff)
-            end
-            state.stanceSlot:SetSize(stanceSize, stanceSize)
-        end)
-    end
 
-    -- Check if the native stance slot is displaying an aura. Its Shown state
-    -- carries a secret aspect on Forever, so it must never be boolean-tested:
-    -- a secret result means the native slot owns the display and the fallback
-    -- shapeshift icon must stay hidden.
-    local slotActive = false
+    -- Check native stance slot state safely: out of combat when native slot is
+    -- confirmed plain shown, stand down so only one icon renders. In combat
+    -- (where IsShown() may fail or return a secret boolean), prefer any verified
+    -- shapeshift texture (Hunter Aspects, Warrior Stances, Druid Forms) so a
+    -- secret-false slot never hides an active Aspect/Form.
+    local slotPlainShown = false
     if state.stanceSlot and state.stanceSlot.IsShown then
-        local ok, isShown = pcall(state.stanceSlot.IsShown, state.stanceSlot)
-        if ok then
-            if ns.IsSecretValue(isShown) then
-                slotActive = true
-            elseif isShown == true then
-                slotActive = true
-            end
+        local slotShownOk, slotIsShown = pcall(state.stanceSlot.IsShown, state.stanceSlot)
+        if slotShownOk and not ns.IsSecretValue(slotIsShown) and slotIsShown == true then
+            slotPlainShown = true
         end
     end
 
-    if slotActive then
+    if slotPlainShown then
         if state.shapeshiftIcon and state.shapeshiftIcon.Hide then
             state.shapeshiftIcon:Hide()
         end
         return
     end
 
-    -- Check shapeshift forms for Warrior stances and Druid forms
-    local activeTexture = nil
-    local getNumForms = GetGlobal("GetNumShapeshiftForms")
-    local getFormInfo = GetGlobal("GetShapeshiftFormInfo")
-    if type(getNumForms) == "function" and type(getFormInfo) == "function" then
-        local okNum, numForms = pcall(getNumForms)
-        if okNum and type(numForms) == "number" and numForms > 0 then
-            for i = 1, numForms do
-                local ok, texture, isActive = pcall(getFormInfo, i)
-                if ok and isActive and texture then
-                    activeTexture = texture
-                    break
-                end
-            end
-        end
-    end
-
+    -- Check ShapeshiftBar forms (Warrior stances, Druid forms, and clients where
+    -- Hunter Aspects are exposed as ShapeshiftForms) using strictly non-secret flags.
+    local activeTexture = GetActiveShapeshiftTexture()
     if activeTexture then
         local iconFrame = EnsureShapeshiftIcon()
         if iconFrame then
@@ -1356,37 +1928,6 @@ local function UpdateLeftStanceIcon(bar)
             end)
         end
         return
-    end
-
-    -- For Hunter: missing aspect in combat alert
-    if ns.playerClass == "HUNTER" then
-        local inCombat = (ns.playerInCombat == true)
-        if not inCombat then
-            local unitAffectingCombat = GetGlobal("UnitAffectingCombat")
-            if type(unitAffectingCombat) == "function" then
-                local ok, res = pcall(unitAffectingCombat, "player")
-                if ok and res then
-                    inCombat = true
-                end
-            end
-        end
-
-        if inCombat then
-            local iconFrame = EnsureShapeshiftIcon()
-            if iconFrame then
-                pcall(function()
-                    iconFrame:ClearAllPoints()
-                    iconFrame:SetPoint("RIGHT", targetFrame, relPoint, xOff, yOff)
-                    iconFrame:SetSize(stanceSize, stanceSize)
-                    if iconFrame.icon and iconFrame.icon.SetTexture then
-                        iconFrame.icon:SetTexture(QUESTION_MARK_ICON)
-                    end
-                    SetShapeshiftBorderColor(iconFrame, 0.95, 0.15, 0.15, 0.95)
-                    iconFrame:Show()
-                end)
-            end
-            return
-        end
     end
 
     if state.shapeshiftIcon and state.shapeshiftIcon.Hide then
@@ -1518,8 +2059,12 @@ function ns.InitForeverAuraIcons()
     state.initAttempts = state.initAttempts + 1
     local buffList = ns.FOREVER_BUFF_SPELLS[ns.playerClass]
     local debuffList = ns.FOREVER_DEBUFF_SPELLS[ns.playerClass]
-    local stanceList = ns.FOREVER_STANCE_SPELLS and ns.FOREVER_STANCE_SPELLS[ns.playerClass]
-    if not buffList and not debuffList and not stanceList then
+    local stanceList = DiscoverPlayerStanceSpells(ns.playerClass,
+        ns.FOREVER_STANCE_SPELLS and ns.FOREVER_STANCE_SPELLS[ns.playerClass])
+    if stanceList and #stanceList > 0 and ns.FOREVER_STANCE_SPELLS and ns.playerClass then
+        ns.FOREVER_STANCE_SPELLS[ns.playerClass] = stanceList
+    end
+    if not buffList and not debuffList and (#stanceList == 0) then
         return false
     end
 
@@ -1548,6 +2093,8 @@ function ns.InitForeverAuraIcons()
             height = state.buffHeight,
             withBar = false,
             withCooldown = true,
+            withGlow = true,
+            glowGroupKey = "forever_buffs",
             maxDuration = PROC_MAX_DURATION,
         })
         if container then
@@ -1557,7 +2104,7 @@ function ns.InitForeverAuraIcons()
         end
     end
 
-    -- Add native single-slot stance icon in its own container if available
+    -- Add native single-slot stance icon in its own container if available (zero glow).
     if stanceList and #stanceList > 0 then
         local stanceContainer = CreateAuraContainerFrame()
         if stanceContainer then
@@ -1578,8 +2125,10 @@ function ns.InitForeverAuraIcons()
                     initializeFrame = function(frame)
                         StyleAuraButton(frame, {
                             size = stanceSize,
+                            isSlot = true,
                             withBar = false,
                             withCooldown = false,
+                            withGlow = false,
                             hideDurationText = true,
                         })
                     end,
@@ -1603,6 +2152,8 @@ function ns.InitForeverAuraIcons()
             height = state.debuffHeight,
             withBar = true,
             withCooldown = true,
+            withGlow = true,
+            glowGroupKey = "forever_debuffs",
         })
         if container then
             state.debuffContainer = container
@@ -1713,6 +2264,7 @@ function ns.UpdateForeverAuraIcons(elapsed)
                 elementSpacing = 3,
             })
             ResizeGroupFrames(state.buffContainer, "forever_buffs", buffWidth, buffHeight)
+            ResizeForeverGlowOverlays("forever_buffs", buffWidth, buffHeight)
         end)
         if ok then
             state.buffSize = buffSize --[[@as number]]
@@ -1729,6 +2281,7 @@ function ns.UpdateForeverAuraIcons(elapsed)
                 elementSpacing = 3,
             })
             ResizeGroupFrames(state.debuffContainer, "forever_debuffs", debuffWidth, debuffHeight)
+            ResizeForeverGlowOverlays("forever_debuffs", debuffWidth, debuffHeight)
         end)
         if ok then
             state.debuffSize = debuffSize --[[@as number]]
@@ -1742,13 +2295,19 @@ function ns.UpdateForeverAuraIcons(elapsed)
     local yOffset = ComputeIconYOffset()
     local anchorBar = GetAnchorBar()
     local debuffPopulated = GetDebuffToggle() and IsDebuffRowPopulated(state.debuffContainer) or false
+    local buffChanged = buffVisible ~= state.lastBuffVisible
+    local debuffVisChanged = debuffVisible ~= state.lastDebuffVisible
+    if buffChanged or debuffVisChanged then
+        state.lastDebuffVisible = debuffVisible
+        ns.RefreshForeverAuraGlows()
+    end
     if anchorBar and (anchorBar ~= state.lastAnchorBar
             or yOffset ~= state.lastYOffset
             or buffWidth ~= state.lastBuffWidth
             or buffHeight ~= state.lastBuffHeight
             or debuffSize ~= state.lastDebuffSize
             or debuffPopulated ~= state.lastDebuffPopulated
-            or buffVisible ~= state.lastBuffVisible) then
+            or buffChanged) then
         ApplyContainerAnchors()
     else
         UpdateLeftStanceIcon(anchorBar)
@@ -1886,417 +2445,10 @@ function ns.GetForeverAuraDiagnostics()
     }
 end
 
--- ============================================================
--- 10. Hunter target-distance bar (Forever only)
--- ============================================================
--- A thin bar under the player power bar that tracks the EXACT distance to the
--- current target. The bar is full while the target is in melee reach and
--- empties as it leaves the ranged maximum, so the fill is a direct readout of
--- yards rather than a range band.
---
--- Yard bands (operator-confirmed on Forever): 1-5 yd melee (green), 5-8 yd
--- dead zone / "sweet spot" (yellow), 8 yd out to the ranged maximum (blue),
--- beyond that out of range (grey). 41 yd = 35 yd Auto Shot maximum + 6 yd
--- Hawk Eye (Forever spell 19498).
---
--- Distance sources, in order:
---   1. ClosestUnitPosition(UnitCreatureID) - linear yards, SecretReturns, so a
---      secret reading is passed straight through and never inspected.
---   2. UnitDistanceSquared - squared yards, used ONLY when the client reports
---      checkedDistance = true. An unchecked reading is not a distance: a live
---      Forever target answers 0 + false, and Blizzard gates its own use of the
---      number on that flag (CompactUnitFrame.lua:1069).
---   3. UnitPosition(player) vs UnitPosition(target) - exact ground-plane yards.
---      UnitPosition is not SecretReturns and Blizzard's own tutorial code
---      subtracts the two the same way (Blizzard_TutorialTutorials.lua:985-986).
---
--- Secret values: a secret reading is handed straight to StatusBar:SetValue
--- (SecretArguments = AllowedWhenTainted) and the client interpolates it; no
--- secret is compared, clamped, formatted or used in arithmetic. Secret values
--- keep the scale of the source that produced them.
---
--- Inverted fill: a StatusBar fills in proportion to its value, so a value that
--- grows with distance would fill the bar as the target moves away. The status
--- bar texture is therefore the grey EMPTY part and the band colour lives in
--- the background; reverse fill keeps the coloured part on the left, like a
--- normal depleting bar.
-local DISTANCE_BAR_HEIGHT = 5
-local DISTANCE_BAR_GAP = 2
-local DISTANCE_BAR_UPDATE_INTERVAL = 0.1
-local DISTANCE_BAR_TEXTURE = "Interface\\Buttons\\WHITE8X8"
-local DISTANCE_BAR_FALLBACK_COLOR = { r = 0.5, g = 0.5, b = 0.5 }
-
---- Melee reach: the bar reads full inside this many yards.
-local DISTANCE_BAR_MELEE_MAX = 5
-
---- Dead zone / "sweet spot" edge: 8 yd is Auto Shot's minimum range, so a
---  target closer than this cannot be shot at all.
-local DISTANCE_BAR_DEADZONE_MAX = 8
-
-
---- Furthest Hunter ranged reach covered by the bar's scale.
---  41 yd = 35 yd Auto Shot maximum + 6 yd Hawk Eye (Forever spell 19498).
-ns.FOREVER_DISTANCE_MAX_RANGE = 41
-local DISTANCE_MAX_SQUARED = ns.FOREVER_DISTANCE_MAX_RANGE * ns.FOREVER_DISTANCE_MAX_RANGE
-
---- Colour key for a Hunter range band, matching the range helper exactly.
---  @param rangeState (string|nil) melee / sweetSpot / ranged / outOfRange
---  @return (string|nil) bar colour key
-function ns.GetForeverDistanceBarColorKey(rangeState)
-    if rangeState == "melee" then
-        return "hunterRangeMelee"
-    elseif rangeState == "sweetSpot" then
-        return "hunterRangeSweetSpot"
-    elseif rangeState == "ranged" then
-        return "hunterRangeRanged"
-    elseif rangeState == "outOfRange" then
-        return "hunterRangeOutOfRange"
+if WoWUnit then ---@diagnostic disable-line: undefined-global
+    ns._TestForeverStyleAuraButton = StyleAuraButton
+    ns._TestForeverGlowTick = UpdateForeverGlowEntries
+    ns._TestGetForeverGlowHost = function()
+        return foreverGlowHost
     end
-    return nil
-end
-
---- Range band for an EXACT yard reading.
---  Used because the client's own range checks return nil while restricted,
---  which made GetHunterRangeState fall through to "outOfRange" for a target
---  standing right next to the player. The bar therefore derives the band from
---  the distance it already displays instead of trusting a band it cannot read.
---  @param yards (number|nil) exact ground-plane yards
---  @return (string|nil) melee / sweetSpot / ranged / outOfRange
-function ns.GetForeverDistanceBandFromYards(yards)
-    if type(yards) ~= "number" or yards ~= yards then
-        return nil
-    end
-    if yards <= DISTANCE_BAR_MELEE_MAX then
-        return "melee"
-    end
-    if yards <= DISTANCE_BAR_DEADZONE_MAX then
-        return "sweetSpot"
-    end
-    if yards <= ns.FOREVER_DISTANCE_MAX_RANGE then
-        return "ranged"
-    end
-    return "outOfRange"
-end
-
---- Exact ground-plane yards between the player and the current target.
---  UnitPosition is not SecretReturns (only SecretArguments =
---  AllowedWhenUntainted) and answers (x, y, z, mapID) for both units, which is
---  the same pair Blizzard subtracts in its own tutorial code
---  (Blizzard_TutorialTutorials.lua:985-986). Every unreadable case returns nil
---  instead of 0 or a guess: a secret coordinate, a different map (zones,
---  instances, phases), or a non-finite result.
---  @return (number|nil) exact yards, or nil when the pair cannot be trusted
-local function ReadUnitPositionDistance()
-    local unitPosition = rawget(_G, "UnitPosition")
-    if type(unitPosition) ~= "function" then
-        return nil
-    end
-
-    local playerOk, playerX, playerY, _, playerMap = pcall(unitPosition, "player")
-    if not playerOk or type(playerX) ~= "number" or type(playerY) ~= "number" then
-        return nil
-    end
-    if ns.IsSecretValue(playerX) or ns.IsSecretValue(playerY) or ns.IsSecretValue(playerMap) then
-        return nil
-    end
-
-    local targetOk, targetX, targetY, _, targetMap = pcall(unitPosition, "target")
-    if not targetOk or type(targetX) ~= "number" or type(targetY) ~= "number" then
-        return nil
-    end
-    if ns.IsSecretValue(targetX) or ns.IsSecretValue(targetY) or ns.IsSecretValue(targetMap) then
-        return nil
-    end
-
-    -- Coordinates are only comparable on the same map.
-    if playerMap ~= targetMap then
-        return nil
-    end
-
-    local dx = targetX - playerX
-    local dy = targetY - playerY
-    local yards = math.sqrt(dx * dx + dy * dy)
-    -- Never hand a NaN or infinity to the bar's SetValue.
-    if yards ~= yards or yards == math.huge then
-        return nil
-    end
-    return yards
-end
-
---- Read the best available distance to the current target.
---  Plain readings are always converted to LINEAR YARDS so the caller works in
---  one unit; a secret reading is returned raw, with the scale of its source.
---  Sources are tried most accurate first, and every secret stays untouched.
---  @return (number|nil) yards (or the raw secret), (number|nil) scale,
---          (boolean) secret, (string|nil) "closest" / "unit" / "position"
-function ns.ReadForeverTargetDistance()
-    -- 1. Closest creature distance: linear yards, possibly secret.
-    local unitCreatureID = rawget(_G, "UnitCreatureID")
-    local closestUnitPosition = rawget(_G, "ClosestUnitPosition")
-    if type(unitCreatureID) == "function" and type(closestUnitPosition) == "function" then
-        local idOk, creatureID = pcall(unitCreatureID, "target")
-        if idOk and not ns.IsSecretValue(creatureID) and type(creatureID) == "number" then
-            -- ClosestUnitPosition returns (xPos, yPos, distance); only the
-            -- distance is needed, selected without inspecting its value.
-            local posOk, distance = pcall(function()
-                return select(3, closestUnitPosition(creatureID))
-            end)
-            if posOk then
-                if ns.IsSecretValue(distance) then
-                    return distance, ns.FOREVER_DISTANCE_MAX_RANGE, true, "closest"
-                end
-                if type(distance) == "number" then
-                    return distance, ns.FOREVER_DISTANCE_MAX_RANGE, false, "closest"
-                end
-            end
-        end
-    end
-
-    -- 2. Unit distance: squared yards, but ONLY when the client actually
-    --    range-checked the unit. An unchecked reading is not a distance: on a
-    --    live Forever target it comes back as 0 with checkedDistance = false
-    --    (/sst diag showed dist=0.0yd while the client band said outOfRange),
-    --    and Blizzard gates its own use of the number on that flag
-    --    (Blizzard_UnitFrame/Shared/CompactUnitFrame.lua:1069). Rejecting it
-    --    lets the exact coordinate reader below answer instead.
-    local unitDistanceSquared = rawget(_G, "UnitDistanceSquared")
-    if type(unitDistanceSquared) == "function" then
-        local ok, distanceSquared, checkedDistance = pcall(unitDistanceSquared, "target")
-        if ok then
-            if ns.IsSecretValue(distanceSquared) then
-                return distanceSquared, DISTANCE_MAX_SQUARED, true, "unit"
-            end
-            local checkedSecret = ns.IsSecretValue(checkedDistance)
-            if type(distanceSquared) == "number" and distanceSquared > 0
-                and (checkedSecret or checkedDistance == true) then
-                return math.sqrt(distanceSquared), ns.FOREVER_DISTANCE_MAX_RANGE, false, "unit"
-            end
-        end
-    end
-
-    -- 3. Exact map-coordinate distance, for when the client hides the rest.
-    local positionYards = ReadUnitPositionDistance()
-    if positionYards then
-        return positionYards, ns.FOREVER_DISTANCE_MAX_RANGE, false, "position"
-    end
-
-    return nil, nil, false, nil
-end
-
---- Resolve the value handed to the distance bar's SetValue.
---  The fill is a direct readout of exact yards: full (0) from melee reach out
---  to DISTANCE_BAR_MELEE_MAX, then linear to the empty end (maxValue) at the
---  ranged maximum. A secret reading is returned untouched on its own scale; a
---  band is only consulted when no distance could be read at all.
---  @param value (number|nil) distance in yards (or the raw secret)
---  @param maxValue (number|nil) scale for that value
---  @param valueSecret (boolean) whether the value is secret
---  @param rangeState (string|nil) fallback Hunter range band
---  @return (number|nil) SetValue argument, or nil to hide the bar
-function ns.GetForeverDistanceBarValue(value, maxValue, valueSecret, rangeState)
-    if type(maxValue) ~= "number" or maxValue <= 0 then
-        return nil
-    end
-    -- A secret number is never compared, clamped or divided: hand it to the
-    -- client untouched, on the scale of the source that produced it.
-    if valueSecret then
-        return value
-    end
-    if type(value) ~= "number" then
-        -- No distance at all: keep the band-only fallbacks so the bar still
-        -- reads as full in melee and empty out of range.
-        if rangeState == "melee" then
-            return 0
-        end
-        if rangeState == "outOfRange" then
-            return maxValue
-        end
-        return nil
-    end
-
-    -- Exact yards: full across melee reach, then linear to empty.
-    local span = maxValue - DISTANCE_BAR_MELEE_MAX
-    local filled
-    if span > 0 then
-        filled = (value - DISTANCE_BAR_MELEE_MAX) / span * maxValue
-    else
-        filled = value
-    end
-    if filled < 0 then
-        filled = 0
-    elseif filled > maxValue then
-        filled = maxValue
-    end
-    return filled
-end
-
---- Out-of-range grey used for the empty part of the distance bar.
---  The cover must stay opaque so the band colour cannot show through it.
---  @return (table) {r, g, b}
-local function GetDistanceBarEmptyColor()
-    local color = ns.GetBarColor and ns.GetBarColor("hunterRangeOutOfRange") or nil
-    if color and color.r then
-        return color
-    end
-    return DISTANCE_BAR_FALLBACK_COLOR
-end
-
---- Create the distance bar once the power bar exists.
---  @return (Frame|nil) the bar, or nil while the power bar is not ready
-local function EnsureHunterDistanceBar()
-    local bar = ns.foreverHunterDistanceBar
-    if bar then
-        return bar
-    end
-    if not ns.isForever or ns.playerClass ~= "HUNTER" then
-        return nil
-    end
-    local powerBar = ns.playerPowerBar
-    if not powerBar then
-        return nil
-    end
-
-    local ok, created = pcall(CreateFrame, "StatusBar", "SuperSwingTimerHunterDistanceBar", UIParent)
-    if not ok or not created then
-        return nil
-    end
-
-    pcall(function()
-        created:SetStatusBarTexture(DISTANCE_BAR_TEXTURE)
-        created:SetMinMaxValues(0, DISTANCE_MAX_SQUARED)
-        created:SetValue(0)
-        created:SetHeight(ns.Scale(DISTANCE_BAR_HEIGHT))
-        created:SetFrameStrata(powerBar:GetFrameStrata())
-        created:SetFrameLevel(powerBar:GetFrameLevel() + 1)
-        created:EnableMouse(false)
-        if created.SetReverseFill then
-            pcall(created.SetReverseFill, created, true)
-        end
-        local bandTexture = created:CreateTexture(nil, "BACKGROUND")
-        bandTexture:SetAllPoints(created)
-        bandTexture:SetColorTexture(
-            DISTANCE_BAR_FALLBACK_COLOR.r,
-            DISTANCE_BAR_FALLBACK_COLOR.g,
-            DISTANCE_BAR_FALLBACK_COLOR.b,
-            1
-        )
-        created.bandTexture = bandTexture
-        created:Hide()
-    end)
-
-    ns.foreverHunterDistanceBar = created
-    return created
-end
-
---- Anchor the bar under the power bar and keep its height global-scale aware.
---  @param bar (Frame) distance bar
-local function ApplyHunterDistanceBarLayout(bar)
-    local powerBar = ns.playerPowerBar
-    if not powerBar then
-        return
-    end
-    if bar.distanceOwner ~= powerBar or not bar:GetPoint(1) then
-        bar:ClearAllPoints()
-        bar:SetPoint("TOPLEFT", powerBar, "BOTTOMLEFT", 0, -DISTANCE_BAR_GAP)
-        bar:SetPoint("TOPRIGHT", powerBar, "BOTTOMRIGHT", 0, -DISTANCE_BAR_GAP)
-        bar.distanceOwner = powerBar
-    end
-    local height = ns.Scale(DISTANCE_BAR_HEIGHT)
-    if bar:GetHeight() ~= height then
-        bar:SetHeight(height)
-    end
-end
-
-local distanceTimer = 0
-
---- Update the Hunter target-distance bar (Forever only).
---  @param elapsed (number|nil) seconds since the previous frame; 0 forces a pass
-function ns.UpdateForeverHunterDistanceBar(elapsed)
-    local bar = ns.foreverHunterDistanceBar
-
-    if not ns.isForever or ns.playerClass ~= "HUNTER" then
-        if bar then
-            bar:Hide()
-        end
-        return
-    end
-
-    local db = GetDB()
-    if db and db.showHunterDistanceBar == false then
-        if bar then
-            bar:Hide()
-        end
-        return
-    end
-
-    if type(elapsed) == "number" and elapsed > 0 then
-        distanceTimer = distanceTimer + elapsed
-        if distanceTimer < DISTANCE_BAR_UPDATE_INTERVAL then
-            return
-        end
-        distanceTimer = 0
-    else
-        distanceTimer = 0
-    end
-
-    bar = bar or EnsureHunterDistanceBar()
-    if not bar then
-        return
-    end
-
-    local rangeState = nil
-    if type(ns.GetHunterRangeState) == "function" then
-        rangeState = ns.GetHunterRangeState(false)
-    end
-
-    local distanceValue, distanceMax, distanceSecret = ns.ReadForeverTargetDistance()
-    local maxValue = distanceMax or ns.FOREVER_DISTANCE_MAX_RANGE
-    local value = ns.GetForeverDistanceBarValue(distanceValue, maxValue, distanceSecret, rangeState)
-    if not ns.IsSecretValue(value) and value == nil then
-        bar:Hide()
-        return
-    end
-
-    -- The exact reading owns the band. While values are restricted the client's
-    -- own range checks answer nil and GetHunterRangeState falls back to
-    -- "outOfRange", which would paint a nearby target grey; the distance the
-    -- bar is already showing is the better answer. A secret reading is never
-    -- inspected, so it keeps the client band.
-    local band = rangeState
-    if not distanceSecret and type(distanceValue) == "number" then
-        band = ns.GetForeverDistanceBandFromYards(distanceValue) or rangeState
-    end
-
-    ApplyHunterDistanceBarLayout(bar)
-
-    -- Band colour is the visible "filled" part of the inverted bar; the status
-    -- bar texture is the empty grey cover.
-    local colorKey = ns.GetForeverDistanceBarColorKey(band)
-    local bandColor = colorKey and ns.GetBarColor and ns.GetBarColor(colorKey) or nil
-    if bandColor and bandColor.r and bar.bandTexture then
-        bar.bandTexture:SetColorTexture(bandColor.r, bandColor.g, bandColor.b, 1)
-    end
-    local emptyColor = GetDistanceBarEmptyColor()
-    bar:SetStatusBarColor(emptyColor.r, emptyColor.g, emptyColor.b, 1)
-
-    bar:SetMinMaxValues(0, maxValue)
-    bar:SetValue(value)
-    bar:SetAlpha(1)
-    bar:Show()
-end
-
--- Drive the bar from its own throttled frame so it exists independently of the
--- native aura containers. The updater is a no-op on every non-Forever client.
-if ns.isForever then
-    local distanceFrame = CreateFrame("Frame")
-    distanceFrame:RegisterEvent("PLAYER_LOGIN")
-    distanceFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
-    distanceFrame:RegisterEvent("PLAYER_TARGET_CHANGED")
-    distanceFrame:SetScript("OnEvent", function()
-        ns.UpdateForeverHunterDistanceBar(0)
-    end)
-    distanceFrame:SetScript("OnUpdate", function(_, elapsed)
-        ns.UpdateForeverHunterDistanceBar(elapsed)
-    end)
-    ns.foreverHunterDistanceFrame = distanceFrame
 end

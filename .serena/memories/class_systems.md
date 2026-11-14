@@ -14,7 +14,7 @@
 ## Buff & Cooldown Icons
 - Timer text centered strictly above the icon (`"BOTTOM", icon, "TOP", 0, 2`, 12pt outline). Icon face completely clear of timer text.
 - Stack count text on bottom-right of icon face (`"BOTTOMRIGHT"`, 11pt outline, white text).
-- Gold pulsing glow in last 4 seconds before expiration.
+- Gold pulsing glow in the last 5 seconds before expiration (`ICON_EXPIRING_GLOW_SECONDS` in `SuperSwingTimer_ClassMods.lua`), the same window the LibCustomGlow icon animation runs over.
 
 ## Related Memories
 - Main architecture map: `mem:core`

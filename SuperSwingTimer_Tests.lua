@@ -167,7 +167,7 @@ local function RegisterSSTTests()
         IsTrue(f ~= nil, "SuperSwingTimer.toc must exist")
         local content = f:read("*all")
         f:close()
-        IsTrue(content:find("## Version: v0.3.4", 1, true) ~= nil, "TOC Version must be v0.3.4")
+        IsTrue(content:find("## Version: v0.3.6", 1, true) ~= nil, "TOC Version must be v0.3.6")
 
         -- The settings panel reads its label from TOC metadata; keep the
         -- helper and the TOC in lockstep so a release bump cannot drift.
@@ -1035,7 +1035,45 @@ local function RegisterSSTTests()
         if ns.playerPowerBar then
             Exists(ns.playerPowerBar.label, 'powerBar.label exists')
             IsTrue(ns.playerPowerBar.label:GetFont() ~= nil or true)
+            if ns.playerPowerBar.label.GetPoint then
+                local point = ns.playerPowerBar.label:GetPoint(1)
+                if point then
+                    AreEqual(point, "CENTER", "powerBar.label anchored at CENTER")
+                end
+            end
+            if ns.playerPowerBar.label.GetJustifyH then
+                AreEqual(ns.playerPowerBar.label:GetJustifyH(), "CENTER",
+                    "powerBar.label horizontally centered")
+            end
         end
+    end
+
+    function ClassMods:GetSpellInfo_MockSwapInvalidatesCache()
+        local prevGetSpellInfo = rawget(_G, "GetSpellInfo")
+        local prevCSpell = rawget(_G, "C_Spell")
+        _G.C_Spell = nil
+        local calls = 0
+        _G.GetSpellInfo = function(id)
+            calls = calls + 1
+            return "FirstName_" .. tostring(id), nil, 111
+        end
+        local name1, _, tex1 = ns.GetSpellInfo(999001)
+        AreEqual(name1, "FirstName_999001", "first GetSpellInfo mock returns expected name")
+        AreEqual(tex1, 111, "first GetSpellInfo mock returns expected icon")
+
+        local nameCached = ns.GetSpellInfo(999001)
+        AreEqual(nameCached, "FirstName_999001", "cached GetSpellInfo returns identical result")
+        AreEqual(calls, 1, "memoized second call avoids redundant global invocation")
+
+        _G.GetSpellInfo = function(id)
+            return "SwappedName_" .. tostring(id), nil, 222
+        end
+        local name2, _, tex2 = ns.GetSpellInfo(999001)
+        AreEqual(name2, "SwappedName_999001", "swapped GetSpellInfo invalidates stale cache entry")
+        AreEqual(tex2, 222, "swapped GetSpellInfo returns new icon")
+
+        _G.GetSpellInfo = prevGetSpellInfo
+        _G.C_Spell = prevCSpell
     end
 
     function ClassMods:CreateGlowBorder_Safe()
@@ -3215,216 +3253,9 @@ local function RegisterSSTTests()
         AreEqual(ns.GetForeverStanceIconSize(nil), 20, "missing bar falls back to 18 + 2 px")
     end
 
-    function ForeverAura:DistanceBar_ColorBandsMatchRangeHelper()
-        AreEqual(ns.GetForeverDistanceBarColorKey("melee"), "hunterRangeMelee", "melee band colour")
-        AreEqual(ns.GetForeverDistanceBarColorKey("sweetSpot"), "hunterRangeSweetSpot", "sweet spot band colour")
-        AreEqual(ns.GetForeverDistanceBarColorKey("ranged"), "hunterRangeRanged", "ranged band colour")
-        AreEqual(ns.GetForeverDistanceBarColorKey("outOfRange"), "hunterRangeOutOfRange", "out of range band colour")
-        AreEqual(ns.GetForeverDistanceBarColorKey(nil), nil, "unknown band has no colour")
-        AreEqual(ns.GetForeverDistanceBarColorKey("bogus"), nil, "bogus band has no colour")
-    end
-
-    function ForeverAura:DistanceBar_ValueIsExactYards()
-        local max = ns.FOREVER_DISTANCE_MAX_RANGE
-        -- Full across melee reach (the 1-5 yd green band).
-        AreEqual(ns.GetForeverDistanceBarValue(1, max, false, "melee"), 0, "1 yd reads full")
-        AreEqual(ns.GetForeverDistanceBarValue(5, max, false, "melee"), 0, "5 yd reads full")
-        AreEqual(ns.GetForeverDistanceBarValue(0, max, false, nil), 0, "0 yd reads full without a band")
-        -- Linear from the melee edge to the ranged maximum.
-        local deadzoneEdge = (8 - 5) / (max - 5) * max
-        AreEqual(ns.GetForeverDistanceBarValue(8, max, false, "sweetSpot"), deadzoneEdge,
-            "8 yd is one step off full")
-        AreEqual(ns.GetForeverDistanceBarValue(max, max, false, "ranged"), max, "max range reads empty")
-        AreEqual(ns.GetForeverDistanceBarValue(max + 10, max, false, "outOfRange"), max,
-            "beyond max range stays empty")
-        -- The band no longer overrides an exact reading: a near target stays
-        -- off the empty end even when the client band says out of range.
-        local near = ns.GetForeverDistanceBarValue(9, max, false, "outOfRange")
-        IsTrue(near < max, "an exact near reading is not pinned empty by the band")
-        -- A secret reading is never touched, whatever its scale.
-        AreEqual(ns.GetForeverDistanceBarValue(9999, max, true, "ranged"), 9999,
-            "a secret reading is returned untouched")
-        -- With no distance at all the band fallbacks still work.
-        AreEqual(ns.GetForeverDistanceBarValue(nil, max, false, "outOfRange"), max,
-            "out of range band pins the bar empty without a reading")
-        AreEqual(ns.GetForeverDistanceBarValue(nil, max, false, "melee"), 0,
-            "melee band pins the bar full without a reading")
-        AreEqual(ns.GetForeverDistanceBarValue(nil, max, false, "ranged"), nil,
-            "no reading and no empty band hides the bar")
-        AreEqual(ns.GetForeverDistanceBarValue(20, nil, false, "ranged"), nil,
-            "missing scale hides the bar")
-    end
-
-    function ForeverAura:DistanceBar_BandFromExactYards()
-        AreEqual(ns.GetForeverDistanceBandFromYards(1), "melee", "1 yd is melee")
-        AreEqual(ns.GetForeverDistanceBandFromYards(5), "melee", "5 yd is melee")
-        AreEqual(ns.GetForeverDistanceBandFromYards(5.5), "sweetSpot", "5-8 yd is the dead zone")
-        AreEqual(ns.GetForeverDistanceBandFromYards(8), "sweetSpot", "8 yd is still the dead zone")
-        AreEqual(ns.GetForeverDistanceBandFromYards(9), "ranged", "9 yd is ranged")
-        AreEqual(ns.GetForeverDistanceBandFromYards(ns.FOREVER_DISTANCE_MAX_RANGE), "ranged",
-            "the ranged maximum is still ranged")
-        AreEqual(ns.GetForeverDistanceBandFromYards(ns.FOREVER_DISTANCE_MAX_RANGE + 0.5), "outOfRange",
-            "past the ranged maximum is out of range")
-        AreEqual(ns.GetForeverDistanceBandFromYards(nil), nil, "no reading has no band")
-        AreEqual(ns.GetForeverDistanceBandFromYards(0 / 0), nil, "a NaN reading has no band")
-    end
-
-    function ForeverAura:DistanceBar_ReadsCreatureDistanceFirst()
-        local prevCreatureID = _G.UnitCreatureID
-        local prevClosest = _G.ClosestUnitPosition
-        local prevUnitDistance = _G.UnitDistanceSquared
-        local prevUnitPosition = _G.UnitPosition
-
-        local creatureScenario = 1
-        local distanceSquaredScenario = 1
-        _G.UnitCreatureID = function(unit) if unit ~= "target" then return nil end if creatureScenario == 1 then return 1234 end return nil end
-        -- ClosestUnitPosition takes a CREATURE ID, not a unit token.
-        _G.ClosestUnitPosition = function(creatureID)
-            if creatureID ~= 1234 then return nil end
-            return 10, 20, 17.5
-        end
-        _G.UnitDistanceSquared = function(unit)
-            if unit ~= "target" then return nil, false end
-            if distanceSquaredScenario == 1 then return 9999, true end
-            if distanceSquaredScenario == 2 then return 400, true end
-            if distanceSquaredScenario == 4 then return 400, false end
-            if distanceSquaredScenario == 5 then return 0, false end
-            return nil, false
-        end
-        local value, maxValue, secret, source = ns.ReadForeverTargetDistance()
-        AreEqual(value, 17.5, "linear creature distance is used first")
-        AreEqual(maxValue, ns.FOREVER_DISTANCE_MAX_RANGE, "creature distance uses the linear scale")
-        IsFalse(secret, "a plain test reading is not secret")
-        AreEqual(source, "closest", "creature source wins")
-
-        -- UnitDistanceSquared answers squared yards, and only a CHECKED reading
-        -- is a distance at all (see the unchecked cases below).
-        creatureScenario = 2
-        distanceSquaredScenario = 2
-        _G.ClosestUnitPosition = nil
-        local fallbackValue, fallbackMax, _, fallbackSource = ns.ReadForeverTargetDistance()
-        AreEqual(fallbackValue, 20, "a checked squared distance converts to yards")
-        AreEqual(fallbackMax, ns.FOREVER_DISTANCE_MAX_RANGE, "plain readings use the linear scale")
-        AreEqual(fallbackSource, "unit", "unit source is reported")
-
-        -- Exact map-coordinate fallback for when the client hides both APIs.
-        distanceSquaredScenario = 3
-        local unitPositionScenario = 1
-        _G.UnitPosition = function(unit)
-            if unit == "player" then return 0, 0, 0, 1 end
-            if unit ~= "target" then return nil, nil, nil, nil end
-            if unitPositionScenario == 1 then return 30, 40, 0, 1 end
-            if unitPositionScenario == 2 then return 30, 40, 0, 2 end
-            return nil, nil, nil, 1
-        end
-        local posValue, posMax, posSecret, posSource = ns.ReadForeverTargetDistance()
-        AreEqual(posValue, 50, "UnitPosition gives exact yards (30-40-50 triangle)")
-        AreEqual(posMax, ns.FOREVER_DISTANCE_MAX_RANGE, "position distance uses the linear scale")
-        IsFalse(posSecret, "map coordinates are plain numbers")
-        AreEqual(posSource, "position", "position source is reported")
-
-        unitPositionScenario = 2
-        AreEqual(select(1, ns.ReadForeverTargetDistance()), nil, "a different map yields no reading")
-
-        unitPositionScenario = 3
-        AreEqual(select(1, ns.ReadForeverTargetDistance()), nil, "missing coordinates yield no reading")
-
-        -- checkedDistance=false is not a distance: Forever answers 0 + false for
-        -- a live target, which must not read as "standing on top of it".
-        distanceSquaredScenario = 4
-        AreEqual(select(1, ns.ReadForeverTargetDistance()), nil,
-            "an unchecked non-zero reading is rejected")
-        distanceSquaredScenario = 5
-        AreEqual(select(1, ns.ReadForeverTargetDistance()), nil,
-            "an unchecked zero reading is rejected, not read as 0 yards")
-
-        _G.UnitCreatureID = prevCreatureID
-        _G.ClosestUnitPosition = prevClosest
-        _G.UnitDistanceSquared = prevUnitDistance
-        _G.UnitPosition = prevUnitPosition
-    end
-
-    function ForeverAura:DistanceBar_UpdatesFromDistanceApi()
-        local prevBar = ns.foreverHunterDistanceBar
-        local prevForever = ns.isForever
-        local prevClass = ns.playerClass
-        local prevStateFn = ns.GetHunterRangeState
-        local prevPowerBar = ns.playerPowerBar
-        local prevApi = _G.UnitDistanceSquared
-
-        local recorded = {}
-        local mockBar = {
-            bandTexture = {
-                SetColorTexture = function(_, r, g, b, a) recorded.band = { r, g, b, a } end,
-            },
-            SetMinMaxValues = function(_, minValue, maxValue) recorded.min, recorded.max = minValue, maxValue end,
-            SetValue = function(_, value) recorded.value = value end,
-            SetStatusBarColor = function(_, r, g, b, a) recorded.color = { r, g, b, a } end,
-            SetAlpha = function() end,
-            Show = function() recorded.shown = true end,
-            Hide = function() recorded.shown = false end,
-            GetPoint = function() return nil end,
-            ClearAllPoints = function() end,
-            SetPoint = function() end,
-            GetHeight = function() return 5 end,
-            SetHeight = function() end,
-        }
-
-        ns.isForever = true
-        ns.playerClass = "HUNTER"
-        ns.playerPowerBar = nil -- keep the layout helper out of this mock
-        ns.foreverHunterDistanceBar = mockBar
-        local rangeState = "ranged"
-        ns.GetHunterRangeState = function() return rangeState end
-        _G.UnitDistanceSquared = function() return 400, true end
-
-        ns.UpdateForeverHunterDistanceBar(0)
-
-        -- 400 squared yards is a 20 yd target: linear to the empty end.
-        local expected = (20 - 5) / (ns.FOREVER_DISTANCE_MAX_RANGE - 5) * ns.FOREVER_DISTANCE_MAX_RANGE
-        AreEqual(recorded.value, expected, "exact 20 yd is linear on the fill")
-        AreEqual(recorded.min, 0, "bar minimum is 0")
-        AreEqual(recorded.max, ns.FOREVER_DISTANCE_MAX_RANGE,
-            "bar maximum is the linear ranged scale")
-        IsTrue(recorded.shown == true, "bar is shown with a target")
-        IsTrue(recorded.band ~= nil, "band colour is applied")
-        AreEqual(recorded.color and recorded.color[4], 1, "empty cover stays opaque")
-
-        -- The exact reading owns the colour too: a client band that fell back to
-        -- "outOfRange" (the range checks could not answer) must not paint a
-        -- 20 yd target grey.
-        rangeState = "outOfRange"
-        recorded.band = nil
-        ns.UpdateForeverHunterDistanceBar(0)
-        local rangedColor = ns.GetBarColor("hunterRangeRanged")
-        IsTrue(recorded.band ~= nil, "a colour is still applied")
-        IsTrue(rangedColor ~= nil and recorded.band ~= nil and recorded.band[1] == rangedColor.r,
-            "exact yards win over a fallback out-of-range band")
-
-        ns.foreverHunterDistanceBar = prevBar
-        ns.isForever = prevForever
-        ns.playerClass = prevClass
-        ns.GetHunterRangeState = prevStateFn
-        ns.playerPowerBar = prevPowerBar
-        _G.UnitDistanceSquared = prevApi
-    end
-
-    function ForeverAura:DistanceBar_GatedToForeverHunter()
-        local previousBar = ns.foreverHunterDistanceBar
-        local previousForever = ns.isForever
-        ns.foreverHunterDistanceBar = nil
-        ns.isForever = false
-        local ok = pcall(ns.UpdateForeverHunterDistanceBar, 0)
-        IsTrue(ok, "distance bar update is safe off Forever")
-        AreEqual(ns.foreverHunterDistanceBar, nil, "no distance bar is created off Forever")
-        ns.foreverHunterDistanceBar = previousBar
-        ns.isForever = previousForever
-    end
-
     function ForeverAura:DBDefaults_HasForeverAuraKeys()
         IsTrue(ns.DB_DEFAULTS.showForeverDebuffIcons == true, "showForeverDebuffIcons default is true")
         IsTrue(ns.DB_DEFAULTS.showForeverStanceIcon == true, "showForeverStanceIcon default is true")
-        IsTrue(ns.DB_DEFAULTS.showHunterDistanceBar == true, "showHunterDistanceBar default is true")
     end
 
     function ForeverAura:Diagnostics_IncludesStanceFields()
@@ -3456,6 +3287,696 @@ local function RegisterSSTTests()
 
         ns.UpdateHunterBuffIcons = prevHunter
         ns.foreverNativeAuraIcons = prevNative
+    end
+
+    function ForeverAura:ForeverAura_GlowDefaultIsEnabled()
+        IsTrue(ns.DB_DEFAULTS.showForeverAuraGlow == true, "showForeverAuraGlow default must be true")
+    end
+
+    function ForeverAura:AuraIconExpiringGlowWindowIsShared()
+        -- Every aura icon row expires with the same cue: the tracked class
+        -- rows (player buffs and target debuffs share one renderer) and the
+        -- native Forever rows must report one window, or the LibCustomGlow
+        -- animation, the gold pulse and the Forever overlay drift apart.
+        local classWindow = ns.ICON_EXPIRING_GLOW_SECONDS
+        local foreverWindow = ns.GetForeverAuraGlowSeconds and ns.GetForeverAuraGlowSeconds() or nil
+        AreEqual(classWindow, 5, "tracked class icon rows glow for the final 5 seconds")
+        AreEqual(foreverWindow, 5, "native Forever buff and debuff rows glow for the final 5 seconds")
+        AreEqual(classWindow, foreverWindow, "both icon families share one expiring window")
+    end
+
+    function ForeverAura:ForeverAura_ExpiringGlowCurveContract()
+        local prevCurveUtil = rawget(_G, "C_CurveUtil")
+        local prevEnum = rawget(_G, "Enum")
+        local points = {}
+        local curveType = nil
+        _G.Enum = { LuaCurveType = { Step = 7 } }
+        _G.C_CurveUtil = {
+            CreateCurve = function()
+                return {
+                    SetType = function(_, t) curveType = t end,
+                    AddPoint = function(_, x, y) points[x] = y end,
+                }
+            end,
+        }
+        -- Force fresh build only when getter is called if not yet cached.
+        local curve = ns.GetForeverExpiringGlowCurve()
+        IsTrue(curve ~= nil, "GetForeverExpiringGlowCurve returns a curve object")
+        if next(points) ~= nil then
+            AreEqual(curveType, 7, "expiring glow curve uses Step mode")
+            AreEqual(points[0], 0, "0s / cleared slot outputs alpha 0")
+            AreEqual(points[0.01], 1, "active inside the expiring window outputs alpha 1")
+            IsTrue(points[5.01] == 0, "above the expiring window outputs alpha 0")
+        end
+        _G.C_CurveUtil = prevCurveUtil
+        _G.Enum = prevEnum
+    end
+
+    function ForeverAura:ForeverAura_LeftStanceNeverSetsQuestionMarkInCombat()
+        local prevForever = ns.isForever
+        local prevClass = ns.playerClass
+        local prevNative = ns.foreverNativeAuraIcons
+        local prevCombat = rawget(_G, "InCombatLockdown")
+        local prevNumForms = rawget(_G, "GetNumShapeshiftForms")
+        local prevFormInfo = rawget(_G, "GetShapeshiftFormInfo")
+        local prevMhBar = ns.mhBar
+        local prevPowerBar = ns.playerPowerBar
+        local prevState = {
+            stanceContainer = ns.foreverAura.stanceContainer,
+            stanceSlot = ns.foreverAura.stanceSlot,
+            shapeshiftIcon = ns.foreverAura.shapeshiftIcon,
+            buffContainer = ns.foreverAura.buffContainer,
+            debuffContainer = ns.foreverAura.debuffContainer,
+        }
+
+        local slotClearCalled = false
+        ns.isForever = true
+        ns.playerClass = "HUNTER"
+        ns.foreverNativeAuraIcons = true
+        _G.InCombatLockdown = function() return true end
+        _G.GetNumShapeshiftForms = function() return 1 end
+        _G.GetShapeshiftFormInfo = function() return 136076, true, true, 13165 end
+
+        local fakeAnchor = {
+            GetPoint = function() return "CENTER" end,
+            IsVisible = function() return true end,
+            GetFrameStrata = function() return "MEDIUM" end,
+            GetFrameLevel = function() return 5 end,
+        }
+        ns.mhBar = fakeAnchor
+        ns.playerPowerBar = fakeAnchor
+
+        ns.foreverAura.stanceSlot = {
+            IsShown = function() error("secret frame access denied") end,
+            ClearAllPoints = function() slotClearCalled = true end,
+            SetAllPoints = function() slotClearCalled = true end,
+        }
+
+        ns.UpdateForeverAuraIcons(0)
+
+        IsFalse(slotClearCalled, "must never call ClearAllPoints/SetAllPoints on restricted stanceSlot post-init")
+        IsTrue(ns.foreverAura.shapeshiftIcon ~= nil, "shapeshift fallback icon created for Hunter Aspect in combat")
+        if ns.foreverAura.shapeshiftIcon and ns.foreverAura.shapeshiftIcon.icon
+            and ns.foreverAura.shapeshiftIcon.icon.GetTexture then
+            local tex = ns.foreverAura.shapeshiftIcon.icon:GetTexture()
+            IsTrue(tex ~= 134400, "Hunter Aspect icon must never display QUESTION_MARK_ICON (134400)")
+        end
+
+        ns.mhBar = prevMhBar
+        ns.playerPowerBar = prevPowerBar
+        ns.foreverAura.stanceContainer = prevState.stanceContainer
+        ns.foreverAura.stanceSlot = prevState.stanceSlot
+        ns.foreverAura.shapeshiftIcon = prevState.shapeshiftIcon
+        ns.foreverAura.buffContainer = prevState.buffContainer
+        ns.foreverAura.debuffContainer = prevState.debuffContainer
+        ns.foreverNativeAuraIcons = prevNative
+        ns.isForever = prevForever
+        ns.playerClass = prevClass
+        _G.InCombatLockdown = prevCombat
+        _G.GetNumShapeshiftForms = prevNumForms
+        _G.GetShapeshiftFormInfo = prevFormInfo
+    end
+
+    function ForeverAura:PaladinTwist_WindowPaddingModes()
+        AreEqual(ns.GetPaladinTwistWindowSeconds("None", 100, 200, false), 0.4, "None keeps 0.4s")
+        AreEqual(ns.GetPaladinTwistWindowSeconds("Fixed", 100, 150, false), 0.55, "Fixed adds ms")
+        local dyn = ns.GetPaladinTwistWindowSeconds("Dynamic", 100, 0, false)
+        IsTrue(math.abs(dyn - 0.47) < 1e-6, "Dynamic adds 0.7x lag")
+        AreEqual(ns.GetPaladinTwistWindowSeconds("None", 0, 0, true), 0.2, "SoD baseline is 0.2s")
+        AreEqual(ns.GetPaladinTwistWindowSeconds("Fixed", 0, 999, false), 0.8, "Window caps at 0.8s")
+    end
+
+    function ForeverAura:PaladinTwist_ImpossibleHeuristic()
+        IsTrue(ns.IsPaladinTwistImpossible(true, 1.2, 1.3, 100, 1.4, 0, 0.4) == true,
+            "GCD + lag > remaining outside window is impossible")
+        IsTrue(ns.IsPaladinTwistImpossible(true, 0.3, 1.3, 100, 1.4, 0, 0.4) == false,
+            "Inside twist window clears impossible warning")
+        IsTrue(ns.IsPaladinTwistImpossible(false, 1.2, 1.3, 100, 1.4, 0, 0.4) == false,
+            "Disabled impossible-twist returns false")
+    end
+
+    function ForeverAura:PaladinTwist_ResealMarkerDoesNotWrap()
+        AreEqual(ns.GetPaladinResealMarkerFraction(3.5, 1.0, 1.5), nil,
+            "GCD clearing after swing must return nil instead of wrapping")
+        AreEqual(ns.GetPaladinResealMarkerFraction(3.5, 1.0, 0), nil,
+            "No running GCD hides reseal marker")
+        local frac = ns.GetPaladinResealMarkerFraction(3.5, 2.0, 0.5)
+        IsTrue(frac ~= nil and frac > 0.5 and frac < 0.6,
+            "GCD clearing mid-swing places reseal marker at expected fraction")
+    end
+
+    function ForeverAura:ForeverAura_BottomDistanceBarRemoved()
+        AreEqual(ns.foreverHunterDistanceBar, nil, "foreverHunterDistanceBar global removed")
+        AreEqual(ns.UpdateForeverHunterDistanceBar, nil, "UpdateForeverHunterDistanceBar removed")
+        AreEqual(ns.ReadForeverTargetDistance, nil, "ReadForeverTargetDistance removed")
+        AreEqual(ns.DB_DEFAULTS.showHunterDistanceBar, nil, "showHunterDistanceBar default removed")
+    end
+
+    function ForeverAura:ForeverAura_GlowUsesStatusBarTimerDurationOnCustomButton()
+        IsTrue(type(ns._TestForeverStyleAuraButton) == "function", "_TestForeverStyleAuraButton exposed")
+        IsTrue(type(ns._TestForeverGlowTick) == "function", "_TestForeverGlowTick exposed")
+        IsTrue(type(ns._TestGetForeverGlowHost) == "function", "_TestGetForeverGlowHost exposed")
+
+        local prevForever = ns.isForever
+        local prevCurveUtil = rawget(_G, "C_CurveUtil")
+        local prevEnum = rawget(_G, "Enum")
+        local prevShowGlow = SuperSwingTimerDB and SuperSwingTimerDB.showForeverAuraGlow
+        local prevBuffToggle = SuperSwingTimerDB and SuperSwingTimerDB.showForeverBuffIcons
+        local prevDebuffToggle = SuperSwingTimerDB and SuperSwingTimerDB.showForeverDebuffIcons
+        local prevFade = ns.fadeAuraIcons
+
+        ns.isForever = true
+        ns.fadeAuraIcons = true
+        if SuperSwingTimerDB then
+            SuperSwingTimerDB.showForeverAuraGlow = true
+            SuperSwingTimerDB.showForeverBuffIcons = true
+            SuperSwingTimerDB.showForeverDebuffIcons = true
+        end
+
+        _G.Enum = _G.Enum or {}
+        _G.Enum.LuaCurveType = _G.Enum.LuaCurveType or { Step = 7 }
+        local fakeCurve = {
+            SetType = function() end,
+            AddPoint = function() end,
+        }
+        _G.C_CurveUtil = {
+            CreateCurve = function() return fakeCurve end,
+        }
+
+        -- Helper: simulates Blizzard AuraButton WITHOUT GetAuraDuration().
+        local debuffRemaining = nil
+        local debuffTimerReady = false
+        local debuffDurObj = {
+            EvaluateRemainingDuration = function(_, curve)
+                IsTrue(curve ~= nil, "debuff EvaluateRemainingDuration receives a curve")
+                if debuffRemaining == nil or debuffRemaining <= 0 then
+                    return 0
+                end
+                return debuffRemaining <= 5.0 and 1 or 0
+            end,
+        }
+
+        local capturedDebuffBar = nil
+        local debuffButton = CreateFrame("Frame")
+        debuffButton.SetCooldown = function() end
+        debuffButton.SetCountText = function() end
+        debuffButton.SetDurationText = function() end
+        debuffButton.SetDurationCooldown = function() end
+        debuffButton.SetDurationBar = function(_, bar)
+            capturedDebuffBar = bar
+            bar.GetTimerDuration = function()
+                return debuffTimerReady and debuffDurObj or nil
+            end
+        end
+
+        local buffRemaining = 6.0
+        local buffDurObj = {
+            EvaluateRemainingDuration = function(_, curve)
+                IsTrue(curve ~= nil, "buff EvaluateRemainingDuration receives a curve")
+                if buffRemaining == nil or buffRemaining <= 0 then
+                    return 0
+                end
+                return buffRemaining <= 5.0 and 1 or 0
+            end,
+        }
+        ---@type any
+        local capturedBuffProxy = nil
+        local buffButton = CreateFrame("Frame")
+        buffButton.SetCooldown = function() end
+        buffButton.SetCountText = function() end
+        buffButton.SetDurationText = function() end
+        buffButton.SetDurationCooldown = function() end
+        buffButton.SetDurationBar = function(_, bar)
+            capturedBuffProxy = bar
+            bar.GetTimerDuration = function() return buffDurObj end
+        end
+
+        local baseCount = ns.GetForeverAuraGlowCount()
+        local prevCreateFrame = _G.CreateFrame
+        local createdOverlays = {}
+        _G.CreateFrame = function(frameType, name, parent, template)
+            local f = prevCreateFrame(frameType, name, parent, template)
+            local liveHost = ns._TestGetForeverGlowHost()
+            if liveHost and parent == liveHost then
+                table.insert(createdOverlays, f)
+            end
+            return f
+        end
+        ns._TestForeverStyleAuraButton(debuffButton, {
+            width = 30,
+            height = 25,
+            withBar = true,
+            withGlow = true,
+            glowGroupKey = "forever_debuffs",
+        })
+        ns._TestForeverStyleAuraButton(buffButton, {
+            width = 30,
+            height = 25,
+            withBar = false,
+            withGlow = true,
+            glowGroupKey = "forever_buffs",
+        })
+        _G.CreateFrame = prevCreateFrame
+
+        AreEqual(ns.GetForeverAuraGlowCount(), baseCount + 2,
+            "both debuff and buff CustomAuraButtons create glow overlays without GetAuraDuration")
+        IsTrue(capturedDebuffBar ~= nil, "debuff button attaches visible duration bar")
+        IsTrue(capturedBuffProxy ~= nil, "buff button attaches invisible proxy StatusBar via SetDurationBar")
+        if capturedBuffProxy then
+            AreEqual(capturedBuffProxy:GetAlpha(), 0, "buff proxy StatusBar stays invisible")
+        end
+
+        local host = ns._TestGetForeverGlowHost()
+        IsTrue(host ~= nil and host:IsShown(), "glow host runs when aura glow is enabled")
+        AreEqual(#createdOverlays, 2, "two glow overlays parented to foreverGlowHost")
+
+        -- 1) Outside the 5s window & nil lazy timer -> stays hidden (0 alpha).
+        buffRemaining = 6.0
+        debuffTimerReady = false
+        ns._TestForeverGlowTick()
+
+        -- 2) Lazy timer populates and enters the <= 5s window -> glows visible.
+        buffRemaining = 3.2
+        debuffTimerReady = true
+        debuffRemaining = 2.5
+        ns._TestForeverGlowTick()
+        local debuffOverlay = createdOverlays[1]
+        local buffOverlay = createdOverlays[2]
+        AreEqual(debuffOverlay:GetAlpha(), 1, "debuff overlay shows at 2.5s remaining")
+        AreEqual(buffOverlay:GetAlpha(), 1, "buff proxy overlay shows at 3.2s remaining")
+
+        -- 3) Disabled toggle pauses host and clears overlay alpha.
+        if SuperSwingTimerDB then
+            SuperSwingTimerDB.showForeverAuraGlow = false
+        end
+        ns.RefreshForeverAuraGlows()
+        IsFalse(host:IsShown(), "glow host hides when showForeverAuraGlow is disabled")
+        AreEqual(debuffOverlay:GetAlpha(), 0, "debuff overlay clears alpha when glow is disabled")
+        AreEqual(buffOverlay:GetAlpha(), 0, "buff overlay clears alpha when glow is disabled")
+
+        ns.isForever = prevForever
+        ns.fadeAuraIcons = prevFade
+        if SuperSwingTimerDB then
+            SuperSwingTimerDB.showForeverAuraGlow = prevShowGlow
+            SuperSwingTimerDB.showForeverBuffIcons = prevBuffToggle
+            SuperSwingTimerDB.showForeverDebuffIcons = prevDebuffToggle
+            ns.RefreshForeverAuraGlows()
+        end
+        _G.C_CurveUtil = prevCurveUtil
+        _G.Enum = prevEnum
+    end
+
+    -- Shared preamble for the two overlay-shape pins below: Forever client,
+    -- curve utility present, both aura rows enabled.
+    local function BeginForeverGlowTest()
+        local prev = {
+            forever = ns.isForever,
+            curveUtil = rawget(_G, "C_CurveUtil"),
+            enum = rawget(_G, "Enum"),
+            showGlow = SuperSwingTimerDB and SuperSwingTimerDB.showForeverAuraGlow,
+            buffToggle = SuperSwingTimerDB and SuperSwingTimerDB.showForeverBuffIcons,
+            debuffToggle = SuperSwingTimerDB and SuperSwingTimerDB.showForeverDebuffIcons,
+        }
+        ns.isForever = true
+        if SuperSwingTimerDB then
+            SuperSwingTimerDB.showForeverAuraGlow = true
+            SuperSwingTimerDB.showForeverBuffIcons = true
+            SuperSwingTimerDB.showForeverDebuffIcons = true
+        end
+        _G.Enum = _G.Enum or {}
+        _G.Enum.LuaCurveType = _G.Enum.LuaCurveType or { Step = 7 }
+        _G.C_CurveUtil = {
+            CreateCurve = function()
+                return { SetType = function() end, AddPoint = function() end }
+            end,
+        }
+        return prev
+    end
+
+    local function EndForeverGlowTest(prev)
+        ns.isForever = prev.forever
+        _G.C_CurveUtil = prev.curveUtil
+        _G.Enum = prev.enum
+        if SuperSwingTimerDB then
+            SuperSwingTimerDB.showForeverAuraGlow = prev.showGlow
+            SuperSwingTimerDB.showForeverBuffIcons = prev.buffToggle
+            SuperSwingTimerDB.showForeverDebuffIcons = prev.debuffToggle
+            ns.RefreshForeverAuraGlows()
+        end
+    end
+
+    local function MakeGlowTestButton(durationObject)
+        local button = CreateFrame("Frame")
+        button.SetCooldown = function() end
+        button.SetCountText = function() end
+        button.SetDurationText = function() end
+        button.SetDurationCooldown = function() end
+        button.SetDurationBar = function(_, bar)
+            bar.GetTimerDuration = function() return durationObject end
+        end
+        return button
+    end
+
+    function ForeverAura:GlowOverlayRimSurvivesRestrictedButtonLevel()
+        -- AuraButton:GetFrameLevel is SecretReturnsForAspect FrameLevel on
+        -- Forever (SimpleFrameAPIDocumentation), so a restricted button can
+        -- answer with a value that raises on math.max. The overlay used to be
+        -- built in ONE pcall with that arithmetic in the middle, so the raise
+        -- skipped the rim and left a bare frame: alpha yes, visible glow no.
+        local prev = BeginForeverGlowTest()
+        local prevCreateFrame = _G.CreateFrame
+        -- A table stands in for a restricted number: level + 8 raises on it
+        -- exactly the way arithmetic on a secret number does in the client.
+        local restrictedLevel = {}
+        local durationObject = {
+            EvaluateRemainingDuration = function() return 0 end,
+        }
+        local button = MakeGlowTestButton(durationObject)
+        button.GetFrameLevel = function() return restrictedLevel end
+
+        local baseCount = ns.GetForeverAuraGlowCount()
+        local artFailuresBefore = select(1, ns.GetForeverAuraGlowFailures())
+        local textures, levels = 0, {}
+        local tracked = {}
+        _G.CreateFrame = function(frameType, name, parent, template)
+            local frame = prevCreateFrame(frameType, name, parent, template)
+            local liveHost = ns._TestGetForeverGlowHost()
+            -- The rim textures live on the overlay's own art child, so both the
+            -- overlay and anything parented under it are counted.
+            if liveHost and (parent == liveHost or (parent and tracked[parent])) then
+                tracked[frame] = true
+                local createTexture = frame.CreateTexture
+                frame.CreateTexture = function(target, ...)
+                    textures = textures + 1
+                    return createTexture(target, ...)
+                end
+                local setFrameLevel = frame.SetFrameLevel
+                frame.SetFrameLevel = function(target, level)
+                    levels[#levels + 1] = level
+                    return setFrameLevel(target, level)
+                end
+            end
+            return frame
+        end
+        ns._TestForeverStyleAuraButton(button, {
+            width = 30, height = 25, withBar = true, withGlow = true,
+            glowGroupKey = "forever_debuffs",
+        })
+        _G.CreateFrame = prevCreateFrame
+
+        AreEqual(ns.GetForeverAuraGlowCount(), baseCount + 1,
+            "a restricted button level still registers a glow overlay")
+        IsTrue(textures >= 4, "the rim textures are still built when the level is restricted")
+        IsTrue(#levels >= 1 and levels[1] == 100,
+            "the overlay falls back to a plain constant level instead of doing arithmetic on the secret")
+        AreEqual(select(1, ns.GetForeverAuraGlowFailures()), artFailuresBefore,
+            "no rim build failure is recorded for a restricted level")
+
+        EndForeverGlowTest(prev)
+    end
+
+    function ForeverAura:GlowSecretAlphaIsPassedThroughEveryTick()
+        -- A secret alpha must reach SetAlpha untouched (SecretArguments =
+        -- AllowedWhenTainted on the Alpha aspect) and must never be compared or
+        -- cached, so each tick re-passes the client's value.
+        local prev = BeginForeverGlowTest()
+        local prevCreateFrame = _G.CreateFrame
+        local prevIsSecret = ns.IsSecretValue
+        local SECRET_ALPHA = {}
+        ns.IsSecretValue = function(value)
+            if value == SECRET_ALPHA then return true end
+            return prevIsSecret(value)
+        end
+        local durationObject = {
+            EvaluateRemainingDuration = function()
+                IsTrue(true, "curve evaluated")
+                return SECRET_ALPHA
+            end,
+        }
+        local button = MakeGlowTestButton(durationObject)
+
+        local baseCount = ns.GetForeverAuraGlowCount()
+        local alphaCalls, lastAlpha = 0, nil
+        _G.CreateFrame = function(frameType, name, parent, template)
+            local frame = prevCreateFrame(frameType, name, parent, template)
+            local liveHost = ns._TestGetForeverGlowHost()
+            if liveHost and parent == liveHost then
+                local setAlpha = frame.SetAlpha
+                frame.SetAlpha = function(target, alpha)
+                    if alpha == SECRET_ALPHA then
+                        alphaCalls = alphaCalls + 1
+                    end
+                    lastAlpha = alpha
+                    return setAlpha(target, alpha)
+                end
+            end
+            return frame
+        end
+        ns._TestForeverStyleAuraButton(button, {
+            width = 30, height = 25, withBar = false, withGlow = true,
+            glowGroupKey = "forever_buffs",
+        })
+        _G.CreateFrame = prevCreateFrame
+
+        AreEqual(ns.GetForeverAuraGlowCount(), baseCount + 1, "overlay registered for the buff row")
+        ns._TestForeverGlowTick()
+        ns._TestForeverGlowTick()
+        IsTrue(lastAlpha == SECRET_ALPHA, "the secret alpha reaches SetAlpha unchanged")
+        AreEqual(alphaCalls, 2, "a secret alpha is re-passed every tick instead of being cached")
+
+        ns.IsSecretValue = prevIsSecret
+        EndForeverGlowTest(prev)
+    end
+
+    function ForeverAura:GlowEntryFailureDoesNotStopFollowingRows()
+        -- Buff entries are registered first, so a raise while updating one
+        -- entry used to abort the loop and leave the target-debuff row unglowing.
+        -- Each entry now updates inside its own pcall.
+        local prev = BeginForeverGlowTest()
+        local prevCreateFrame = _G.CreateFrame
+        local prevIsSecret = ns.IsSecretValue
+        local SEcret_RAISING = {}
+        ns.IsSecretValue = function(value)
+            if value == SEcret_RAISING then
+                error("secret probe refused")
+            end
+            return prevIsSecret(value)
+        end
+        local raisingObject = {
+            EvaluateRemainingDuration = function() return SEcret_RAISING end,
+        }
+        local workingObject = {
+            EvaluateRemainingDuration = function() return 1 end,
+        }
+        local raisingButton = MakeGlowTestButton(raisingObject)
+        local workingButton = MakeGlowTestButton(workingObject)
+
+        local baseCount = ns.GetForeverAuraGlowCount()
+        local overlays = {}
+        _G.CreateFrame = function(frameType, name, parent, template)
+            local frame = prevCreateFrame(frameType, name, parent, template)
+            local liveHost = ns._TestGetForeverGlowHost()
+            if liveHost and parent == liveHost then
+                table.insert(overlays, frame)
+            end
+            return frame
+        end
+        -- Registration order: first button's entry, then the second's.
+        ns._TestForeverStyleAuraButton(raisingButton, {
+            width = 30, height = 25, withBar = true, withGlow = true,
+            glowGroupKey = "forever_buffs",
+        })
+        ns._TestForeverStyleAuraButton(workingButton, {
+            width = 30, height = 25, withBar = true, withGlow = true,
+            glowGroupKey = "forever_debuffs",
+        })
+        _G.CreateFrame = prevCreateFrame
+
+        AreEqual(ns.GetForeverAuraGlowCount(), baseCount + 2, "both overlays are registered")
+        ns._TestForeverGlowTick()
+        local raisingOverlay = overlays[#overlays - 1]
+        local workingOverlay = overlays[#overlays]
+        AreEqual(raisingOverlay:GetAlpha(), 0, "the failing entry is left off instead of aborting")
+        AreEqual(workingOverlay:GetAlpha(), 1, "the entry behind a failing one still glows")
+
+        ns.IsSecretValue = prevIsSecret
+        EndForeverGlowTest(prev)
+    end
+
+    function ForeverAura:PlayerSwingRangeUpdate_CachesAndRefreshesHunterHelper()
+        local prevClass = ns.playerClass
+        local prevCache = ns.swingRangeCache
+        local prevRefresh = ns.UpdateHunterRangeHelperVisual
+        local refreshed = 0
+        ns.playerClass = "HUNTER"
+        ns.swingRangeCache = nil
+        ns.UpdateHunterRangeHelperVisual = function() refreshed = refreshed + 1 end
+
+        local onEvent = ns.eventFrame and ns.eventFrame._scripts and ns.eventFrame._scripts["OnEvent"]
+        IsTrue(type(onEvent) == "function", "eventFrame OnEvent handler exists")
+        onEvent(ns.eventFrame, "PLAYER_SWING_RANGE_UPDATE", 2, true, true)
+        AreEqual(ns.swingRangeCache and ns.swingRangeCache[2], true, "PLAYER_SWING_RANGE_UPDATE caches boolean range")
+        AreEqual(refreshed, 1, "Hunter helper refreshes on PLAYER_SWING_RANGE_UPDATE")
+
+        local prevIsSecret = ns.IsSecretValue
+        local secretVal = {}
+        ns.IsSecretValue = function(v) return v == secretVal end
+        onEvent(ns.eventFrame, "PLAYER_SWING_RANGE_UPDATE", 2, secretVal, true)
+        AreEqual(ns.swingRangeCache[2], nil, "secret swing range clears plain cache instead of storing secret")
+
+        ns.IsSecretValue = prevIsSecret
+        ns.playerClass = prevClass
+        ns.swingRangeCache = prevCache
+        ns.UpdateHunterRangeHelperVisual = prevRefresh
+    end
+
+    function Core:SetUpdateEnabled_DebouncesOnUpdateScript()
+        IsTrue(type(ns.SetUpdateEnabled) == "function", "SetUpdateEnabled exposed")
+        local ef = ns.eventFrame
+        local origSetScript = ef.SetScript
+        local onUpdateCalls = 0
+        ef.SetScript = function(frameObj, kind, fn)
+            if kind == "OnUpdate" then
+                onUpdateCalls = onUpdateCalls + 1
+            end
+            return origSetScript(frameObj, kind, fn)
+        end
+
+        -- Establish known starting state, then test transitions vs repeats.
+        ns.SetUpdateEnabled(false)
+        onUpdateCalls = 0
+        ns.SetUpdateEnabled(false)
+        AreEqual(onUpdateCalls, 0, "redundant false->false skips SetScript")
+        ns.SetUpdateEnabled(true)
+        AreEqual(onUpdateCalls, 1, "false->true attaches OnUpdate once")
+        onUpdateCalls = 0
+        ns.SetUpdateEnabled(true)
+        AreEqual(onUpdateCalls, 0, "redundant true->true skips SetScript")
+        ns.SetUpdateEnabled(false)
+        AreEqual(onUpdateCalls, 1, "true->false detaches OnUpdate once")
+
+        ef.SetScript = origSetScript
+        ns.SetUpdateEnabled(ns.HasActiveTimers())
+    end
+
+    function Core:SetBarLabelShown_CachesStyleWithoutRedundantCalls()
+        local bar = CreateFrame("StatusBar")
+        local label = bar:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        local styleCount = 0
+        local origSetTextColor = label.SetTextColor
+        label.SetTextColor = function(labelObj, ...)
+            styleCount = styleCount + 1
+            return origSetTextColor(labelObj, ...)
+        end
+        bar.labelText = label
+        bar.defaultLabel = ""
+
+        ns.SetBarLabelText(bar, "2.5s", true)
+        local afterFirst = styleCount
+        IsTrue(afterFirst >= 1, "initial show applies label style")
+        ns.SetBarLabelText(bar, "2.4s", true)
+        AreEqual(styleCount, afterFirst, "subsequent text ticks skip redundant ApplyBarLabelStyle")
+
+        ns.RefreshBarLabelStyles()
+        ns.SetBarLabelText(bar, "", false)
+        IsFalse(label:IsShown(), "hidden label hides cleanly")
+    end
+
+    function Core:UpdatePlayerPowerBar_CachesAndHandlesSecrets()
+        IsTrue(type(ns.UpdatePlayerPowerBar) == "function", "UpdatePlayerPowerBar exposed")
+        local prevBar = ns.playerPowerBar
+        local prevClass = ns.playerClass
+        local prevPower = rawget(_G, "UnitPower")
+        local prevMaxPower = rawget(_G, "UnitPowerMax")
+        local prevPowerType = rawget(_G, "UnitPowerType")
+        local prevIsSecret = _G.issecretvalue
+        local prevShow = SuperSwingTimerDB and SuperSwingTimerDB.showPowerBar
+
+        local counts = { minMax = 0, val = 0, color = 0, show = 0, text = 0, fmt = 0 }
+        local mockBar = CreateFrame("StatusBar")
+        local origShow = mockBar.Show
+        mockBar.SetMinMaxValues = function() counts.minMax = counts.minMax + 1 end
+        mockBar.SetValue = function(_, v) counts.val = counts.val + 1; mockBar._lastPassedVal = v end
+        mockBar.SetStatusBarColor = function() counts.color = counts.color + 1 end
+        mockBar.Show = function(s) counts.show = counts.show + 1; return origShow(s) end
+        local mockLabel = mockBar:CreateFontString(nil, "OVERLAY")
+        mockLabel.SetText = function() counts.text = counts.text + 1 end
+        mockLabel.SetFormattedText = function() counts.fmt = counts.fmt + 1 end
+        mockBar.label = mockLabel
+
+        ns.playerPowerBar = mockBar
+        ns.playerClass = "PALADIN"
+        if SuperSwingTimerDB then SuperSwingTimerDB.showPowerBar = true end
+        ---@type any
+        local curP = 500
+        local maxP = 1000
+        _G.UnitPowerType = function() return 0, "MANA" end
+        _G.UnitPower = function() return curP end
+        _G.UnitPowerMax = function() return maxP end
+
+        ns.UpdatePlayerPowerBar()
+        AreEqual(counts.minMax, 1, "first update sets minMax once")
+        AreEqual(counts.val, 1, "first update sets value once")
+        AreEqual(counts.color, 1, "first update sets color once")
+        AreEqual(counts.show, 1, "first update shows bar once")
+        AreEqual(counts.text, 1, "first update sets label text once")
+
+        ns.UpdatePlayerPowerBar()
+        AreEqual(counts.minMax, 1, "unchanged update caches minMax")
+        AreEqual(counts.val, 1, "unchanged update caches value")
+        AreEqual(counts.color, 1, "unchanged update caches color")
+        AreEqual(counts.show, 1, "unchanged update caches Show")
+        AreEqual(counts.text, 1, "unchanged update caches SetText")
+
+        -- Secret power must still pass straight through without comparison/concatenation.
+        local secretPower = { secret = true }
+        _G.issecretvalue = function(v) return v == secretPower end
+        curP = secretPower
+        ns.UpdatePlayerPowerBar()
+        AreEqual(mockBar._lastPassedVal, secretPower, "secret power passes untouched to StatusBar:SetValue")
+        AreEqual(counts.fmt, 1, "secret mana uses SetFormattedText")
+
+        ns.playerPowerBar = prevBar
+        ns.playerClass = prevClass
+        _G.UnitPower = prevPower
+        _G.UnitPowerMax = prevMaxPower
+        _G.UnitPowerType = prevPowerType
+        _G.issecretvalue = prevIsSecret
+        if SuperSwingTimerDB then SuperSwingTimerDB.showPowerBar = prevShow end
+    end
+
+    function Core:UpdateBuffIcons_SharedHelperZeroRegression()
+        local prevClass = ns.playerClass
+        local prevUnitBuff = rawget(_G, "UnitBuff")
+        local prevMh = ns.mhBar
+        local prevCount = ns.activeBuffIconCount
+        local prevToggle = SuperSwingTimerDB and SuperSwingTimerDB.showPaladinBuffIcons
+
+        ns.playerClass = "PALADIN"
+        if ns._Test and ns._Test.SetupRetPaladin then
+            ns._Test.SetupRetPaladin()
+        end
+        if ns.UpdatePaladinBuffIcons then
+            if SuperSwingTimerDB then SuperSwingTimerDB.showPaladinBuffIcons = true end
+            ns.mhBar = ns.mhBar or CreateFrame("StatusBar")
+            local now = (GetTime and GetTime()) or 100
+            _G.UnitBuff = function(_, idx)
+                if idx == 1 then
+                    return "Seal of Command", nil, 133492, 0, nil, 30, now + 1.5, "player", nil, nil, 20375
+                end
+            end
+            ns.UpdatePaladinBuffIcons(0.20)
+            IsTrue((ns.activeBuffIconCount or 0) >= 0, "shared buff icon helper runs cleanly on elapsed tick")
+            if SuperSwingTimerDB then SuperSwingTimerDB.showPaladinBuffIcons = false end
+            ns.UpdatePaladinBuffIcons(0.20)
+            AreEqual(ns.activeBuffIconCount, 0, "disabled buff icon toggle resets activeBuffIconCount to 0")
+        end
+
+        ns.playerClass = prevClass
+        _G.UnitBuff = prevUnitBuff
+        ns.mhBar = prevMh
+        ns.activeBuffIconCount = prevCount
+        if SuperSwingTimerDB then SuperSwingTimerDB.showPaladinBuffIcons = prevToggle end
     end
 
     local nGroups = 0

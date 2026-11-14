@@ -56,7 +56,7 @@ function ns.GetDisplayVersion()
         end
     end
 
-    return "v0.3.4"
+    return "v0.3.6"
 end
 
 -- Reused scratch table for the secret-string probe; no per-call allocation.
@@ -77,6 +77,9 @@ end
 --  @param value (any) Value to inspect
 --  @return (boolean) true if the value must not be used in addon logic
 function ns.IsSecretValue(value)
+    if value == nil then
+        return false
+    end
     local probe = rawget(_G, "issecretvalue")
     if type(probe) == "function" then
         local ok, res = pcall(probe, value)
@@ -88,6 +91,9 @@ function ns.IsSecretValue(value)
         -- the engine still refuses to use.
     end
     local valueType = type(value)
+    if valueType == "boolean" or valueType == "function" or valueType == "userdata" then
+        return false
+    end
     if valueType == "number" then
         -- math.max is the operation that raises in-game on a restricted number;
         -- if it survives, the value is plain.
@@ -126,8 +132,31 @@ local function ToPlainNumber(value)
 end
 
 function ns.SafeNumber(value, fallback)
+    if value == nil then
+        return fallback
+    end
+    local valueType = type(value)
+    if valueType == "boolean" or valueType == "table" or valueType == "function" or valueType == "userdata" then
+        return fallback
+    end
     if ns.IsSecretValue(value) then
         return fallback
+    end
+    if valueType == "number" then
+        local scrubber = rawget(_G, "scrubsecretvalues")
+        local scrubbed = value
+        if type(scrubber) == "function" then
+            local sOk, cleaned = pcall(scrubber, value)
+            if not sOk or cleaned == nil then
+                return fallback
+            end
+            scrubbed = cleaned
+        end
+        local ok, num = pcall(ToPlainNumber, scrubbed)
+        if not ok or num == nil then
+            return fallback
+        end
+        return num
     end
     -- Documented sanitizer: replaces a secret value with nil without any
     -- arithmetic. If it is unavailable the conversion guard below still runs.
@@ -151,22 +180,14 @@ end
 -- Convert a value to a plain string. Concatenation is blocked on a secret
 -- string, so the conversion runs inside pcall and a restricted value becomes
 -- nil instead of reaching a comparison.
-local function ToPlainString(value)
-    if type(value) ~= "string" then
-        return nil
-    end
-    return value .. ""
-end
-
 function ns.SafeString(value, fallback)
+    if type(value) ~= "string" then
+        return fallback
+    end
     if ns.IsSecretValue(value) then
         return fallback
     end
-    local ok, str = pcall(ToPlainString, value)
-    if not ok or str == nil then
-        return fallback
-    end
-    return str
+    return value
 end
 
 --- Strip secret values out of an event payload (`scrubsecretvalues`).
@@ -236,6 +257,27 @@ end
 --  The user's pre-addon value is captured once and restored when the toggle is
 --  switched off, instead of forcing Blizzard's bars to "1" unconditionally.
 --  @param hideBlizzard (boolean|nil) When true (default), disables Blizzard's default swing bars
+--- Ensure C_SwingTimer range tracking stays enabled for MainHand (and Ranged
+--  when applicable) even when Blizzard's built-in swing bars are hidden via
+--  CVar showSwingTimer = "0".
+function ns.EnsureSwingRangeTracking()
+    if not (ns.HasNativeSwingTimer and ns.HasNativeSwingTimer()) then
+        return
+    end
+    local cSwingTimer = rawget(_G, "C_SwingTimer")
+    if not (cSwingTimer and type(cSwingTimer.EnableRangeCheck) == "function") then
+        return
+    end
+    local enum = rawget(_G, "Enum")
+    local mhType = (enum and enum.PlayerSwingType and enum.PlayerSwingType.MainHand) or 0
+    local rangedType = (enum and enum.PlayerSwingType and enum.PlayerSwingType.Ranged) or 2
+    pcall(cSwingTimer.EnableRangeCheck, mhType, true)
+    local cfg = ns.classConfig
+    if (cfg and cfg.ranged) or ns.playerClass == "HUNTER" then
+        pcall(cSwingTimer.EnableRangeCheck, rangedType, true)
+    end
+end
+
 function ns.ApplyBlizzardSwingTimerVisibility(hideBlizzard)
     if not (ns.HasNativeSwingTimer and ns.HasNativeSwingTimer()) then
         return
@@ -269,6 +311,9 @@ function ns.ApplyBlizzardSwingTimerVisibility(hideBlizzard)
         cvarVal = "1"
     end
     pcall(setCVar, "showSwingTimer", cvarVal)
+    if ns.EnsureSwingRangeTracking then
+        ns.EnsureSwingRangeTracking()
+    end
 end
 
 --- Authoritative GetSpellInfo wrapper for Classic/TBC Anniversary (1.15+).
@@ -278,19 +323,34 @@ end
 --  @param spellIdentifier (number|string) Spell ID or localized spell name
 --  @return (string|nil) Localized spell name, or nil if not found
 --  @usage local name = ns.GetSpellInfo(75)  -- "Auto Shot"
+local spellInfoCache = {}
+local spellTextureCache = {}
+
 function ns.GetSpellInfo(spellIdentifier)
     if not spellIdentifier then return nil end
     local g = rawget(_G, "GetSpellInfo")
+    local cSpell = rawget(_G, "C_Spell")
+    local cFn = cSpell and cSpell.GetSpellInfo or nil
+    local cached = spellInfoCache[spellIdentifier]
+    if cached and cached.g == g and cached.cFn == cFn then
+        return cached[1], cached[2], cached[3], cached[4], cached[5], cached[6], cached[7]
+    end
+
     if type(g) == "function" then
         local ok, r1, r2, r3, r4, r5, r6, r7 = pcall(g, spellIdentifier)
-        if ok and r1 then
+        if ok and r1 and not ns.IsSecretValue(r1) then
+            spellInfoCache[spellIdentifier] = { g = g, cFn = cFn, r1, r2, r3, r4, r5, r6, r7 }
             return r1, r2, r3, r4, r5, r6, r7
         end
     end
-    local cSpell = rawget(_G, "C_Spell")
-    if cSpell and type(cSpell.GetSpellInfo) == "function" then
-        local ok, info = pcall(cSpell.GetSpellInfo, spellIdentifier)
-        if ok and info then
+    if type(cFn) == "function" then
+        local ok, info = pcall(cFn, spellIdentifier)
+        if ok and info and not ns.IsSecretValue(info) and info.name then
+            spellInfoCache[spellIdentifier] = {
+                g = g,
+                cFn = cFn,
+                info.name, nil, info.iconID, info.castTime, info.minRange, info.maxRange, info.spellID
+            }
             return info.name, nil, info.iconID, info.castTime, info.minRange, info.maxRange, info.spellID
         end
     end
@@ -305,18 +365,33 @@ end
 --  @usage local tex = ns.GetSpellTexture(21183)
 function ns.GetSpellTexture(spellIdentifier)
     if not spellIdentifier then return nil end
-    local C_Spell = rawget(_G, "C_Spell")
-    if C_Spell and C_Spell.GetSpellTexture then
-        local ok, tex = pcall(C_Spell.GetSpellTexture, spellIdentifier)
-        if ok and tex then return tex end
+    local cSpell = rawget(_G, "C_Spell")
+    local cTexFn = cSpell and cSpell.GetSpellTexture or nil
+    local gTexFn = rawget(_G, "GetSpellTexture")
+    local cached = spellTextureCache[spellIdentifier]
+    if cached and cached.cTexFn == cTexFn and cached.gTexFn == gTexFn then
+        return cached.tex
     end
-    local g = rawget(_G, "GetSpellTexture")
-    if g then
-        local ok, tex = pcall(g, spellIdentifier)
-        if ok and tex then return tex end
+
+    if type(cTexFn) == "function" then
+        local ok, tex = pcall(cTexFn, spellIdentifier)
+        if ok and tex and not ns.IsSecretValue(tex) then
+            spellTextureCache[spellIdentifier] = { cTexFn = cTexFn, gTexFn = gTexFn, tex = tex }
+            return tex
+        end
+    end
+    if type(gTexFn) == "function" then
+        local ok, tex = pcall(gTexFn, spellIdentifier)
+        if ok and tex and not ns.IsSecretValue(tex) then
+            spellTextureCache[spellIdentifier] = { cTexFn = cTexFn, gTexFn = gTexFn, tex = tex }
+            return tex
+        end
     end
     local _, _, icon = ns.GetSpellInfo(spellIdentifier)
-    if icon then return icon end
+    if icon and not ns.IsSecretValue(icon) then
+        spellTextureCache[spellIdentifier] = { cTexFn = cTexFn, gTexFn = gTexFn, tex = icon }
+        return icon
+    end
     return nil
 end
 
@@ -1216,7 +1291,6 @@ ns.DB_DEFAULTS = {
     showGlowEffects = true,
     showRanged = true,
     showHunterRangeHelper = true,
-    showHunterDistanceBar = true,
     showEnemy = true,
     showRogueSinisterAssist = true,
     showRogueEnergyTick = true,
@@ -1227,6 +1301,12 @@ ns.DB_DEFAULTS = {
     showPaladinSealLabel = true,
     showPaladinJudgementMarker = true,
     showPaladinTwistFlash = true,
+    paladinTwistPaddingMode = "Dynamic",
+    paladinTwistFixedPaddingMs = 0,
+    showPaladinImpossibleTwist = true,
+    showPaladinTwistGlow = true,
+    paladinTwistLagMultiplier = 1.4,
+    paladinTwistLagOffsetMs = 0,
     showPowerBar = true,
     powerBarHeight = 14,
     showWarriorRageBar = true,
@@ -1237,6 +1317,7 @@ ns.DB_DEFAULTS = {
     hideBlizzardSwingBars = true,
     showForeverDebuffIcons = true,
     showForeverStanceIcon = true,
+    showForeverAuraGlow = true,
     showGcdTicker = true,
     showRogueEnergyCountdown = true,
     -- Phase 2 defaults (v39→v40)

@@ -286,6 +286,219 @@ local function GetHarmfulAuraData(unit, index, filter)
     return name, count or 0, dur, expT, caster, sId, icon
 end
 
+local buffScratchIcons = {}
+local buffScratchSeen = {}
+
+-- Expiring-glow window for every tracked icon row (player buffs and target
+-- debuffs alike). Both cues below run over the same final seconds before the
+-- aura or cooldown ends: the gold pulse overlay and the LibCustomGlow
+-- animation, so the animation no longer stops early while the pulse runs on.
+local ICON_EXPIRING_GLOW_SECONDS = 5
+
+-- Exposed so the settings tooltips (SuperSwingTimer_Config.lua) and the
+-- headless suite read the same number this renderer uses instead of repeating
+-- the window as a literal.
+ns.ICON_EXPIRING_GLOW_SECONDS = ICON_EXPIRING_GLOW_SECONDS
+
+local function HideTrackedBuffIcon(icon, setIconGlow)
+    if not icon then
+        return
+    end
+    if icon.countText and icon.countText.Hide and icon._lastCountShown ~= false then
+        icon._lastCountShown = false
+        icon.countText:Hide()
+    end
+    if icon._lastBorderGlowShown ~= false and icon.glow and icon.glow.Hide then
+        icon._lastBorderGlowShown = false
+        icon.glow:Hide()
+    end
+    if icon._lastBuffShown ~= false then
+        icon._lastBuffShown = false
+        if icon.Hide then
+            icon:Hide()
+        end
+    end
+    if setIconGlow then
+        setIconGlow(icon, false)
+    end
+end
+
+local function RenderTrackedBuffIcons(ctx, elapsed)
+    ctx.createIcons()
+    local icons = ctx.icons
+    if ctx.requireRangedBar and not ns.rangedBar then
+        return
+    end
+    if #icons == 0 then
+        return
+    end
+
+    ctx.timer = (ctx.timer or 0) + (elapsed or 0.03)
+    if ctx.timer < (ctx.interval or 0.15) then
+        return
+    end
+    ctx.timer = 0
+
+    local setIconGlow = ns.Glow and ns.Glow.SetIcon
+    local db = SuperSwingTimerDB or ns.DB_DEFAULTS
+    if db and db[ctx.toggleKey] == false then
+        ns.activeBuffIconCount = 0
+        for i = 1, #icons do
+            HideTrackedBuffIcon(icons[i], setIconGlow)
+        end
+        return
+    end
+
+    local iconSize = SuperSwingTimerDB and SuperSwingTimerDB[ctx.sizeKey] or 25
+    if type(iconSize) ~= "number" or iconSize <= 0 then
+        iconSize = 25
+    end
+
+    for k in pairs(buffScratchSeen) do
+        buffScratchSeen[k] = nil
+    end
+
+    local numActive = 0
+    local spells = ctx.spells
+    local getRemaining = ctx.getRemaining
+    for i = 1, #icons do
+        local icon = icons[i]
+        if icon and icon.spellId then
+            local matched = false
+            for j = 1, #spells do
+                local spell = spells[j]
+                if spell.spellId == icon.spellId then
+                    local remaining, totalDuration, stacks = getRemaining(spell)
+                    local auraKey = spell.name or spell.label or spell.spellId
+                    if type(remaining) == "number" and remaining > 0
+                        and type(totalDuration) == "number" and totalDuration > 0
+                        and not buffScratchSeen[auraKey] then
+                        buffScratchSeen[auraKey] = true
+                        numActive = numActive + 1
+                        buffScratchIcons[numActive] = icon
+                        icon._activeRem = remaining
+                        icon._activeTot = totalDuration
+                        icon._activeStacks = stacks or 0
+                        icon._activeSpellId = spell.spellId
+                        icon._activeLabel = spell.label
+                        matched = true
+                    end
+                    break
+                end
+            end
+            if not matched then
+                HideTrackedBuffIcon(icon, setIconGlow)
+            end
+        else
+            HideTrackedBuffIcon(icon, setIconGlow)
+        end
+    end
+
+    ns.activeBuffIconCount = numActive
+    if numActive == 0 then
+        return
+    end
+
+    local referenceBar = (ctx.getReferenceBar and ctx.getReferenceBar()) or ns.mhBar
+    if not referenceBar or not referenceBar.GetWidth then
+        for i = 1, numActive do
+            HideTrackedBuffIcon(buffScratchIcons[i], setIconGlow)
+            buffScratchIcons[i] = nil
+        end
+        return
+    end
+
+    if ctx.fillDebuffBars then
+        ctx.fillDebuffBars(ctx.debuffBars)
+    end
+    local iconY = ComputeBuffIconOffset(ctx.debuffBars, referenceBar, nil, ctx.debuffCount)
+    local gap = ctx.gap or 3
+    local totalWidth = numActive * iconSize + (numActive - 1) * gap
+    local now = nil
+
+    for idx = 1, numActive do
+        local icon = buffScratchIcons[idx]
+        buffScratchIcons[idx] = nil
+        local remaining = icon._activeRem
+        local totalDuration = icon._activeTot
+
+        if icon.SetSize and icon._lastBuffSize ~= iconSize then
+            icon._lastBuffSize = iconSize
+            icon:SetSize(iconSize, iconSize)
+        end
+
+        local finalX = (idx - 1) * (iconSize + gap) + (iconSize / 2) - (totalWidth / 2)
+        if icon._lastBuffX ~= finalX or icon._lastBuffY ~= iconY or icon._lastBuffRef ~= referenceBar then
+            icon._lastBuffX = finalX
+            icon._lastBuffY = iconY
+            icon._lastBuffRef = referenceBar
+            if icon.ClearAllPoints then icon:ClearAllPoints() end
+            if icon.SetPoint then icon:SetPoint("BOTTOM", referenceBar, "TOP", finalX, iconY) end
+        end
+
+        if not icon._lastDimCleared and icon.dim and icon.dim.SetColorTexture then
+            icon._lastDimCleared = true
+            icon.dim:SetColorTexture(0, 0, 0, 0)
+        end
+
+        if icon.glow and icon.glow.SetColorTexture then
+            local shouldGlow = remaining <= ICON_EXPIRING_GLOW_SECONDS and remaining > 0
+            if shouldGlow and totalDuration > 0 then
+                if not now then
+                    now = GetCurrentTime()
+                end
+                local pulseAlpha = 0.15 + 0.40 * (0.5 + 0.5 * math.sin(now * 6))
+                icon.glow:SetColorTexture(1, 0.85, 0, pulseAlpha)
+                if icon._lastBorderGlowShown ~= true then
+                    icon._lastBorderGlowShown = true
+                    if icon.glow.Show then icon.glow:Show() end
+                end
+            elseif icon._lastBorderGlowShown ~= false then
+                icon._lastBorderGlowShown = false
+                if icon.glow.Hide then icon.glow:Hide() end
+            end
+        end
+
+        if setIconGlow then
+            setIconGlow(icon, remaining <= ICON_EXPIRING_GLOW_SECONDS and remaining > 0, GLOW_GOLD)
+        end
+
+        if icon.durationText and icon.durationText.SetText then
+            local text = remaining >= 3 and string.format("%.0f", remaining) or string.format("%.1f", remaining)
+            if icon._lastDurText ~= text then
+                icon._lastDurText = text
+                icon.durationText:SetText(text)
+            end
+            if icon._lastDurShown ~= true then
+                icon._lastDurShown = true
+                if icon.durationText.Show then icon.durationText:Show() end
+            end
+        end
+
+        local stacks = icon._activeStacks or 0
+        if icon.countText and icon.countText.SetText then
+            if stacks > 1 or (stacks == 1 and (icon._activeSpellId == 408505 or icon._activeLabel == "MSW" or icon._activeLabel == "Reckoning")) then
+                if icon._lastCountVal ~= stacks then
+                    icon._lastCountVal = stacks
+                    icon.countText:SetText(tostring(stacks))
+                end
+                if icon._lastCountShown ~= true then
+                    icon._lastCountShown = true
+                    if icon.countText.Show then icon.countText:Show() end
+                end
+            elseif icon._lastCountShown ~= false then
+                icon._lastCountShown = false
+                if icon.countText.Hide then icon.countText:Hide() end
+            end
+        end
+
+        if icon._lastBuffShown ~= true then
+            icon._lastBuffShown = true
+            if icon.Show then icon:Show() end
+        end
+    end
+end
+
 local function EnsureVerticalHelperBar(frameName, anchorBar, width, texturePath)
     local bar = rawget(_G, frameName)
     if not bar then
@@ -510,8 +723,8 @@ local function CreatePlayerPowerBar()
     bar.statusBarTexture = statusBarTexture
 
     bar.label = bar:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    bar.label:SetPoint("LEFT", bar, "LEFT", 2, 0)
-    bar.label:SetJustifyH("LEFT")
+    bar.label:SetPoint("CENTER", bar, "CENTER", 0, 0)
+    bar.label:SetJustifyH("CENTER")
     bar.label:SetFont(GetFontPath(), 10, "OUTLINE")
     bar.label:SetTextColor(1, 1, 1, 0.95)
 
@@ -526,6 +739,72 @@ end
 -- Each class mod sets callbacks on ns (OnMeleeSwing, OnRangedSwing,
 -- OnBarsCreated, OnDruidFormChange) as needed.
 -- ============================================================
+
+local PALADIN_TWIST_BASE_WINDOW = 0.4
+local PALADIN_TWIST_SOD_WINDOW = 0.2
+local PALADIN_TWIST_MAX_WINDOW = 0.8
+
+--- Compute the Paladin seal twist window duration in seconds.
+--  @param mode (string|nil) "None" | "Fixed" | "Dynamic"
+--  @param lagMs (number|nil) world latency in ms (for Dynamic mode)
+--  @param fixedMs (number|nil) user padding in ms (for Fixed mode)
+--  @param isSoD (boolean|nil) Season of Discovery uses a tighter 0.2s baseline
+--  @return (number) window duration in seconds
+function ns.GetPaladinTwistWindowSeconds(mode, lagMs, fixedMs, isSoD)
+    local base = isSoD == true and PALADIN_TWIST_SOD_WINDOW or PALADIN_TWIST_BASE_WINDOW
+    local padding = 0
+    if mode == "Dynamic" then
+        local ms = type(lagMs) == "number" and lagMs or 0
+        if ms < 0 then ms = 0 end
+        padding = ms * 0.7 * 0.001
+    elseif mode == "Fixed" then
+        local ms = type(fixedMs) == "number" and fixedMs or 0
+        if ms < 0 then ms = 0 end
+        if ms > 400 then ms = 400 end
+        padding = ms * 0.001
+    end
+    local result = base + padding
+    if result < base then result = base end
+    if result > PALADIN_TWIST_MAX_WINDOW then result = PALADIN_TWIST_MAX_WINDOW end
+    return result
+end
+
+--- Return true when a running GCD + calibrated latency cannot clear before the
+--  current swing lands (while still outside the twist window).
+function ns.IsPaladinTwistImpossible(enabled, remainingSeconds, gcdRemainingSeconds, lagMs, lagMultiplier, lagOffsetMs, windowSeconds)
+    if not enabled then return false end
+    if type(remainingSeconds) ~= "number" or remainingSeconds ~= remainingSeconds then return false end
+    if remainingSeconds < 0 then remainingSeconds = 0 end
+    local window = type(windowSeconds) == "number" and windowSeconds or PALADIN_TWIST_BASE_WINDOW
+    if window < 0 then window = 0 end
+    if remainingSeconds <= window then return false end
+    local ms = type(lagMs) == "number" and lagMs > 0 and lagMs or 0
+    local mult = type(lagMultiplier) == "number" and lagMultiplier >= 0 and lagMultiplier or 1.4
+    local offset = type(lagOffsetMs) == "number" and lagOffsetMs > 0 and lagOffsetMs or 0
+    local gcd = type(gcdRemainingSeconds) == "number" and gcdRemainingSeconds > 0 and gcdRemainingSeconds or 0
+    local gcdWithLag = gcd + (ms * 0.001 * mult) + (offset * 0.001)
+    return gcdWithLag > remainingSeconds
+end
+
+--- Compute the GCD-clear reseal marker fraction on the current swing [0, 1],
+--  or nil when no GCD is running or the GCD clears outside this swing.
+function ns.GetPaladinResealMarkerFraction(swingDuration, swingRemaining, gcdRemaining)
+    if type(swingDuration) ~= "number" or swingDuration ~= swingDuration or swingDuration <= 0 then
+        return nil
+    end
+    if type(swingRemaining) ~= "number" or swingRemaining ~= swingRemaining then
+        return nil
+    end
+    if type(gcdRemaining) ~= "number" or gcdRemaining ~= gcdRemaining or gcdRemaining <= 0 then
+        return nil
+    end
+    if swingRemaining < 0 then swingRemaining = 0 end
+    local fraction = 1 - (swingRemaining - gcdRemaining) / swingDuration
+    if fraction < 0 or fraction > 1 then
+        return nil
+    end
+    return fraction
+end
 
 local function SetupRetPaladin()
     local function GetActivePaladinSeal()
@@ -552,7 +831,31 @@ local function SetupRetPaladin()
         return nil
     end
 
-    local PALADIN_TWIST_WINDOW = 0.4 -- seconds before swing landing for the seal twist window
+    local activeSealFamiliesScratch = {}
+    local function GetActivePaladinSealCount()
+        if not ns.UnitBuff then
+            return 0
+        end
+        for k in pairs(activeSealFamiliesScratch) do
+            activeSealFamiliesScratch[k] = nil
+        end
+        local count = 0
+        for index = 1, 40 do
+            local auraName, _, _, auraSpellId = GetHelpfulAuraData("player", index)
+            if not auraName then
+                break
+            end
+            local familyKey = ns.GetPaladinSealFamilyByAuraName and ns.GetPaladinSealFamilyByAuraName(auraName) or nil
+            if not familyKey and ns.GetPaladinSealFamilyBySpellId then
+                familyKey = ns.GetPaladinSealFamilyBySpellId(auraSpellId)
+            end
+            if familyKey and not activeSealFamiliesScratch[familyKey] then
+                activeSealFamiliesScratch[familyKey] = true
+                count = count + 1
+            end
+        end
+        return count
+    end
 
     -- Hoisted debuff-bar list. RestackDebuffBars() is called every frame and a
     -- fresh literal there is a per-frame table allocation; re-writing the slots of
@@ -628,12 +931,24 @@ local function SetupRetPaladin()
     -- Paladin seal-based MH bar color override (called from UpdateSealColorAndLabel + ApplyBarColors)
     ns.UpdatePaladinSealVisual = UpdateSealColorAndLabel
 
+    local lastZoneWidth = nil
+    local lastResealX = nil
+    local lastJgMarkerX = nil
+
     local function UpdateSealBreakpointLine()
         local sealZone = ns.sealTwistBreakpoint
         local sealResealLine = ns.sealTwistResealBreakpoint
         local activeFamily = GetActivePaladinSeal()
         if not sealZone or not ns.mhBar then
             return
+        end
+
+        local now = GetCurrentTime()
+        if ns.paladinTwistGlowUntil and now >= ns.paladinTwistGlowUntil then
+            ns.paladinTwistGlowUntil = nil
+            if ns.Glow and ns.Glow.SetBar then
+                ns.Glow.SetBar(ns.mhBar, "paladin_twist", false)
+            end
         end
 
         -- Preview fallback matching Rogue Sinister Strike pattern:
@@ -668,7 +983,6 @@ local function SetupRetPaladin()
         end
 
         -- Resolve duration and lastSwing — real timer when swinging, preview fallback when testing
-        local now = GetCurrentTime()
         local duration
         local lastSwing
         if activeSwing then
@@ -695,53 +1009,88 @@ local function SetupRetPaladin()
             return
         end
 
-        -- Calculate twist zone width proportional to the end-of-swing window
-        local twistWindow = PALADIN_TWIST_WINDOW + math.max(ns.cachedLatency or 0, 0)
+        local db = SuperSwingTimerDB or ns.DB_DEFAULTS
+        local lagMs = math.max(ns.cachedLatency or 0, 0) * 1000
+        local twistWindow = ns.GetPaladinTwistWindowSeconds(
+            db.paladinTwistPaddingMode or "Dynamic",
+            lagMs,
+            db.paladinTwistFixedPaddingMs or 0,
+            ns.isSoD
+        )
         local zoneWidth = math.min(math.max((twistWindow / duration) * barWidth, 1), barWidth * 0.5)
 
         local barAnchor = GetOverlayParent(ns.mhBar)
-        sealZone:ClearAllPoints()
-        sealZone:SetPoint("TOPRIGHT", barAnchor, "TOPRIGHT", 0, 0)
-        sealZone:SetPoint("BOTTOMRIGHT", barAnchor, "BOTTOMRIGHT", 0, 0)
-        sealZone:SetWidth(zoneWidth)
+        if not lastZoneWidth or math.abs(zoneWidth - lastZoneWidth) >= 0.5 then
+            lastZoneWidth = zoneWidth
+            sealZone:ClearAllPoints()
+            sealZone:SetPoint("TOPRIGHT", barAnchor, "TOPRIGHT", 0, 0)
+            sealZone:SetPoint("BOTTOMRIGHT", barAnchor, "BOTTOMRIGHT", 0, 0)
+            sealZone:SetWidth(zoneWidth)
+        end
+
+        local swingElapsed = math.max(0, now - (lastSwing or now))
+        local remaining = math.max(0, duration - swingElapsed)
+
+        local gcdRemaining = 0
+        local gcdStart, gcdDuration = QuerySpellCooldown(GCD_SPELL_ID)
+        if type(gcdStart) == "number" and type(gcdDuration) == "number" and gcdDuration > 0 then
+            local rem = (gcdStart + gcdDuration) - now
+            if rem > 0 then
+                gcdRemaining = rem
+            end
+        end
+
+        local impossible = ns.IsPaladinTwistImpossible(
+            db.showPaladinImpossibleTwist ~= false,
+            remaining,
+            gcdRemaining,
+            lagMs,
+            db.paladinTwistLagMultiplier or 1.4,
+            db.paladinTwistLagOffsetMs or 0,
+            twistWindow
+        )
+        ns.paladinTwistImpossible = impossible
+
+        local activeSealCount = GetActivePaladinSealCount()
+        if db.showPaladinTwistFlash ~= false and ns.paladinTwistSuccessUntil and now < ns.paladinTwistSuccessUntil then
+            sealZone:SetColorTexture(0.20, 0.95, 0.35, 0.55)
+        elseif impossible then
+            sealZone:SetColorTexture(0.95, 0.25, 0.15, 0.50)
+        elseif db.showPaladinTwistFlash ~= false and ns.paladinTwistAttemptUntil and now < ns.paladinTwistAttemptUntil then
+            sealZone:SetColorTexture(0.85, 0.35, 0.95, 0.55)
+        elseif activeSealCount >= 2 then
+            local pulse = 0.35 + 0.15 * math.sin(now * 8)
+            sealZone:SetColorTexture(0.85, 0.35, 0.95, pulse)
+        elseif remaining <= twistWindow then
+            sealZone:SetColorTexture(1.0, 0.20, 0.20, 0.38)
+        else
+            sealZone:SetColorTexture(1.0, 0.0, 0.0, 0.18)
+        end
         sealZone:Show()
 
-        -- Reseal marker: a GCD-aware line (now 3px wide for better visibility)
+        -- Reseal marker: non-wrapping GCD-clear line (hidden if GCD clears outside this swing)
         if not sealResealLine then
             return
         end
 
-        local gcdStart, gcdDuration = QuerySpellCooldown(GCD_SPELL_ID)
-        if type(gcdStart) ~= "number" or type(gcdDuration) ~= "number" or (gcdDuration or 0) <= 0 then
+        local resealTick = ns.GetPaladinResealMarkerFraction(duration, remaining, gcdRemaining)
+        if not resealTick then
             sealResealLine:Hide()
             return
         end
 
-        local gcdRemaining = (gcdStart + gcdDuration) - now
-        if gcdRemaining <= 0 then
-            sealResealLine:Hide()
-            return
-        end
-
-        local swingElapsed = math.max(0, now - (lastSwing or now))
-        local resealTick = (swingElapsed + gcdRemaining) / duration
-        while resealTick > 1 do
-            resealTick = resealTick - 1
-        end
-        if resealTick < 0 then
-            resealTick = 0
-        elseif resealTick > 1 then
-            resealTick = 1
-        end
-        local resealLineWidth = math.min(3, barWidth) -- 3px for better visibility
+        local resealLineWidth = math.min(3, barWidth)
         local resealX = math.max(
             math.min((barWidth * resealTick) - (resealLineWidth * 0.5), barWidth - resealLineWidth), 0
         )
 
-        sealResealLine:ClearAllPoints()
-        sealResealLine:SetPoint("TOPLEFT", barAnchor, "LEFT", resealX, 0)
-        sealResealLine:SetPoint("BOTTOMLEFT", barAnchor, "LEFT", resealX, 0)
-        sealResealLine:SetWidth(resealLineWidth)
+        if not lastResealX or math.abs(resealX - lastResealX) >= 0.5 then
+            lastResealX = resealX
+            sealResealLine:ClearAllPoints()
+            sealResealLine:SetPoint("TOPLEFT", barAnchor, "LEFT", resealX, 0)
+            sealResealLine:SetPoint("BOTTOMLEFT", barAnchor, "LEFT", resealX, 0)
+            sealResealLine:SetWidth(resealLineWidth)
+        end
         sealResealLine:Show()
     end
 
@@ -824,21 +1173,25 @@ local function SetupRetPaladin()
         end
 
         local swingElapsed = math.max(0, now - (lastSwing or now))
-        -- Position the marker where the swing will be when Judgement CD comes back
+        -- Position the marker where the swing will be when Judgement CD comes back;
+        -- hide if Judgement comes off CD after this swing lands (never wrap).
         local jgTick = (swingElapsed + jgRemaining) / duration
-        while jgTick > 1 do
-            jgTick = jgTick - 1
+        if jgTick < 0 or jgTick > 1 then
+            jgMarker:Hide()
+            return
         end
-        jgTick = math.max(0, math.min(1, jgTick))
 
         local markerWidth = math.min(4, barWidth)
         local markerX = math.max(math.min((barWidth * jgTick) - (markerWidth * 0.5), barWidth - markerWidth), 0)
 
         local barAnchor = GetOverlayParent(ns.mhBar)
-        jgMarker:ClearAllPoints()
-        jgMarker:SetPoint("TOPLEFT", barAnchor, "LEFT", markerX, 0)
-        jgMarker:SetPoint("BOTTOMLEFT", barAnchor, "LEFT", markerX, 0)
-        jgMarker:SetWidth(markerWidth)
+        if not lastJgMarkerX or math.abs(markerX - lastJgMarkerX) >= 0.5 then
+            lastJgMarkerX = markerX
+            jgMarker:ClearAllPoints()
+            jgMarker:SetPoint("TOPLEFT", barAnchor, "LEFT", markerX, 0)
+            jgMarker:SetPoint("BOTTOMLEFT", barAnchor, "LEFT", markerX, 0)
+            jgMarker:SetWidth(markerWidth)
+        end
         jgMarker:Show()
     end
 
@@ -1005,15 +1358,14 @@ local function SetupRetPaladin()
         end
 
         -- Register paladin seal/zone/badge OnUpdate hook
-        ns.RegisterNamedOnUpdateHook("paladin-seal", function(elapsed)
+        -- Note: UpdatePaladinBuffIcons runs once in the "paladin-power" hook
+        -- after RestackDebuffBars so icon positions use the final restacked bar.
+        ns.RegisterNamedOnUpdateHook("paladin-seal", function()
             UpdateSealColorAndLabel()
             UpdateSealBreakpointLine()
             UpdateJudgementMarker()
             UpdateReckoningBadge()
             UpdatePaladinLibramSwapBadge()
-            if ns.UpdatePaladinBuffIcons then
-                ns.UpdatePaladinBuffIcons(elapsed)
-            end
         end)
         -- Force initial update of seal zone and markers
         UpdateSealColorAndLabel()
@@ -1033,6 +1385,17 @@ local function SetupRetPaladin()
                 ns.paladinSealAtSwingEnd = activeFamily
             else
                 ns.paladinSealAtSwingEnd = nil
+            end
+            local db = SuperSwingTimerDB or ns.DB_DEFAULTS
+            if GetActivePaladinSealCount() >= 2 then
+                local now = GetCurrentTime()
+                if db.showPaladinTwistFlash ~= false then
+                    ns.paladinTwistAttemptUntil = now + 0.25
+                end
+                if db.showPaladinTwistGlow ~= false and ns.mhBar and ns.Glow and ns.Glow.SetBar then
+                    ns.paladinTwistGlowUntil = now + 0.4
+                    ns.Glow.SetBar(ns.mhBar, "paladin_twist", true, GLOW_GOLD, "autocast")
+                end
             end
         end
     end
@@ -1079,7 +1442,6 @@ local function SetupRetPaladin()
     end
 
     local paladinBuffIcons = {}
-    local paladinBuffTimer = 0
     local PALADIN_BUFF_UPDATE_INTERVAL = 0.15
     local PALADIN_BUFF_ICON_GAP = 3
 
@@ -1188,141 +1550,26 @@ local function SetupRetPaladin()
         end
     end
 
+    local paladinBuffContext = {
+        createIcons = CreatePaladinBuffIcons,
+        icons = paladinBuffIcons,
+        spells = PALADIN_TRACKED_SPELLS,
+        getRemaining = GetPaladinSpellRemaining,
+        toggleKey = "showPaladinBuffIcons",
+        sizeKey = "paladinBuffIconSize",
+        interval = PALADIN_BUFF_UPDATE_INTERVAL,
+        gap = PALADIN_BUFF_ICON_GAP,
+        timer = 0,
+        debuffBars = {},
+        debuffCount = 2,
+        fillDebuffBars = function(bars)
+            bars[1] = ns.paladinJudgementBar
+            bars[2] = ns.paladinSealVengeanceBar
+        end,
+    }
+
     ns.UpdatePaladinBuffIcons = function(elapsed)
-        CreatePaladinBuffIcons()
-        if #paladinBuffIcons == 0 then return end
-
-        paladinBuffTimer = paladinBuffTimer + (elapsed or 0.03)
-        if paladinBuffTimer < PALADIN_BUFF_UPDATE_INTERVAL then return end
-        paladinBuffTimer = 0
-
-        local db = SuperSwingTimerDB or ns.DB_DEFAULTS
-        if db and db.showPaladinBuffIcons == false then
-            ns.activeBuffIconCount = 0
-            for _, icon in ipairs(paladinBuffIcons) do
-                if icon and icon.Hide then icon:Hide() end
-                if ns.Glow and ns.Glow.SetIcon then ns.Glow.SetIcon(icon, false) end
-            end
-            return
-        end
-        -- Buff icons visible out of combat (combat gate removed)
-        local iconSize = SuperSwingTimerDB and SuperSwingTimerDB.paladinBuffIconSize or 25
-        if type(iconSize) ~= "number" or iconSize <= 0 then iconSize = 25 end
-
-        local activeIcons = {}
-        local seenAuras = {}
-        for _, icon in ipairs(paladinBuffIcons) do
-            if icon and icon.spellId then
-                for _, spell in ipairs(PALADIN_TRACKED_SPELLS) do
-                    if spell.spellId == icon.spellId then
-                        local remaining, totalDuration, stacks = GetPaladinSpellRemaining(spell)
-                        local auraKey = spell.name or spell.label or spell.spellId
-                        if type(remaining) == "number" and remaining > 0
-                            and type(totalDuration) == "number" and totalDuration > 0
-                            and not seenAuras[auraKey] then
-                            seenAuras[auraKey] = true
-                            table.insert(activeIcons, {
-                                icon = icon,
-                                remaining = remaining,
-                                totalDuration = totalDuration,
-                                stacks = stacks or 0,
-                                spellId = spell.spellId,
-                                label = spell.label,
-                            })
-                        else
-                            if icon.countText and icon.countText.Hide then icon.countText:Hide() end
-                            if icon.Hide then icon:Hide() end
-                        end
-                        break
-                    end
-                end
-            elseif icon and icon.Hide then
-                icon:Hide()
-            end
-        end
-
-        local numActive = #activeIcons
-        ns.activeBuffIconCount = numActive
-        if numActive == 0 then
-            if ns.Glow and ns.Glow.SetIcon then
-                for _, icon in ipairs(paladinBuffIcons) do ns.Glow.SetIcon(icon, false) end
-            end
-            return
-        end
-
-        local referenceBar = ns.mhBar
-        if not referenceBar then
-            if ns.Glow and ns.Glow.SetIcon then
-                for _, icon in ipairs(paladinBuffIcons) do ns.Glow.SetIcon(icon, false) end
-            end
-            return
-        end
-        -- Position icons above all visible target debuff duration bars,
-        -- computing the Y offset directly from current bar visibility
-        local iconY = ComputeBuffIconOffset({ ns.paladinJudgementBar, ns.paladinSealVengeanceBar }, referenceBar)
-        local barGetWidth = referenceBar.GetWidth
-        if not barGetWidth then
-            if ns.Glow and ns.Glow.SetIcon then
-                for _, icon in ipairs(paladinBuffIcons) do ns.Glow.SetIcon(icon, false) end
-            end
-            return
-        end
-
-        for idx, entry in ipairs(activeIcons) do
-            local icon = entry.icon
-            local remaining = entry.remaining
-            local totalDuration = entry.totalDuration
-
-            if icon.SetSize then icon:SetSize(iconSize, iconSize) end
-
-            -- Center icons horizontally over the bar width
-            local totalWidth = numActive * iconSize + (numActive - 1) * PALADIN_BUFF_ICON_GAP
-            local finalX = (idx - 1) * (iconSize + PALADIN_BUFF_ICON_GAP) + (iconSize / 2) - (totalWidth / 2)
-
-            if icon.ClearAllPoints then icon:ClearAllPoints() end
-            if icon.SetPoint then icon:SetPoint("BOTTOM", referenceBar, "TOP", finalX, iconY) end
-
-            -- No shading
-            if icon.dim and icon.dim.SetColorTexture then
-                icon.dim:SetColorTexture(0, 0, 0, 0)
-            end
-
-            -- Glow in last 4 seconds
-            if icon.glow and icon.glow.SetColorTexture then
-                local shouldGlow = remaining <= 4 and remaining > 0
-                if shouldGlow and totalDuration > 0 then
-                    local pulseAlpha = 0.15 + 0.40 * (0.5 + 0.5 * math.sin(GetCurrentTime() * 6))
-                    icon.glow:SetColorTexture(1, 0.85, 0, pulseAlpha)
-                    if icon.glow.Show then icon.glow:Show() end
-                elseif icon.glow.Hide then
-                    icon.glow:Hide()
-                end
-            end
-            -- LibCustomGlow proc animation for the urgent final 2s.
-            if ns.Glow and ns.Glow.SetIcon then
-                ns.Glow.SetIcon(icon, remaining <= 2 and remaining > 0, GLOW_GOLD)
-            end
-            -- Countdown text (centered above icon)
-            if icon.durationText and icon.durationText.SetText then
-                local text = remaining >= 3 and string.format("%.0f", remaining) or string.format("%.1f", remaining)
-                icon.durationText:SetText(text)
-                if icon.durationText.Show then icon.durationText:Show() end
-            end
-
-            -- Stacks text (only stacks show over the icon)
-            local stacks = entry.stacks or 0
-            if icon.countText and icon.countText.SetText then
-                if stacks and (stacks > 1 or (stacks == 1 and (entry.spellId == 408505 or entry.label == "MSW" or entry.label == "Reckoning"))) then
-                    icon.countText:SetText(tostring(stacks))
-                    if icon.countText.Show then icon.countText:Show() end
-                else
-                    if icon.countText.Hide then icon.countText:Hide() end
-                end
-            end
-
-            if icon.Show then icon:Show() end
-        end
-
+        RenderTrackedBuffIcons(paladinBuffContext, elapsed)
     end
 
     -- ========================================================================
@@ -3166,7 +3413,6 @@ local function SetupWarrior()
     end
 
     local warriorBuffIcons = {}
-    local warriorBuffTimer = 0
     local WARRIOR_BUFF_UPDATE_INTERVAL = 0.15
     local WARRIOR_BUFF_ICON_GAP = 3
 
@@ -3208,7 +3454,7 @@ local function SetupWarrior()
                 return nil, nil, nil
             end
             local remaining = math.max((startTime + cdDuration) - GetCurrentTime(), 0)
-            if remaining <= 0 then return nil, nil end
+            if remaining <= 0 then return nil, nil, nil end
             return remaining, cdDuration, 0
         end
         return nil, nil, nil
@@ -3275,125 +3521,29 @@ local function SetupWarrior()
         end
     end
 
+    local warriorBuffContext = {
+        createIcons = CreateWarriorBuffIcons,
+        icons = warriorBuffIcons,
+        spells = WARRIOR_TRACKED_SPELLS,
+        getRemaining = GetWarriorSpellRemaining,
+        toggleKey = "showWarriorBuffIcons",
+        sizeKey = "warriorBuffIconSize",
+        interval = WARRIOR_BUFF_UPDATE_INTERVAL,
+        gap = WARRIOR_BUFF_ICON_GAP,
+        timer = 0,
+        debuffBars = {},
+        debuffCount = 5,
+        fillDebuffBars = function(bars)
+            bars[1] = deepWoundsBar
+            bars[2] = sunderArmorBar
+            bars[3] = rendBar
+            bars[4] = thunderClapBar
+            bars[5] = demoShoutBar
+        end,
+    }
+
     ns.UpdateWarriorBuffIcons = function(elapsed)
-        CreateWarriorBuffIcons()
-        if #warriorBuffIcons == 0 then return end
-
-        warriorBuffTimer = warriorBuffTimer + (elapsed or 0.03)
-        if warriorBuffTimer < WARRIOR_BUFF_UPDATE_INTERVAL then return end
-        warriorBuffTimer = 0
-
-        local db = SuperSwingTimerDB or ns.DB_DEFAULTS
-        if db and db.showWarriorBuffIcons == false then
-            ns.activeBuffIconCount = 0
-            for _, icon in ipairs(warriorBuffIcons) do
-                if icon and icon.Hide then icon:Hide() end
-            end
-            return
-        end
-        -- Buff icons visible out of combat (combat gate removed)
-        local iconSize = SuperSwingTimerDB and SuperSwingTimerDB.warriorBuffIconSize or 25
-        if type(iconSize) ~= "number" or iconSize <= 0 then iconSize = 25 end
-
-        local activeIcons = {}
-        local seenAuras = {}
-        for _, icon in ipairs(warriorBuffIcons) do
-            if icon and icon.spellId then
-                for _, spell in ipairs(WARRIOR_TRACKED_SPELLS) do
-                    if spell.spellId == icon.spellId then
-                        local remaining, totalDuration, stacks = GetWarriorSpellRemaining(spell)
-                        local auraKey = spell.name or spell.label or spell.spellId
-                        if type(remaining) == "number" and remaining > 0
-                            and type(totalDuration) == "number" and totalDuration > 0
-                            and not seenAuras[auraKey] then
-                            seenAuras[auraKey] = true
-                            table.insert(activeIcons, {
-                                icon = icon,
-                                remaining = remaining,
-                                totalDuration = totalDuration,
-                                stacks = stacks or 0,
-                                spellId = spell.spellId,
-                                label = spell.label,
-                            })
-                        else
-                            if icon.countText and icon.countText.Hide then icon.countText:Hide() end
-                            if icon.Hide then icon:Hide() end
-                        end
-                        break
-                    end
-                end
-            elseif icon and icon.Hide then
-                icon:Hide()
-            end
-        end
-
-        local numActive = #activeIcons
-        ns.activeBuffIconCount = numActive
-        if numActive == 0 then return end
-
-        local referenceBar = ns.mhBar
-        if not referenceBar then return end
-        -- Position icons above all visible target debuff duration bars
-        local iconY = ComputeBuffIconOffset({ deepWoundsBar, sunderArmorBar, rendBar, thunderClapBar, demoShoutBar },
-            referenceBar)
-        local barGetWidth = referenceBar.GetWidth
-        if not barGetWidth then return end
-
-        for idx, entry in ipairs(activeIcons) do
-            local icon = entry.icon
-            local remaining = entry.remaining
-            local totalDuration = entry.totalDuration
-
-            if icon.SetSize then icon:SetSize(iconSize, iconSize) end
-
-            -- Center icons horizontally over the bar width
-            local totalWidth = numActive * iconSize + (numActive - 1) * WARRIOR_BUFF_ICON_GAP
-            local finalX = (idx - 1) * (iconSize + WARRIOR_BUFF_ICON_GAP) + (iconSize / 2) - (totalWidth / 2)
-
-            if icon.ClearAllPoints then icon:ClearAllPoints() end
-            if icon.SetPoint then icon:SetPoint("BOTTOM", referenceBar, "TOP", finalX, iconY) end
-
-            -- No shading
-            if icon.dim and icon.dim.SetColorTexture then
-                icon.dim:SetColorTexture(0, 0, 0, 0)
-            end
-
-            -- Glow in last 4 seconds
-            if icon.glow and icon.glow.SetColorTexture then
-                local shouldGlow = remaining <= 4 and remaining > 0
-                if shouldGlow and totalDuration > 0 then
-                    local pulseAlpha = 0.15 + 0.40 * (0.5 + 0.5 * math.sin(GetCurrentTime() * 6))
-                    icon.glow:SetColorTexture(1, 0.85, 0, pulseAlpha)
-                    if icon.glow.Show then icon.glow:Show() end
-                elseif icon.glow.Hide then
-                    icon.glow:Hide()
-                end
-            end
-            -- LibCustomGlow proc animation for the urgent final 2s.
-            if ns.Glow and ns.Glow.SetIcon then
-                ns.Glow.SetIcon(icon, remaining <= 2 and remaining > 0, GLOW_GOLD)
-            end
-
-            -- Countdown text (centered above icon)
-            if icon.durationText and icon.durationText.SetText then
-                local text = remaining >= 3 and string.format("%.0f", remaining) or string.format("%.1f", remaining)
-                icon.durationText:SetText(text)
-                if icon.durationText.Show then icon.durationText:Show() end
-            end
-
-            -- Stacks text (only stacks show over the icon)
-            local stacks = entry.stacks or 0
-            if icon.countText and icon.countText.SetText then
-                if stacks and (stacks > 1 or (stacks == 1 and (entry.spellId == 408505 or entry.label == "MSW" or entry.label == "Reckoning"))) then
-                    icon.countText:SetText(tostring(stacks))
-                    if icon.countText.Show then icon.countText:Show() end
-                else
-                    if icon.countText.Hide then icon.countText:Hide() end
-                end
-            end
-
-            if icon.Show then icon:Show() end
-        end
+        RenderTrackedBuffIcons(warriorBuffContext, elapsed)
     end
 
     ns.UpdateWarriorSunderArmorBar = UpdateWarriorSunderArmorBar
@@ -4316,7 +4466,6 @@ local function SetupEnhShaman()
     end
 
     local shamanBuffIcons = {}
-    local shamanBuffTimer = 0
     local SHAMAN_BUFF_UPDATE_INTERVAL = 0.15
     local SHAMAN_BUFF_ICON_GAP = 3
 
@@ -4358,7 +4507,7 @@ local function SetupEnhShaman()
                 return nil, nil, nil
             end
             local remaining = math.max((startTime + cdDuration) - GetCurrentTime(), 0)
-            if remaining <= 0 then return nil, nil end
+            if remaining <= 0 then return nil, nil, nil end
             return remaining, cdDuration, 0
         end
         return nil, nil, nil
@@ -4425,119 +4574,25 @@ local function SetupEnhShaman()
         end
     end
 
+    local shamanBuffContext = {
+        createIcons = CreateShamanBuffIcons,
+        icons = shamanBuffIcons,
+        spells = SHAMAN_TRACKED_SPELLS,
+        getRemaining = GetShamanSpellRemaining,
+        toggleKey = "showShamanBuffIcons",
+        sizeKey = "shamanBuffIconSize",
+        interval = SHAMAN_BUFF_UPDATE_INTERVAL,
+        gap = SHAMAN_BUFF_ICON_GAP,
+        timer = 0,
+        debuffBars = {},
+        debuffCount = 1,
+        fillDebuffBars = function(bars)
+            bars[1] = flameShockBar
+        end,
+    }
+
     ns.UpdateShamanBuffIcons = function(elapsed)
-        CreateShamanBuffIcons()
-        if #shamanBuffIcons == 0 then return end
-
-        shamanBuffTimer = shamanBuffTimer + (elapsed or 0.03)
-        if shamanBuffTimer < SHAMAN_BUFF_UPDATE_INTERVAL then return end
-        shamanBuffTimer = 0
-
-        local db = SuperSwingTimerDB or ns.DB_DEFAULTS
-        if db and db.showShamanBuffIcons == false then
-            ns.activeBuffIconCount = 0
-            for _, icon in ipairs(shamanBuffIcons) do
-                if icon and icon.Hide then icon:Hide() end
-            end
-            return
-        end
-        -- Buff icons visible out of combat (combat gate removed)
-        local iconSize = SuperSwingTimerDB and SuperSwingTimerDB.shamanBuffIconSize or 25
-        if type(iconSize) ~= "number" or iconSize <= 0 then iconSize = 25 end
-
-        local activeIcons = {}
-        local seenAuras = {}
-        for _, icon in ipairs(shamanBuffIcons) do
-            if icon and icon.spellId then
-                for _, spell in ipairs(SHAMAN_TRACKED_SPELLS) do
-                    if spell.spellId == icon.spellId then
-                        local remaining, totalDuration, stacks = GetShamanSpellRemaining(spell)
-                        local auraKey = spell.name or spell.label or spell.spellId
-                        if type(remaining) == "number" and remaining > 0
-                            and type(totalDuration) == "number" and totalDuration > 0
-                            and not seenAuras[auraKey] then
-                            seenAuras[auraKey] = true
-                            table.insert(activeIcons, {
-                                icon = icon,
-                                remaining = remaining,
-                                totalDuration = totalDuration,
-                                stacks = stacks or 0,
-                                spellId = spell.spellId,
-                                label = spell.label,
-                            })
-                        else
-                            if icon.countText and icon.countText.Hide then icon.countText:Hide() end
-                            if icon.Hide then icon:Hide() end
-                        end
-                        break
-                    end
-                end
-            elseif icon and icon.Hide then
-                icon:Hide()
-            end
-        end
-
-        local numActive = #activeIcons
-        ns.activeBuffIconCount = numActive
-        if numActive == 0 then return end
-
-        local referenceBar = ns.mhBar
-        if not referenceBar then return end
-        -- Position icons above all visible target debuff duration bars
-        local iconY = ComputeBuffIconOffset({ flameShockBar }, referenceBar)
-        local barGetWidth = referenceBar.GetWidth
-        if not barGetWidth then return end
-
-        for idx, entry in ipairs(activeIcons) do
-            local icon = entry.icon
-            local remaining = entry.remaining
-            local totalDuration = entry.totalDuration
-
-            if icon.SetSize then icon:SetSize(iconSize, iconSize) end
-
-            -- Center icons horizontally over the bar width
-            local totalWidth = numActive * iconSize + (numActive - 1) * SHAMAN_BUFF_ICON_GAP
-            local finalX = (idx - 1) * (iconSize + SHAMAN_BUFF_ICON_GAP) + (iconSize / 2) - (totalWidth / 2)
-
-            if icon.ClearAllPoints then icon:ClearAllPoints() end
-            if icon.SetPoint then icon:SetPoint("BOTTOM", referenceBar, "TOP", finalX, iconY) end
-
-            -- Glow effect in the last 4 seconds
-            if icon.glow and icon.glow.SetColorTexture then
-                local shouldGlow = remaining <= 4 and remaining > 0
-                if shouldGlow and totalDuration > 0 then
-                    local pulseAlpha = 0.15 + 0.40 * (0.5 + 0.5 * math.sin(GetCurrentTime() * 6))
-                    icon.glow:SetColorTexture(1, 0.85, 0, pulseAlpha)
-                    if icon.glow.Show then icon.glow:Show() end
-                elseif icon.glow.Hide then
-                    icon.glow:Hide()
-                end
-            end
-            -- LibCustomGlow proc animation for the urgent final 2s.
-            if ns.Glow and ns.Glow.SetIcon then
-                ns.Glow.SetIcon(icon, remaining <= 2 and remaining > 0, GLOW_GOLD)
-            end
-
-            -- Countdown text (centered above icon)
-            if icon.durationText and icon.durationText.SetText then
-                local text = remaining >= 3 and string.format("%.0f", remaining) or string.format("%.1f", remaining)
-                icon.durationText:SetText(text)
-                if icon.durationText.Show then icon.durationText:Show() end
-            end
-
-            -- Stacks text (only stacks show over the icon)
-            local stacks = entry.stacks or 0
-            if icon.countText and icon.countText.SetText then
-                if stacks and (stacks > 1 or (stacks == 1 and (entry.spellId == 408505 or entry.label == "MSW" or entry.label == "Reckoning"))) then
-                    icon.countText:SetText(tostring(stacks))
-                    if icon.countText.Show then icon.countText:Show() end
-                else
-                    if icon.countText.Hide then icon.countText:Hide() end
-                end
-            end
-
-            if icon.Show then icon:Show() end
-        end
+        RenderTrackedBuffIcons(shamanBuffContext, elapsed)
     end
 
     -- Register Shaman OnUpdate hook (weave + flame shock + flurry + shields)
@@ -5311,7 +5366,6 @@ local function SetupDruid()
     end
 
     local druidBuffIcons = {}
-    local druidBuffTimer = 0
     local DRUID_BUFF_UPDATE_INTERVAL = 0.15
     local DRUID_BUFF_ICON_GAP = 3
 
@@ -5352,7 +5406,7 @@ local function SetupDruid()
                 return nil, nil, nil
             end
             local remaining = math.max((startTime + cdDuration) - GetCurrentTime(), 0)
-            if remaining <= 0 then return nil, nil end
+            if remaining <= 0 then return nil, nil, nil end
             return remaining, cdDuration, 0
         end
         return nil, nil, nil
@@ -5419,124 +5473,27 @@ local function SetupDruid()
         end
     end
 
+    local druidBuffContext = {
+        createIcons = CreateDruidBuffIcons,
+        icons = druidBuffIcons,
+        spells = DRUID_TRACKED_SPELLS,
+        getRemaining = GetDruidSpellRemaining,
+        toggleKey = "showDruidBuffIcons",
+        sizeKey = "druidBuffIconSize",
+        interval = DRUID_BUFF_UPDATE_INTERVAL,
+        gap = DRUID_BUFF_ICON_GAP,
+        timer = 0,
+        debuffBars = {},
+        debuffCount = 3,
+        fillDebuffBars = function(bars)
+            bars[1] = mangleBar
+            bars[2] = ripBar
+            bars[3] = rakeBar
+        end,
+    }
+
     ns.UpdateDruidBuffIcons = function(elapsed)
-        CreateDruidBuffIcons()
-        if #druidBuffIcons == 0 then return end
-
-        druidBuffTimer = druidBuffTimer + (elapsed or 0.03)
-        if druidBuffTimer < DRUID_BUFF_UPDATE_INTERVAL then return end
-        druidBuffTimer = 0
-
-        local db = SuperSwingTimerDB or ns.DB_DEFAULTS
-        if db and db.showDruidBuffIcons == false then
-            ns.activeBuffIconCount = 0
-            for _, icon in ipairs(druidBuffIcons) do
-                if icon and icon.Hide then icon:Hide() end
-            end
-            return
-        end
-        -- Buff icons visible out of combat (combat gate removed)
-        local iconSize = SuperSwingTimerDB and SuperSwingTimerDB.druidBuffIconSize or 25
-        if type(iconSize) ~= "number" or iconSize <= 0 then iconSize = 25 end
-
-        local activeIcons = {}
-        local seenAuras = {}
-        for _, icon in ipairs(druidBuffIcons) do
-            if icon and icon.spellId then
-                for _, spell in ipairs(DRUID_TRACKED_SPELLS) do
-                    if spell.spellId == icon.spellId then
-                        local remaining, totalDuration, stacks = GetDruidSpellRemaining(spell)
-                        local auraKey = spell.name or spell.label or spell.spellId
-                        if type(remaining) == "number" and remaining > 0
-                            and type(totalDuration) == "number" and totalDuration > 0
-                            and not seenAuras[auraKey] then
-                            seenAuras[auraKey] = true
-                            table.insert(activeIcons, {
-                                icon = icon,
-                                remaining = remaining,
-                                totalDuration = totalDuration,
-                                stacks = stacks or 0,
-                                spellId = spell.spellId,
-                                label = spell.label,
-                            })
-                        else
-                            if icon.countText and icon.countText.Hide then icon.countText:Hide() end
-                            if icon.Hide then icon:Hide() end
-                        end
-                        break
-                    end
-                end
-            elseif icon and icon.Hide then
-                icon:Hide()
-            end
-        end
-
-        local numActive = #activeIcons
-        ns.activeBuffIconCount = numActive
-        if numActive == 0 then return end
-
-        local referenceBar = ns.mhBar
-        if not referenceBar then return end
-
-        -- Position icons above all visible target debuff duration bars (Mangle bottom, Rip middle, Rake top)
-        local iconY = ComputeBuffIconOffset({ mangleBar, ripBar, rakeBar }, referenceBar)
-
-        local barGetWidth = referenceBar.GetWidth
-        if not barGetWidth then return end
-
-        for idx, entry in ipairs(activeIcons) do
-            local icon = entry.icon
-            local remaining = entry.remaining
-            local totalDuration = entry.totalDuration
-
-            if icon.SetSize then icon:SetSize(iconSize, iconSize) end
-
-            -- Center icons horizontally over the bar width
-            local totalWidth = numActive * iconSize + (numActive - 1) * DRUID_BUFF_ICON_GAP
-            local finalX = (idx - 1) * (iconSize + DRUID_BUFF_ICON_GAP) + (iconSize / 2) - (totalWidth / 2)
-
-            if icon.ClearAllPoints then icon:ClearAllPoints() end
-            if icon.SetPoint then icon:SetPoint("BOTTOM", referenceBar, "TOP", finalX, iconY) end
-
-            if icon.dim and icon.dim.SetColorTexture then
-                icon.dim:SetColorTexture(0, 0, 0, 0)
-            end
-
-            if icon.glow and icon.glow.SetColorTexture then
-                local shouldGlow = remaining <= 4 and remaining > 0
-                if shouldGlow and totalDuration > 0 then
-                    local pulseAlpha = 0.15 + 0.40 * (0.5 + 0.5 * math.sin(GetCurrentTime() * 6))
-                    icon.glow:SetColorTexture(1, 0.85, 0, pulseAlpha)
-                    if icon.glow.Show then icon.glow:Show() end
-                elseif icon.glow.Hide then
-                    icon.glow:Hide()
-                end
-            end
-            -- LibCustomGlow proc animation for the urgent final 2s.
-            if ns.Glow and ns.Glow.SetIcon then
-                ns.Glow.SetIcon(icon, remaining <= 2 and remaining > 0, GLOW_GOLD)
-            end
-
-            -- Countdown text (centered above icon)
-            if icon.durationText and icon.durationText.SetText then
-                local text = remaining >= 3 and string.format("%.0f", remaining) or string.format("%.1f", remaining)
-                icon.durationText:SetText(text)
-                if icon.durationText.Show then icon.durationText:Show() end
-            end
-
-            -- Stacks text (only stacks show over the icon)
-            local stacks = entry.stacks or 0
-            if icon.countText and icon.countText.SetText then
-                if stacks and (stacks > 1 or (stacks == 1 and (entry.spellId == 408505 or entry.label == "MSW" or entry.label == "Reckoning"))) then
-                    icon.countText:SetText(tostring(stacks))
-                    if icon.countText.Show then icon.countText:Show() end
-                else
-                    if icon.countText.Hide then icon.countText:Hide() end
-                end
-            end
-
-            if icon.Show then icon:Show() end
-        end
+        RenderTrackedBuffIcons(druidBuffContext, elapsed)
     end
     pcall(UpdateDruidMangleBar, true)
     pcall(UpdateDruidRipBar, true)
@@ -5591,6 +5548,14 @@ local function SetupHunter()
     local HUNTER_QUEUE_POLL_INTERVAL = 0.05
     local HUNTER_RANGE_HELPER_GAP = 3
     local HUNTER_SWEET_SPOT_INTERACT_INDEX = 3
+    local HUNTER_RANGE_POLL_INTERVAL = 0.05
+    local hunterRangePollTimer = 0
+    local InCombatLockdown = rawget(_G, "InCombatLockdown")
+    local cachedCSpell = rawget(_G, "C_Spell")
+    local cachedCSwingTimer = rawget(_G, "C_SwingTimer")
+    local cachedEnum = rawget(_G, "Enum")
+    local mhSwingType = (cachedEnum and cachedEnum.PlayerSwingType and cachedEnum.PlayerSwingType.MainHand) or 0
+    local rangedSwingType = (cachedEnum and cachedEnum.PlayerSwingType and cachedEnum.PlayerSwingType.Ranged) or 2
 
     local function HasAttackableTarget()
         if type(UnitExists) == "function" and not UnitExists("target") then
@@ -5612,15 +5577,23 @@ local function SetupHunter()
 
         if type(SpellHasRange) == "function" then
             local okHasRange, hasRange = pcall(SpellHasRange, spellToken)
-            if okHasRange and hasRange == false then
+            if okHasRange and not ns.IsSecretValue(hasRange) and hasRange == false then
                 return nil
             end
         end
 
         if type(IsSpellInRange) == "function" then
             local ok, inRange = pcall(IsSpellInRange, spellToken, unit)
-            if ok and inRange ~= nil then
-                return inRange == 1
+            if ok and not ns.IsSecretValue(inRange) and inRange ~= nil then
+                return inRange == 1 or inRange == true
+            end
+        end
+
+        local spellApi = cachedCSpell or rawget(_G, "C_Spell")
+        if spellApi and type(spellApi.IsSpellInRange) == "function" then
+            local ok, inRange = pcall(spellApi.IsSpellInRange, spellToken, unit)
+            if ok and not ns.IsSecretValue(inRange) and inRange ~= nil then
+                return inRange == true or inRange == 1
             end
         end
 
@@ -5631,32 +5604,53 @@ local function SetupHunter()
         if not HasAttackableTarget() or type(CheckInteractDistance) ~= "function" then
             return nil
         end
+        if ns.isForever and InCombatLockdown and InCombatLockdown() then
+            return nil
+        end
 
         local ok, inRange = pcall(CheckInteractDistance, "target", HUNTER_SWEET_SPOT_INTERACT_INDEX)
-        if not ok or inRange == nil then
+        if not ok or ns.IsSecretValue(inRange) or inRange == nil then
             return nil
         end
 
         return inRange == true or inRange == 1
     end
 
+    local function QuerySwingRangeFallback(swingType)
+        local swingCache = ns.swingRangeCache
+        if swingCache then
+            local cached = swingCache[swingType]
+            if cached ~= nil and not ns.IsSecretValue(cached) then
+                return cached
+            end
+        end
+        if ns.HasNativeSwingTimer and ns.HasNativeSwingTimer() then
+            local swingApi = cachedCSwingTimer or rawget(_G, "C_SwingTimer")
+            if swingApi and type(swingApi.IsTargetWithinSwingRange) == "function" then
+                -- nil means "no range check could be made" (no target, dead
+                -- target, no weapon); never treat it as out of range.
+                local ok, ranged = pcall(swingApi.IsTargetWithinSwingRange, swingType)
+                if ok and not ns.IsSecretValue(ranged) then
+                    return ranged
+                end
+            end
+        end
+        return nil
+    end
+
     local function IsHunterTargetInMeleeRange()
         local inRange = IsSpellTokenInRange(ns.WING_CLIP_NAME, "target")
+        if inRange == nil then
+            inRange = IsSpellTokenInRange(2974, "target")
+        end
         if inRange == nil and raptorSpellName and raptorSpellName ~= ns.WING_CLIP_NAME then
             inRange = IsSpellTokenInRange(raptorSpellName, "target")
         end
-        if inRange == nil and ns.HasNativeSwingTimer and ns.HasNativeSwingTimer() then
-            local cSwingTimer = rawget(_G, "C_SwingTimer")
-            local enum = rawget(_G, "Enum")
-            local mhType = (enum and enum.PlayerSwingType and enum.PlayerSwingType.MainHand) or 0
-            if cSwingTimer and type(cSwingTimer.IsTargetWithinSwingRange) == "function" then
-                -- nil means "no range check could be made" (no target, dead
-                -- target, no weapon); never treat it as out of range.
-                local ok, ranged = pcall(cSwingTimer.IsTargetWithinSwingRange, mhType)
-                if ok and not ns.IsSecretValue(ranged) then
-                    inRange = ranged
-                end
-            end
+        if inRange == nil then
+            inRange = IsSpellTokenInRange(2973, "target")
+        end
+        if inRange == nil then
+            inRange = QuerySwingRangeFallback(mhSwingType)
         end
         return inRange
     end
@@ -5664,18 +5658,14 @@ local function SetupHunter()
 
     local function IsHunterTargetInRangedShotRange()
         local inRange = IsSpellTokenInRange(ns.AUTO_SHOT_NAME, "target")
-        if inRange == nil and ns.HasNativeSwingTimer and ns.HasNativeSwingTimer() then
-            local cSwingTimer = rawget(_G, "C_SwingTimer")
-            local enum = rawget(_G, "Enum")
-            local rangedType = (enum and enum.PlayerSwingType and enum.PlayerSwingType.Ranged) or 2
-            if cSwingTimer and type(cSwingTimer.IsTargetWithinSwingRange) == "function" then
-                -- nil means "no range check could be made" (no target, dead
-                -- target, no weapon); never treat it as out of range.
-                local ok, ranged = pcall(cSwingTimer.IsTargetWithinSwingRange, rangedType)
-                if ok and not ns.IsSecretValue(ranged) then
-                    inRange = ranged
-                end
-            end
+        if inRange == nil then
+            inRange = IsSpellTokenInRange(75, "target")
+        end
+        if inRange == nil then
+            inRange = IsSpellTokenInRange(3044, "target")
+        end
+        if inRange == nil then
+            inRange = QuerySwingRangeFallback(rangedSwingType)
         end
         return inRange
     end
@@ -5715,6 +5705,35 @@ local function SetupHunter()
         return "hunterRangeOutOfRange"
     end
 
+    local function ResetHunterRangeHelperVisual(helperBar)
+        if not helperBar then
+            return
+        end
+        if helperBar._lastAlpha ~= 0 then
+            helperBar._lastAlpha = 0
+            helperBar._lastRangeState = nil
+            helperBar:SetAlpha(0)
+            helperBar:SetValue(0)
+        end
+    end
+
+    local function InvalidateHunterRangeHelperCache()
+        local helperBar = ns.hunterRangeHelperBar
+        if helperBar then
+            helperBar._lastAlpha = nil
+            helperBar._lastRangeState = nil
+            helperBar._lastTopAnchor = nil
+            helperBar._lastBottomAnchor = nil
+            helperBar._lastWidth = nil
+            helperBar._lastColorR = nil
+            helperBar._lastColorG = nil
+            helperBar._lastColorB = nil
+            helperBar._lastColorA = nil
+        end
+        hunterRangePollTimer = 0
+    end
+    ns.InvalidateHunterRangeHelperCache = InvalidateHunterRangeHelperCache
+
     local function ApplyHunterRangeHelperColor(rangeState)
         local helperBar = ns.hunterRangeHelperBar
         if not helperBar then
@@ -5728,7 +5747,18 @@ local function SetupHunter()
             return
         end
 
-        helperBar:SetStatusBarColor(color.r or 1, color.g or 1, color.b or 1, color.a ~= nil and color.a or 1)
+        local r = color.r or 1
+        local g = color.g or 1
+        local b = color.b or 1
+        local a = color.a ~= nil and color.a or 1
+        if helperBar._lastColorR ~= r or helperBar._lastColorG ~= g
+            or helperBar._lastColorB ~= b or helperBar._lastColorA ~= a then
+            helperBar._lastColorR = r
+            helperBar._lastColorG = g
+            helperBar._lastColorB = b
+            helperBar._lastColorA = a
+            helperBar:SetStatusBarColor(r, g, b, a)
+        end
     end
 
     local function GetHunterRangeHelperAnchors()
@@ -5745,7 +5775,7 @@ local function SetupHunter()
         return topAnchor, bottomAnchor
     end
 
-    local function UpdateHunterRangeHelperVisual(forcedRangeState)
+    local function UpdateHunterRangeHelperVisual(forcedRangeState, elapsed)
         local helperBar = ns.hunterRangeHelperBar
         local db = SuperSwingTimerDB or ns.DB_DEFAULTS
         local previewActive = ns.barTestActive == true
@@ -5753,35 +5783,53 @@ local function SetupHunter()
             and (previewActive or ((ns.rangedBar.GetAlpha and ns.rangedBar:GetAlpha()) or 0) > 0)
         if not helperBar or ns.playerClass ~= "HUNTER" or db.showHunterRangeHelper == false
             or (ns.IsMinimalMode and ns.IsMinimalMode()) or not rangedVisible then
-            if helperBar then
-                helperBar:SetAlpha(0)
-                helperBar:SetValue(0)
-            end
+            ResetHunterRangeHelperVisual(helperBar)
+            hunterRangePollTimer = 0
             return
         end
 
+        if forcedRangeState == nil and elapsed ~= nil and helperBar._lastAlpha ~= nil then
+            hunterRangePollTimer = hunterRangePollTimer + elapsed
+            if hunterRangePollTimer < HUNTER_RANGE_POLL_INTERVAL then
+                return
+            end
+        end
+        hunterRangePollTimer = 0
+
         local rangeState = forcedRangeState or GetHunterRangeState(previewActive)
         if not rangeState then
-            helperBar:SetAlpha(0)
-            helperBar:SetValue(0)
+            ResetHunterRangeHelperVisual(helperBar)
             return
         end
 
         local topAnchor, bottomAnchor = GetHunterRangeHelperAnchors()
         if not topAnchor or not bottomAnchor then
-            helperBar:SetAlpha(0)
-            helperBar:SetValue(0)
+            ResetHunterRangeHelperVisual(helperBar)
             return
         end
 
-        helperBar:ClearAllPoints()
-        helperBar:SetPoint("TOPRIGHT", topAnchor, "TOPLEFT", -HUNTER_RANGE_HELPER_GAP, 0)
-        helperBar:SetPoint("BOTTOMRIGHT", bottomAnchor, "BOTTOMLEFT", -HUNTER_RANGE_HELPER_GAP, 0)
-        helperBar:SetWidth(ns.GetHunterRangeHelperWidth and ns.GetHunterRangeHelperWidth() or 7)
-        helperBar:SetMinMaxValues(0, 1)
-        helperBar:SetValue(1)
+        local width = ns.GetHunterRangeHelperWidth and ns.GetHunterRangeHelperWidth() or 7
+        if helperBar._lastTopAnchor ~= topAnchor or helperBar._lastBottomAnchor ~= bottomAnchor then
+            helperBar._lastTopAnchor = topAnchor
+            helperBar._lastBottomAnchor = bottomAnchor
+            helperBar:ClearAllPoints()
+            helperBar:SetPoint("TOPRIGHT", topAnchor, "TOPLEFT", -HUNTER_RANGE_HELPER_GAP, 0)
+            helperBar:SetPoint("BOTTOMRIGHT", bottomAnchor, "BOTTOMLEFT", -HUNTER_RANGE_HELPER_GAP, 0)
+        end
+        if helperBar._lastWidth ~= width then
+            helperBar._lastWidth = width
+            helperBar:SetWidth(width)
+        end
+        if helperBar._lastAlpha ~= 1 then
+            helperBar:SetMinMaxValues(0, 1)
+            helperBar:SetValue(1)
+        end
+        helperBar._lastRangeState = rangeState
         ApplyHunterRangeHelperColor(rangeState)
-        helperBar:SetAlpha(1)
+        if helperBar._lastAlpha ~= 1 then
+            helperBar._lastAlpha = 1
+            helperBar:SetAlpha(1)
+        end
     end
 
     local function RefreshHunterVisibility()
@@ -6298,7 +6346,6 @@ local function SetupHunter()
         MergeTrackedSpells(HUNTER_TRACKED_SPELLS, ns.SOD_TRACKED_SPELLS.HUNTER)
     end
     local hunterBuffIcons = {}
-    local hunterBuffTimer = 0
     local HUNTER_BUFF_UPDATE_INTERVAL = 0.15
     local HUNTER_BUFF_ICON_GAP = 3
 
@@ -6340,7 +6387,7 @@ local function SetupHunter()
                 return nil, nil, nil
             end
             local remaining = math.max((startTime + cdDuration) - GetCurrentTime(), 0)
-            if remaining <= 0 then return nil, nil end
+            if remaining <= 0 then return nil, nil, nil end
             return remaining, cdDuration, 0
         end
         return nil, nil, nil
@@ -6407,124 +6454,33 @@ local function SetupHunter()
         end
     end
 
+    local hunterBuffContext = {
+        createIcons = CreateHunterBuffIcons,
+        icons = hunterBuffIcons,
+        spells = HUNTER_TRACKED_SPELLS,
+        getRemaining = GetHunterSpellRemaining,
+        toggleKey = "showHunterBuffIcons",
+        sizeKey = "hunterBuffIconSize",
+        interval = HUNTER_BUFF_UPDATE_INTERVAL,
+        gap = HUNTER_BUFF_ICON_GAP,
+        timer = 0,
+        requireRangedBar = true,
+        getReferenceBar = GetDebuffAnchorBar,
+        debuffBars = {},
+        debuffCount = 7,
+        fillDebuffBars = function(bars)
+            bars[1] = serpentStingBar
+            bars[2] = wingClipBar
+            bars[3] = concussionShotBar
+            bars[4] = immolationTrapBar
+            bars[5] = explosiveTrapBar
+            bars[6] = freezingTrapBar
+            bars[7] = frostTrapBar
+        end,
+    }
+
     ns.UpdateHunterBuffIcons = function(elapsed)
-        CreateHunterBuffIcons()
-        if not ns.rangedBar then return end
-        if #hunterBuffIcons == 0 then return end
-
-        hunterBuffTimer = hunterBuffTimer + (elapsed or 0.03)
-        if hunterBuffTimer < HUNTER_BUFF_UPDATE_INTERVAL then return end
-        hunterBuffTimer = 0
-
-        local db = SuperSwingTimerDB or ns.DB_DEFAULTS
-        if db and db.showHunterBuffIcons == false then
-            ns.activeBuffIconCount = 0
-            for _, icon in ipairs(hunterBuffIcons) do
-                if icon and icon.Hide then icon:Hide() end
-            end
-            return
-        end
-        -- Buff icons visible out of combat (combat gate removed)
-        local iconSize = SuperSwingTimerDB and SuperSwingTimerDB.hunterBuffIconSize or 25
-        if type(iconSize) ~= "number" or iconSize <= 0 then iconSize = 25 end
-
-        local activeIcons = {}
-        local seenAuras = {}
-        for _, icon in ipairs(hunterBuffIcons) do
-            if icon and icon.spellId then
-                for _, spell in ipairs(HUNTER_TRACKED_SPELLS) do
-                    if spell.spellId == icon.spellId then
-                        local remaining, totalDuration, stacks = GetHunterSpellRemaining(spell)
-                        local auraKey = spell.name or spell.label or spell.spellId
-                        if type(remaining) == "number" and remaining > 0
-                            and type(totalDuration) == "number" and totalDuration > 0
-                            and not seenAuras[auraKey] then
-                            seenAuras[auraKey] = true
-                            table.insert(activeIcons, {
-                                icon = icon,
-                                remaining = remaining,
-                                totalDuration = totalDuration,
-                                stacks = stacks or 0,
-                                spellId = spell.spellId,
-                                label = spell.label,
-                            })
-                        else
-                            if icon.countText and icon.countText.Hide then icon.countText:Hide() end
-                            if icon.Hide then icon:Hide() end
-                        end
-                        break
-                    end
-                end
-            elseif icon and icon.Hide then
-                icon:Hide()
-            end
-        end
-
-        local numActive = #activeIcons
-        ns.activeBuffIconCount = numActive
-        if numActive == 0 then return end
-
-        local anchorBar = GetDebuffAnchorBar()
-        if not anchorBar then return end
-        -- Position icons above all visible target debuff duration bars,
-        -- computing the Y offset directly from current bar visibility
-        local iconY = ComputeBuffIconOffset(
-        { serpentStingBar, wingClipBar, concussionShotBar, immolationTrapBar, explosiveTrapBar, freezingTrapBar,
-            frostTrapBar }, anchorBar)
-        local barGetWidth = anchorBar.GetWidth
-        if not barGetWidth then return end
-
-        for idx, entry in ipairs(activeIcons) do
-            local icon = entry.icon
-            local remaining = entry.remaining
-            local totalDuration = entry.totalDuration
-
-            if icon.SetSize then icon:SetSize(iconSize, iconSize) end
-
-            -- Center icons horizontally over the bar width
-            local totalWidth = numActive * iconSize + (numActive - 1) * HUNTER_BUFF_ICON_GAP
-            local finalX = (idx - 1) * (iconSize + HUNTER_BUFF_ICON_GAP) + (iconSize / 2) - (totalWidth / 2)
-
-            if icon.ClearAllPoints then icon:ClearAllPoints() end
-            if icon.SetPoint then icon:SetPoint("BOTTOM", anchorBar, "TOP", finalX, iconY) end
-
-            -- Glow effect in the last 4 seconds
-            if icon.glow and icon.glow.SetColorTexture then
-                local shouldGlow = remaining <= 4 and remaining > 0
-                if shouldGlow and totalDuration > 0 then
-                    -- Pulse alpha between 0.15 and 0.55
-                    local pulseAlpha = 0.15 + 0.40 * (0.5 + 0.5 * math.sin(GetCurrentTime() * 6))
-                    icon.glow:SetColorTexture(1, 0.85, 0, pulseAlpha)
-                    if icon.glow.Show then icon.glow:Show() end
-                elseif icon.glow.Hide then
-                    icon.glow:Hide()
-                end
-            end
-            -- LibCustomGlow proc animation for the urgent final 2s.
-            if ns.Glow and ns.Glow.SetIcon then
-                ns.Glow.SetIcon(icon, remaining <= 2 and remaining > 0, GLOW_GOLD)
-            end
-
-            -- Countdown text (centered above icon)
-            if icon.durationText and icon.durationText.SetText then
-                local text = remaining >= 3 and string.format("%.0f", remaining) or string.format("%.1f", remaining)
-                icon.durationText:SetText(text)
-                if icon.durationText.Show then icon.durationText:Show() end
-            end
-
-            -- Stacks text (only stacks show over the icon)
-            local stacks = entry.stacks or 0
-            if icon.countText and icon.countText.SetText then
-                if stacks and (stacks > 1 or (stacks == 1 and (entry.spellId == 408505 or entry.label == "MSW" or entry.label == "Reckoning"))) then
-                    icon.countText:SetText(tostring(stacks))
-                    if icon.countText.Show then icon.countText:Show() end
-                else
-                    if icon.countText.Hide then icon.countText:Hide() end
-                end
-            end
-
-            if icon.Show then icon:Show() end
-        end
+        RenderTrackedBuffIcons(hunterBuffContext, elapsed)
     end
 
     -- ============================================================
@@ -8636,7 +8592,7 @@ local function SetupRogue()
         end
 
         local start, duration = QuerySpellCooldown(ADRENALINE_RUSH_SPELL_ID)
-        if not duration or duration <= 0 then
+        if not duration or duration <= 2.5 then
             adrenalineRushBar:Hide()
             return
         end
@@ -8686,7 +8642,6 @@ local function SetupRogue()
     end
 
     local rogueBuffIcons = {}
-    local rogueBuffTimer = 0
     local ROGUE_BUFF_UPDATE_INTERVAL = 0.15
     local ROGUE_BUFF_ICON_GAP = 3
 
@@ -8728,7 +8683,7 @@ local function SetupRogue()
                 return nil, nil, nil
             end
             local remaining = math.max((startTime + cdDuration) - GetCurrentTime(), 0)
-            if remaining <= 0 then return nil, nil end
+            if remaining <= 0 then return nil, nil, nil end
             return remaining, cdDuration, 0
         end
         return nil, nil, nil
@@ -8795,124 +8750,26 @@ local function SetupRogue()
         end
     end
 
+    local rogueBuffContext = {
+        createIcons = CreateRogueBuffIcons,
+        icons = rogueBuffIcons,
+        spells = ROGUE_TRACKED_SPELLS,
+        getRemaining = GetRogueSpellRemaining,
+        toggleKey = "showRogueBuffIcons",
+        sizeKey = "rogueBuffIconSize",
+        interval = ROGUE_BUFF_UPDATE_INTERVAL,
+        gap = ROGUE_BUFF_ICON_GAP,
+        timer = 0,
+        debuffBars = {},
+        debuffCount = 2,
+        fillDebuffBars = function(bars)
+            bars[1] = ruptureBar
+            bars[2] = exposeArmorBar
+        end,
+    }
+
     ns.UpdateRogueBuffIcons = function(elapsed)
-        CreateRogueBuffIcons()
-        if #rogueBuffIcons == 0 then return end
-
-        rogueBuffTimer = rogueBuffTimer + (elapsed or 0.03)
-        if rogueBuffTimer < ROGUE_BUFF_UPDATE_INTERVAL then return end
-        rogueBuffTimer = 0
-
-        local db = SuperSwingTimerDB or ns.DB_DEFAULTS
-        if db and db.showRogueBuffIcons == false then
-            ns.activeBuffIconCount = 0
-            for _, icon in ipairs(rogueBuffIcons) do
-                if icon and icon.Hide then icon:Hide() end
-            end
-            return
-        end
-        -- Buff icons visible out of combat (combat gate removed)
-        local iconSize = SuperSwingTimerDB and SuperSwingTimerDB.rogueBuffIconSize or 25
-        if type(iconSize) ~= "number" or iconSize <= 0 then iconSize = 25 end
-
-        local activeIcons = {}
-        local seenAuras = {}
-        for _, icon in ipairs(rogueBuffIcons) do
-            if icon and icon.spellId then
-                for _, spell in ipairs(ROGUE_TRACKED_SPELLS) do
-                    if spell.spellId == icon.spellId then
-                        local remaining, totalDuration, stacks = GetRogueSpellRemaining(spell)
-                        local auraKey = spell.name or spell.label or spell.spellId
-                        if type(remaining) == "number" and remaining > 0
-                            and type(totalDuration) == "number" and totalDuration > 0
-                            and not seenAuras[auraKey] then
-                            seenAuras[auraKey] = true
-                            table.insert(activeIcons, {
-                                icon = icon,
-                                remaining = remaining,
-                                totalDuration = totalDuration,
-                                stacks = stacks or 0,
-                                spellId = spell.spellId,
-                                label = spell.label,
-                            })
-                        else
-                            if icon.countText and icon.countText.Hide then icon.countText:Hide() end
-                            if icon.Hide then icon:Hide() end
-                        end
-                        break
-                    end
-                end
-            elseif icon and icon.Hide then
-                icon:Hide()
-            end
-        end
-
-        local numActive = #activeIcons
-        ns.activeBuffIconCount = numActive
-        if numActive == 0 then return end
-
-        local referenceBar = ns.mhBar
-        if not referenceBar then return end
-        -- Position icons above all visible target debuff duration bars
-        local iconY = ComputeBuffIconOffset({ ruptureBar, exposeArmorBar }, referenceBar)
-        local barGetWidth = referenceBar.GetWidth
-        if not barGetWidth then return end
-
-        for idx, entry in ipairs(activeIcons) do
-            local icon = entry.icon
-            local remaining = entry.remaining
-            local totalDuration = entry.totalDuration
-
-            if icon.SetSize then icon:SetSize(iconSize, iconSize) end
-
-            -- Center icons horizontally over the bar width
-            local totalWidth = numActive * iconSize + (numActive - 1) * ROGUE_BUFF_ICON_GAP
-            local finalX = (idx - 1) * (iconSize + ROGUE_BUFF_ICON_GAP) + (iconSize / 2) - (totalWidth / 2)
-
-            if icon.ClearAllPoints then icon:ClearAllPoints() end
-            if icon.SetPoint then icon:SetPoint("BOTTOM", referenceBar, "TOP", finalX, iconY) end
-
-            -- No shading
-            if icon.dim and icon.dim.SetColorTexture then
-                icon.dim:SetColorTexture(0, 0, 0, 0)
-            end
-
-            -- Glow in last 4 seconds
-            if icon.glow and icon.glow.SetColorTexture then
-                local shouldGlow = remaining <= 4 and remaining > 0
-                if shouldGlow and totalDuration > 0 then
-                    local pulseAlpha = 0.15 + 0.40 * (0.5 + 0.5 * math.sin(GetCurrentTime() * 6))
-                    icon.glow:SetColorTexture(1, 0.85, 0, pulseAlpha)
-                    if icon.glow.Show then icon.glow:Show() end
-                elseif icon.glow.Hide then
-                    icon.glow:Hide()
-                end
-            end
-            -- LibCustomGlow proc animation for the urgent final 2s.
-            if ns.Glow and ns.Glow.SetIcon then
-                ns.Glow.SetIcon(icon, remaining <= 2 and remaining > 0, GLOW_GOLD)
-            end
-
-            -- Countdown text (centered above icon)
-            if icon.durationText and icon.durationText.SetText then
-                local text = remaining >= 3 and string.format("%.0f", remaining) or string.format("%.1f", remaining)
-                icon.durationText:SetText(text)
-                if icon.durationText.Show then icon.durationText:Show() end
-            end
-
-            -- Stacks text (only stacks show over the icon)
-            local stacks = entry.stacks or 0
-            if icon.countText and icon.countText.SetText then
-                if stacks and (stacks > 1 or (stacks == 1 and (entry.spellId == 408505 or entry.label == "MSW" or entry.label == "Reckoning"))) then
-                    icon.countText:SetText(tostring(stacks))
-                    if icon.countText.Show then icon.countText:Show() end
-                else
-                    if icon.countText.Hide then icon.countText:Hide() end
-                end
-            end
-
-            if icon.Show then icon:Show() end
-        end
+        RenderTrackedBuffIcons(rogueBuffContext, elapsed)
     end
     -- ============================================================
     -- Rogue: power bar update (energy).
@@ -8959,6 +8816,19 @@ local function ResolvePowerBarColor(powerType, powerToken, customColor)
 end
 ns.ResolvePowerBarColor = ResolvePowerBarColor
 
+local function HidePlayerPowerBar(bar)
+    if bar._lastPowerVisible ~= false then
+        bar._lastPowerVisible = false
+        bar._lastCurPower = nil
+        bar._lastMaxPower = nil
+        bar._lastPowerType = nil
+        bar._lastMinMaxVal = nil
+        bar._lastBarValue = nil
+        bar:SetAlpha(0)
+        bar:Hide()
+    end
+end
+
 local function UpdatePlayerPowerBar()
     local bar = ns.playerPowerBar
     if not bar then return end
@@ -8966,11 +8836,7 @@ local function UpdatePlayerPowerBar()
     local db = SuperSwingTimerDB or ns.DB_DEFAULTS
     local enabled = (not db) or (db.showPowerBar ~= false)
     if not enabled then
-        bar._lastCurPower = nil
-        bar._lastMaxPower = nil
-        bar._lastPowerType = nil
-        bar:SetAlpha(0)
-        bar:Hide()
+        HidePlayerPowerBar(bar)
         return
     end
 
@@ -8980,14 +8846,12 @@ local function UpdatePlayerPowerBar()
         class = ns.SafeString(select(2, UnitClass("player")))
     end
     if not class or not POWER_BAR_CLASSES[class] then
-        bar:SetAlpha(0)
-        bar:Hide()
+        HidePlayerPowerBar(bar)
         return
     end
 
     if class == "WARRIOR" and not (db and db.showWarriorRageProtection) and ns.IsWarriorProtectionSpec and ns.IsWarriorProtectionSpec() then
-        bar:SetAlpha(0)
-        bar:Hide()
+        HidePlayerPowerBar(bar)
         return
     end
 
@@ -9010,9 +8874,10 @@ local function UpdatePlayerPowerBar()
         end
     end
 
+    local unitPowerFn = UnitPower or rawget(_G, "UnitPower")
     local rawCurPower, rawMaxPower
-    if type(UnitPower) == "function" then
-        rawCurPower = UnitPower("player", powerType)
+    if type(unitPowerFn) == "function" then
+        rawCurPower = unitPowerFn("player", powerType)
     end
     if type(UnitPowerMax) == "function" then
         rawMaxPower = UnitPowerMax("player", powerType)
@@ -9065,12 +8930,38 @@ local function UpdatePlayerPowerBar()
     end
 
     local finalColor = ResolvePowerBarColor(powerType, powerToken, customColor)
+    local r = finalColor.r
+    local g = finalColor.g
+    local b = finalColor.b
+    local a = finalColor.a or 0.85
 
-    bar:SetMinMaxValues(0, displayMaxPower)
-    bar:SetValue(displayCurPower)
-    bar:SetStatusBarColor(finalColor.r, finalColor.g, finalColor.b, finalColor.a or 0.85)
-    bar:SetAlpha(1)
-    bar:Show()
+    if powerIsSecret then
+        bar._lastMinMaxVal = nil
+        bar._lastBarValue = nil
+        bar:SetMinMaxValues(0, displayMaxPower)
+        bar:SetValue(displayCurPower)
+    else
+        if bar._lastMinMaxVal ~= displayMaxPower then
+            bar._lastMinMaxVal = displayMaxPower
+            bar:SetMinMaxValues(0, displayMaxPower)
+        end
+        if bar._lastBarValue ~= displayCurPower then
+            bar._lastBarValue = displayCurPower
+            bar:SetValue(displayCurPower)
+        end
+    end
+    if bar._lastColorR ~= r or bar._lastColorG ~= g or bar._lastColorB ~= b or bar._lastColorA ~= a then
+        bar._lastColorR = r
+        bar._lastColorG = g
+        bar._lastColorB = b
+        bar._lastColorA = a
+        bar:SetStatusBarColor(r, g, b, a)
+    end
+    if bar._lastPowerVisible ~= true then
+        bar._lastPowerVisible = true
+        bar:SetAlpha(1)
+        bar:Show()
+    end
 
     if bar.label then
         if powerIsSecret then
@@ -9323,8 +9214,12 @@ function ns.InitClassMods()
     if ns.hunterRangeHelperBar then
         ns.hunterRangeHelperBar:SetAlpha(0)
         ns.hunterRangeHelperBar:SetValue(0)
+        if ns.InvalidateHunterRangeHelperCache then
+            ns.InvalidateHunterRangeHelperCache()
+        end
     end
     if ns.playerPowerBar then
+        ns.playerPowerBar._lastPowerVisible = nil
         ns.playerPowerBar:SetAlpha(0)
     end
     if ns.shamanFlameShockBar then

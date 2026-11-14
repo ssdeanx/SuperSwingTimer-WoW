@@ -1,10 +1,27 @@
-# Super Swing Timer <span style="color:#00ccff">v0.3.4</span>
+# Super Swing Timer <span style="color:#00ccff">v0.3.6</span>
 
 A fast, customizable **Main Hand**, **Off Hand**, **Ranged**, and **Enemy** swing timer for World of Warcraft Classic and WoW Forever clients — with class-specific rotation helpers, target debuff bars, and a unified player power bar.
 
 - Discord: [https://discord.gg/nnbN4Naad](https://discord.gg/nnbN4Naad)
 
 **<span style="color:#2ecc71">12,000+ downloads</span>** — thank you to everyone using the addon and reporting feedback!
+
+---
+
+## What's New in v0.3.6
+
+- **One 5-second expiring glow on every buff and debuff icon.** The class icon rows used to run two different windows: the gold pulse overlay covered the final 4 seconds, but the `LibCustomGlow` animation covered only the final 2, so the animation stopped two seconds early. Player buffs and target-debuff entries on every class row now share a single 5-second window.
+- **The native Forever rows match the same window.** Buff/proc and target-debuff aura rows widen from 4 seconds to 5, both driven by one `FOREVER_AURA_GLOW_SECONDS` constant, and the **Aura Expiring Glow (5s)** toggle reads its label from that module instead of a hardcoded literal.
+- **A restricted buff-button level can no longer silently kill the glow.** The Forever glow overlay read the aura button's frame level and did arithmetic on it inside the same `pcall` that draws the rim. `GetFrameLevel` is a secret aspect on Forever, so a restricted button could raise there and leave an overlay with alpha but no rim — an icon that looks like it just doesn't glow. The setup is now three isolated steps, the level is scrubbed through `ns.SafeNumber` with a constant fallback, and each overlay updates inside its own `pcall` so one failing entry cannot leave the following rows dark. `/sst diag auraGroup` now prints `glowFail=<rim>/<update>` when either happens.
+
+---
+
+## What's New in v0.3.5
+
+- **Forever Aura 4-second expiring glow.** Native Forever buff/proc and target debuff aura icons now glow gold during their final 4 seconds using a secret-safe `C_CurveUtil.CreateCurve()` step curve evaluated against `StatusBar:GetTimerDuration()` (`durationBar` / invisible proxy `StatusBar`) on an external `UIParent`-owned overlay (toggled by **Aura Expiring Glow** and `/sst glow`). The window was 4 seconds here and is 5 seconds from v0.3.6, matching the class icon rows.
+- **Event-driven Hunter Range Helper (`hunterRangeHelperBar`).** Registers `PLAYER_SWING_RANGE_UPDATE` + `C_SwingTimer.EnableRangeCheck` on native swing clients even when Blizzard's default swing bars are hidden, adds `C_Spell.IsSpellInRange` and spell ID fallbacks (`2974` / `2973` / `75` / `3044`), updates immediately on movement/target/range changes, and replaces the experimental Forever bottom distance bar cleanly.
+- **Paladin Seal-Twist Bar Mechanics.** Upgraded the Paladin twist zone with `SwedgeTimer`-style dynamic states: **Don't Twist** impossible-twist warning (GCD + calibrated lag > remaining swing), 2-seal armed pulse, inside-window highlight, attempt flash, optional bar glow, configurable **Dynamic Twist Padding** (`0.4s` + `0.7×` latency, `0.2s` on SoD), and non-wrapping reseal/Judgement markers.
+- **Render, Event & Allocation Optimizations.** Consolidated all 6 class buff-icon updaters into a zero-allocation shared helper, debounced `SetUpdateEnabled` transitions, and added frame-property/geometry/RGBA caching across swing bars, labels, GCD ticker, power bar, Forever glow host, and Hunter range helper.
 
 ---
 
@@ -44,7 +61,7 @@ Type `/sst` in chat to open the settings window. Bars stay hidden out of combat 
 | `/sst move` or `/sst unlock` | <span style="color:#2ecc71">**Unlock bars**</span> and display draggable anchor overlays |
 | `/sst lock` | <span style="color:#e67e23">**Lock bars**</span> in their current position and save |
 | `/sst test` | Toggle a **20-second animated preview** of all active bars |
-| `/sst glow` | Toggle `LibCustomGlow` proc and expiring-icon animations on/off |
+| `/sst glow` | Toggle `LibCustomGlow` proc and expiring-icon animations on/off (icon rows glow over their final 5 seconds) |
 | `/sst reset` | Reset all settings and bar positions to factory defaults |
 | `/stt diag` | Print a compact health & diagnostics summary (`/stt diag full` for all checks) |
 
@@ -96,7 +113,7 @@ Type `/sst` in chat to open the settings window. Bars stay hidden out of combat 
 
 ```text
 +------------------------------------------------------------------+
-| Super Swing Timer v0.3.4            [ Unlock & Move Bars ]  [X]  |
+| Super Swing Timer v0.3.5            [ Unlock & Move Bars ]  [X]  |
 | Global Scale [=====slider (0.5x–3.0x)=====] [1.0]               |
 |------------------------------------------------------------------|
 | Quick Controls (Tabs: [ All ] [ Visibility ] [ Colors ] [ Class ])|
@@ -136,6 +153,18 @@ Type `/sst` in chat to open the settings window. Bars stay hidden out of combat 
 ---
 
 ## Recent Releases
+
+### <span style="color:#00ccff">v0.3.6</span> (2026-11-14)
+
+- **<span style="color:#2ecc71">Unified 5-Second Icon Glow</span>**: Class buff and target-debuff icon rows now run the `LibCustomGlow` animation and the gold pulse over the same final 5 seconds — the animation used to stop at 2s while the pulse ran on to 4s — and the native Forever buff/debuff rows widen from 4s to 5s. The toggle is now **Aura Expiring Glow (5s)**.
+- **<span style="color:#2ecc71">Secret-Safe Glow Overlay</span>**: The Forever glow overlay no longer does arithmetic on `GetFrameLevel` (a secret aspect), so a restricted button cannot leave it rimless; each overlay also updates inside its own `pcall`, and `/sst diag auraGroup` reports `glowFail=<rim>/<update>`.
+
+### <span style="color:#00ccff">v0.3.5</span> (2026-11-12)
+
+- **<span style="color:#2ecc71">Secret-Safe Distance ColorCurve</span>**: Forever Hunter distance bar now evaluates `C_CurveUtil.CreateColorCurve()` directly on secret distance readings so band colors always match exact target distance, plus `C_Spell.IsSpellInRange` support.
+- **<span style="color:#2ecc71">4-Second Expiring Aura Glow</span>**: Forever buff/proc aura icons glow gold via `LibCustomGlow` during their final 4 seconds using a secret-safe `LuaCurveObject` on `GetAuraDuration()`, with a new **Aura Expiring Glow (4s)** toggle.
+- **<span style="color:#2ecc71">Paladin Seal-Twist Parity</span>**: Dynamic twist-zone states (impossible-twist "Don't Twist" warning, 2-seal armed pulse, inside-window highlight, attempt flash, optional MH bar glow), Dynamic latency padding (`0.4s` / `0.2s` SoD), and non-wrapping reseal/Judgement markers.
+- **<span style="color:#2ecc71">Config & Perf</span>**: New Paladin twist and Forever aura glow toggles in `/sst`, hoisted distance reader, and 0.5 px overlay layout caching.
 
 ### <span style="color:#00ccff">v0.3.4</span> (2026-11-12)
 

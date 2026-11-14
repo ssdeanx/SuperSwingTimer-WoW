@@ -346,12 +346,19 @@ local function ApplyBarLabelStyle(bar)
     end
 end
 
-local function SetBarLabelShown(bar, shown)
+local function SetBarLabelShown(bar, shown, forceStyle)
     if not bar or not bar.labelText then
         return
     end
 
     shown = shown == true
+    local useInverted = UsesInvertedClassLabelStyle(bar)
+    if not forceStyle and bar._labelShownState == shown and bar._labelInvertedStyle == useInverted then
+        return
+    end
+    bar._labelShownState = shown
+    bar._labelInvertedStyle = useInverted
+
     if shown then
         bar.labelText:Show()
     else
@@ -359,7 +366,7 @@ local function SetBarLabelShown(bar, shown)
     end
 
     if bar.labelOutlineText then
-        bar.labelOutlineText:SetShown(shown and UsesInvertedClassLabelStyle(bar))
+        bar.labelOutlineText:SetShown(shown and useInverted)
     end
 
     ApplyBarLabelStyle(bar)
@@ -415,8 +422,7 @@ ns.ForEachAllBar = ForEachAllBar
 function ns.RefreshBarLabelStyles()
     ForEachAllBar(function(bar)
         if bar.labelText then
-            ApplyBarLabelStyle(bar)
-            SetBarLabelShown(bar, bar.labelText:IsShown())
+            SetBarLabelShown(bar, bar.labelText:IsShown(), true)
         end
     end)
     if ns.enemyBar and ns.enemyBar.labelText then
@@ -1632,6 +1638,13 @@ local function ResetBarDisplay(bar)
 
     bar:SetMinMaxValues(0, 1)
     bar:SetValue(0)
+    bar._lastMinMaxDuration = nil
+    bar._lastRangedColorR = nil
+    bar._lastRangedColorG = nil
+    bar._lastRangedColorB = nil
+    bar._lastRangedColorA = nil
+    bar._lastChannelName = nil
+    bar._lastChannelRemTenth = nil
     bar._renderedLabelText = nil
     bar._lastRemTenth = nil
     bar._lastRangedLabel = nil
@@ -1668,6 +1681,9 @@ local function HideBars()
     if ns.hunterRangeHelperBar then
         ns.hunterRangeHelperBar:SetAlpha(0)
         ns.hunterRangeHelperBar:SetValue(0)
+        if ns.InvalidateHunterRangeHelperCache then
+            ns.InvalidateHunterRangeHelperCache()
+        end
     end
     if ns.mhBar then
         ns.mhBar:SetAlpha(0)
@@ -1713,9 +1729,17 @@ local function UpdateRangedBar(elapsed)
             if f.castThresholdMarker then
                 f.castThresholdMarker:Hide()
             end
-            f:SetMinMaxValues(0, channelDuration)
+            if f._lastMinMaxDuration ~= channelDuration then
+                f._lastMinMaxDuration = channelDuration
+                f:SetMinMaxValues(0, channelDuration)
+            end
             f:SetValue(elapsedChannel)
-            SetBarLabelText(f, string.format("%s %.1f", channelName, remainingChannel), true)
+            local remTenth = math.floor(remainingChannel * 10 + 0.5)
+            if f._lastChannelRemTenth ~= remTenth or f._lastChannelName ~= channelName then
+                f._lastChannelRemTenth = remTenth
+                f._lastChannelName = channelName
+                SetBarLabelText(f, string.format("%s %.1f", channelName, remainingChannel), true)
+            end
             UpdateSparkPosition(f, channelDuration > 0 and (elapsedChannel / channelDuration) or 0)
             return
         end
@@ -1747,26 +1771,23 @@ local function UpdateRangedBar(elapsed)
         ResetBarDisplay(f)
         return
     end
-    if now >= cooldownEnd then
-        -- Keep the ranged bar's own fill color; cast overlay handles safe/unsafe tint
-        local c = ns.rangedBarBaseColor
-        if c then
-            f:SetStatusBarColor(c.r, c.g, c.b, c.a or 1)
-        else
-            f:SetStatusBarColor(0, 0, 0, 1)
-        end
-        if ns.isMoving then
-            local castBoundaryElapsed = math.max(t.duration - rangedWindowLead, 0)
-            if elapsed_time > castBoundaryElapsed then
-                elapsed_time = castBoundaryElapsed
-            end
-        end
-    else
-        local c = ns.rangedBarBaseColor
-        if c then
-            f:SetStatusBarColor(c.r, c.g, c.b, c.a or 1)
-        else
-            f:SetStatusBarColor(0, 0, 0, 1)
+    -- Keep the ranged bar's own fill color; cast overlay handles safe/unsafe tint
+    local c = ns.rangedBarBaseColor
+    local cr = c and c.r or 0
+    local cg = c and c.g or 0
+    local cb = c and c.b or 0
+    local ca = c and c.a or 1
+    if f._lastRangedColorR ~= cr or f._lastRangedColorG ~= cg or f._lastRangedColorB ~= cb or f._lastRangedColorA ~= ca then
+        f._lastRangedColorR = cr
+        f._lastRangedColorG = cg
+        f._lastRangedColorB = cb
+        f._lastRangedColorA = ca
+        f:SetStatusBarColor(cr, cg, cb, ca)
+    end
+    if now >= cooldownEnd and ns.isMoving then
+        local castBoundaryElapsed = math.max(t.duration - rangedWindowLead, 0)
+        if elapsed_time > castBoundaryElapsed then
+            elapsed_time = castBoundaryElapsed
         end
     end
 
@@ -1784,7 +1805,10 @@ local function UpdateRangedBar(elapsed)
         SetBarLabelText(f, countdownLabel, true)
     end
 
-    f:SetMinMaxValues(0, t.duration)
+    if f._lastMinMaxDuration ~= t.duration then
+        f._lastMinMaxDuration = t.duration
+        f:SetMinMaxValues(0, t.duration)
+    end
     f:SetValue(elapsed_time)
     UpdateSparkPosition(f, t.duration > 0 and (elapsed_time / t.duration) or 0)
 end
@@ -1825,7 +1849,10 @@ local function UpdateMeleeBar(slot, frame)
         SetBarLabelText(frame, string.format("%.1f", remaining), true)
     end
 
-    frame:SetMinMaxValues(0, t.duration)
+    if frame._lastMinMaxDuration ~= t.duration then
+        frame._lastMinMaxDuration = t.duration
+        frame:SetMinMaxValues(0, t.duration)
+    end
     frame:SetValue(elapsed_time)
     UpdateSparkPosition(frame, t.duration > 0 and (elapsed_time / t.duration) or 0)
 end
@@ -1854,6 +1881,7 @@ function ns.ApplyGlobalScale()
     end
 
     -- Refresh class-specific helpers and their sizes
+    if ns.InvalidateHunterRangeHelperCache then ns.InvalidateHunterRangeHelperCache() end
     if ns.UpdateHunterRapidFire then ns.UpdateHunterRapidFire(0, true) end
     if ns.UpdateHunterRangeHelperVisual then ns.UpdateHunterRangeHelperVisual() end
     if ns.UpdateHunterBuffIcons then ns.UpdateHunterBuffIcons(0) end
@@ -2351,20 +2379,29 @@ local function UpdateGcdTicker(elapsed)
     if not f then return end
     local db = SuperSwingTimerDB or ns.DB_DEFAULTS
     if not db or db.showGcdTicker == false or ns.playerClass == "HUNTER" or (ns.IsMinimalMode and ns.IsMinimalMode()) then
-        f:SetAlpha(0)
-        f:Hide()
+        if f._gcdShown ~= false then
+            f._gcdShown = false
+            f:SetAlpha(0)
+            f:Hide()
+        end
         return
     end
     if not gcdStart or not ns.gcdActive or (now - gcdStart) >= (ns.gcdDuration or 1.5) then
-        f:SetAlpha(0)
-        f:Hide()
+        if f._gcdShown ~= false then
+            f._gcdShown = false
+            f:SetAlpha(0)
+            f:Hide()
+        end
         return
     end
     local elapsedGcd = now - gcdStart
     local fraction = 1 - math.min(elapsedGcd / (ns.gcdDuration or 1.5), 1)
     f:SetValue(fraction)
-    f:SetAlpha(1)
-    f:Show()
+    if f._gcdShown ~= true then
+        f._gcdShown = true
+        f:SetAlpha(1)
+        f:Show()
+    end
 end
 
 function ns.ApplySparkColor(color)
@@ -2654,24 +2691,28 @@ function ns.ApplyVisibility()
 
     local cfg = ns.classConfig or {}
     local db = SuperSwingTimerDB or ns.DB_DEFAULTS
-    local _, ohSpeed = UnitAttackSpeed("player")
-    ohSpeed = ns.SafeNumber(ohSpeed)
-    local hasOffHand = ohSpeed and ohSpeed > 0
+    local hasOffHand = false
+    if cfg.dualWield then
+        local _, ohSpeed = UnitAttackSpeed("player")
+        ohSpeed = ns.SafeNumber(ohSpeed)
+        hasOffHand = ohSpeed and ohSpeed > 0
+    end
     local inCombat = (ns.playerInCombat == true) or (InCombatLockdown and InCombatLockdown() or false)
     local previewActive = ns.barTestActive == true
     local meleeMHActive = ns.timers and ns.timers.mh and ns.timers.mh.state == "swinging"
     local meleeOHActive = ns.timers and ns.timers.oh and ns.timers.oh.state == "swinging"
     local rangedActive = ns.timers and ns.timers.ranged and ns.timers.ranged.state == "swinging"
-    local hunterCastVisible = ShouldShowHunterCastBar()
-    local hunterMeleeActive = IsHunterMeleeActive()
+    local isHunter = ns.playerClass == "HUNTER"
+    local hunterCastVisible = isHunter and ShouldShowHunterCastBar() or false
+    local hunterMeleeActive = isHunter and IsHunterMeleeActive() or false
     -- Clear stale Raptor Strike queue if MH isn't actively swinging — prevents
     -- the MH bar from popping up during ranged-only auto shot transitions when
     -- effectiveRangedActive briefly dips.
-    if not hunterMeleeActive and ns.hunterQueuedMeleeSpell ~= nil then
+    if isHunter and not hunterMeleeActive and ns.hunterQueuedMeleeSpell ~= nil then
         ns.hunterQueuedMeleeSpell = nil
     end
-    local hunterMeleeVisible = IsHunterMeleeBarVisible()
-    local hunterAutoRepeatActive = ns.playerClass == "HUNTER" and ns.IsHunterAutoRepeatActive
+    local hunterMeleeVisible = isHunter and IsHunterMeleeBarVisible() or false
+    local hunterAutoRepeatActive = isHunter and ns.IsHunterAutoRepeatActive
         and ns.IsHunterAutoRepeatActive() or false
     local hunterAutoRepeatVisual = hunterAutoRepeatActive and not hunterMeleeActive
     local showEnemy = db.showEnemy ~= false and (previewActive or (inCombat and ns.enemyTargetGUID ~= nil))
@@ -3023,7 +3064,7 @@ local function CoreRenderHook(elapsed)
         if ns.UpdateDruidQueueTint then ns.UpdateDruidQueueTint() end
     elseif playerClass == "HUNTER" then
         if ns.UpdateHunterQueueTint then ns.UpdateHunterQueueTint() end
-        if ns.UpdateHunterRangeHelperVisual then ns.UpdateHunterRangeHelperVisual() end
+        if ns.UpdateHunterRangeHelperVisual then ns.UpdateHunterRangeHelperVisual(nil, elapsed) end
         if ns.UpdateHunterRapidFire then ns.UpdateHunterRapidFire(elapsed) end
     elseif playerClass == "ROGUE" then
         if ns.UpdateRogueAdrenalineRush then ns.UpdateRogueAdrenalineRush(elapsed) end

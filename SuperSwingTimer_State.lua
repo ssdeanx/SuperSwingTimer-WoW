@@ -235,6 +235,15 @@ function ns.IsHunterRangedPinnedByMovement(now)
     return now >= ((t.lastSwing + t.duration) - castWindow)
 end
 
+local function ReadRangedHasteSafe()
+    local value = GetRangedHaste()
+    local number = tonumber(value)
+    if number == nil then
+        return 0
+    end
+    return math.max(number, 0)
+end
+
 local function GetPlayerRangedHastePercent()
     if type(GetRangedHaste) ~= "function" then
         return 0
@@ -243,14 +252,7 @@ local function GetPlayerRangedHastePercent()
     -- conversion and the clamp all run inside pcall: any restricted value
     -- means "unknown haste" and the addon must fall back to 0 rather than let
     -- a secret reach arithmetic.
-    local ok, clamped = pcall(function()
-        local value = GetRangedHaste()
-        local number = tonumber(value)
-        if number == nil then
-            return 0
-        end
-        return math.max(number, 0)
-    end)
+    local ok, clamped = pcall(ReadRangedHasteSafe)
     if not ok or type(clamped) ~= "number" then
         return 0
     end
